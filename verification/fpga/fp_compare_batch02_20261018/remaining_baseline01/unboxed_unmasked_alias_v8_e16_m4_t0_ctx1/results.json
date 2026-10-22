@@ -1,0 +1,18 @@
+{
+  "results": [
+    {
+      "returncode": 0,
+      "elapsed_s": 46.59688425064087,
+      "name": "unboxed_unmasked_alias_v8_e16_m4_t0_ctx1",
+      "status": "NOT_PASS",
+      "diagnostics": [
+        "FP_BIT index=0 expected=1 actual=0",
+        "RVV_FP_COMPARE_DETAIL op=2 seed=1 vl=2 mask=1 sticky=0 expected_flags=0 actual_flags=16 errors=2",
+        "RVV_FP_COMPARE_FAIL sew=16 cases=1 errors=2"
+      ]
+    }
+  ],
+  "planned": 1,
+  "passed": 0,
+  "scope": "7 authentic first-failure tuples; 7 separate context-layout controls. Not full sequence or Linux execution."
+}

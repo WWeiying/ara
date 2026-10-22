@@ -1,0 +1,16 @@
+{
+  "status": "HOST_NUMERICAL_PASS_DUAL_COMPILED_CFG_PENDING",
+  "binaries": {
+    "soc": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_e32_mf2_full17920_prepare01/software01/execution01/soc/program.elf",
+      "sha256": "520b652eb8a4d4dc634a17a36a9d5e71c382a4679afeb8aeb54746d18a37be73"
+    },
+    "spike": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_e32_mf2_full17920_prepare01/software01/execution01/spike/program.elf",
+      "sha256": "9b6f3e8fa391514816fc6731aeb8b9628d374fbe5f0e1ccb85fb6a2e929e1254"
+    }
+  },
+  "source_pins_unchanged": true,
+  "reference": false,
+  "DUT": false
+}

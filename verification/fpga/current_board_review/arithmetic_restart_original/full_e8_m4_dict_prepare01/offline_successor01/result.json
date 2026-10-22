@@ -1,0 +1,59 @@
+{
+  "status": "ARCHITECTURAL_SOURCE_REFERENCE_ACCEPTED_OLD_OBSERVER_NOT_ACCEPTED",
+  "calls": 4095,
+  "results": 2096640,
+  "guards": 8190,
+  "vstart_zero": 4095,
+  "helper_instruction_counts": [
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095
+  ],
+  "helper_instructions": 53235,
+  "packed_output_reads": 266175,
+  "per_call_fresh_output_bytes": 514,
+  "physical_mask_bytes": 128,
+  "firmware_to_exit": 2646649,
+  "firmware_to_HTIF": 2646655,
+  "boot": 5,
+  "console": "RVV_MATRIX_PASS sew=8 vlmax=512 cases=4095 elements=2096640 errors=0 seeds=3 guard_tail_mask_vstart=checked\n",
+  "closed_raw_parses": 1,
+  "final_context": {
+    "line": 2646660,
+    "retired": 2646655,
+    "call": 4095,
+    "pc": "8000007a",
+    "insn": "00a2b023"
+  },
+  "original_execution_sha256": "65f5e67a55ba80af1289b8e4c273d7b3d4f17d79cdcaa7a612f648948345c211",
+  "original_STOPPED_sha256": "73ee8235af222d35c9817677cae8ed69aa91ae74a1b7ab69698bffe90955eaa7",
+  "raw_sha256": "4f6327609c18d1a5411f6fd5864598364186689de4500a643b3a13e34d1f8265",
+  "raw_bytes": 413123692,
+  "pins_pre_post_unchanged": true,
+  "original_numeric_receipt_unmodified": true,
+  "observer_delta": {
+    "original_observer_sha256": "b19fba8bc50f2c474b0d4d0f469e9170597355d0b8972c2d40edd34fd04e5387",
+    "original_audit_sha256": "e30cc89217361e99098da23aba9cfe54df3019b86490a9582940b13651bde717",
+    "successor_audit_sha256": "237456ead1ed88c31b2fadf3c8d9ae7fefee3662132766b2dc89a4a82d01f7fa",
+    "sole_replacement": {
+      "before": "if out<=address<out+514:\n                    require(address+w<=out+514,",
+      "after": "if setup_owned(pc,address,out,SETUP_START,SETUP_END):\n                    require(address+w<=out+514,"
+    },
+    "setup_start": 2147484496,
+    "setup_end": 2147486748
+  },
+  "cost_target": 3000000,
+  "cost_within_target": true,
+  "Spike_invocations": 0,
+  "DUT_runs": 0
+}

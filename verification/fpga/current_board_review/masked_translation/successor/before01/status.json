@@ -1,0 +1,53 @@
+{
+  "state": "FAIL",
+  "cases": [
+    {
+      "case": 21,
+      "status": "FAIL",
+      "marker": [
+        "LOCAL_PASS case=21 name=unmasked_burst descriptors=1 axi=1 translations=1 ack_cycle=7 cycles=13 consumer_real=0"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": 22,
+      "status": "FAIL",
+      "marker": [
+        "LOCAL_PASS case=22 name=unmasked_burst_vm_disabled descriptors=1 axi=1 translations=0 ack_cycle=4 cycles=10 consumer_real=0"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": 23,
+      "status": "FAIL",
+      "marker": [
+        "LOCAL_PASS case=23 name=indexed_sparse_control descriptors=8 axi=3 translations=3 ack_cycle=21 cycles=26 consumer_real=0"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": 24,
+      "status": "FAIL",
+      "marker": [
+        "LOCAL_PASS case=24 name=indexed_alloff_control descriptors=8 axi=0 translations=0 ack_cycle=12 cycles=17 consumer_real=0"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": 25,
+      "status": "FAIL",
+      "marker": [
+        "LOCAL_PASS case=25 name=indexed_vstart_control descriptors=5 axi=2 translations=2 ack_cycle=15 cycles=20 consumer_real=0"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": 0,
+      "status": "FAIL",
+      "marker": [],
+      "returncode": 0
+    }
+  ],
+  "real_consumer_validation": false,
+  "frozen_unchanged": true
+}

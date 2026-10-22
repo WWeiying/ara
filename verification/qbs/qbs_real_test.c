@@ -57,8 +57,15 @@ static int parse_unsigned(const char *text, unsigned *value) {
 }
 
 static unsigned parse_profile(const char *text) {
+  if (strcmp(text, "q3_K") == 0) return QBS_WEIGHT_PROFILE_Q3_K;
   if (strcmp(text, "q4_K") == 0) return QBS_WEIGHT_PROFILE_Q4_K;
+  if (strcmp(text, "q5_K") == 0) return QBS_WEIGHT_PROFILE_Q5_K;
   if (strcmp(text, "q6_K") == 0) return QBS_WEIGHT_PROFILE_Q6_K;
+  if (strcmp(text, "q8_0") == 0) return QBS_WEIGHT_PROFILE_Q8_0_WEIGHT;
+  if (strcmp(text, "q2_K") == 0) return QBS_WEIGHT_PROFILE_Q2_K;
+  if (strcmp(text, "q4_0") == 0) return QBS_WEIGHT_PROFILE_Q4_0;
+  if (strcmp(text, "q5_0") == 0) return QBS_WEIGHT_PROFILE_Q5_0;
+  if (strcmp(text, "iq4_nl") == 0) return QBS_WEIGHT_PROFILE_IQ4_NL;
   return QBS_WEIGHT_PROFILE_INVALID;
 }
 
@@ -69,7 +76,7 @@ static qbs_descriptor_t make_descriptor(unsigned profile,
   const qbs_descriptor_fields_t fields = {
       .descriptor_version = QBS_DESCRIPTOR_VERSION,
       .weight_profile = (uint8_t)profile,
-      .activation_profile = QBS_ACTIVATION_PROFILE_Q8_K,
+      .activation_profile = (uint8_t)qbs_default_activation_profile(profile),
       .weight_layout = (uint8_t)weight_layout,
       .activation_layout = (uint8_t)activation_layout,
       .n = (uint8_t)n,
@@ -84,16 +91,20 @@ static qbs_descriptor_t make_descriptor(unsigned profile,
 
 static int execute_layout(const case_config_t *config, const void *weights,
                           size_t block_bytes,
-                          const qbs_block_q8_k_t *activation_row,
+                          const void *activation_row,
                           const void *activation_interleaved,
                           unsigned weight_layout,
                           unsigned activation_layout, float *output) {
-  const unsigned k_blocks = config->k / QBS_BLOCK_ELEMENTS;
+  const unsigned k_blocks = config->k /
+      qbs_weight_block_elements(config->profile);
+  const unsigned activation_profile =
+      qbs_default_activation_profile(config->profile);
   const void *activation = activation_layout == QBS_ACTIVATION_LAYOUT_ROW_MAJOR
                                ? (const void *)activation_row
                                : activation_interleaved;
-  const size_t activation_bytes = qbs_ref_activation_storage_bytes(
-      activation_layout, config->m, k_blocks);
+  const size_t activation_bytes =
+      qbs_ref_activation_storage_bytes_for_profile(
+          activation_profile, activation_layout, config->m, k_blocks);
   const unsigned tile_limit =
       activation_layout == QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED
           ? QBS_WIDE_M_MAX_N
@@ -205,7 +216,7 @@ static int compare_golden(const case_config_t *config, const float *actual,
          "max_abs=%.9g max_rel=%.9g mismatches=%zu/%zu worst=%zu "
          "qbs=%.9g golden=%.9g\n",
          config->name,
-         config->profile == QBS_WEIGHT_PROFILE_Q4_K ? "q4_K" : "q6_K",
+         qbs_weight_profile_name(config->profile),
          config->m, config->n, config->k, checksum, maximum_absolute,
          maximum_relative, mismatch_count, elements, worst_index,
          actual[worst_index], golden[worst_index]);
@@ -213,9 +224,10 @@ static int compare_golden(const case_config_t *config, const float *actual,
 }
 
 int main(int argc, char **argv) {
-  if (argc != 7) {
+  const int captured = argc == 8 && strcmp(argv[7], "captured") == 0;
+  if (argc != 7 && !captured) {
     fprintf(stderr,
-            "usage: %s CASE q4_K|q6_K M N K GENERATED_DIRECTORY\n",
+            "usage: %s CASE PROFILE M N K DATA_DIRECTORY [captured]\n",
             argv[0]);
     return EXIT_FAILURE;
   }
@@ -229,20 +241,26 @@ int main(int argc, char **argv) {
       !parse_unsigned(argv[4], &config.n) ||
       !parse_unsigned(argv[5], &config.k) || config.m == 0 ||
       config.m > QBS_MAX_M || config.n == 0 || config.k == 0 ||
-      config.k % QBS_BLOCK_ELEMENTS != 0) {
+      qbs_default_activation_profile(config.profile) ==
+          QBS_ACTIVATION_PROFILE_INVALID ||
+      config.k % qbs_weight_block_elements(config.profile) != 0) {
     fprintf(stderr, "%s: invalid case configuration\n", config.name);
     return EXIT_FAILURE;
   }
 
-  const size_t block_bytes = config.profile == QBS_WEIGHT_PROFILE_Q4_K
-                                 ? QBS_Q4_K_BLOCK_BYTES
-                                 : QBS_Q6_K_BLOCK_BYTES;
-  const unsigned k_blocks = config.k / QBS_BLOCK_ELEMENTS;
+  const size_t block_bytes = qbs_weight_block_bytes(config.profile);
+  const unsigned k_blocks = config.k /
+      qbs_weight_block_elements(config.profile);
+  const unsigned activation_profile =
+      qbs_default_activation_profile(config.profile);
+  const size_t activation_block_bytes =
+      qbs_activation_block_bytes(activation_profile);
   const size_t weight_bytes = (size_t)config.n * k_blocks * block_bytes;
   const size_t activation_elements = (size_t)config.m * config.k;
   const size_t output_elements = (size_t)config.m * config.n;
   char path[4096];
-  if (snprintf(path, sizeof(path), "%s/source_weight.bin", config.directory) >=
+  if (snprintf(path, sizeof(path), captured ? "%s/weight_%s.bin" :
+               "%s/source_weight.bin", config.directory, argv[2]) >=
       (int)sizeof(path))
     return EXIT_FAILURE;
   void *weights = read_exact_file(path, weight_bytes);
@@ -253,7 +271,8 @@ int main(int argc, char **argv) {
   }
   float *activation_f32 =
       read_exact_file(path, activation_elements * sizeof(float));
-  if (snprintf(path, sizeof(path), "%s/golden_f32.bin", config.directory) >=
+  if (snprintf(path, sizeof(path), "%s/%s", config.directory,
+               captured ? "output_f32.bin" : "golden_f32.bin") >=
       (int)sizeof(path)) {
     free(weights);
     free(activation_f32);
@@ -267,16 +286,17 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  qbs_block_q8_k_t *activation_row =
-      malloc((size_t)config.m * k_blocks * sizeof(*activation_row));
+  const size_t activation_row_bytes =
+      (size_t)config.m * k_blocks * activation_block_bytes;
+  void *activation_row = malloc(activation_row_bytes);
   const int has_interleaved_layout =
       config.m == 4 || config.m >= QBS_WIDE_M_MIN;
   const unsigned interleaved_layout = config.m >= QBS_WIDE_M_MIN
       ? QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED
       : QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED;
   const size_t interleaved_bytes = has_interleaved_layout
-      ? qbs_ref_activation_storage_bytes(interleaved_layout, config.m,
-                                         k_blocks)
+      ? qbs_ref_activation_storage_bytes_for_profile(
+            activation_profile, interleaved_layout, config.m, k_blocks)
       : 0;
   void *activation_interleaved =
       has_interleaved_layout ? malloc(interleaved_bytes) : NULL;
@@ -305,18 +325,21 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  int ok = qbs_ref_quantize_q8_k(
-               activation_f32, activation_elements, activation_row,
-               (size_t)config.m * k_blocks) == QBS_REF_OK;
+  int ok = activation_profile == QBS_ACTIVATION_PROFILE_Q8_0
+      ? qbs_ref_quantize_q8_0(
+            activation_f32, activation_elements, activation_row,
+            (size_t)config.m * k_blocks) == QBS_REF_OK
+      : qbs_ref_quantize_q8_k(
+            activation_f32, activation_elements, activation_row,
+            (size_t)config.m * k_blocks) == QBS_REF_OK;
   if (ok && config.m == 4) {
-    ok = qbs_ref_pack_activation_m4(
-             activation_row, (size_t)config.m * k_blocks, k_blocks,
-             activation_interleaved, k_blocks) == QBS_REF_OK;
+    ok = qbs_ref_pack_activation_m4_profile(
+             activation_profile, activation_row, activation_row_bytes,
+             k_blocks, activation_interleaved, interleaved_bytes) == QBS_REF_OK;
   }
   if (ok && config.m >= QBS_WIDE_M_MIN) {
     ok = qbs_ref_pack_activation_m8_profile(
-             QBS_ACTIVATION_PROFILE_Q8_K, activation_row,
-             (size_t)config.m * k_blocks * sizeof(*activation_row), config.m,
+             activation_profile, activation_row, activation_row_bytes, config.m,
              k_blocks, activation_interleaved,
              interleaved_bytes) == QBS_REF_OK;
   }

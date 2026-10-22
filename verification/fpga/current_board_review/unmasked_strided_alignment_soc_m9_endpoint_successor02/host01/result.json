@@ -1,0 +1,457 @@
+{
+  "status": "HOST_ENDPOINT_PASS_NOT_DUT",
+  "negative_count": 62,
+  "negatives": [
+    "load_mdutexit_field0",
+    "load_mdutexit_field1",
+    "load_mdutexit_field2",
+    "load_mdutexit_field3",
+    "load_mdutexit_field4",
+    "load_mdutmissing_exit",
+    "load_mdutduplicate_exit",
+    "load_mspikeexit_field0",
+    "load_mspikeexit_field1",
+    "load_mspikeexit_field2",
+    "load_mspikeexit_field3",
+    "load_mspikeexit_field4",
+    "load_mspikemissing_exit",
+    "load_mspikeduplicate_exit",
+    "load_mspike_CTRL",
+    "store_mdutexit_field0",
+    "store_mdutexit_field1",
+    "store_mdutexit_field2",
+    "store_mdutexit_field3",
+    "store_mdutexit_field4",
+    "store_mdutmissing_exit",
+    "store_mdutduplicate_exit",
+    "store_mspikeexit_field0",
+    "store_mspikeexit_field1",
+    "store_mspikeexit_field2",
+    "store_mspikeexit_field3",
+    "store_mspikeexit_field4",
+    "store_mspikemissing_exit",
+    "store_mspikeduplicate_exit",
+    "store_mspike_CTRL",
+    "load_sv39dutexit_field0",
+    "load_sv39dutexit_field1",
+    "load_sv39dutexit_field2",
+    "load_sv39dutexit_field3",
+    "load_sv39dutexit_field4",
+    "load_sv39dutmissing_exit",
+    "load_sv39dutduplicate_exit",
+    "load_sv39spikeexit_field0",
+    "load_sv39spikeexit_field1",
+    "load_sv39spikeexit_field2",
+    "load_sv39spikeexit_field3",
+    "load_sv39spikeexit_field4",
+    "load_sv39spikemissing_exit",
+    "load_sv39spikeduplicate_exit",
+    "load_sv39spike_CTRL",
+    "store_sv39dutexit_field0",
+    "store_sv39dutexit_field1",
+    "store_sv39dutexit_field2",
+    "store_sv39dutexit_field3",
+    "store_sv39dutexit_field4",
+    "store_sv39dutmissing_exit",
+    "store_sv39dutduplicate_exit",
+    "store_sv39spikeexit_field0",
+    "store_sv39spikeexit_field1",
+    "store_sv39spikeexit_field2",
+    "store_sv39spikeexit_field3",
+    "store_sv39spikeexit_field4",
+    "store_sv39spikemissing_exit",
+    "store_sv39spikeduplicate_exit",
+    "store_sv39spike_CTRL",
+    "load_mfull_bridge_missing_HTIF",
+    "store_mfull_bridge_missing_HTIF"
+  ],
+  "source_step_AST_identical_except_explicit_endpoint": true,
+  "bindings": [
+    {
+      "backend": "dut",
+      "member": "load_m",
+      "address": 3489660928,
+      "value": 0,
+      "store_pc": 2147483762,
+      "store_insn": 10661923,
+      "size": 8,
+      "elf": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_load_m01/soc.elf",
+      "elf_sha256": "b6e5987b0c78431e2f25bb1d8072db94d39c6f47d322594c76cf30c1c0f04afb",
+      "spec": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_load_m01/soc.spec.json",
+      "spec_sha256": "49277ddeffc859df6e82f7512630e2b0ddc9c44a150d185216cbd20cfccd4629",
+      "exit_encoding": {
+        "2147483752": 13632155,
+        "2147483756": 754,
+        "2147483758": 53477391,
+        "2147483762": 10661923
+      }
+    },
+    {
+      "backend": "spike",
+      "member": "load_m",
+      "address": 2147487488,
+      "value": 1,
+      "store_pc": 2147483770,
+      "store_insn": 10661923,
+      "size": 8,
+      "elf": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_load_m01/spike.elf",
+      "elf_sha256": "9a18b98f80f1625ee68519afbc7132c675abe751ff56b5f16ca09f2d3afa76ae",
+      "spec": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_load_m01/spike.spec.json",
+      "spec_sha256": "bf26afe0875140dc53d6b676d9f0eb711fcbb86492d0198279dac7ccdaf723f3",
+      "exit_encoding": {
+        "2147483752": 1286,
+        "2147483754": 1402131,
+        "2147483758": 4759,
+        "2147483762": 3911352979,
+        "2147483766": 53477391,
+        "2147483770": 10661923
+      }
+    },
+    {
+      "backend": "dut",
+      "member": "store_m",
+      "address": 3489660928,
+      "value": 0,
+      "store_pc": 2147483762,
+      "store_insn": 10661923,
+      "size": 8,
+      "elf": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_store_m01/soc.elf",
+      "elf_sha256": "88a829c57e046ea01b99e58f08c2618a174e274ddcc538f47e31c5e1691850fa",
+      "spec": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_store_m01/soc.spec.json",
+      "spec_sha256": "da6a47d260192ed9b0e48dfadae99ef31d1e94b6d072611bae07750db47a2c69",
+      "exit_encoding": {
+        "2147483752": 13632155,
+        "2147483756": 754,
+        "2147483758": 53477391,
+        "2147483762": 10661923
+      }
+    },
+    {
+      "backend": "spike",
+      "member": "store_m",
+      "address": 2147487488,
+      "value": 1,
+      "store_pc": 2147483770,
+      "store_insn": 10661923,
+      "size": 8,
+      "elf": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_store_m01/spike.elf",
+      "elf_sha256": "a8ef31273b446362ba3873c97118bac815dafde313bc8a641f1b83ac397f61a6",
+      "spec": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_store_m01/spike.spec.json",
+      "spec_sha256": "52a07169c82ce7c2dcff7cde72edbf162bd02a84cb491c11212e99d227043370",
+      "exit_encoding": {
+        "2147483752": 1286,
+        "2147483754": 1402131,
+        "2147483758": 4759,
+        "2147483762": 3911352979,
+        "2147483766": 53477391,
+        "2147483770": 10661923
+      }
+    },
+    {
+      "backend": "dut",
+      "member": "load_sv39",
+      "address": 3489660928,
+      "value": 0,
+      "store_pc": 2147483762,
+      "store_insn": 10661923,
+      "size": 8,
+      "elf": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_load_sv3901/soc.elf",
+      "elf_sha256": "b0cea661f49d30c2dff637928aa2749334e8b4b01bf985b9b0d52fb26e0f94b9",
+      "spec": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_load_sv3901/soc.spec.json",
+      "spec_sha256": "0e9135485d3ff4314df81542f3498cedef430f8df20c10905ccbc8517af7b739",
+      "exit_encoding": {
+        "2147483752": 13632155,
+        "2147483756": 754,
+        "2147483758": 53477391,
+        "2147483762": 10661923
+      }
+    },
+    {
+      "backend": "spike",
+      "member": "load_sv39",
+      "address": 2147487488,
+      "value": 1,
+      "store_pc": 2147483770,
+      "store_insn": 10661923,
+      "size": 8,
+      "elf": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_load_sv3901/spike.elf",
+      "elf_sha256": "1858db4243f34ea122ccf87a615847394d9ba53df684cb28bd386031b6f22c8a",
+      "spec": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_load_sv3901/spike.spec.json",
+      "spec_sha256": "a20e3b1d19a6ab7e16c6d688169eb816ca58d24e19419120fe752537d16b1a6d",
+      "exit_encoding": {
+        "2147483752": 1286,
+        "2147483754": 1402131,
+        "2147483758": 4759,
+        "2147483762": 3911352979,
+        "2147483766": 53477391,
+        "2147483770": 10661923
+      }
+    },
+    {
+      "backend": "dut",
+      "member": "store_sv39",
+      "address": 3489660928,
+      "value": 0,
+      "store_pc": 2147483762,
+      "store_insn": 10661923,
+      "size": 8,
+      "elf": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_store_sv3901/soc.elf",
+      "elf_sha256": "e28e9b490563296f317fcefa20d6038ef510c98bbb1ac03e6db6596bcc6c5cce",
+      "spec": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_store_sv3901/soc.spec.json",
+      "spec_sha256": "8f2a87c05c6a73b3ae43ccd5a926f5ef95b95aefc0e0766e60a0222cab3a4650",
+      "exit_encoding": {
+        "2147483752": 13632155,
+        "2147483756": 754,
+        "2147483758": 53477391,
+        "2147483762": 10661923
+      }
+    },
+    {
+      "backend": "spike",
+      "member": "store_sv39",
+      "address": 2147487552,
+      "value": 1,
+      "store_pc": 2147483770,
+      "store_insn": 10661923,
+      "size": 8,
+      "elf": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_store_sv3901/spike.elf",
+      "elf_sha256": "1bb3df67164f46b1ed552dc435da5b54876fe59b949c90d37e62430e10e9b72b",
+      "spec": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_store_sv3901/spike.spec.json",
+      "spec_sha256": "adb7873e81188b7318158d262111d1a373aa9b248542993cbb643ac33726c74d",
+      "exit_encoding": {
+        "2147483752": 1286,
+        "2147483754": 1402131,
+        "2147483758": 4759,
+        "2147483762": 3978461843,
+        "2147483766": 53477391,
+        "2147483770": 10661923
+      }
+    }
+  ],
+  "actual_soc_prefixes": [
+    {
+      "member": "load_m",
+      "line": 23,
+      "row": {
+        "cycle": "173",
+        "event": "retire",
+        "order": "18",
+        "port": "0",
+        "trans_id": "-1",
+        "pc": "0000000080000046",
+        "insn": "0002b023",
+        "rd": "0",
+        "rd_wdata": "0000000000000000",
+        "mem_addr": "0000000080001000",
+        "mem_rmask": "00",
+        "mem_wmask": "ff",
+        "mem_wdata": "0000000000000000",
+        "trap": "0"
+      },
+      "old_error": "KeyError('tohost')",
+      "new_prefix_pass": true,
+      "tohost_added": false
+    },
+    {
+      "member": "store_m",
+      "line": 23,
+      "row": {
+        "cycle": "173",
+        "event": "retire",
+        "order": "18",
+        "port": "0",
+        "trans_id": "-1",
+        "pc": "0000000080000046",
+        "insn": "0002b023",
+        "rd": "0",
+        "rd_wdata": "0000000000000000",
+        "mem_addr": "0000000080001000",
+        "mem_rmask": "00",
+        "mem_wmask": "ff",
+        "mem_wdata": "0000000000000000",
+        "trap": "0"
+      },
+      "old_error": "KeyError('tohost')",
+      "new_prefix_pass": true,
+      "tohost_added": false
+    }
+  ],
+  "existing_reference_bridges": [
+    {
+      "member": "load_m",
+      "scalar_rows": 29186,
+      "result": {
+        "status": "FULL_ORACLE_PASS",
+        "checks": 697,
+        "retired": 29186,
+        "actions": [
+          "handler",
+          "mt_trap_vstart_read",
+          "mt_fault_snapshot",
+          "mt_poison_prefix",
+          "mt_repair_stride",
+          "mt_restore_start",
+          "mt_retry_mret",
+          "mt_target",
+          "mt_result_snapshot",
+          "mt_successor_load",
+          "mt_successor_store",
+          "mt_next_snapshot",
+          "handler",
+          "mt_trap_vstart_read"
+        ],
+        "traps": [
+          {
+            "0": 4,
+            "1": 2147486340,
+            "2": 2147496148,
+            "3": 9223372079804464640,
+            "4": 0,
+            "5": 2,
+            "6": 24,
+            "7": 1,
+            "8": 117,
+            "9": 5
+          },
+          {
+            "0": 11,
+            "1": 2147486552,
+            "2": 0,
+            "3": 9223372079804464640,
+            "4": 0,
+            "5": 2,
+            "6": 24,
+            "7": 0,
+            "8": 117,
+            "9": 5
+          }
+        ],
+        "restore_readback_checks": 14,
+        "endpoint": "spike",
+        "endpoint_contract": {
+          "backend": "spike",
+          "member": "load_m",
+          "address": 2147487488,
+          "value": 1,
+          "store_pc": 2147483770,
+          "store_insn": 10661923,
+          "size": 8,
+          "elf": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_load_m01/spike.elf",
+          "elf_sha256": "9a18b98f80f1625ee68519afbc7132c675abe751ff56b5f16ca09f2d3afa76ae",
+          "spec": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_load_m01/spike.spec.json",
+          "spec_sha256": "bf26afe0875140dc53d6b676d9f0eb711fcbb86492d0198279dac7ccdaf723f3",
+          "exit_encoding": {
+            "2147483752": 1286,
+            "2147483754": 1402131,
+            "2147483758": 4759,
+            "2147483762": 3911352979,
+            "2147483766": 53477391,
+            "2147483770": 10661923
+          }
+        },
+        "actual_exit_events": [
+          {
+            "pc": 2147483770,
+            "insn": 10661923,
+            "address": 2147487488,
+            "value": 1,
+            "size": 8
+          }
+        ]
+      },
+      "cvx_proven": false,
+      "full_data_oracle": true,
+      "native_HTIF": true,
+      "no_reference_execution": true
+    },
+    {
+      "member": "store_m",
+      "scalar_rows": 29186,
+      "result": {
+        "status": "FULL_ORACLE_PASS",
+        "checks": 698,
+        "retired": 29186,
+        "actions": [
+          "handler",
+          "mt_trap_vstart_read",
+          "mt_fault_snapshot",
+          "mt_poison_prefix",
+          "mt_repair_stride",
+          "mt_restore_start",
+          "mt_retry_mret",
+          "mt_target",
+          "mt_result_snapshot",
+          "mt_successor_load",
+          "mt_successor_store",
+          "mt_next_snapshot",
+          "handler",
+          "mt_trap_vstart_read"
+        ],
+        "traps": [
+          {
+            "0": 6,
+            "1": 2147486328,
+            "2": 2147496148,
+            "3": 9223372079804464640,
+            "4": 0,
+            "5": 2,
+            "6": 24,
+            "7": 1,
+            "8": 117,
+            "9": 5
+          },
+          {
+            "0": 11,
+            "1": 2147486540,
+            "2": 0,
+            "3": 9223372079804464640,
+            "4": 0,
+            "5": 2,
+            "6": 24,
+            "7": 0,
+            "8": 117,
+            "9": 5
+          }
+        ],
+        "restore_readback_checks": 14,
+        "endpoint": "spike",
+        "endpoint_contract": {
+          "backend": "spike",
+          "member": "store_m",
+          "address": 2147487488,
+          "value": 1,
+          "store_pc": 2147483770,
+          "store_insn": 10661923,
+          "size": 8,
+          "elf": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_store_m01/spike.elf",
+          "elf_sha256": "a8ef31273b446362ba3873c97118bac815dafde313bc8a641f1b83ac397f61a6",
+          "spec": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/unmasked_strided_alignment_soc_m9_prepare01/reference_store_m01/spike.spec.json",
+          "spec_sha256": "52a07169c82ce7c2dcff7cde72edbf162bd02a84cb491c11212e99d227043370",
+          "exit_encoding": {
+            "2147483752": 1286,
+            "2147483754": 1402131,
+            "2147483758": 4759,
+            "2147483762": 3911352979,
+            "2147483766": 53477391,
+            "2147483770": 10661923
+          }
+        },
+        "actual_exit_events": [
+          {
+            "pc": 2147483770,
+            "insn": 10661923,
+            "address": 2147487488,
+            "value": 1,
+            "size": 8
+          }
+        ]
+      },
+      "cvx_proven": false,
+      "full_data_oracle": true,
+      "native_HTIF": true,
+      "no_reference_execution": true
+    }
+  ],
+  "checker_sha256": "8d26dcfc02ee9e7a2cf5b6faa2d52ce0c725347c5d6adbefd1c5370a6f96b604",
+  "host_sha256": "7051c7c05c61e7dcea3bcffd56e73cdae2bb3d19769f689328acffe6203f0726"
+}

@@ -1,0 +1,25 @@
+{
+  "status": "REJECTED",
+  "error": "ValueError('Requested baseline is stale/not latest')",
+  "elapsed_seconds": 124.443,
+  "DVE_launches": 0,
+  "old_helper_hashes": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_csr_20261004/support.py": "9cffbe69fdfc93a49b8eaa1997242c4475c7c5febfe2e7817cb69e1c6481a7a1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_csr_20261004/guard.py": "45de8e50c5d6090c97d972f43c558c3ef8302b92a1ef71f1fade89f1874bc47c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_csr_20261004/prepare_native.py": "e6148a798a8e940977621ef6c82f6e37054a1dd73971d1ef82f6757b4f0dcb43",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_csr_20261004/workflow.py": "e7ad78e9c170dbfdbc41a1b195580708e98488ff28c436338bee5dad27e59447",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_csr_20261004/test_wrapper.py": "1013eeddd721966660deacfae35b88548470eca415f257eacf6177535d6876cf",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_csr_20261004/test_latest_corpus.py": "c6d1297bfee7bc0392dc0a92ec5550d6280ddd667b184e9ba5d5b0576510ed69",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_csr_20261004/dve_csr.tcl": "7600cd9e05b33fd523e8599082a39f1221fa82352d17b8b6626eb1e62477a62c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_csr_20261004/mock_session.tcl": "99c3e63e282e338cb7431d36d6fbda353de68ae7f39ee096bfe608ccfe9e628a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_20261004/audit_readonly.py": "ea629628571b47746df191c26775aeaf10de8bd42d41f7922064dd83b67889c1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_20261004/test_review.py": "3d203a3d7b337ac6a75b17acde76a9a3f6533a2ee11ecbeb6a59fc6adbf4a717",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_20261004/prepare_native.py": "ce807cbb0b8a17774ed31f9b53c5101ff7786af69356e6915c4830e3607897b5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_20261004/audit.json": "c5b22441813b9cdf08194fb86f19f216761166ebbe62cfbdea16759cc5c21a01",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_20261004/policy.json": "3c80137e57b735025dc80806184be224882466aa12796df235fedd4a2ac643f8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_20261004/inline_requester_evidence.json": "a9f2b4c4c1cb48a731e75ed218d232100b6c8fae214d6347d3af7e38124ee908",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/run_reviewed_csr_dve_20261004.py": "4d86ae2d3a28178225ac3fd5d2a941672949698dae850b6e51ec7bc2d0fa939c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/run_reviewed_dve_20261004.py": "49e96563068e99d4bfbe78bae24b47a569e4eeec8e501a6c5b28438703b1b802"
+  },
+  "old_helpers_unchanged": true
+}

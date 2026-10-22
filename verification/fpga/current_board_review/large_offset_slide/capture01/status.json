@@ -1,0 +1,12 @@
+{
+  "state": "CAPTURED",
+  "no_build": true,
+  "no_rtl_edits": true,
+  "simulator_exit": 0,
+  "measurement": [
+    "RVV_PERMUTE_DETAIL op=12 seed=0 scalar=1023 vl=1024 mask=0 element=1023 expected=185 actual=91",
+    "RVV_PERMUTE_FAIL sew=8 cases=1 errors=1"
+  ],
+  "architectural_status": "FAIL",
+  "fsdb_bytes": 2687665
+}

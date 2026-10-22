@@ -1,0 +1,102 @@
+{
+  "status": "HOST_SPIKE_DERIVED_CSV_CHECKER_PASS_NOT_DUT",
+  "positive": {
+    "status": "NF8_CSV_ORACLE_PASS",
+    "trials": [
+      67
+    ],
+    "checks": 3166,
+    "checkpoints": [
+      {
+        "trial": 67,
+        "phase": 1,
+        "checks": 373,
+        "cycle": 148568,
+        "checked_bytes": 33344
+      },
+      {
+        "trial": 67,
+        "phase": 2,
+        "checks": 3151,
+        "cycle": 286948,
+        "checked_bytes": 33352
+      }
+    ],
+    "traps": [
+      {
+        "trial": 67,
+        "cycle": 75673,
+        "values": {
+          "0": 15,
+          "1": 2147489276,
+          "2": 1073745920,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 23,
+          "7": 3,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 67,
+        "cycle": 148946,
+        "values": {
+          "0": 9,
+          "1": 2147489052,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      }
+    ],
+    "actions": {
+      "67": [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ]
+    },
+    "last_cycle": 287402,
+    "observed_memory_bytes": 66696
+  },
+  "negatives_rejected": [
+    "fractional_upper_tail",
+    "output_guard",
+    "outside_data",
+    "PTE",
+    "wrong_vstart",
+    "invalid_tval",
+    "mask_byte",
+    "stride_argument",
+    "missing_magic",
+    "error",
+    "casecount",
+    "missing_target",
+    "missing_comparison",
+    "first_mismatch",
+    "equal_but_wrong_reference_want"
+  ],
+  "reference": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39/reference01/trial67",
+  "reference_sha256": "de4965cbc960ff407c7ccd39dc159d45932b5feeb46bcbc23d8afae1a3cdab32",
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39/host_csv.py": "fc654ced6cd6c784e46ab4575413722dcc4c8f28b3f1eba786928976b55c116e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39/csv_oracle.py": "28082ebb743c312b87b2d7dfa9b78058098b9b9eaee67a85466ad246a612809f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39/reference.py": "dbbd5901d88aac6f6c42619f37259b8ca03ddad4bf1e5ae6c4f7ddf452bc8d75"
+  }
+}

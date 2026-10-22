@@ -1,0 +1,50 @@
+{
+  "status": "ACCEPTED_FULL4095_SPIKE_SOURCE_ONLY_NOT_DUT",
+  "calls": 4095,
+  "results": 4193280,
+  "guards": 8190,
+  "vstart_zero": 4095,
+  "helper_instruction_counts": [
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095
+  ],
+  "helper_instructions": 53235,
+  "packed_output_reads": 528255,
+  "per_call_fresh_output_bytes": 1026,
+  "physical_mask_bytes": 128,
+  "firmware_to_exit": 2825046,
+  "firmware_to_HTIF": 2825052,
+  "boot": 5,
+  "console": "RVV_MATRIX_PASS sew=8 vlmax=1024 cases=4095 elements=4193280 errors=0 seeds=3 guard_tail_mask_vstart=checked\n",
+  "closed_raw_parses": 1,
+  "final_context": {
+    "line": 2825057,
+    "retired": 2825052,
+    "call": 4095,
+    "pc": "8000007a",
+    "insn": "00a2b023"
+  },
+  "raw_sha256": "a68a83f830e489ecb5c4a1fe11caa0252fe9f9581284629b5b3a9e44844eb588",
+  "raw_bytes": 661024396,
+  "actual_execution": {
+    "returncode": 0,
+    "pid": 3004457,
+    "timeout": false,
+    "elapsed_s": 15.303520000074059,
+    "retries": 0,
+    "validated": false
+  },
+  "pins_unchanged": true,
+  "raw_parse_count": 1
+}

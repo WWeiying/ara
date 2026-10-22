@@ -1,0 +1,60 @@
+{
+  "stage": "singles",
+  "passed": true,
+  "results": [
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/singles/replay/tests/maskslide",
+      "elapsed_s": 33.8209139900282,
+      "kind": "app",
+      "name": "maskslide",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/singles/replay/tests/restart_compare",
+      "elapsed_s": 57.18715220922604,
+      "kind": "app",
+      "name": "restart_compare",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/singles/replay/tests/reduction_fflags",
+      "elapsed_s": 21.469856549054384,
+      "kind": "app",
+      "name": "reduction_fflags",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/singles/replay/tests/m8widen",
+      "elapsed_s": 31.626458970364183,
+      "kind": "app",
+      "name": "m8widen",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/singles/replay/tests/wholemove",
+      "elapsed_s": 47.381483170203865,
+      "kind": "app",
+      "name": "wholemove",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/singles/replay/tests/slide1up_prestart",
+      "elapsed_s": 14.251008016057312,
+      "kind": "app",
+      "name": "slide1up_prestart",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    }
+  ]
+}

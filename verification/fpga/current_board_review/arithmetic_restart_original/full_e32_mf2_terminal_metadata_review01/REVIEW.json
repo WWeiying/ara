@@ -1,0 +1,90 @@
+{
+  "status": "ACCEPT_E32_FULL5985_TERMINAL_METADATA",
+  "blocking_findings": [],
+  "metadata_only": true,
+  "new_DUT_CSV_reads": 0,
+  "new_reference_raw_reads": 0,
+  "new_simulations": 0,
+  "nonraw_unique_pins_verified": 899,
+  "skipped_raw_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_small2_prepare01/rvv_matrix_e8_mf8/reference01/commits.log": "6d318011dbec3084357f6b5bf3c28959f5f1270036c2a60d4511971f9a90a915",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_small2_prepare01/rvv_matrix_e32_mf2/reference01/commits.log": "75c2672a4a5dbaf70509eb225cb954146dbf59199beae58a6508543314bacc0b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_mf2_vcs_m6_plan01/prepared01/replay/tests/arithmetic_full_e32_mf2/commit_trace.csv": "ea88e975a6cb538756bb41b0472f50cf19b886bdfffaadd600567165331c4eca"
+  },
+  "evidence_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_mf2_terminal_audit01/run01/TERMINAL.json": "35a6f06b6be566ac5c60e13ab70e27768c5a527bdab87c5ffb6f69f2dc961fcf",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_mf2_terminal_audit01/run01/candidate_report.json": "51eea3aa647d4d027dea8a6b1384bf85e2303607d483bce0089fa8101454be2c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_mf2_terminal_audit01/run01/audit_process_exit.json": "be515a548f45aaa3fe2955c7b16539132731670f35af00dd853814281d31de28",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_mf2_terminal_audit01/run01/worker_exit_event.json": "007c37e1ee3afce7a415a542f0b97d017744ca0c279b3b9e8f37e27a0743f807",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_mf2_terminal_audit01/run01/arithmetic_full_e32_mf2.json": "2199bab383a1c5b8633c0ed0c318dc1ae7687ebacd1b11631881c455f7e571bd",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_mf2_vcs_m6_plan01/prepared01/complete.json": "5ff4a9561be0460029a683be1f8864147bf0734acc7290882eb63cc9edb2e7e7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_mf2_vcs_m6_plan01/prepared01/replay/tests/arithmetic_full_e32_mf2/child_outcome.unvalidated.json": "b1118f634df085953d18260ae8ff4d194e6f5e1abd3c4477ddae181b20898df7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_mf2_terminal_metadata_review01/review.py": "73dd32bc63edd8bf260fa0f857ddec00044f88b6b2b2d514e7471dcd5f3f39ac"
+  },
+  "simulator_numeric_exit": 0,
+  "simulator_elapsed_s": 10026.130593086127,
+  "audit_process_exit": {
+    "returncode": 0,
+    "timed_out": false,
+    "error": null,
+    "elapsed_s": 238.39909885730594,
+    "pid": 1787106,
+    "attempt": 1
+  },
+  "generic": {
+    "rows": 6187577,
+    "first_cycle": 82,
+    "last_cycle": 8719182,
+    "retire_count": 5922689,
+    "vector_retire_count": 65838,
+    "cvx_request_count": 65838,
+    "cvx_response_count": 65838,
+    "cvx_max_inflight": 1,
+    "cvx_replay_count": 0,
+    "arch_request_replay_count": 0,
+    "cvx_exception_count": 0,
+    "architecture_request_count": 65838,
+    "backend_uop_alloc_count": 33687,
+    "backend_uop_done_count": 33687,
+    "backend_uop_max_inflight": 4
+  },
+  "strict_summary": {
+    "status": "FULL_ORIGINAL_RVFI_ACCEPTED",
+    "shape": "rvv_matrix_e32_mf2",
+    "calls": 5985,
+    "results": 95760,
+    "guards": 11970,
+    "vstart_checks": 5985,
+    "helper_instructions": 77805,
+    "capacity_calls": 1,
+    "firmware_through_ctrl": 5922683,
+    "retired": 5922689,
+    "rows": 6187577,
+    "last_cycle": 8719182,
+    "post_ctrl_parking": 6,
+    "console": "BOARD_CASE_BEGIN rvv_matrix_e32_mf2\nRVV_MATRIX_PASS sew=32 vlmax=16 cases=5985 elements=95760 errors=0 seeds=3 guard_tail_mask_vstart=checked\nARITHMETIC_FULL_PASS rvv_matrix_e32_mf2\nBOARD_REPLAY_PASS\n",
+    "full_order": true,
+    "partitioned": false,
+    "fflags_oracle": "Original has no explicit fflags oracle; no invented acceptance"
+  },
+  "call_ledger_entries_checked": 5985,
+  "original_operations": 35,
+  "original_seeds": 3,
+  "raw_sha256_from_verified_auditor_chain": "ea88e975a6cb538756bb41b0472f50cf19b886bdfffaadd600567165331c4eca",
+  "current_raw_stat_only": [
+    64770,
+    24734845740,
+    713074111,
+    1791858661704205918,
+    1791858661704205918
+  ],
+  "service_exit_status": "UNCONFIRMED_NOT_INFERRED",
+  "worker_cgroup_at_audit": {
+    "state": "removed",
+    "path": "/sys/fs/cgroup/user.slice/user-1002.slice/user@1002.service/app.slice/ara-arithmetic-full-e32-mf2-m6-01.service",
+    "service_exit_status": "UNCONFIRMED"
+  },
+  "scope": "Original reconstructed byte-equivalent e32 mf2 SoC full program; not Linux/all22",
+  "historical_small2_NOT_PASS_and_cancelled_e32_preserved": true,
+  "elapsed_s": 3.016047745011747
+}

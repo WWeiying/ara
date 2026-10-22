@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sys
 import tempfile
@@ -55,6 +56,57 @@ class FullCampaignCommandTests(unittest.TestCase):
 
             self.assertEqual(before, after)
             self.assertEqual(before["file_count"], 2)
+
+    def test_source_snapshot_prunes_generated_output_trees(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "hardware").mkdir()
+            (root / "apps").mkdir()
+            generated = root / "verification/out/large_run"
+            generated.mkdir(parents=True)
+            source = root / "verification/checker.py"
+            source.write_text("CHECK = True\n")
+            (generated / "transient.py").write_text("VALUE = 1\n")
+
+            with mock.patch("run_full_campaign.REPO_ROOT", root):
+                before = source_snapshot()
+                (generated / "transient.py").write_text("VALUE = 2\n")
+                after = source_snapshot()
+
+            self.assertEqual(before, after)
+            self.assertEqual(before["file_count"], 1)
+
+    def test_source_snapshot_preserves_lexicographic_hash_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("hardware", "apps", "verification"):
+                (root / name).mkdir()
+            sources = {
+                "hardware/z.sv": "z\n",
+                "hardware/a/inner.sv": "inner\n",
+                "hardware/a.sv": "a\n",
+                "apps/Makefile": "all:\n",
+                "verification/check.py": "check = 1\n",
+            }
+            for name, content in sources.items():
+                path = root / name
+                path.parent.mkdir(exist_ok=True)
+                path.write_text(content)
+            digest = hashlib.sha256()
+            for subtree in ("hardware", "apps", "verification"):
+                for path in sorted((root / subtree).rglob("*")):
+                    if not path.is_file():
+                        continue
+                    relative = path.relative_to(root).as_posix()
+                    digest.update(relative.encode("utf-8"))
+                    digest.update(b"\0")
+                    digest.update(path.read_bytes())
+                    digest.update(b"\0")
+
+            with mock.patch("run_full_campaign.REPO_ROOT", root):
+                snapshot = source_snapshot()
+
+            self.assertEqual(snapshot, {"sha256": digest.hexdigest(), "file_count": len(sources)})
 
     def test_completed_source_snapshot_detects_drift(self):
         started = {"sha256": "start", "file_count": 10}

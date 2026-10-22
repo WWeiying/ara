@@ -1,0 +1,28 @@
+{
+  "status": "HOST_EXHAUSTIVE_AND_SPIKE_COST_PASS_NOT_DUT_ADMISSION",
+  "calls": 682,
+  "source_result_bits": 349184,
+  "guards": 1364,
+  "flags_checks": 682,
+  "vstart_checks": 682,
+  "unique_input_rows": 5,
+  "input_rom_bytes": 5120,
+  "case_table_bytes": 98208,
+  "bss_end": "0x8001d438",
+  "stack_top": "0x800ffff0",
+  "stack_reserve": 65536,
+  "unchanged_helpers": true,
+  "no_new_vector_instructions": true,
+  "pins_unchanged": true,
+  "retired": 2123849,
+  "process": {
+    "returncode": 0,
+    "pid": 2029062,
+    "elapsed_s": 0.4179141940549016,
+    "timed_out": false
+  },
+  "nominal_s": 3537.574643366028,
+  "margin20_s": 4245.089572039234,
+  "within_budget_projection": true,
+  "limitations": "Debugger cost run is not full dynamic helper/input/history audit; no worker/checker prepared; no DUT authorized by this report."
+}

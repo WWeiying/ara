@@ -1,0 +1,457 @@
+{
+  "status": "PASS_INDEPENDENT_M9_FOF_ORIGINAL_TWO_TERMINAL_NOT_LINUX",
+  "accepted": true,
+  "CSV_semantic_reparsed": false,
+  "new_DUT_or_reference": false,
+  "service_exit": {
+    "EXIT_CODE": "exited",
+    "EXIT_STATUS": "0",
+    "SERVICE_RESULT": "success",
+    "recorded_unix_s": 1791970153.1274414
+  },
+  "case_results": [
+    {
+      "status": "PASS_CASE_METADATA_AND_PINS_NOT_CSV_REPARSE",
+      "name": "fof_original_e8_scenario0",
+      "child_returncode": 0,
+      "elapsed_s": 260.54285750119016,
+      "generic": {
+        "rows": 161807,
+        "first_cycle": 82,
+        "last_cycle": 226155,
+        "retire_count": 161703,
+        "vector_retire_count": 32,
+        "cvx_request_count": 32,
+        "cvx_response_count": 32,
+        "cvx_max_inflight": 1,
+        "cvx_replay_count": 0,
+        "arch_request_replay_count": 0,
+        "cvx_exception_count": 0,
+        "architecture_request_count": 32,
+        "backend_uop_alloc_count": 4,
+        "backend_uop_done_count": 4,
+        "backend_uop_max_inflight": 3
+      },
+      "checks": 5477,
+      "owners": [
+        {
+          "seq": 10,
+          "trans_id": 2,
+          "insn": 33917959,
+          "cycle": 128279,
+          "allocations": [
+            {
+              "vid": 0,
+              "cycle": 128280
+            }
+          ],
+          "completions": [
+            {
+              "vid": 0,
+              "allocated": 128280,
+              "cycle": 128306
+            }
+          ],
+          "site": "old_vd",
+          "pc": 2147486020,
+          "vl": 8,
+          "vtype": 0,
+          "vstart": 0,
+          "request_cycle": 128290,
+          "response_cycle": 128290,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147486020,
+            "insn": 33917959,
+            "cycle": 128292,
+            "vl": 8,
+            "vtype": 0,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 11,
+          "trans_id": 3,
+          "insn": 45481991,
+          "cycle": 128291,
+          "allocations": [
+            {
+              "vid": 1,
+              "cycle": 128292
+            }
+          ],
+          "completions": [
+            {
+              "vid": 1,
+              "allocated": 128292,
+              "cycle": 128312
+            }
+          ],
+          "site": "mask",
+          "pc": 2147486024,
+          "vl": 8,
+          "vtype": 0,
+          "vstart": 0,
+          "request_cycle": 128297,
+          "response_cycle": 128297,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147486024,
+            "insn": 45481991,
+            "cycle": 128299,
+            "vl": 8,
+            "vtype": 0,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 12,
+          "trans_id": 4,
+          "insn": 17107975,
+          "cycle": 128298,
+          "allocations": [
+            {
+              "vid": 2,
+              "cycle": 128299
+            }
+          ],
+          "completions": [
+            {
+              "vid": 2,
+              "allocated": 128299,
+              "cycle": 128427
+            }
+          ],
+          "site": "target",
+          "pc": 2147486028,
+          "vl": 8,
+          "vtype": 0,
+          "vstart": 0,
+          "request_cycle": 128427,
+          "response_cycle": 128427,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147486028,
+            "insn": 17107975,
+            "cycle": 128429,
+            "vl": 8,
+            "vtype": 0,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 16,
+          "trans_id": 2,
+          "insn": 33917991,
+          "cycle": 128445,
+          "allocations": [
+            {
+              "vid": 0,
+              "cycle": 128446
+            }
+          ],
+          "completions": [
+            {
+              "vid": 0,
+              "allocated": 128446,
+              "cycle": 128508
+            }
+          ],
+          "site": "result",
+          "pc": 2147486050,
+          "vl": 8,
+          "vtype": 0,
+          "vstart": 0,
+          "request_cycle": 128446,
+          "response_cycle": 128508,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147486050,
+            "insn": 33917991,
+            "cycle": 128510,
+            "vl": 8,
+            "vtype": 0,
+            "vstart": 0
+          }
+        }
+      ],
+      "output_words": 130,
+      "original_result_elements": 4,
+      "original_guards": 2,
+      "undefined_suffix_waivers": 4,
+      "producer_checker_execution": "in-process successful return; no separate numeric wait exists",
+      "CSV_semantic_reparsed": false,
+      "raw_logs_vetoed": 2
+    },
+    {
+      "status": "PASS_CASE_METADATA_AND_PINS_NOT_CSV_REPARSE",
+      "name": "fof_original_e64_scenario5",
+      "child_returncode": 0,
+      "elapsed_s": 276.44295233488083,
+      "generic": {
+        "rows": 166262,
+        "first_cycle": 82,
+        "last_cycle": 240246,
+        "retire_count": 166158,
+        "vector_retire_count": 32,
+        "cvx_request_count": 32,
+        "cvx_response_count": 32,
+        "cvx_max_inflight": 1,
+        "cvx_replay_count": 0,
+        "arch_request_replay_count": 0,
+        "cvx_exception_count": 0,
+        "architecture_request_count": 32,
+        "backend_uop_alloc_count": 4,
+        "backend_uop_done_count": 4,
+        "backend_uop_max_inflight": 3
+      },
+      "checks": 5481,
+      "owners": [
+        {
+          "seq": 10,
+          "trans_id": 1,
+          "insn": 33946631,
+          "cycle": 137953,
+          "allocations": [
+            {
+              "vid": 0,
+              "cycle": 137954
+            }
+          ],
+          "completions": [
+            {
+              "vid": 0,
+              "allocated": 137954,
+              "cycle": 137984
+            }
+          ],
+          "site": "old_vd",
+          "pc": 2147485932,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 137964,
+          "response_cycle": 137964,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147485932,
+            "insn": 33946631,
+            "cycle": 137966,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 11,
+          "trans_id": 2,
+          "insn": 45481991,
+          "cycle": 137965,
+          "allocations": [
+            {
+              "vid": 1,
+              "cycle": 137966
+            }
+          ],
+          "completions": [
+            {
+              "vid": 1,
+              "allocated": 137966,
+              "cycle": 137986
+            }
+          ],
+          "site": "mask",
+          "pc": 2147485936,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 137971,
+          "response_cycle": 137971,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147485936,
+            "insn": 45481991,
+            "cycle": 137973,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 12,
+          "trans_id": 3,
+          "insn": 17136647,
+          "cycle": 137972,
+          "allocations": [
+            {
+              "vid": 2,
+              "cycle": 137973
+            }
+          ],
+          "completions": [
+            {
+              "vid": 2,
+              "allocated": 137973,
+              "cycle": 138003
+            }
+          ],
+          "site": "target",
+          "pc": 2147485940,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 137999,
+          "response_cycle": 137999,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147485940,
+            "insn": 17136647,
+            "cycle": 138001,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 16,
+          "trans_id": 1,
+          "insn": 33946663,
+          "cycle": 138010,
+          "allocations": [
+            {
+              "vid": 0,
+              "cycle": 138011
+            }
+          ],
+          "completions": [
+            {
+              "vid": 0,
+              "allocated": 138011,
+              "cycle": 138073
+            }
+          ],
+          "site": "result",
+          "pc": 2147485962,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 138011,
+          "response_cycle": 138073,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147485962,
+            "insn": 33946663,
+            "cycle": 138075,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        }
+      ],
+      "output_words": 130,
+      "original_result_elements": 8,
+      "original_guards": 2,
+      "undefined_suffix_waivers": 0,
+      "producer_checker_execution": "in-process successful return; no separate numeric wait exists",
+      "CSV_semantic_reparsed": false,
+      "raw_logs_vetoed": 2
+    }
+  ],
+  "independent_case_audit_returncodes": [
+    0,
+    0
+  ],
+  "producer_numeric_child_returncodes": [
+    0,
+    0
+  ],
+  "producer_checker_execution": "Both in-process checks returned PASS; no separate wait status exists",
+  "original_scope": "Exactly original e8/sc0 and e64/sc5 source-derived singles; not Linux/full parent",
+  "input_pin_count": 797,
+  "output_pin_count": 29,
+  "unique_pin_count": 830,
+  "pins_pre_post_unchanged": true,
+  "CSV_hash_only": true,
+  "checks": 10958,
+  "rows": 328069,
+  "original_members": 2,
+  "memory_owners": 8,
+  "raw_logs_checked": 4,
+  "plan_sha256": "03e31815439a6cecb8d7bd3f3650605163e5ea81b85d3ee22fa73bc9885e03fa",
+  "image_sha256": "48d9e4d2acb1fa239e05549fe695caad36af34c1f02aaffe041bb8261e302b5a",
+  "complete_sha256": "8d9a32d2b942d9852e9da5b3703c1656f07ecd438e9c5726f3b4505c7776eacb",
+  "verified_pins_sha256": "902b42008958aa327c3d4045b28a0cb46a7a06f918d6b6c9e9616bea049d8008",
+  "observed_complete.json": {
+    "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/complete.json",
+    "sha256": "8d9a32d2b942d9852e9da5b3703c1656f07ecd438e9c5726f3b4505c7776eacb",
+    "payload": {
+      "status": "PASS_M9_FOF_TWO_ORIGINAL_SINGLES_NOT_LINUX",
+      "plan_sha256": "03e31815439a6cecb8d7bd3f3650605163e5ea81b85d3ee22fa73bc9885e03fa",
+      "image_sha256": "48d9e4d2acb1fa239e05549fe695caad36af34c1f02aaffe041bb8261e302b5a",
+      "results": [
+        {
+          "name": "fof_original_e8_scenario0",
+          "kind": "app",
+          "status": "PASS",
+          "returncode": 0,
+          "elapsed_s": 260.54285750119016,
+          "reason": "",
+          "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e8_scenario0"
+        },
+        {
+          "name": "fof_original_e64_scenario5",
+          "kind": "app",
+          "status": "PASS",
+          "returncode": 0,
+          "elapsed_s": 276.44295233488083,
+          "reason": "",
+          "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e64_scenario5"
+        }
+      ],
+      "retries": 0,
+      "pins_unchanged": true,
+      "evidence_pins": {
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/launch.json": "ce86fa392f62704ae767e3b329c73552e93e5e362b2a533687fee1dd64a5e908",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/run.json": "0b6a463eed65313a7b210eccc71c0d2119a77f3bee8f7ff073c8e7c3ab407fe0",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/summary.json": "bc903a7a89d124f9ee075af8f45d8f79003c39cc7bf65cda805713074c7d4cb7",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e8_scenario0/input.elf": "40cfaa6efb389fba0d5a55d8e7d58d67b7c927b0ff499ae3e5d0d77337a4a674",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e8_scenario0/inputs.json": "2cc09a08f9b11e9e0a132cf9b1ae635ac1c39af77d2400f2bc3b3ca4f1f215ea",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e8_scenario0/command.json": "5736a5a4487b8624a593a49d93098189a48d22c564e6fe8c23939a452cd7be47",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e8_scenario0/console.log": "0dadd12124a15ae77f46ff74011d355a6734d15089007085508bcd311dd51375",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e8_scenario0/work/run.vcs.log": "a03422d20d34e747ec1e10b9a8e00eedb6ed751a3e0bdb64b719c9d01adb6872",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e8_scenario0/commit_trace.csv": "eba73ef6a99be28fcc657e0b460f8625cdcf1dda04e0f08f19c81fb8e838b0c6",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e8_scenario0/trace_summary.json": "52caebcb6fc387e7711a7528d52e9e1f8abeb180101b3293758ba1c7d5d8a62c",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e8_scenario0/monitor_outcome.unvalidated.json": "58e71b233bf62c398c2df05257dbb766da75ded0e3177378c49b3bd06ff43a46",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e8_scenario0/child_outcome.unvalidated.json": "b32ffd6bdbe5300e6b728e7f7ef054c831f1d0e6e2b808a278d462e2e70e68a6",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e8_scenario0/strict_csv.json": "0bd541e99e173531aedd4380d4948a26dc256a3a42ecae8d90900dfc2d4401e7",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e8_scenario0/strict_original.json": "3f7cdcd6f4387f92be05e06b379fba5bf286ae5ce4506b3f8db858a409885ddd",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e64_scenario5/input.elf": "9e9e8da2ace6b0965f1c5989e4ac03ddcb4b16bed54d61ac795ad5cf4a213ecd",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e64_scenario5/inputs.json": "976cfe76dcd6c40e55c317a496dd289d063f42502a39d86dc0a7975ea8b96767",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e64_scenario5/command.json": "742d050533129022dd886851ab26da425f98d7bb5285293c1258775b017b286e",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e64_scenario5/console.log": "690a34c4cb511b6fdfe08448a16a73cc8579803dc20ac8f408b90aa00a17a7d7",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e64_scenario5/work/run.vcs.log": "90d3bc54fd54e9142e7fd723c23edb1e5ce2d7d48457fc1b6e30870e28d40cfa",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e64_scenario5/commit_trace.csv": "2380c8ea30fe9501737787402b807d22c901b85f2002759a5142a9c5994cafb5",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e64_scenario5/trace_summary.json": "5b89118881dca3e65c7567c04982174a815c50f459503300b0b24804cdc185e0",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e64_scenario5/monitor_outcome.unvalidated.json": "19115519acf555b56fa3eb30e08655447f32ca61cd06e8a35ef0cd4ad3ee79db",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e64_scenario5/child_outcome.unvalidated.json": "2e548873835b3d36a72e2beef13a780ed3031dd645d2f4cf3cfef72e85f43780",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e64_scenario5/strict_csv.json": "6b8507e1825d19ddab3947cada2bcf1acd6e0b4e99dd2ac714b397c7a312177c",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/replay/tests/fof_original_e64_scenario5/strict_original.json": "e9fbc17cc4119eba4c103028f947d08b66f235fc9b2b3406a3c00f4e6e652ccc"
+      },
+      "all8_historical_or_Linux_accepted": false,
+      "zero_MMU_physical_activity_proved": false,
+      "finished": 1791970152.987564,
+      "aborted": false
+    }
+  },
+  "observed_service_exit.json": {
+    "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/prepared01/service_exit.json",
+    "sha256": "5b4fce43b2762f92a62d4988592a483b5eecb31f78b9f7a98a969ecc43c0b629",
+    "payload": {
+      "EXIT_CODE": "exited",
+      "EXIT_STATUS": "0",
+      "SERVICE_RESULT": "success",
+      "recorded_unix_s": 1791970153.1274414
+    }
+  },
+  "audit_elapsed_s": 5.521252179052681
+}

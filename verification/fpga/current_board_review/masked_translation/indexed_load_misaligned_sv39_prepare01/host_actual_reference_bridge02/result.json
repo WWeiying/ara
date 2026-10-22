@@ -1,0 +1,135 @@
+{
+  "status": "HOST_ADAPTER_PASS_NOT_DUT",
+  "members": [
+    {
+      "status": "HOST_EXISTING_SPIKE_ROW_ADAPTER_PASS_NOT_DUT",
+      "member": "load",
+      "source_raw_sha256": "57072c5c0e0a4abee1d304b8a3630c47d7a4ccffc2d14846685c11755341d273",
+      "actual_endpoint": {
+        "HTIF": [
+          1
+        ]
+      },
+      "endpoint_bridge": "validated HTIF1 substitutes CTRL0 for Host finish test only",
+      "synthetic_cycle_order": true,
+      "partial_not_retired": 1,
+      "checks": 962,
+      "scalar_commits": 175069,
+      "saved_csrs": {
+        "768": 9223372079804474880,
+        "772": 0,
+        "773": 2147483732,
+        "833": 0,
+        "834": 0,
+        "835": 0,
+        "384": 0,
+        "770": 0,
+        "771": 0,
+        "3104": 0,
+        "3105": 9223372036854775808,
+        "8": 0,
+        "15": 0,
+        "3": 0
+      },
+      "traps": [
+        {
+          "0": 4,
+          "1": 2147487828,
+          "2": 1073741841,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 5,
+          "6": 24,
+          "7": 2,
+          "8": 117,
+          "9": 5
+        },
+        {
+          "0": 9,
+          "1": 2147488184,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 5,
+          "6": 24,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      ],
+      "actions": [
+        {
+          "name": "mt_initial_vstart_write",
+          "cycle": 73672
+        },
+        {
+          "name": "handler",
+          "cycle": 73673
+        },
+        {
+          "name": "mt_trap_vstart_read",
+          "cycle": 73699
+        },
+        {
+          "name": "mt_prefix_checkpoint",
+          "cycle": 79946
+        },
+        {
+          "name": "mt_prefix_poison",
+          "cycle": 79958
+        },
+        {
+          "name": "mt_repair_index",
+          "cycle": 79964
+        },
+        {
+          "name": "mt_restart_vstart_write",
+          "cycle": 79970
+        },
+        {
+          "name": "mt_retry_mret",
+          "cycle": 79979
+        },
+        {
+          "name": "mt_target",
+          "cycle": 79980
+        },
+        {
+          "name": "mt_successor_indexed_store",
+          "cycle": 79999
+        },
+        {
+          "name": "mt_recovery_load",
+          "cycle": 80012
+        },
+        {
+          "name": "mt_successor_add",
+          "cycle": 80029
+        },
+        {
+          "name": "mt_younger_store",
+          "cycle": 80045
+        },
+        {
+          "name": "handler",
+          "cycle": 80069
+        },
+        {
+          "name": "mt_trap_vstart_read",
+          "cycle": 80095
+        }
+      ],
+      "complete_finish_checks": true,
+      "restore_readback_checks": 14
+    }
+  ],
+  "negatives": [
+    "retire_gap",
+    "retire_duplicate",
+    "cycle_regressed",
+    "saved_CSR_mismatch",
+    "duplicate_handler_CSR"
+  ],
+  "checker_sha256": "453fa16e6355c335ee648a77eab2d8c9ed4868b601633a23c5123c14982b25a8",
+  "bridge_sha256": "9052446995928eee325e8d05f91c1e2e381c0ac299e38e56563dbe3c545e84d0"
+}

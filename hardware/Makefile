@@ -61,6 +61,10 @@ veril_path    ?= $(abspath $(INSTALL_DIR)/verilator/bin)
 veril_top     ?= ara_tb_verilator
 veril_jobs    ?= 8
 veril_threads ?= 4
+veril_cxx_opt ?= -O3
+veril_clean ?= 0
+veril_coverage ?= 0
+veril_coverage_toggle ?= 0
 # Path to the binaries
 app_path       ?= $(abspath $(ROOT_DIR)/../apps/bin)
 # Path to ideal dispatcher vtraces
@@ -157,6 +161,11 @@ else
   sim_dir ?= sim
 endif
 
+# Keep the historical relative-directory behavior, but allow verification
+# harnesses to place a simulation tree outside hardware/.  Prefixing an
+# absolute sim_dir with ./ silently created hardware/home/... trees.
+sim_path := $(if $(filter /%,$(sim_dir)),$(sim_dir),./$(sim_dir))
+
 ifdef app
   ifeq ($(ideal_dispatcher), 1)
   	preload ?= "$(app_path)/$(app).ideal"
@@ -167,7 +176,27 @@ endif
 
 TIMESCALE := -timescale=1ns/100fs
 SIMULATOR_OPT := -full64 -sverilog +v2k -Mlib=./incremental_db -Mupdate -j64 -lca -kdb -debug_access+all +nospecify +notimingchecks +lint=TFIPC-L  +vpi +lint=PCWM +error+30
+ifeq ($(code_coverage), 1)
+SIMULATOR_OPT += -cm line+cond+fsm+tgl+branch -cm_dir $(abspath $(sim_path))/simv.vdb
+endif
+ifeq ($(verify_uvm_cvxif), 1)
+uvm_required_sources := ara_cvxif_if.sv ara_cvxif_uvm_pkg.sv ara_acc_contract_monitor.sv ara_cvxif_dut_bind.sv
+uvm_missing_sources := $(filter-out $(notdir $(verify_extra_sources)),$(uvm_required_sources))
+ifneq ($(strip $(uvm_missing_sources)),)
+$(error verify_uvm_cvxif=1 requires verify_extra_sources containing $(uvm_missing_sources))
+endif
+SIMULATOR_OPT += -ntb_opts uvm-1.2
+endif
 SIMULATOR_DEF := +define+SIMULATION +define+no_warning +define+TSMC_NO_WARNING
+ifeq ($(verify_uvm_cvxif), 1)
+SIMULATOR_DEF += +define+ARA_VERIFY_UVM_CVXIF
+endif
+ifeq ($(verify_axi_delay), 1)
+SIMULATOR_DEF += +define+ARA_VERIFY_AXI_DELAY
+endif
+ifeq ($(store_b_ab_baseline), 1)
+SIMULATOR_DEF += +define+ARA_STORE_B_AB_BASELINE
+endif
 ifeq ($(fail_on_assert), 1)
 SIMULATOR_DEF += +define+ARA_FAIL_FAST_ASSERTS
 endif
@@ -176,6 +205,9 @@ SIMULATOR_POWER_OPT :=
 SIMV_POWER_OPT      := +fsdb+power +fsdb+all 
 SIM_DUMP := 
 SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) $(buildpath)/$(dpi_library)/elfloader.o
+ifneq ($(strip $(verify_extra_sources)),)
+SIM_FILELIST += $(verify_extra_sources)
+endif
 SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=$(preload) +TESTCASE=$(app)
 ifeq ($(no_fsdb), 1)
@@ -186,7 +218,7 @@ ifeq ($(qbs_perf), 1)
 APP += +QBS_PERF
 endif
 
-.PHONY: bender compile compile_large verilate sim sim_large sim_verilator verify clean verdi lint trace dc dc_flist dc_preflight dpi sram saif sim_all saif_all saif_ara llama_spike_build llama_spike_check llama_spike_list llama_spike llama_real_list llama_real_eval_list llama_real_eval_compile llama_real_eval_parallel llama_real_eval_status llama_real_build llama_real_spike llama_real_sim llama_real_sum llama_real_metrics_sum llama_qbs_eval_list llama_qbs_eval_build llama_qbs_eval_compile llama_qbs_eval_parallel llama_qbs_eval_status llama_qbs_eval_sum llama_format_list llama_format_build llama_format_rvv_compile llama_format_qbs_compile llama_format_rvv_parallel llama_format_qbs_parallel llama_format_status llama_format_sum
+.PHONY: bender compile compile_large verilate verilate_prepare sim sim_large sim_verilator verify clean verdi lint trace dc dc_flist dc_preflight dpi sram saif sim_all saif_all saif_ara llama_spike_build llama_spike_check llama_spike_list llama_real_list llama_real_eval_list llama_real_eval_compile llama_real_eval_parallel llama_real_eval_status llama_real_build llama_real_spike llama_real_sim llama_real_sum llama_real_metrics_sum llama_qbs_eval_list llama_qbs_eval_build llama_qbs_eval_parallel llama_qbs_eval_status llama_qbs_eval_sum llama_format_list llama_format_build llama_format_rvv_compile llama_format_qbs_compile llama_format_rvv_parallel llama_format_qbs_parallel llama_format_status llama_format_sum
 
 # Bender
 bender: $(BENDER)
@@ -211,8 +243,20 @@ compile: bender dpi ../Bender.yml
 	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen)"
 	@$(BENDER) script verilator --no-default-target -t verilator $(bender_targs_vcs) $(bender_defs_veril) --define FOR_VERIFY  > $(vcs_library)/bender_script_$(config)
 	@$(call generate_sram_filelist, $(sram_techlib_path), $(vcs_library)/bender_script_$(config))
-	@mkdir -p ./$(sim_dir)/incremental_db
-	@cd ./$(sim_dir) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
+	@mkdir -p $(sim_path)/incremental_db
+	@if [ "$(verify_source_manifest)" = 1 ]; then \
+		PYTHONPATH="$(ARA_DIR)/verification" python3 -m ara_verify.vcs_source_manifest \
+			--filelist "$(vcs_library)/bender_script_$(config)" \
+			--repo-root "$(ARA_DIR)" \
+			--extra-source "$(buildpath)/$(dpi_library)/elfloader.o" \
+			$(foreach source,$(verify_extra_sources),--extra-source "$(source)") \
+			--output "$(sim_path)/vcs_source_manifest.json"; \
+	fi
+	@cd $(sim_path) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
+	@if [ "$(verify_source_manifest)" = 1 ]; then \
+		PYTHONPATH="$(ARA_DIR)/verification" python3 -m ara_verify.vcs_source_manifest \
+			--output "$(sim_path)/vcs_source_manifest.json" --check; \
+	fi
 	@printf '%s\n' \
 		'schema_version=2' \
 		'config=$(config)' \
@@ -224,30 +268,73 @@ compile: bender dpi ../Bender.yml
 		'qbs_enabled=$(qbs)' \
 		'akv_enabled=$(if $(filter 1,$(akv) $(akv_v2)),1,0)' \
 		'akv_v2_enabled=$(akv_v2)' \
+		'verify_axi_delay=$(if $(filter 1,$(verify_axi_delay)),1,0)' \
+		'store_b_ab_baseline=$(if $(filter 1,$(store_b_ab_baseline)),1,0)' \
 		'sim_l2_mb=$(sim_l2_mb)' \
 		'sim_l2_bytes=$(sim_l2_bytes)' \
-		> ./$(sim_dir)/simulator.conf
+		> $(sim_path)/simulator.conf
 
-verilate: bender ../Bender.yml
-	@rm -rf $(veril_library)
-	@mkdir -p $(veril_library)
-	@$(BENDER) script verilator --no-default-target \
-		$(bender_targs_veril) $(bender_defs_veril) \
-		> $(veril_library)/bender_script_$(config).raw
-	@grep -v '/deprecated/pad_functional.sv' \
-		$(veril_library)/bender_script_$(config).raw \
-		> $(veril_library)/bender_script_$(config)
+verilate_prepare: bender ../Bender.yml
+	@set -euo pipefail; \
+		mkdir -p "$(veril_library)"; \
+		tmp=$$(mktemp -d "$(dir $(veril_library))/.verilate.XXXXXX"); \
+		trap 'rm -rf "$$tmp"' EXIT; \
+		$(BENDER) script verilator --no-default-target \
+			$(bender_targs_veril) $(bender_defs_veril) \
+			> "$$tmp/bender_script.raw"; \
+		grep -v '/deprecated/pad_functional.sv' \
+			"$$tmp/bender_script.raw" > "$$tmp/bender_script"; \
+		{ printf '%s\n' \
+			'veril_top=$(veril_top)' 'veril_threads=$(veril_threads)' \
+			'veril_cxx_opt=$(veril_cxx_opt)' 'veril_coverage=$(veril_coverage)' \
+			'veril_coverage_toggle=$(veril_coverage_toggle)' \
+			'nr_lanes=$(nr_lanes)' 'vlen=$(vlen)' 'sim_l2_bytes=$(sim_l2_bytes)' \
+			'config=$(config)' 'root=$(ROOT_DIR)' 'cxx=$(CXX)' \
+			'veril_path=$(veril_path)'; \
+			$(veril_path)/verilator --version; \
+			sed -n '/^verilate: verilate_prepare/,/^sim_verilator:/p' "$(ROOT_DIR)/Makefile"; \
+			cat "$$tmp/bender_script"; \
+		} | sha256sum | cut -d ' ' -f 1 > "$$tmp/signature"; \
+		{ printf '%s\n' \
+			'veril_cxx_opt=$(veril_cxx_opt)' 'nr_lanes=$(nr_lanes)' \
+			'sim_l2_bytes=$(sim_l2_bytes)' 'veril_top=$(veril_top)' \
+			'cxx=$(CXX)' 'root=$(ROOT_DIR)' \
+			'veril_path=$(veril_path)'; \
+			$(veril_path)/verilator --version; \
+			sed -n '/^verilate: verilate_prepare/,/^sim_verilator:/p' "$(ROOT_DIR)/Makefile" \
+				| grep -- '-CFLAGS'; \
+		} | sha256sum | cut -d ' ' -f 1 \
+			> "$$tmp/cxx-signature"; \
+		if [ "$(veril_clean)" = 1 ]; then \
+			rm -rf "$(veril_library)"; \
+			mkdir -p "$(veril_library)"; \
+			printf '%s\n' 'Verilator clean build requested'; \
+		elif [ -f "$(veril_library)/.build-signature" ] && \
+			! cmp -s "$$tmp/cxx-signature" "$(veril_library)/.cxx-signature"; then \
+			find "$(veril_library)" -type f \( -name '*.o' -o -name '*.a' \) -delete; \
+			printf '%s\n' 'C++ compile options changed: invalidated object files'; \
+		elif ! cmp -s "$$tmp/signature" "$(veril_library)/.build-signature"; then \
+			printf '%s\n' 'Verilator inputs changed: regenerating in existing build directory'; \
+		fi; \
+		cp "$$tmp/bender_script.raw" "$(veril_library)/bender_script_$(config).raw"; \
+		cp "$$tmp/bender_script" "$(veril_library)/bender_script_$(config)"; \
+		cp "$$tmp/signature" "$(veril_library)/.build-signature"; \
+		cp "$$tmp/cxx-signature" "$(veril_library)/.cxx-signature"
+
+verilate: verilate_prepare
 	@$(veril_path)/verilator \
 		-f $(veril_library)/bender_script_$(config) \
 		-GNrLanes=$(nr_lanes) -GVLEN=$(vlen) -GL2SizeBytes=$(sim_l2_bytes) \
 		-O3 --timing --hierarchical --threads $(veril_threads) \
+		$(if $(filter 1,$(veril_coverage)),--coverage-line --coverage-expr,) \
+		$(if $(filter 1,$(veril_coverage_toggle)),--coverage-toggle,) \
 		-Wno-fatal -Wno-MODDUP -Wno-PINCONNECTEMPTY -Wno-PINMISSING \
 		-Wno-BLKANDNBLK -Wno-CASEINCOMPLETE -Wno-CMPCONST -Wno-LATCH \
 		-Wno-LITENDIAN -Wno-UNOPTFLAT -Wno-UNPACKED -Wno-UNSIGNED \
 		-Wno-WIDTH -Wno-WIDTHCONCAT -Wno-ENUMVALUE -Wno-COMBDLY \
 		-Wno-SELRANGE -Wno-ALWCOMBORDER -Wno-IMPLICIT \
 		--Mdir $(veril_library) --compiler gcc \
-		-CFLAGS "-O3 -march=native -DTOPLEVEL_NAME=$(veril_top)" \
+		-CFLAGS "$(veril_cxx_opt) -march=native -DTOPLEVEL_NAME=$(veril_top)" \
 		-CFLAGS "-DNR_LANES=$(nr_lanes) -DL2_SIZE_BYTES=$(sim_l2_bytes)" \
 		-CFLAGS "-I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_memutil_dpi/cpp" \
 		-CFLAGS "-I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_memutil_verilator/cpp" \
@@ -277,10 +364,17 @@ sim_log = "perf_report_$(app).log"
 endif
 
 sim: compile
-	@touch ./$(sim_dir)/perf*.log
-	@rm ./$(sim_dir)/perf*.log
-	@cd ./$(sim_dir) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
-	@cp ./$(sim_dir)/$(sim_log) ./$(sim_dir)/perf.log
+	@touch $(sim_path)/perf*.log
+	@rm $(sim_path)/perf*.log
+	@cd $(sim_path) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
+	@# Functional-only tests do not emit a performance report.  Their VCS log
+	@# remains authoritative; do not turn a successful simulation into a make
+	@# failure merely because the optional report is absent.
+	@if test -f $(sim_path)/$(sim_log); then \
+		cp $(sim_path)/$(sim_log) $(sim_path)/perf.log; \
+	else \
+		: > $(sim_path)/perf.log; \
+	fi
 
 sim_large:
 	@test -n "$(app)" || { echo "usage: make sim_large app=<app> [large_l2_mb=16]" >&2; exit 2; }
@@ -454,11 +548,11 @@ llama_format_sum:
 		--markdown-output "$(or $(markdown_output),$(ROOT_DIR)/format_closure.md)"
 
 clean:
-	@cd ./$(sim_dir) && rm -rf *
+	@cd $(sim_path) && rm -rf *
 	@rm -rf $(buildpath)
 
 verdi:
-	@cd ./$(sim_dir) && verdi $(SIMULATOR_DEF) -sv $(SIM_FILELIST) -top ara_tb -dbdir simv.daidir -ssf ara_tb.fsdb -sswr ../debug/signal_ideal.rc -l verdi.log &
+	@cd $(sim_path) && verdi $(SIMULATOR_DEF) -sv $(SIM_FILELIST) -top ara_tb -dbdir simv.daidir -ssf ara_tb.fsdb -sswr ../debug/signal_ideal.rc -l verdi.log &
 
 lint:
 	cd ./hardware/lint && rm -rf brook_* *.log reports spyglass-1 brook
@@ -581,7 +675,7 @@ saif_ara:
 	cd $(vcs_library) && cat bender_script_$(config) | grep -v "ara.sv" > rtl.temp
 	cd $(vcs_library) && mv rtl.temp bender_script_$(config)
 	cd $(vcs_library) && echo "/home/wangwy/openproject/ara/backend/syn/ara_soc/v1-dc/outputs/ara_dc.v" >> bender_script_$(config) 
-	mkdir -p ./$(sim_dir)/incremental_db
-	cd ./$(sim_dir) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT) -v /home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140_170a_vlg/TSMCHOME/digital/Front_End/verilog/tcbn28hpcplusbwp12t40p140_170a/tcbn28hpcplusbwp12t40p140.v #/home/wangwy/openproject/ara/hardware/build/work-dpi/elfloader.o
-	cd ./$(sim_dir) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
+	mkdir -p $(sim_path)/incremental_db
+	cd $(sim_path) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT) -v /home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140_170a_vlg/TSMCHOME/digital/Front_End/verilog/tcbn28hpcplusbwp12t40p140_170a/tcbn28hpcplusbwp12t40p140.v #/home/wangwy/openproject/ara/hardware/build/work-dpi/elfloader.o
+	cd $(sim_path) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
 	vcd2saif -input ./vcd/$(app).vcd -output ./saif_ara/$(app).saif

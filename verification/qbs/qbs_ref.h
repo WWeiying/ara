@@ -202,6 +202,10 @@ qbs_ref_status_t qbs_ref_quantize_q8_k(const float *input,
                                        size_t input_elements,
                                        qbs_block_q8_k_t *output,
                                        size_t output_blocks);
+qbs_ref_status_t qbs_ref_quantize_q8_0(const float *input,
+                                       size_t input_elements,
+                                       qbs_block_q8_0_t *output,
+                                       size_t output_blocks);
 
 void qbs_ref_decode_q4_k(const qbs_block_q4_k_t *block, int8_t values[256],
                          uint8_t scales[8], uint8_t mins[8]);

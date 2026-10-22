@@ -1,0 +1,17 @@
+{
+  "runner_returncode": 1,
+  "results": [
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/failure_capture01/replay/tests/rvv_small_masks_cmp_alias_restart_e8_m2",
+      "elapsed_s": 76.69005565810949,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e8_m2",
+      "reason": "failure marker found in simulation log",
+      "returncode": 255,
+      "status": "FAIL"
+    }
+  ],
+  "pins_unchanged": true,
+  "elapsed_s": 80.98711776733398,
+  "interpretation": "Architectural failure is expected baseline evidence; not a passing regression"
+}

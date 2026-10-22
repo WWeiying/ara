@@ -1,0 +1,75 @@
+READ-ONLY STIMULUS REVIEW: NO BUILD, NO SPIKE/VCS/DVE SIMULATION, NO RTL OR EL EDIT
+
+Actual797 raw hierarchy plus published797 binary union used directly:
+verification/out/reachable-toggle797-static-agent-20261008-01.json
+SHA256 30d48fa13fbef519d6c242e98edd3b85f56a3e5a59c0760f5c7826ab6e3fc527
+Collector verification/coverage/rank_reachable_toggle797_static.py exited0.
+2989 actual raw hierarchy rows, exact797 qualified membership authority.
+Removed74572 saturated fields,66 source-constant registry fields, error-slave
+constant bits, VlBitMaskEnable0 fields and existing both-direction EL slots.
+Unknown/partial-direction/MDA capacity stays diagnostic/HOLD, not reachable gain.
+Only independently source-supported ordinary/system candidates are ranked:
+
+1. TRAP_VECTOR_DIRECT_BASE_ROUNDTRIP:182 currently missing serialized slots.
+   mtvec_q/rvfi_csr_o.mtvec_q:22 each, bits53..63.
+   mtvec_d:24, bits31 and53..63.
+   stvec_d/q/rvfi_csr_o.stvec_q:38 each, bits10,11,14..30.
+   Exactly six objects at i_ariane.csr_regfile_i. Parent hierarchy raw Toggle13.98.
+   These are aliases/internal next-state observations, NOT182 independent bits.
+2. VIOTA_DENSE_VL1024_ENDPOINT:4 slots, viota_acc_d/q bit10 only.
+   Remaining upper bits11..15 are not ranked reachable; normal processing_cnt,
+   iteration_cnt and VRF pointer fields are saturated. Not high-yield priority.
+
+SELECT ONE NEW CASE: csr_tvec_direct_fullwidth_roundtrip
+Machine mode, fixed RAM-resident code and buffer. Save mstatus/mie/mtvec/stvec;
+clear MIE and mie before temporary vectors. No calls, faulting loads, privilege
+switches or intentional traps while temporary vectors are installed.
+For each mtvec and stvec, write/read/store these direct-mode aligned values:
+A=0x5555555555555554, B=0xaaaaaaaaaaaaaaa8,
+C=0xfffffffffffffffc, D=0x0000000000000000, then A again.
+Exact bits63:2 are exercised in both transitions. No indirect execution through
+these temporary addresses: this tests implemented CSR storage, not accessibility
+of arbitrary RAM/high-address handlers. Restore original vectors before ANY
+assert/error handler, RVV recovery or privilege operation; restore mie/status last.
+Do not include vectored MODE1: CVA6 has256-byte alignment WARL, while ordinary
+Spike does not model that extra alignment. All proposed MODE0 values avoid it.
+
+FROZEN SOURCE / ORACLE
+csr_regfile.sv:1370-1378 STVEC direct writes {csr_wdata[63:2],2'b0};
+:1669-1678 MTVEC direct does the same. Config RVS1/DirectVecOnly0.
+:2934/2959 commit d->q; :3065/3075 export full-width RVFI CSR aliases.
+Pinned sources and their hashes are in ranking packet.
+Read-only installed source check:
+/home/wangwy/openproject/riscv-isa-sim-ara-dsa-vstart/riscv/csrs.cc:394-405
+tvec_csr_t read returns stored value; write clears bit1 only. Proposed MODE0
+values match exactly. Executable/source provenance must be pinned at preflight;
+no Spike execution was performed in this review.
+
+WHY NEW HITS ARE PLAUSIBLE
+Actual full797 union still has the exact target zero pairs. Existing trap-vector
+tests use RAM handler/table addresses (e.g. vgap100_csr_hpm_vectored), not full
+CSR storage patterns. mtvec high53..63 and stvec selected low/mid BASE bits remain
+unhit. No claim of mnemonic absence or fresh all797 ELF disassembly dedup.
+Only ELF-content/instruction-ledger dedup at future preflight can establish that.
+
+STRICT VALIDATION CONTRACT
+Independent expected CSR table is the software-written values, never DUT reads.
+Compare Spike vs DUT from entry to tohost: every PC/opcode, GPR/FPR write set/
+value, scalar memory address/mask/data, traps and final architecture. Add exact
+CSR write/read table checks with no masked/ignored CSR values. Validate all
+stored readbacks, saved/restored CSR state, immutable source and buffer guards.
+Use deterministic preinitialized full VRF and full post-restore dump; optionally
+one ordinary vadd recovery AFTER vectors restored, checked against integer gold.
+No relaxation of source/VRF/CSR checks or suppression of unexpected traps.
+First mismatch/timeout remains unadmitted; do not modify frozen RTL.
+
+PREDICTED BUDGET, NOT MEASURED
+10 target CSR writes/readbacks plus restoration: sub-millisecond logical DUT
+work compared with long numerical tests. Whole strict harness/fullVRF dominates.
+Planning estimate60-180 seconds VCS wall time; initial bounded budget300 seconds,
+not a measured runtime or authorization. Existing VSMUL full harness was about
+111 VCS CPU seconds; differing trace/host overhead prevents exact prediction.
+Conditional capacity up to182 target slots; actual new native OR delta decides
+gain. No percentage or official Covered/Total denominator forecast.
+
+Original actual-hit task remains independent of trusted-IP policy review.

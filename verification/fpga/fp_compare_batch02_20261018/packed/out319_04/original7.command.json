@@ -1,0 +1,7 @@
+{
+  "argv": [
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/packed/out319_04/original",
+    "7"
+  ],
+  "timeout_s": 60
+}

@@ -1,0 +1,24 @@
+{
+  "state": "sealed_ready_for_fixed_vcs",
+  "manifest": "programs.json",
+  "manifest_sha256": "dd783e0c1e6322ccd69095b5911ab9d2edf05f996599c4699b9550718be4c13f",
+  "manifest_files_and_pins_checked": 22,
+  "hash_mismatches": [],
+  "soc_elf": "build01/soc.elf",
+  "soc_elf_sha256": "bc0be5f6e0c0e7960470e313a4719b6e27d9a522c531d718b59e7e5eddabd570",
+  "spike_exit_code": 0,
+  "spike_log": "build01/spike.log",
+  "spike_count_command_file": "count.cmd",
+  "spike_count_at_replay_exit_hex": "0x00000000000e1607",
+  "spike_count_at_replay_exit_decimal": 923143,
+  "spike_count_run_elapsed_s": 0.16732065193355083,
+  "spike_count_run_output": [
+    "0x0000000000000000",
+    "0x00000000000e1607",
+    "NEIGHBORS_INTEGER_PASS cases=40 errors=0",
+    "NEIGHBORS_ORACLE_NEGATIVE_PASS checks=120",
+    "BOARD_REPLAY_PASS"
+  ],
+  "budget_note": "Spike retirement count only, not DUT cycles or VCS wall time. VCS duration unmeasured; do not promise completion within ten minutes.",
+  "scope": "New directed test, no original Linux ELF attribution. No VCS launched by this worker."
+}

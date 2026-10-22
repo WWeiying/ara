@@ -1,0 +1,25 @@
+{
+  "state": "PASS",
+  "cases": [
+    {
+      "name": "integer_fourword_staggered",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after06/simv",
+        "-no_save",
+        "+SEW=0",
+        "+INTEGER=1",
+        "+VL=769",
+        "+NV=-2",
+        "+PATTERN=1",
+        "+STALLS=1",
+        "+STAGGER=1",
+        "+TRACE_QUEUE"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=0 vl=769 start=0 nv=-2 pattern=1 integer=1 unmasked=0 slices=25 pulses=0 nv_pulses=0 input_stalls=218 output_stalls=276"
+      ]
+    }
+  ]
+}

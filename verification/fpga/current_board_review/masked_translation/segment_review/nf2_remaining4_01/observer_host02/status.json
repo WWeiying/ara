@@ -1,0 +1,579 @@
+{
+  "status": "PASS_HOST_ONLY_NOT_DUT",
+  "positive": {
+    "status": "NF2_CSV_ORACLE_PASS",
+    "cases": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "checkpoints": [
+      {
+        "case": 0,
+        "phase": 1,
+        "cycle": 4624,
+        "checks": 303
+      },
+      {
+        "case": 0,
+        "phase": 2,
+        "cycle": 10260,
+        "checks": 759
+      },
+      {
+        "case": 1,
+        "phase": 1,
+        "cycle": 14126,
+        "checks": 1061
+      },
+      {
+        "case": 1,
+        "phase": 2,
+        "cycle": 32066,
+        "checks": 1517
+      },
+      {
+        "case": 2,
+        "phase": 3,
+        "cycle": 32702,
+        "checks": 1547
+      },
+      {
+        "case": 2,
+        "phase": 2,
+        "cycle": 38048,
+        "checks": 1991
+      },
+      {
+        "case": 3,
+        "phase": 3,
+        "cycle": 38684,
+        "checks": 2021
+      },
+      {
+        "case": 3,
+        "phase": 2,
+        "cycle": 56322,
+        "checks": 2465
+      }
+    ],
+    "checks": 3567,
+    "traps": [
+      {
+        "case": 0,
+        "cycle": 912,
+        "values": {
+          "0": 13,
+          "1": 2147488120,
+          "2": 1073745922,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 8,
+          "7": 2,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "case": 0,
+        "cycle": 4680,
+        "values": {
+          "0": 9,
+          "1": 2147488292,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 8,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "case": 1,
+        "cycle": 10390,
+        "values": {
+          "0": 15,
+          "1": 2147488128,
+          "2": 1073745928,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 8,
+          "7": 5,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "case": 1,
+        "cycle": 26486,
+        "values": {
+          "0": 9,
+          "1": 2147488292,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 8,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "case": 2,
+        "cycle": 32234,
+        "values": {
+          "0": 9,
+          "1": 2147488292,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 8,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "case": 3,
+        "cycle": 38216,
+        "values": {
+          "0": 9,
+          "1": 2147488292,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 8,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      }
+    ],
+    "actions": [
+      [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "refill",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      [
+        "enter",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "precleanup_checkpoint",
+        "cleanup_pte",
+        "cleanup",
+        "final_checkpoint",
+        "case_done"
+      ],
+      [
+        "enter",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "precleanup_checkpoint",
+        "cleanup_pte",
+        "cleanup",
+        "refill",
+        "final_checkpoint",
+        "case_done"
+      ]
+    ],
+    "refills": [
+      {
+        "case": 1,
+        "halfwords": 2048
+      },
+      {
+        "case": 3,
+        "halfwords": 2048
+      }
+    ],
+    "last_cycle": 69564,
+    "alternate_protected_field": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "trapping_target_retirements": [],
+    "vector_data_evidence": "Pinned firmware full scalar oracle; RVFI CSV does not expose vector writes"
+  },
+  "alternate": {
+    "status": "NF2_CSV_ORACLE_PASS",
+    "cases": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "checkpoints": [
+      {
+        "case": 0,
+        "phase": 1,
+        "cycle": 4612,
+        "checks": 302
+      },
+      {
+        "case": 0,
+        "phase": 2,
+        "cycle": 10248,
+        "checks": 758
+      },
+      {
+        "case": 1,
+        "phase": 1,
+        "cycle": 14102,
+        "checks": 1059
+      },
+      {
+        "case": 1,
+        "phase": 2,
+        "cycle": 32042,
+        "checks": 1515
+      },
+      {
+        "case": 2,
+        "phase": 3,
+        "cycle": 32678,
+        "checks": 1545
+      },
+      {
+        "case": 2,
+        "phase": 2,
+        "cycle": 38024,
+        "checks": 1989
+      },
+      {
+        "case": 3,
+        "phase": 3,
+        "cycle": 38660,
+        "checks": 2019
+      },
+      {
+        "case": 3,
+        "phase": 2,
+        "cycle": 56298,
+        "checks": 2463
+      }
+    ],
+    "checks": 3565,
+    "traps": [
+      {
+        "case": 0,
+        "cycle": 912,
+        "values": {
+          "0": 13,
+          "1": 2147488120,
+          "2": 1073745924,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 8,
+          "7": 2,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "case": 0,
+        "cycle": 4668,
+        "values": {
+          "0": 9,
+          "1": 2147488292,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 8,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "case": 1,
+        "cycle": 10378,
+        "values": {
+          "0": 15,
+          "1": 2147488128,
+          "2": 1073745930,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 8,
+          "7": 5,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "case": 1,
+        "cycle": 26462,
+        "values": {
+          "0": 9,
+          "1": 2147488292,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 8,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "case": 2,
+        "cycle": 32210,
+        "values": {
+          "0": 9,
+          "1": 2147488292,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 8,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "case": 3,
+        "cycle": 38192,
+        "values": {
+          "0": 9,
+          "1": 2147488292,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 8,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      }
+    ],
+    "actions": [
+      [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "refill",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      [
+        "enter",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "precleanup_checkpoint",
+        "cleanup_pte",
+        "cleanup",
+        "final_checkpoint",
+        "case_done"
+      ],
+      [
+        "enter",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "precleanup_checkpoint",
+        "cleanup_pte",
+        "cleanup",
+        "refill",
+        "final_checkpoint",
+        "case_done"
+      ]
+    ],
+    "refills": [
+      {
+        "case": 1,
+        "halfwords": 2048
+      },
+      {
+        "case": 3,
+        "halfwords": 2048
+      }
+    ],
+    "last_cycle": 69540,
+    "alternate_protected_field": [
+      true,
+      true,
+      false,
+      false
+    ],
+    "trapping_target_retirements": [],
+    "vector_data_evidence": "Pinned firmware full scalar oracle; RVFI CSV does not expose vector writes"
+  },
+  "negative_count": 25,
+  "negatives": [
+    {
+      "name": "wrong_startup",
+      "error": "Firmware oracle mismatch case-1 check1: 0x1 != 0x5b"
+    },
+    {
+      "name": "wrong_prefix",
+      "error": "Firmware oracle mismatch case0 check101: 0x1 != 0x5b"
+    },
+    {
+      "name": "wrong_guard",
+      "error": "Firmware oracle mismatch case0 check281: 0x1 != 0x5b"
+    },
+    {
+      "name": "wrong_field1",
+      "error": "Firmware oracle mismatch case1 check801: 0x1 != 0x5b"
+    },
+    {
+      "name": "wrong_alloff_precleanup",
+      "error": "Firmware oracle mismatch case2 check1541: 0x1 != 0x5b"
+    },
+    {
+      "name": "wrong_fullmemory",
+      "error": "Firmware oracle mismatch case2 check1801: 0x1 != 0x5b"
+    },
+    {
+      "name": "wrong_alloff_load",
+      "error": "Firmware oracle mismatch case3 check2201: 0x1 != 0x5b"
+    },
+    {
+      "name": "wrong_CSR_restore",
+      "error": "Firmware oracle mismatch case3 check3567: 0x1 != 0x5b"
+    },
+    {
+      "name": "wrong_mask",
+      "error": "Mask bytes differ"
+    },
+    {
+      "name": "wrong_start2_record",
+      "error": "CSR reads disagree with stored record"
+    },
+    {
+      "name": "alloff_fake_pagefault",
+      "error": "CSR reads disagree with stored record"
+    },
+    {
+      "name": "alloff_second_record",
+      "error": "Unused second trap record changed"
+    },
+    {
+      "name": "alloff_ecall_mapped_leaf",
+      "error": "Exact trap record differs case2/0: [9, 2147488292, 0, 2048, 9223372036855300101, 8, 8, 0, 117, 5, 1, 123]"
+    },
+    {
+      "name": "wrong_refill_data",
+      "error": "Refill address/value/order"
+    },
+    {
+      "name": "completed_store_field1_poison",
+      "error": "Both-field prefix poison missing"
+    },
+    {
+      "name": "post_vstart",
+      "error": "Post-target CSR differs"
+    },
+    {
+      "name": "wrong_CTRL",
+      "error": "Wrong/nonzero CTRL completion"
+    },
+    {
+      "name": "missing_precleanup",
+      "error": "Premature/extra PTE repair"
+    },
+    {
+      "name": "missing_cleanup_sfence",
+      "error": "Case2 event order differs"
+    },
+    {
+      "name": "missing_target",
+      "error": "Case0 event order differs"
+    },
+    {
+      "name": "missing_refill_entry",
+      "error": "Case1 event order differs"
+    },
+    {
+      "name": "wrong_unmasked_opcode",
+      "error": "Original NF2 opcode changed"
+    },
+    {
+      "name": "duplicate_target",
+      "error": "Case0 event order differs"
+    },
+    {
+      "name": "no_CTRL",
+      "error": "Missing/duplicate CTRL completion"
+    },
+    {
+      "name": "missing_final_oracle",
+      "error": "Total firmware oracle count differs"
+    }
+  ],
+  "synthetic_rows": 34742,
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/segment_review/nf2_remaining4_01/test_csv.py": "65e1742cfba9a1b568bc3ad1d6fec3753ca06873740685c42d2650159c2283f4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/segment_review/nf2_remaining4_01/csv_check.py": "8b06c6db57c1722517d70817484e2f46abe730fae5b4245e86a85d115742b057",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/segment_review/nf2_remaining4_01/reference01/soc.symbols.json": "e31d48f882b96b16c8e3d9bcd846197fa790d491d33782a960fde625849b99ab",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/segment_review/nf2_remaining4_01/READY.json": "d427f9c9846e0c59d9374efb6fbae020df08c8f6a4472ce740e05ddf4306aa2f"
+  }
+}

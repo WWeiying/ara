@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "qbs_pairs": [
+    {
+      "format": "q2_K",
+      "qbs_run": "verification/out/q2k-4r-qbs-real-dut-20260923-01",
+      "rvv_run": "verification/out/q2k-4r-rvv-real-dut-20260923-01",
+      "qbs_app": "apps/llama_qwen25_q2k_decode_ffn_down_4r_qbs",
+      "rvv_app": "apps/llama_qwen25_q2k_decode_ffn_down_4r_rvv"
+    },
+    {
+      "format": "q3_K",
+      "qbs_run": "verification/out/qbs-q3-fire-pair-20260923-01",
+      "rvv_run": "verification/out/qbs-rvv-q3-fire-pair-20260923-01",
+      "qbs_app": "apps/llama_qwen25_q3k_decode_attn_q_qbs",
+      "rvv_app": "apps/llama_qwen25_q3k_decode_attn_q_rvv"
+    },
+    {
+      "format": "q4_K",
+      "qbs_run": "verification/out/q4k-qbs-pair-20260923-01",
+      "rvv_run": "verification/out/q4k-rvv-pair-20260923-01",
+      "qbs_app": "apps/llama_qwen25_shape_decode_n256_qbs",
+      "rvv_app": "apps/llama_qwen25_shape_decode_n256_rvv"
+    },
+    {
+      "format": "q4_0",
+      "qbs_run": "verification/out/q4_0-qbs-real-dut-20260923-01",
+      "rvv_run": "verification/out/q4_0-rvv-real-dut-20260923-01",
+      "qbs_app": "apps/llama_qwen25_q4_0_decode_attn_q_qbs",
+      "rvv_app": "apps/llama_qwen25_q4_0_decode_attn_q_rvv"
+    },
+    {
+      "format": "q5_K",
+      "qbs_run": "verification/out/qbs-q5-fire-pair-20260923-01",
+      "rvv_run": "verification/out/qbs-rvv-q5-fire-pair-20260923-01",
+      "qbs_app": "apps/llama_qwen25_q5k_decode_attn_q_qbs",
+      "rvv_app": "apps/llama_qwen25_q5k_decode_attn_q_rvv"
+    },
+    {
+      "format": "q5_0",
+      "qbs_run": "verification/out/q5_0-qbs-real-dut-20260923-01",
+      "rvv_run": "verification/out/q5_0-rvv-real-dut-20260923-01",
+      "qbs_app": "apps/llama_qwen25_q5_0_decode_attn_q_qbs",
+      "rvv_app": "apps/llama_qwen25_q5_0_decode_attn_q_rvv"
+    },
+    {
+      "format": "q6_K",
+      "qbs_run": "verification/out/q6-qbs-real-pair-20260923-01",
+      "rvv_run": "verification/out/q6-rvv-real-pair-20260923-01",
+      "qbs_app": "apps/llama_qwen25_q6k_decode_attn_q_qbs",
+      "rvv_app": "apps/llama_qwen25_q6k_decode_attn_q_rvv"
+    },
+    {
+      "format": "q8_0",
+      "qbs_run": "verification/out/qbs-q8-fire-pair-20260923-01",
+      "rvv_run": "verification/out/qbs-rvv-q8-fire-pair-20260923-01",
+      "qbs_app": "apps/llama_qwen25_q8_0_decode_attn_q_qbs",
+      "rvv_app": "apps/llama_qwen25_q8_0_decode_attn_q_rvv"
+    },
+    {
+      "format": "iq4_nl",
+      "qbs_run": "verification/out/iq4_nl-qbs-real-dut-20260923-01",
+      "rvv_run": "verification/out/iq4_nl-rvv-real-dut-20260923-01",
+      "qbs_app": "apps/llama_qwen25_iq4_nl_decode_attn_q_qbs",
+      "rvv_app": "apps/llama_qwen25_iq4_nl_decode_attn_q_rvv"
+    }
+  ],
+  "akv_pair": {
+    "rvv_run": "verification/out/akv-attention-rvv-fire-pair-20260923-01",
+    "akv_run": "verification/out/akv-attention-akv_v2-fire-pair-20260923-01",
+    "rvv_elf": "verification/out/akv-attention-pair-inputs-20260923-01/rvv.elf",
+    "akv_elf": "verification/out/akv-attention-pair-inputs-20260923-01/akv_v2.elf",
+    "rvv_asm": "verification/out/akv-attention-pair-inputs-20260923-01/rvv_data.S",
+    "akv_asm": "verification/out/akv-attention-pair-inputs-20260923-01/akv_v2_data.S"
+  }
+}

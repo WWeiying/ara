@@ -1,0 +1,500 @@
+{
+  "status": "HOST_SPIKE_PASS_NOT_DUT",
+  "trials": [
+    40,
+    41,
+    42,
+    43
+  ],
+  "checks": 12562,
+  "commits": 1005113,
+  "checkpoints": [
+    {
+      "trial": 40,
+      "phase": 1,
+      "commits": 148217,
+      "checks": 361,
+      "checked_bytes": 33328
+    },
+    {
+      "trial": 40,
+      "phase": 2,
+      "commits": 290834,
+      "checks": 3139,
+      "checked_bytes": 33320
+    },
+    {
+      "trial": 41,
+      "phase": 1,
+      "commits": 385416,
+      "checks": 3497,
+      "checked_bytes": 33328
+    },
+    {
+      "trial": 41,
+      "phase": 2,
+      "commits": 528033,
+      "checks": 6275,
+      "checked_bytes": 33320
+    },
+    {
+      "trial": 42,
+      "phase": 1,
+      "commits": 622643,
+      "checks": 6633,
+      "checked_bytes": 33328
+    },
+    {
+      "trial": 42,
+      "phase": 2,
+      "commits": 765260,
+      "checks": 9411,
+      "checked_bytes": 33320
+    },
+    {
+      "trial": 43,
+      "phase": 1,
+      "commits": 859842,
+      "checks": 9769,
+      "checked_bytes": 33328
+    },
+    {
+      "trial": 43,
+      "phase": 2,
+      "commits": 1002459,
+      "checks": 12547,
+      "checked_bytes": 33320
+    }
+  ],
+  "actions": {
+    "40": [
+      "target",
+      "fault_checkpoint",
+      "repair",
+      "retry",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    "41": [
+      "target",
+      "fault_checkpoint",
+      "repair",
+      "retry",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    "42": [
+      "target",
+      "fault_checkpoint",
+      "repair",
+      "retry",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    "43": [
+      "target",
+      "fault_checkpoint",
+      "repair",
+      "retry",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ]
+  },
+  "traps": [
+    [
+      "trap_load_page_fault",
+      2147489178
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147489092
+    ],
+    [
+      "trap_load_page_fault",
+      2147489178
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147489092
+    ],
+    [
+      "trap_load_page_fault",
+      2147489178
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147489092
+    ],
+    [
+      "trap_load_page_fault",
+      2147489178
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147489092
+    ]
+  ],
+  "target_events": [
+    {
+      "trial": 40,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073745812,
+          null
+        ],
+        [
+          1073745816,
+          null
+        ],
+        [
+          1073745820,
+          null
+        ],
+        [
+          1073745824,
+          null
+        ],
+        [
+          1073745828,
+          null
+        ],
+        [
+          1073745832,
+          null
+        ],
+        [
+          1073745836,
+          null
+        ],
+        [
+          1073745840,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 40,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745924,
+          null
+        ],
+        [
+          1073745928,
+          null
+        ],
+        [
+          1073745932,
+          null
+        ],
+        [
+          1073745936,
+          null
+        ],
+        [
+          1073745940,
+          null
+        ],
+        [
+          1073745944,
+          null
+        ],
+        [
+          1073745948,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 41,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073745796,
+          null
+        ],
+        [
+          1073745800,
+          null
+        ],
+        [
+          1073745804,
+          null
+        ],
+        [
+          1073745808,
+          null
+        ],
+        [
+          1073745812,
+          null
+        ],
+        [
+          1073745816,
+          null
+        ],
+        [
+          1073745820,
+          null
+        ],
+        [
+          1073745824,
+          null
+        ],
+        [
+          1073745904,
+          null
+        ],
+        [
+          1073745908,
+          null
+        ],
+        [
+          1073745912,
+          null
+        ],
+        [
+          1073745916,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 41,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073745904,
+          null
+        ],
+        [
+          1073745908,
+          null
+        ],
+        [
+          1073745912,
+          null
+        ],
+        [
+          1073745916,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745924,
+          null
+        ],
+        [
+          1073745928,
+          null
+        ],
+        [
+          1073745932,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 42,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073745788,
+          null
+        ],
+        [
+          1073745792,
+          null
+        ],
+        [
+          1073745796,
+          null
+        ],
+        [
+          1073745800,
+          null
+        ],
+        [
+          1073745804,
+          null
+        ],
+        [
+          1073745808,
+          null
+        ],
+        [
+          1073745812,
+          null
+        ],
+        [
+          1073745816,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 42,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745924,
+          null
+        ],
+        [
+          1073745928,
+          null
+        ],
+        [
+          1073745932,
+          null
+        ],
+        [
+          1073745936,
+          null
+        ],
+        [
+          1073745940,
+          null
+        ],
+        [
+          1073745944,
+          null
+        ],
+        [
+          1073745948,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 43,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073745772,
+          null
+        ],
+        [
+          1073745776,
+          null
+        ],
+        [
+          1073745780,
+          null
+        ],
+        [
+          1073745784,
+          null
+        ],
+        [
+          1073745788,
+          null
+        ],
+        [
+          1073745792,
+          null
+        ],
+        [
+          1073745796,
+          null
+        ],
+        [
+          1073745800,
+          null
+        ],
+        [
+          1073745904,
+          null
+        ],
+        [
+          1073745908,
+          null
+        ],
+        [
+          1073745912,
+          null
+        ],
+        [
+          1073745916,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 43,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073745904,
+          null
+        ],
+        [
+          1073745908,
+          null
+        ],
+        [
+          1073745912,
+          null
+        ],
+        [
+          1073745916,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745924,
+          null
+        ],
+        [
+          1073745928,
+          null
+        ],
+        [
+          1073745932,
+          null
+        ]
+      ]
+    }
+  ],
+  "case_checks": [
+    3136,
+    3136,
+    3136,
+    3136
+  ],
+  "VCS_launched": false,
+  "Linux_replay": false,
+  "elapsed_s": 37.63455669162795,
+  "elf_sha256": {
+    "soc": "b3c83a4ef39cf0dc6de6cbc2e2c9c4c4000d54482e12e589940a2f1ca3f0d788",
+    "spike": "3ea9d91a27e3d9e8a2137f5de4f45f668529f01fb654626b9c90762e1b7877bd"
+  }
+}

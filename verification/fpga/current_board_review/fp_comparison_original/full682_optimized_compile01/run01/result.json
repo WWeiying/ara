@@ -1,0 +1,27 @@
+{
+  "status": "REFERENCE_COST_ONLY_NOT_DUT_OR_FULL_DYNAMIC_AUDIT",
+  "calls": 682,
+  "result_bits": 349184,
+  "guards": 1364,
+  "flags_checks": 682,
+  "returned_vstart_checks": 682,
+  "helper_bytes_unchanged": true,
+  "extra_vector_instructions": false,
+  "source_and_oracle_unchanged": true,
+  "retired": 17793250,
+  "original_retired": 20260288,
+  "process": {
+    "returncode": 0,
+    "pid": 2027205,
+    "elapsed_s": 2.6226257802918553,
+    "timed_out": false
+  },
+  "pins_unchanged": true,
+  "bss_end": "0x800071b8",
+  "stack_top": "0x800ffff0",
+  "stack_reserve": 65536,
+  "calibration": "M7 full e64 O2; different vector workload, projection only",
+  "nominal_s": 29637.205857418572,
+  "margin20_s": 35564.64702890229,
+  "within_budget_projection": false
+}

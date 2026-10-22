@@ -1,0 +1,468 @@
+{
+  "status": "HOST_SPIKE_PASS_NOT_DUT",
+  "trials": [
+    120,
+    121,
+    122,
+    123
+  ],
+  "checks": 12562,
+  "commits": 1033931,
+  "checkpoints": [
+    {
+      "trial": 120,
+      "phase": 1,
+      "commits": 148227,
+      "checks": 361,
+      "checked_bytes": 33328
+    },
+    {
+      "trial": 120,
+      "phase": 2,
+      "commits": 298027,
+      "checks": 3139,
+      "checked_bytes": 33320
+    },
+    {
+      "trial": 121,
+      "phase": 1,
+      "commits": 392647,
+      "checks": 3497,
+      "checked_bytes": 33328
+    },
+    {
+      "trial": 121,
+      "phase": 2,
+      "commits": 542447,
+      "checks": 6275,
+      "checked_bytes": 33320
+    },
+    {
+      "trial": 122,
+      "phase": 1,
+      "commits": 637067,
+      "checks": 6633,
+      "checked_bytes": 33328
+    },
+    {
+      "trial": 122,
+      "phase": 2,
+      "commits": 786867,
+      "checks": 9411,
+      "checked_bytes": 33320
+    },
+    {
+      "trial": 123,
+      "phase": 1,
+      "commits": 881487,
+      "checks": 9769,
+      "checked_bytes": 33328
+    },
+    {
+      "trial": 123,
+      "phase": 2,
+      "commits": 1031287,
+      "checks": 12547,
+      "checked_bytes": 33320
+    }
+  ],
+  "actions": {
+    "120": [
+      "target",
+      "fault_checkpoint",
+      "repair",
+      "retry",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    "121": [
+      "target",
+      "fault_checkpoint",
+      "repair",
+      "retry",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    "122": [
+      "target",
+      "fault_checkpoint",
+      "repair",
+      "retry",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    "123": [
+      "target",
+      "fault_checkpoint",
+      "repair",
+      "retry",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ]
+  },
+  "traps": [
+    [
+      "trap_load_page_fault",
+      2147489178
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147489092
+    ],
+    [
+      "trap_load_page_fault",
+      2147489178
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147489092
+    ],
+    [
+      "trap_load_page_fault",
+      2147489178
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147489092
+    ],
+    [
+      "trap_load_page_fault",
+      2147489178
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147489092
+    ]
+  ],
+  "target_events": [
+    {
+      "trial": 120,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073745884,
+          null
+        ],
+        [
+          1073745888,
+          null
+        ],
+        [
+          1073745892,
+          null
+        ],
+        [
+          1073745896,
+          null
+        ],
+        [
+          1073745900,
+          null
+        ],
+        [
+          1073745904,
+          null
+        ],
+        [
+          1073745908,
+          null
+        ],
+        [
+          1073745912,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 120,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073745992,
+          null
+        ],
+        [
+          1073745996,
+          null
+        ],
+        [
+          1073746000,
+          null
+        ],
+        [
+          1073746004,
+          null
+        ],
+        [
+          1073746008,
+          null
+        ],
+        [
+          1073746012,
+          null
+        ],
+        [
+          1073746016,
+          null
+        ],
+        [
+          1073746020,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 121,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073745868,
+          null
+        ],
+        [
+          1073745872,
+          null
+        ],
+        [
+          1073745876,
+          null
+        ],
+        [
+          1073745880,
+          null
+        ],
+        [
+          1073745884,
+          null
+        ],
+        [
+          1073745888,
+          null
+        ],
+        [
+          1073745892,
+          null
+        ],
+        [
+          1073745896,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 121,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073745976,
+          null
+        ],
+        [
+          1073745980,
+          null
+        ],
+        [
+          1073745984,
+          null
+        ],
+        [
+          1073745988,
+          null
+        ],
+        [
+          1073745992,
+          null
+        ],
+        [
+          1073745996,
+          null
+        ],
+        [
+          1073746000,
+          null
+        ],
+        [
+          1073746004,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 122,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073745876,
+          null
+        ],
+        [
+          1073745880,
+          null
+        ],
+        [
+          1073745884,
+          null
+        ],
+        [
+          1073745888,
+          null
+        ],
+        [
+          1073745892,
+          null
+        ],
+        [
+          1073745896,
+          null
+        ],
+        [
+          1073745900,
+          null
+        ],
+        [
+          1073745904,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 122,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073746008,
+          null
+        ],
+        [
+          1073746012,
+          null
+        ],
+        [
+          1073746016,
+          null
+        ],
+        [
+          1073746020,
+          null
+        ],
+        [
+          1073746024,
+          null
+        ],
+        [
+          1073746028,
+          null
+        ],
+        [
+          1073746032,
+          null
+        ],
+        [
+          1073746036,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 123,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073745860,
+          null
+        ],
+        [
+          1073745864,
+          null
+        ],
+        [
+          1073745868,
+          null
+        ],
+        [
+          1073745872,
+          null
+        ],
+        [
+          1073745876,
+          null
+        ],
+        [
+          1073745880,
+          null
+        ],
+        [
+          1073745884,
+          null
+        ],
+        [
+          1073745888,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 123,
+      "pc": "0x8000159a",
+      "insn": "0xe9c56c07",
+      "access": [
+        [
+          1073745992,
+          null
+        ],
+        [
+          1073745996,
+          null
+        ],
+        [
+          1073746000,
+          null
+        ],
+        [
+          1073746004,
+          null
+        ],
+        [
+          1073746008,
+          null
+        ],
+        [
+          1073746012,
+          null
+        ],
+        [
+          1073746016,
+          null
+        ],
+        [
+          1073746020,
+          null
+        ]
+      ]
+    }
+  ],
+  "case_checks": [
+    3136,
+    3136,
+    3136,
+    3136
+  ],
+  "VCS_launched": false,
+  "Linux_replay": false,
+  "elapsed_s": 42.26020490704104,
+  "elf_sha256": {
+    "soc": "e87e6de1675bfb9fe1d2a3985e6349c769a07a4f59dc4da4094a488b25dfdef7",
+    "spike": "04f21d354ea8ab3fb73ab016153a7e920284683ccc472c41a142cb56a01e7f18"
+  }
+}

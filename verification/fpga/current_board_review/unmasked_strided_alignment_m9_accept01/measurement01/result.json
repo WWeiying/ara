@@ -1,0 +1,386 @@
+{
+  "state": "SEVEN_M9_CASES_PASS_NORMAL_CYCLES_IDENTICAL_NOT_SOC",
+  "pid": 2137982,
+  "versions": [
+    {
+      "version": "candidate",
+      "compile": {
+        "returncode": 0,
+        "elapsed_s": 29.285291341599077,
+        "timeout": false
+      },
+      "run": {
+        "returncode": 0,
+        "elapsed_s": 10.692814128939062,
+        "timeout": false
+      },
+      "cases": [
+        {
+          "case": 0,
+          "ar": [
+            {
+              "cycle": 9,
+              "addr": "0000000080010000"
+            },
+            {
+              "cycle": 10,
+              "addr": "0000000080010008"
+            }
+          ],
+          "r_cycles": [
+            11,
+            12
+          ],
+          "pop_cycles": [
+            11,
+            12
+          ],
+          "ack_cycles": [
+            10
+          ],
+          "response_cycles": [
+            10
+          ],
+          "final_grant_cycles": [
+            14
+          ],
+          "done_cycles": [
+            15
+          ],
+          "first_idle_after_done": 16,
+          "written_bytes": 16,
+          "exception": false
+        },
+        {
+          "case": 1,
+          "ar": [
+            {
+              "cycle": 9,
+              "addr": "0000000080010000"
+            }
+          ],
+          "r_cycles": [
+            11
+          ],
+          "pop_cycles": [
+            11,
+            16
+          ],
+          "ack_cycles": [
+            11
+          ],
+          "response_cycles": [
+            17
+          ],
+          "final_grant_cycles": [
+            15
+          ],
+          "done_cycles": [
+            17
+          ],
+          "first_idle_after_done": 18,
+          "written_bytes": 8,
+          "exception": true
+        },
+        {
+          "case": 2,
+          "ar": [
+            {
+              "cycle": 9,
+              "addr": "0000000080010000"
+            }
+          ],
+          "r_cycles": [
+            11
+          ],
+          "pop_cycles": [
+            11
+          ],
+          "ack_cycles": [
+            9
+          ],
+          "response_cycles": [
+            9
+          ],
+          "final_grant_cycles": [
+            13
+          ],
+          "done_cycles": [
+            14
+          ],
+          "first_idle_after_done": 15,
+          "written_bytes": 8,
+          "exception": false
+        },
+        {
+          "case": 3,
+          "ar": [],
+          "r_cycles": [],
+          "pop_cycles": [],
+          "ack_cycles": [
+            8
+          ],
+          "response_cycles": [
+            12
+          ],
+          "final_grant_cycles": [],
+          "done_cycles": [
+            12
+          ],
+          "first_idle_after_done": 13,
+          "written_bytes": 0,
+          "exception": true
+        },
+        {
+          "case": 4,
+          "ar": [
+            {
+              "cycle": 9,
+              "addr": "0000000080010000"
+            }
+          ],
+          "r_cycles": [
+            11
+          ],
+          "pop_cycles": [
+            11
+          ],
+          "ack_cycles": [
+            9
+          ],
+          "response_cycles": [
+            9
+          ],
+          "final_grant_cycles": [
+            13
+          ],
+          "done_cycles": [
+            14
+          ],
+          "first_idle_after_done": 15,
+          "written_bytes": 16,
+          "exception": false
+        },
+        {
+          "case": 5,
+          "ar": [
+            {
+              "cycle": 9,
+              "addr": "0000000080010000"
+            },
+            {
+              "cycle": 10,
+              "addr": "0000000080010000"
+            }
+          ],
+          "r_cycles": [
+            11,
+            12
+          ],
+          "pop_cycles": [
+            11,
+            12
+          ],
+          "ack_cycles": [
+            10
+          ],
+          "response_cycles": [
+            10
+          ],
+          "final_grant_cycles": [
+            14
+          ],
+          "done_cycles": [
+            15
+          ],
+          "first_idle_after_done": 16,
+          "written_bytes": 16,
+          "exception": false
+        },
+        {
+          "case": 6,
+          "ar": [
+            {
+              "cycle": 9,
+              "addr": "0000000080010008"
+            },
+            {
+              "cycle": 10,
+              "addr": "0000000080010000"
+            }
+          ],
+          "r_cycles": [
+            11,
+            12
+          ],
+          "pop_cycles": [
+            11,
+            12
+          ],
+          "ack_cycles": [
+            10
+          ],
+          "response_cycles": [
+            10
+          ],
+          "final_grant_cycles": [
+            14
+          ],
+          "done_cycles": [
+            15
+          ],
+          "first_idle_after_done": 16,
+          "written_bytes": 16,
+          "exception": false
+        }
+      ],
+      "receipts": [
+        "CASE_PASS case=0 stride=8 start=0 fault=0 AR=2 R=2 normal_pop=2 marker=0 bytes=16 first_wb=14 last_wb=14 done=15 idle=1",
+        "CASE_PASS case=1 stride=4 start=0 fault=1 AR=1 R=1 normal_pop=1 marker=1 bytes=8 first_wb=15 last_wb=15 done=17 idle=1",
+        "CASE_PASS case=2 stride=4 start=1 fault=0 AR=1 R=1 normal_pop=1 marker=0 bytes=8 first_wb=13 last_wb=13 done=14 idle=1",
+        "CASE_PASS case=3 stride=4 start=1 fault=1 AR=0 R=0 normal_pop=0 marker=0 bytes=0 first_wb=-1 last_wb=-1 done=12 idle=1",
+        "CASE_PASS case=4 stride=8 start=0 fault=0 AR=1 R=1 normal_pop=1 marker=0 bytes=16 first_wb=13 last_wb=13 done=14 idle=1",
+        "CASE_PASS case=5 stride=0 start=0 fault=0 AR=2 R=2 normal_pop=2 marker=0 bytes=16 first_wb=14 last_wb=14 done=15 idle=1",
+        "CASE_PASS case=6 stride=-8 start=0 fault=0 AR=2 R=2 normal_pop=2 marker=0 bytes=16 first_wb=14 last_wb=14 done=15 idle=1"
+      ],
+      "csv_rows": 1757,
+      "cycles_sha256": "accb9536879cc1d30dce3a5e0ac261f951416d29604ea062d75144059f5ace8e",
+      "context_sha256": "21d9503179da770350d7c6da26159fdd25f1f78861bc92c9339edbd042d93985"
+    },
+    {
+      "version": "m8_normals",
+      "compile": {
+        "returncode": 0,
+        "elapsed_s": 29.134717538952827,
+        "timeout": false
+      },
+      "run": {
+        "returncode": 0,
+        "elapsed_s": 10.642233625985682,
+        "timeout": false
+      },
+      "cases": [
+        {
+          "case": 4,
+          "ar": [
+            {
+              "cycle": 9,
+              "addr": "0000000080010000"
+            }
+          ],
+          "r_cycles": [
+            11
+          ],
+          "pop_cycles": [
+            11
+          ],
+          "ack_cycles": [
+            9
+          ],
+          "response_cycles": [
+            9
+          ],
+          "final_grant_cycles": [
+            13
+          ],
+          "done_cycles": [
+            14
+          ],
+          "first_idle_after_done": 15,
+          "written_bytes": 16,
+          "exception": false
+        },
+        {
+          "case": 5,
+          "ar": [
+            {
+              "cycle": 9,
+              "addr": "0000000080010000"
+            },
+            {
+              "cycle": 10,
+              "addr": "0000000080010000"
+            }
+          ],
+          "r_cycles": [
+            11,
+            12
+          ],
+          "pop_cycles": [
+            11,
+            12
+          ],
+          "ack_cycles": [
+            10
+          ],
+          "response_cycles": [
+            10
+          ],
+          "final_grant_cycles": [
+            14
+          ],
+          "done_cycles": [
+            15
+          ],
+          "first_idle_after_done": 16,
+          "written_bytes": 16,
+          "exception": false
+        },
+        {
+          "case": 6,
+          "ar": [
+            {
+              "cycle": 9,
+              "addr": "0000000080010008"
+            },
+            {
+              "cycle": 10,
+              "addr": "0000000080010000"
+            }
+          ],
+          "r_cycles": [
+            11,
+            12
+          ],
+          "pop_cycles": [
+            11,
+            12
+          ],
+          "ack_cycles": [
+            10
+          ],
+          "response_cycles": [
+            10
+          ],
+          "final_grant_cycles": [
+            14
+          ],
+          "done_cycles": [
+            15
+          ],
+          "first_idle_after_done": 16,
+          "written_bytes": 16,
+          "exception": false
+        }
+      ],
+      "receipts": [
+        "CASE_PASS case=4 stride=8 start=0 fault=0 AR=1 R=1 normal_pop=1 marker=0 bytes=16 first_wb=13 last_wb=13 done=14 idle=1",
+        "CASE_PASS case=5 stride=0 start=0 fault=0 AR=2 R=2 normal_pop=2 marker=0 bytes=16 first_wb=14 last_wb=14 done=15 idle=1",
+        "CASE_PASS case=6 stride=-8 start=0 fault=0 AR=2 R=2 normal_pop=2 marker=0 bytes=16 first_wb=14 last_wb=14 done=15 idle=1"
+      ],
+      "csv_rows": 753,
+      "cycles_sha256": "61bbf9d4d2a6d5374205175504e36a25dccd9dbcadd3b563b53898a04cc93eb7",
+      "context_sha256": "ba8e99aed5ddf145fb60c2343ab0b01ab64b966426aa3678edbb00c28fd0513e"
+    }
+  ],
+  "scope": "Local LOAD-only; translation disabled; not SoC",
+  "nr_lanes": 4,
+  "axi_data_width": 128,
+  "per_case_cycles": 250,
+  "startup_batch_s": 60,
+  "pins_unchanged": true,
+  "only_changed_rtl": "hardware/src/vlsu/addrgen.sv",
+  "addrgen_sha256": "3736b64136ebbf5629dadb0037457279f9bb91307356c468c9677d321c8c51c5",
+  "original_stride8_full_cycles_identical": true,
+  "three_new_controls_full_cycles_identical": true
+}

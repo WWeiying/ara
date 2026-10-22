@@ -1,0 +1,505 @@
+{
+  "status": "PASS_HOST_ONLY_NOT_DUT",
+  "failures": 0,
+  "tests": 37,
+  "cases": [
+    {
+      "name": "e8_full_synthetic_oracle",
+      "positive": true,
+      "rows": 112935
+    },
+    {
+      "name": "e8_active_or_typed_oldvd",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Phase1 byte0x80007111 expected0b actual0",
+        "row": 112830,
+        "checks": 5463,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e8_guard0",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Read differs from actual prior bytes",
+        "row": 96122,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e8_guard9",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Read differs from actual prior bytes",
+        "row": 96132,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e8_physical_tail129",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Read differs from actual prior bytes",
+        "row": 96372,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e8_page_neighbor",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Read differs from actual prior bytes",
+        "row": 96088,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e8_returned_VL",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Business VL, not helper-restored VL",
+        "row": 90889,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper"
+        ]
+      }
+    },
+    {
+      "name": "e8_returned_vstart",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Immediate returned vstart",
+        "row": 90890,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper"
+        ]
+      }
+    },
+    {
+      "name": "e8_store_restore_VL",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Original VL8 setup/restore",
+        "row": 90893,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper"
+        ]
+      }
+    },
+    {
+      "name": "e8_wrong_target_encoding",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Actual SoC PC/code mismatch",
+        "row": 90888,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper"
+        ]
+      }
+    },
+    {
+      "name": "e8_missing_full_read",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Full ordered pages/output/guards/mask scalar reads",
+        "row": 112829,
+        "checks": 5463,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e8_missing_checkpoint",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Completion requires all original CSR save/restore reads",
+        "row": 112930,
+        "checks": 5477,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e8_unused_internal",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Unused helper/default trap/mismatch PC",
+        "row": 112830,
+        "checks": 5463,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e8_duplicate_op_internal",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Exactly one original11 window",
+        "row": 112830,
+        "checks": 5463,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e8_missing_initialization",
+      "rejected": true
+    },
+    {
+      "name": "e8_undefined5to8_arbitrary_accepted",
+      "positive": true
+    },
+    {
+      "name": "e64_full_synthetic_oracle",
+      "positive": true,
+      "rows": 115923
+    },
+    {
+      "name": "e64_active_or_typed_oldvd",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Phase1 byte0x80007118 expected5b actual0",
+        "row": 115818,
+        "checks": 5467,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e64_guard0",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Read differs from actual prior bytes",
+        "row": 99078,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e64_guard9",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Read differs from actual prior bytes",
+        "row": 99096,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e64_physical_tail129",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Read differs from actual prior bytes",
+        "row": 99336,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e64_page_neighbor",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Read differs from actual prior bytes",
+        "row": 99044,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e64_returned_VL",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Business VL, not helper-restored VL",
+        "row": 93845,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper"
+        ]
+      }
+    },
+    {
+      "name": "e64_returned_vstart",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Immediate returned vstart",
+        "row": 93846,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper"
+        ]
+      }
+    },
+    {
+      "name": "e64_store_restore_VL",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Original VL8 setup/restore",
+        "row": 93849,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper"
+        ]
+      }
+    },
+    {
+      "name": "e64_wrong_target_encoding",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Actual SoC PC/code mismatch",
+        "row": 93844,
+        "checks": 2726,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper"
+        ]
+      }
+    },
+    {
+      "name": "e64_missing_full_read",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Full ordered pages/output/guards/mask scalar reads",
+        "row": 115817,
+        "checks": 5467,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e64_missing_checkpoint",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Completion requires all original CSR save/restore reads",
+        "row": 115918,
+        "checks": 5481,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e64_unused_internal",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Unused helper/default trap/mismatch PC",
+        "row": 115818,
+        "checks": 5467,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e64_duplicate_op_internal",
+      "rejected": true,
+      "diagnostic": {
+        "status": "REJECTED",
+        "error": "Exactly one original11 window",
+        "row": 115818,
+        "checks": 5467,
+        "actions": [
+          "checkpoint0",
+          "enter_s",
+          "helper",
+          "younger",
+          "handler",
+          "return_m"
+        ]
+      }
+    },
+    {
+      "name": "e64_missing_initialization",
+      "rejected": true
+    },
+    {
+      "name": "e64_repeated_byte_oldvd_rejected",
+      "rejected": true
+    },
+    {
+      "name": "missing_oracle",
+      "rejected": true
+    },
+    {
+      "name": "partial_original_failure_veto",
+      "rejected": true
+    },
+    {
+      "name": "wrong_historical_name",
+      "rejected": true
+    },
+    {
+      "name": "wrong_historical_name",
+      "rejected": true
+    },
+    {
+      "name": "checker_throw_durable_monitor_child0_sticky_abort",
+      "positive": true
+    }
+  ],
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m6_plan01/test_host.py": "747c77a1a09f724d236445e9778237c1e9270ba09e04a49d9cdbe76a9918985b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m6_plan01/checker.py": "9b3df364af373c1c9f0084f5a70abfd7a6957e96dbdeac97500b8fc2b701a2bc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m6_plan01/csv_check.py": "e94de5a4122d4301c34378f56013aef3da0e253428c9e57b109a6422455c95af",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m6_plan01/replay.py": "05c137a2bc2d9c2734d216c51479fe0fbe7204dad19ddfca75a407ed18ac6296",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_original_two_singles01/READY.json": "502c78d6d3466258f3452d28738c155eaa6c4701029f6a70ab677b2b58fa6f7d"
+  },
+  "synthetic_RVFI_not_measured_DUT": true
+}

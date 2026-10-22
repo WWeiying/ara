@@ -1,0 +1,36 @@
+{
+  "scope": "Real AddrGen/VSTU/MASKU/sequencer; modeled MMU and lane predicate source; not Linux/SoC",
+  "pid": 1882714,
+  "cases": [
+    {
+      "vl": 8,
+      "returncode": 0,
+      "elapsed_s": 10.640910281799734,
+      "expected_marker": "CONTROL_COMPLETED_GLOBAL_IDLE",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=8 accepted=1 mmu=1 ack=1 descriptor=1 st_done=1 mask_done=1 response=1 mask_accepts=2 global_idle=1 mask_commit=0 stable_rows=21 aw=0 w=0 mask_pops=1 st_done_cycle=12 last_mask_cycle=7"
+      ]
+    },
+    {
+      "vl": 9,
+      "returncode": 0,
+      "elapsed_s": 10.642035824246705,
+      "expected_marker": "CANDIDATE_REPRODUCED_NOT_ARCH_PASS",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=9 accepted=1 mmu=1 ack=1 descriptor=1 st_done=1 mask_done=0 response=1 mask_accepts=2 global_idle=0 mask_commit=1 stable_rows=21 aw=0 w=0 mask_pops=1 st_done_cycle=12 last_mask_cycle=7"
+      ]
+    }
+  ],
+  "state": "DISCRIMINATOR_COMPLETE_NOT_ARCH_PASS",
+  "compile_returncode": 0,
+  "compile_seconds": 29.235822997055948,
+  "pins_unchanged": true,
+  "old_vstu_unchanged": true,
+  "RTL_edits": false,
+  "host_budget_per_compile_or_case_s": 60,
+  "rtl_watchdog_cycles": 200,
+  "measured_result_cycle": 100,
+  "no_internal_state_injection": true
+}

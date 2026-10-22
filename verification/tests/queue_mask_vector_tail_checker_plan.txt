@@ -1,0 +1,77 @@
+QUEUE MASK MATRIX - TERMINAL VECTOR CHECKER STATIC DESIGN ONLY
+
+Bound software: queue-mask-source-lifetime-tail-preflight-738-agent-20261006-01.
+Seal:7b5cae18f99f755a4a4488e4aeb9859d05f0d937cd5f489c4ba0fc89f29fa9b4.
+ELF:93649e806ef6d39d79cbd6ff0e457ef7a5a59bce699e5a81ce63324e16a03209.
+No implementation execution, DUT launch, qualification or admission here.
+This document does not change any prepared dependency or frozen source.
+
+Scope: ONLY eight exact sealed qv_pair_N+4 VMSLTU scalar instructions,
+unmasked, vd8, vs2=24, vstart0, VL=VLMAX, EEW8/16/32/64, LMUL1/2.
+All other architectural instructions retain normal strict differential gates.
+Official policy: https://docs.riscv.org/reference/isa/v20260120/unpriv/v-st-ext.html
+Section30.1.3.4.3: mask tails are agnostic irrespective of vta. A tail bit
+may retain old or become1, independently. VL already equals VLMAX, so the
+extra calculated-VLMAX permission introduces no additional tail positions.
+This compare is NOT a mask-logical instruction with extended-tail calculation.
+
+Reuse frozen vector_commit primitives: _parse_vector_trace,
+_parse_architecture_mapping, _map_architecture_retires, _map_spike_commits,
+_architectural_bytes and _deshuffle_byte. Do not modify the generic comparator.
+Bind reference by dynamic arch_seq AND exact PC/opcode; never by reused vid alone.
+Preserve request/response/alloc/done completeness and precise terminal boundary.
+Native geometry must be4 lanes/VLEN1024, known active byte enables, correct
+producer/context. Every accepted write is audited, not only final signature.
+
+First prove both initial loads per cell against independent seed and Spike.
+This establishes known pre-v8/v9 state, not an assumption from final dumps.
+DIV v16/v17 must exactly use the ORIGINAL source, despite later v8 overwrite.
+For each compare, initialize effective DUT v8 from that proven pre-state,
+then apply all accepted known writes in native cycle/row order. Missing writes
+are permissible only where preserving the prior bit gives the required result;
+an absent write for any changed active bit must fail. Do not demand a write
+where the correct result equals the pre-state.
+
+Let A=(1<<VL)-1 and T=((1<<1024)-1)^A. G is independently calculated active
+unsigned comparison. O is proven old DUT v8, D is effective post-instruction v8.
+Require ((D^G)&A)==0 and (O&~D&T)==0.
+The second predicate permits old0->0/1 and requires old1->1. It is NOT an
+arbitrary don't-care mask, and does NOT require equality with Spike tail bits.
+No bit may be X/Z on an accepted write: unknown is qualification HOLD, not
+automatically a confirmed RTL functional defect. All observed tail writes
+are checked; unwritten tails retain old. No whole-vd skipping is allowed.
+
+v9 is NOT a mask destination even under LMUL2. Require its logical state
+remain exactly the independently verified load value. Any accepted v9 write
+must be a proved identity write; corruption or unknown data fails the gate.
+Audit every other written register as well, rejecting unclassified effects.
+Whole v9 readback and all source/division/memory guards remain exact.
+
+Audit 32 primary architectural vector writers (16 loads,8 DIV,8 compare).
+Do NOT assume these are every native writer: store/layout internal transport
+can generate additional tagged VRF writes without a Spike destination write.
+Each such activity must be classified from frozen source/trace metadata and
+proved identity in logical coordinates against the tracked DUT state. A v8
+tail choice made by the compare must survive subsequent identity transport;
+do not replace it with Spike's choice. Unclassified transport is HOLD.
+Keep physical-layout state consistent across EEW changes; do not overwrite
+logical state using a raw physical-byte comparison or guessed EEW mapping.
+
+Report720 active bits strictly checked,7472 tail positions checked by allowed
+set (written/retained separately),v9 preservation, per-instruction PCs/arch_seqs,
+all native known-write events, extra transport audits and zero missing active
+changes. Generic comparator's skipped_unknown_bytes is NOT a qualification
+substitute: it intentionally skips agnostic tails instead of proving old/1.
+
+Other full gates:96979 terminal-prefix instructions,64700 scalar writes,
+21387 reference memory accesses,6936 self-checks,6912 strictly defined MEMORY
+snapshot bytes,24 CSR values,zero traps, complete backend/protocol lifecycle,
+OS receipt/budget, pre/post pins and latest-population raw delta. Final memory
+signature alone is insufficient. cond665 must be measured on all4 lane scopes.
+
+Required negatives before collector execution: flip EACH active bit; clear
+a tail old1; preserve old0/set old0->1/mix tail policies positive; unknown
+accepted byte; missing changed active write; identity no-write positive;
+v9 corruption; unexpected register write; wrong PC/arch_seq/producer/EEW;
+uncompleted request; unclassified transport; identity transport incorrectly
+normalizing actual tail to Spike. Tail snapshot differences alone are not bugs.

@@ -1,0 +1,72 @@
+READ-ONLY DVE TOGGLE COUNT REVIEW
+
+Conclusion: installed Show Ratio UI/API exists, but a working official Toggle
+Covered/Total getter is NOT established by the existing artifacts. No EDA was
+started for this review. No percentage or serialized-bit denominator was
+inferred. The report797 candidate and all existing frozen files were untouched.
+
+Current796 evidence:
+  verification/out/current-population796-alua137-ptw156-agent-20261008-01/
+    raw.csv
+    modules_raw.csv
+    modules_applied.csv
+    modules_reloaded.csv
+  These headers contain Score, Line, Toggle, FSM, Condition, Branch, but no
+  Covered/Total fields. Toggle cells contain percentages. The qualification
+  explicitly retains official_denominator_verified=false.
+
+Installed interface evidence:
+  /home/wangwy/software/synopsys/install/vcs/V-2023.12-SP1/gui/dve/auxx/gui/dve/preferencesCovMainMenu.tcl
+  SHA256 8f9d3c1c358fdb534b009ea27933af523a80c04a202e7a53e6120932c5e4a30a
+  Lines 238-247: Show Ratio is enabled for current CovDetail/CoverageTable view.
+  Lines 269-296: menu Show Ratio calls gui_cov_show_value -switch true/false,
+                synchronizes TOGGLE::COVSHOWVALUE and showvalue preference.
+  Lines 341-350: Compute Group By Ratio refers to covergroups, not an official
+                Toggle bin-count definition; do not use it as Toggle evidence.
+
+Existing prepare-only helper:
+  verification/coverage/native_toggle_ratio_recovery.tcl
+  SHA256 f7a5c72868567439879c70bc58d269a0670dd652bfd93cef096462aed0d42eda
+  Binds scope token, unique rooted row/name/path and actual Toggle column label;
+  captures the displayed raw text and restores percentage/hierarchy display.
+  Its host mock 37 / 58 is synthetic, not an observed native count.
+  The helper's existence does not demonstrate a functioning count getter.
+
+Actual historical counterevidence (763, not 796):
+  verification/out/native-toggle-ratio763-terminal-review-agent-20261007-01.json
+  status SHORT_NATIVE_RATIO_DIAGNOSTIC_HOLD_NO_COUNTS_NO_AUTOMATIC_RETRY
+  Observed root Toggle text: 63.61%; integer_fraction_observed=false.
+  Conclusion records that Show Ratio was invoked, but gui_list_get text still
+  returned percentages; native_covered/native_total are null. The old timeout
+  is preserved, not retried by this review.
+  verification/out/native-toggle-ratio763-agent-20261007-01/ratios_raw.csv
+  verification/out/native-toggle-ratio763-agent-20261007-01/ratios_applied.csv
+  Both capture NativeRawText as percentages, not integer ratios.
+  verification/out/native-toggle-ratio763-focus-static-review-agent-20261007-01.json
+  Records a CURRENT-VIEW hypothesis, not a demonstrated root cause: the ratio
+  switch may target another current view, or text reading may remain percent.
+
+Feasible next acquisition path, conditional on a separately authorized session:
+  Use the next authorized combined report session, not a separate new EDA run
+  merely for these counts. Preserve frozen scripts; any hook is a separately
+  reviewed successor. At the actual raw and applied/reloaded stages:
+  1. Bind the same population, exact EL, full/cumulative scope, and scoring mode.
+  2. Activate CoverageTable through documented UI/API and assert
+     gui_get_current_view / gui_enable_cov_show_values before switching display.
+     Native GUI View -> Show Ratio provides the installed UI path. Automated
+     activation syntax and the native text/count getter still need documentation
+     or actual existing-session observation; do not guess a focus API.
+  3. Read the native Toggle ratio/count display with actual label and scope
+     identity checks, preserving its raw text and complete view provenance.
+     Reject percentages, NA, ambiguous rows, and synthetic/mocked counts.
+  4. Establish documented Covered/coverable-Total semantics, then restore the
+     percentage display/hierarchy. Do not change scoring, grouping, or EL.
+  5. Require raw/reset/final counts to agree and applied/reloaded counts to agree;
+     validate every scope of interest separately. Stage percentages are only
+     cross-checks, never a source from which to reconstruct integer counts.
+
+Until native C/T are measured and their semantics verified, the exact80 budget
+is HOLD. For fixed verified official Total T and Covered C, the additional
+covered count required is max(0, ceil(4*T/5)-C). Raw and waived populations
+require separate C/T measurements; a new EL may change T. Serialized Toggle
+positions or waiver direction counts must not be substituted for T or C.

@@ -1,0 +1,125 @@
+{
+  "status": "REFERENCE_CHECKER_PASS_NOT_DUT",
+  "commits": 858376,
+  "firmware_commits": 858371,
+  "scalar_checks": 17275,
+  "checkpoints": [
+    {
+      "phase": 0,
+      "bytes": 23244,
+      "commit": 160125
+    },
+    {
+      "phase": 1,
+      "bytes": 23236,
+      "commit": 272235
+    },
+    {
+      "phase": 2,
+      "bytes": 23236,
+      "commit": 563294
+    },
+    {
+      "phase": 3,
+      "bytes": 23228,
+      "commit": 850613
+    }
+  ],
+  "actions": [
+    "checkpoint0",
+    "target",
+    "prefix_read",
+    "checkpoint1",
+    "repair_sfence",
+    "refill",
+    "checkpoint2",
+    "retry_mret",
+    "target",
+    "younger",
+    "checkpoint3"
+  ],
+  "targets": [
+    {
+      "pc": "0x80000e12",
+      "vstart": 0,
+      "addresses": [
+        "0x40001006"
+      ],
+      "values": [
+        127
+      ],
+      "commit": 160172
+    },
+    {
+      "pc": "0x80000e12",
+      "vstart": 5,
+      "addresses": [
+        "0x40000fee"
+      ],
+      "values": [
+        166
+      ],
+      "commit": 563334
+    }
+  ],
+  "traps": [
+    [
+      "trap_store_page_fault",
+      2147487250
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487176
+    ]
+  ],
+  "helper_entries": 1,
+  "helper_retirements": 11,
+  "capacity_calls": 1,
+  "retry_mrets": [
+    {
+      "commit": 563333,
+      "pc": "0x80000ce0",
+      "mepc": "0x80000e12",
+      "mstatus": "0x8000000a00002e00",
+      "vl": 8,
+      "vtype": 8,
+      "vstart": 5,
+      "arguments": [
+        "0x40001016",
+        "0x800083a0",
+        "0x8000819a",
+        "0x80008188",
+        "0x40",
+        "0x80001180"
+      ],
+      "t3": "0xfffffffffffffff8"
+    }
+  ],
+  "htif": [
+    1
+  ],
+  "output_elements": 64,
+  "output_guards": 2,
+  "memory_bytes": 8192,
+  "linux_signal_equivalence": false,
+  "parent96_accepted": false,
+  "execution": {
+    "returncode": 0,
+    "timeout": false,
+    "elapsed_s": 12.753124533221126,
+    "raw_bytes": 103533239,
+    "command": [
+      "/home/wangwy/openproject/riscv-isa-sim-ara-dsa-vstart/build/spike",
+      "--isa=rv64gcv_zfh_zvfh_zvl1024b",
+      "--priv=msu",
+      "--pmpregions=0",
+      "-m2",
+      "--instructions=1500000",
+      "-l",
+      "--log-commits",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_store_original01/software01/spike.elf"
+    ]
+  },
+  "raw_sha256": "30549f781ff2ae2d6c7fc2b12e14c74a5a82924e31b85faa7e517f8ac06ac75b",
+  "pins_unchanged": true
+}

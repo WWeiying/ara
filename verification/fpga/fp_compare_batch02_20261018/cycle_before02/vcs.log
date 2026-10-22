@@ -1,0 +1,224 @@
+Notice: timing checks disabled with +notimingcheck at compile-time
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Oct 18 04:30 2026
+ucli% onerror {quit}
+quit
+ucli% set fid [dump -file comparison.vpd -type VPD]
+VCD+ Writer V-2023.12-SP1_Full64 Copyright (c) 1991-2023 by Synopsys Inc.
+VPD0
+ucli% dump -add {ara_tb.clk} -aggregates -fid $fid
+1
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.state_q} -aggregates -fid $fid
+2
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.state_d} -aggregates -fid $fid
+3
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.reshuffle_req_d} -aggregates -fid $fid
+4
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.reshuffle_req_q} -aggregates -fid $fid
+5
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.ara_req_valid} -aggregates -fid $fid
+6
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.ara_req_ready_i} -aggregates -fid $fid
+7
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.backend_valid} -aggregates -fid $fid
+8
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.eew_q[8]} -aggregates -fid $fid
+9
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.eew_q[16]} -aggregates -fid $fid
+10
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.ara_req.op} -aggregates -fid $fid
+11
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.ara_req.vd} -aggregates -fid $fid
+12
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.ara_req.vs1} -aggregates -fid $fid
+13
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.ara_req.vs2} -aggregates -fid $fid
+14
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.ara_req.eew_vs1} -aggregates -fid $fid
+15
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.ara_req.eew_vs2} -aggregates -fid $fid
+16
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.ara_req.vtype.vsew} -aggregates -fid $fid
+17
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.backend_req.op} -aggregates -fid $fid
+18
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.backend_req.vd} -aggregates -fid $fid
+19
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.backend_req.vs1} -aggregates -fid $fid
+20
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.backend_req.vs2} -aggregates -fid $fid
+21
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.backend_req.eew_vs1} -aggregates -fid $fid
+22
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.backend_req.eew_vs2} -aggregates -fid $fid
+23
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.backend_req.vtype.vsew} -aggregates -fid $fid
+24
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.op} -aggregates -fid $fid
+25
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.id} -aggregates -fid $fid
+26
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.vtype.vsew} -aggregates -fid $fid
+27
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.i_vmfpu.operand_a} -aggregates -fid $fid
+28
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.i_vmfpu.operand_b} -aggregates -fid $fid
+29
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.i_vmfpu.vfpu_in_valid} -aggregates -fid $fid
+30
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.i_vmfpu.vfpu_in_ready} -aggregates -fid $fid
+31
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.i_vmfpu.vfpu_out_valid} -aggregates -fid $fid
+32
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.i_vmfpu.vfpu_out_ready} -aggregates -fid $fid
+33
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.i_vmfpu.vfpu_processed_result} -aggregates -fid $fid
+34
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.i_vmfpu.vfpu_tag_out.operand_a} -aggregates -fid $fid
+35
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.op} -aggregates -fid $fid
+36
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.id} -aggregates -fid $fid
+37
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.vtype.vsew} -aggregates -fid $fid
+38
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.i_vmfpu.operand_a} -aggregates -fid $fid
+39
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.i_vmfpu.operand_b} -aggregates -fid $fid
+40
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.i_vmfpu.vfpu_in_valid} -aggregates -fid $fid
+41
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.i_vmfpu.vfpu_in_ready} -aggregates -fid $fid
+42
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.i_vmfpu.vfpu_out_valid} -aggregates -fid $fid
+43
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.i_vmfpu.vfpu_out_ready} -aggregates -fid $fid
+44
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.i_vmfpu.vfpu_processed_result} -aggregates -fid $fid
+45
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.i_vmfpu.vfpu_tag_out.operand_a} -aggregates -fid $fid
+46
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.op} -aggregates -fid $fid
+47
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.id} -aggregates -fid $fid
+48
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.vtype.vsew} -aggregates -fid $fid
+49
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.i_vmfpu.operand_a} -aggregates -fid $fid
+50
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.i_vmfpu.operand_b} -aggregates -fid $fid
+51
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.i_vmfpu.vfpu_in_valid} -aggregates -fid $fid
+52
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.i_vmfpu.vfpu_in_ready} -aggregates -fid $fid
+53
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.i_vmfpu.vfpu_out_valid} -aggregates -fid $fid
+54
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.i_vmfpu.vfpu_out_ready} -aggregates -fid $fid
+55
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.i_vmfpu.vfpu_processed_result} -aggregates -fid $fid
+56
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.i_vmfpu.vfpu_tag_out.operand_a} -aggregates -fid $fid
+57
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.op} -aggregates -fid $fid
+58
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.id} -aggregates -fid $fid
+59
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.vtype.vsew} -aggregates -fid $fid
+60
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.i_vmfpu.operand_a} -aggregates -fid $fid
+61
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.i_vmfpu.operand_b} -aggregates -fid $fid
+62
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.i_vmfpu.vfpu_in_valid} -aggregates -fid $fid
+63
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.i_vmfpu.vfpu_in_ready} -aggregates -fid $fid
+64
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.i_vmfpu.vfpu_out_valid} -aggregates -fid $fid
+65
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.i_vmfpu.vfpu_out_ready} -aggregates -fid $fid
+66
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.i_vmfpu.vfpu_processed_result} -aggregates -fid $fid
+67
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.i_vmfpu.vfpu_tag_out.operand_a} -aggregates -fid $fid
+68
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_masku.vinsn_issue.op} -aggregates -fid $fid
+69
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_masku.vinsn_issue_valid} -aggregates -fid $fid
+70
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_masku.vrf_pnt_q} -aggregates -fid $fid
+71
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_masku.fp_compare_nv_seq} -aggregates -fid $fid
+72
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_masku.result_queue_active_mask_seq} -aggregates -fid $fid
+73
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_masku.masku_operand_alu_valid} -aggregates -fid $fid
+74
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_masku.masku_operand_alu_ready} -aggregates -fid $fid
+75
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_masku.fflags_o} -aggregates -fid $fid
+76
+ucli% dump -add {ara_tb.dut.i_ara_soc.i_system.i_ara.i_masku.fflags_valid_o} -aggregates -fid $fid
+77
+ucli% dump -disable -fid $fid
+ucli% run -absolute 15700ns
+Dump results on ../gold_results.txt
+
+Warning-[RT-NCMUCS] No condition matches in statement
+/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/src/axi_inval_filter.sv, 85
+  No condition matches in 'unique case' statement. 'default' specification is 
+  missing, inside ara_tb.dut.i_ara_soc.i_system.i_axi_inval_filter.inval_fsm, 
+  at time 0fs.
+
+Loading ELF file /home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/soc.elf
+Loading section 0000000080000000 of length 0000000000006ca8
+[TRACER] Output filename is: trace_hart_0.log
+BOARD_CASE_BEGIN unmasked_alias_v8_e32_m4_t0_ctx1
+15700000000 fs
+ucli% dump -enable -fid $fid
+ucli% run -absolute 17000ns
+FP_BIT index=4 expected=117000000000 fs
+ucli% dump -disable -fid $fid
+ucli% dump -flush $fid
+ucli% run
+ actual=0
+FP_BIT index=5 expected=1 actual=0
+FP_BIT index=20 expected=1 actual=0
+FP_BIT index=21 expected=1 actual=0
+FP_BIT index=36 expected=1 actual=0
+FP_BIT index=37 expected=1 actual=0
+FP_BIT index=52 expected=1 actual=0
+FP_BIT index=53 expected=1 actual=0
+RVV_FP_COMPARE_DETAIL op=5 seed=0 vl=64 mask=3 sticky=0 expected_flags=16 actual_flags=0 errors=9
+RVV_FP_COMPARE_FAIL sew=32 cases=1 errors=9
+Warning: "/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/tb/ara_tb.sv", 1534: ara_tb: at time 31452500000 fs
+Core Test *** FAILED *** (tohost = 1)
+$finish called from file "/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/tb/ara_tb.sv", line 1558.
+$finish at simulation time            314525000
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/cva6/core/cache_subsystem/wt_dcache.sv", 391: ara_tb.dut.i_ara_soc.i_system.i_ariane.gen_cache_wt.i_cache_subsystem.i_wt_dcache.flush: Antecedent of the implication never satisfied.
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/cva6/core/cache_subsystem/wt_dcache_ctrl.sv", 292: ara_tb.dut.i_ara_soc.i_system.i_ariane.gen_cache_wt.i_cache_subsystem.i_wt_dcache.gen_rd_ports[2].genblk1.i_wt_dcache_ctrl.hot1: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/cva6/core/cache_subsystem/wt_dcache_ctrl.sv", 292: ara_tb.dut.i_ara_soc.i_system.i_ariane.gen_cache_wt.i_cache_subsystem.i_wt_dcache.gen_rd_ports[1].genblk1.i_wt_dcache_ctrl.hot1: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/cva6/core/cache_subsystem/wt_dcache_ctrl.sv", 292: ara_tb.dut.i_ara_soc.i_system.i_ariane.gen_cache_wt.i_cache_subsystem.i_wt_dcache.gen_rd_ports[0].genblk1.i_wt_dcache_ctrl.hot1: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/cva6/core/cache_subsystem/cva6_icache.sv", 608: ara_tb.dut.i_ara_soc.i_system.i_ariane.gen_cache_wt.i_cache_subsystem.i_cva6_icache.hot1: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/cva6/core/load_unit.sv", 578: ara_tb.dut.i_ara_soc.i_system.i_ariane.ex_stage_i.lsu_i.i_load_unit.addr_offset1: Antecedent of the implication never satisfied.
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[8].unnamed$$_0: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[9].unnamed$$_0: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[10].unnamed$$_0: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[11].unnamed$$_0: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[12].unnamed$$_0: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[13].unnamed$$_0: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[14].unnamed$$_0: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[15].unnamed$$_0: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[16].unnamed$$_0: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[17].unnamed$$_0: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[18].unnamed$$_0: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[19].unnamed$$_0: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[20].unnamed$$_0: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[21].unnamed$$_0: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[22].unnamed$$_0: started at 31451500000fs not finished
+"/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/deps/axi/src/axi_lite_regs.sv", 402: ara_tb.dut.i_ara_soc.i_ctrl_registers.i_axi_lite_regs.genblk4[23].unnamed$$_0: started at 31451500000fs not finished
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 31452500000 fs
+CPU Time:     44.640 seconds;       Data structure size:  13.3Mb
+Sun Oct 18 04:31:46 2026

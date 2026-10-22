@@ -1,0 +1,17 @@
+{
+  "name": "macc_e8_m4_pair480_481",
+  "status": "SPIKE_PASS_SOURCE_SELECTION_NOT_PREFIX",
+  "calls": 2,
+  "original_trials": [
+    480,
+    481
+  ],
+  "isa": "rv64gcv_zvl1024b",
+  "instructions_to_replay_exit": 1396805,
+  "cycles_to_replay_exit": 1396805,
+  "elapsed_s": 0.26748411310836673,
+  "elf_sha256": "18aac9eb19a9bb8ce56c87c5c36379b9207efa4e1605aa49c9be82be7aaea602",
+  "log_sha256": "20fa7f9b62dfd06e5e3c87d472c6447483fdbe17c7f670584817583c3508a789",
+  "original_prefix_acceptance": false,
+  "DUT_started": false
+}

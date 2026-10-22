@@ -1,0 +1,60 @@
+{
+  "status": "PASS_FULL17920_MASKED_FP16_M9_METADATA_COLLECTED_NOT_LINUX",
+  "DUT_rerun": false,
+  "semantic_CSV_parses": 0,
+  "plan_sha256": "da669e3a02daf9f5226312d42dc278a350b1c5c0e07ccaa9b80a3febdfa14f83",
+  "scope": {
+    "calls": 17920,
+    "result_bits": 286720,
+    "guards": 35840,
+    "flags": 17920,
+    "vstarts": 17920,
+    "FPR_committed_writebacks": 10752,
+    "rows": 3540753
+  },
+  "actual_simulator_wait": {
+    "name": "fp_compare_unboxed_masked_e16_mf4_full17920",
+    "historical_name": "rvv_fp_compare_unboxed_e16_mf4",
+    "returncode": 0,
+    "elapsed_s": 7843.901511622127,
+    "timed_out": false,
+    "failure_seen": false,
+    "command": [
+      "/home/wangwy/fpga_runs/current_board_memory_candidate09/campaign/image/_build/vcs/simv",
+      "-l",
+      "run.vcs.log",
+      "+ntb_random_seed=1",
+      "+PRELOAD=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_masked_full17920_vcs_m9_plan01/prepared02/replay/tests/fp_compare_unboxed_masked_e16_mf4_full17920/input.elf",
+      "+TESTCASE=fp_compare_unboxed_masked_e16_mf4_full17920",
+      "+NO_FSDB",
+      "+COMMIT_TRACE=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_masked_full17920_vcs_m9_plan01/prepared02/replay/tests/fp_compare_unboxed_masked_e16_mf4_full17920/commit_trace.csv"
+    ],
+    "cwd": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_masked_full17920_vcs_m9_plan01/prepared02/replay/tests/fp_compare_unboxed_masked_e16_mf4_full17920/work",
+    "architectural_acceptance": false,
+    "kind": "ACTUAL_MONITOR_WAIT"
+  },
+  "service_exit": {
+    "kind": "ACTUAL_SYSTEMD_EXEC_STOP_POST",
+    "observed_at": 1792056342.6802673,
+    "hook_pid": 121334,
+    "SERVICE_RESULT": "success",
+    "EXIT_CODE": "exited",
+    "EXIT_STATUS": "0"
+  },
+  "owner_contract": {
+    "memory": 89600,
+    "target_required": 15360,
+    "target_elidable": 2560
+  },
+  "csv_identity_inherited_from_complete": "b05213f268a489be5709db88f7db33bf0ae85b3c5814b6a2fd6b444d82f5a367",
+  "independent_numerical_reaudit": false,
+  "pins_unchanged": true,
+  "evidence_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_masked_full17920_vcs_m9_plan01/prepared02/complete.json": "399bf44ed99d9763fe67b7e205582632af11e10e504d0133a795e7ed683f0287",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_masked_full17920_vcs_m9_plan01/prepared02/service_exit.json": "88bfb02feb1d0238aad6999e285fd822a653a38e653af0370cef5402fa86ead8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_masked_full17920_vcs_m9_plan01/prepared02/plan.json": "da669e3a02daf9f5226312d42dc278a350b1c5c0e07ccaa9b80a3febdfa14f83",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_masked_full17920_vcs_m9_plan01/prepared02/replay/tests/fp_compare_unboxed_masked_e16_mf4_full17920/strict_original.json": "006408689ea9d03d8f36fd2e1c098ef9dbf0046689e3298d6ae093faaf2dddb6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_masked_full17920_vcs_m9_plan01/prepared02/replay/tests/fp_compare_unboxed_masked_e16_mf4_full17920/child_outcome.unvalidated.json": "f5157d31ebda8d12c42d39d6ec2adc27c564e7f70f36e0fc129dbefb96e7dd20"
+  },
+  "finished": 1792056349.2434359
+}

@@ -1,0 +1,31 @@
+Notice: timing checks disabled with +notimingcheck at compile-time
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Oct 18 05:16 2026
+Dump results on ../gold_results.txt
+
+Warning-[RT-NCMUCS] No condition matches in statement
+/home/wangwy/fpga_runs/fp_compare_alias_fix_20261018_01/frozen/sources/hardware/src/axi_inval_filter.sv, 85
+  No condition matches in 'unique case' statement. 'default' specification is 
+  missing, inside ara_tb.dut.i_ara_soc.i_system.i_axi_inval_filter.inval_fsm, 
+  at time 0fs.
+
+Loading ELF file /home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/p1_o1_c0_s1/soc.elf
+Loading section 0000000080000000 of length 0000000000000ca8
+Loading section 0000000080001000 of length 0000000000026030
+[TRACER] Output filename is: trace_hart_0.log
+SYSTEM_BEGIN prefix=0000000000000001 overlap=0000000000000001 context=0000000000000000 single=0000000000000001
+SYSTEM_FAULT n=0000000000000000 cause=000000000000000d pc=00000000800008e2 tval=0000000040014000 vstart=0000000000000001
+SYSTEM_PASS faults=0000000000000001 errors=0000000000000000 prefix=0000000000000001 first_element=ffffffffffffffff
+[hw-cycles]:           0
+[cva6-d$-stalls]:           0
+[cva6-i$-stalls]:           0
+[cva6-sb-full]:           0
+Info: "/home/wangwy/fpga_runs/fp_compare_alias_fix_20261018_01/frozen/sources/hardware/tb/ara_tb.sv", 1543: ara_tb: at time 27150500000 fs
+Core Test *** SUCCESS *** (tohost = 0)
+$finish called from file "/home/wangwy/fpga_runs/fp_compare_alias_fix_20261018_01/frozen/sources/hardware/tb/ara_tb.sv", line 1558.
+$finish at simulation time            271505000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 27150500000 fs
+CPU Time:     35.710 seconds;       Data structure size:  13.3Mb
+Sun Oct 18 05:17:25 2026

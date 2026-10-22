@@ -84,7 +84,16 @@ def postprocess_existing_case(case: Path, readelf: Path) -> Dict[str, object]:
             pass
     try:
         comparison: Dict[str, object] = compare_commit_prefix(
-            spike_log, ara_trace, entry, unobservable_register_values
+            spike_log, ara_trace, entry, unobservable_register_values,
+            terminal_ecall_pc=(
+                int(exit_arg, 16) if (exit_arg := _plusarg(rtl_command, "COMMIT_EXIT_PC"))
+                else None
+            ),
+            terminal_tohost_address=(
+                int(tohost_arg, 16) if (tohost_arg := _plusarg(rtl_command, "COMMIT_TOHOST"))
+                else None
+            ),
+            rtl_exception_log=(case / "trace_hart_0.log") if (case / "trace_hart_0.log").is_file() else None,
         )
     except (CommitComparisonError, OSError) as error:
         comparison = _error(str(error))
@@ -111,6 +120,7 @@ def postprocess_existing_case(case: Path, readelf: Path) -> Dict[str, object]:
             vector = compare_vector_commits(
                 spike_log, ara_trace, vector_trace, entry,
                 stop_spike_index=vector_stop_index,
+                aligned_vector_faults=comparison.get("aligned_vector_faults"),
             )
         except (CommitComparisonError, VectorCommitComparisonError, OSError) as error:
             vector = _error(str(error))
@@ -120,15 +130,15 @@ def postprocess_existing_case(case: Path, readelf: Path) -> Dict[str, object]:
 
     if not rtl_success:
         status = "RTL_INCOMPLETE"
-    elif comparison.get("status") not in {"MATCH", "PREFIX"}:
+    elif comparison.get("status") == "PREFIX":
+        status = "INCOMPLETE_PREFIX"
+    elif comparison.get("status") not in {"MATCH", "TERMINAL_MATCH", "TERMINAL_TOHOST_MATCH"}:
         status = "MISMATCH"
     elif trace.get("status") != "VALID":
         status = "TRACE_FAIL"
-    elif vector_expected and vector.get("status") != "PASS" and not (
-        comparison.get("status") == "PREFIX" and
-        vector.get("status") == "PREFIX"
-    ):
-        status = "VECTOR_MISMATCH"
+    elif vector_expected and vector.get("status") != "PASS":
+        status = ("VECTOR_INCOMPLETE" if vector.get("status") == "PREFIX"
+                  else "VECTOR_MISMATCH")
     else:
         status = "PASS"
 

@@ -1,0 +1,14 @@
+{
+  "status": "SPIKE_PASS_NOT_DUT",
+  "actual_returncode": 0,
+  "elapsed_s": 19.402207602746785,
+  "command_sha256": "370f2c7dec1ab96840e9d7c181117579298ac53fad660797ad262d83a699d9a4",
+  "log_sha256": "ad6cdba7db0a23a7c4fb5d4f3aefa212d548048c014d072ab94d6c32377f09c6",
+  "calls": 777,
+  "instructions_to_replay_exit": 790055,
+  "cycles_to_replay_exit": 790055,
+  "isa": "rv64gcv_zvl1024b",
+  "pins_unchanged": true,
+  "original_Linux_replay": false,
+  "raw_bytes": 93275459
+}

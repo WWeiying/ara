@@ -1,0 +1,8 @@
+{
+  "status": "NOT_ACCEPTED",
+  "started": 1791992222.357562,
+  "CSV_reads": 0,
+  "semantic_reparses": 0,
+  "firstcause": "ValueError: Producer not complete PASS/noabort/unchanged/noretry",
+  "finished": 1791992222.364047
+}

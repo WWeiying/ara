@@ -1,0 +1,24 @@
+{
+  "status": "HOST_LOCAL_EQUIVALENCE_UBSAN_PASS_NOT_REFERENCE",
+  "original_fragment_sha256": "c4d60f25a2c134ff96b966cffa6df0feafadc0eb5530eb28938e02b87f4243a9",
+  "actual_packed_fragment_sha256": "569bb9881f6677f901c5bda25a4fd9be16f35eefd6036013da8356e9860a1826",
+  "original_case_sha256": "6f0551d0ec5be2497402c7aba41c683607189bdb8e2f66f12890263e6599b267",
+  "case_sha256": "4088f777fabf230414b422eb679d1e9559a8a85c555e3033ee5133d37473f016",
+  "header_sha256": "e5e82b21838e17884489b5e54b9d7e66a029c2bdd51f8fd34160e0c0d1c2c375",
+  "source": "f2376f66054546bac6afc9fb5e42757ca7fda6214ffaaf1f1634a56bf1cb5ab4",
+  "compiler": "/usr/lib64/ccache/gcc",
+  "compiler_sha256": "8cb3040e3516b4d3800c63ce5cf66ca97013054fbd8603fd54ebb7e6eb74a3d9",
+  "run": {
+    "command": [
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/whole_register_original/continuous_packed_prepare01/host02/locality"
+    ],
+    "pid": 2887885,
+    "returncode": 0,
+    "timeout": false,
+    "elapsed_s": 7.4383425349369645,
+    "attempts": 1
+  },
+  "result": "HOST_PACKED_EQUIVALENCE_PASS calls=1134 exclusions=366 tests=3706506 corruptions=3701376 postinput=864\n",
+  "method": "1134 full positives; per-position corruption tests only the owning word, never repeat whole matrix",
+  "instruction_execution": "Scalar Host only; RVV semantics require separate reference"
+}

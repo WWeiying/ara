@@ -17,12 +17,17 @@ QK_K = 256
 Q4_BLOCK_BYTES = 144
 Q6_BLOCK_BYTES = 210
 WEIGHT_FORMATS = {
+    "q2_K": {"block_elements": 256, "block_bytes": 84},
     "q3_K": {"block_elements": 256, "block_bytes": 110},
+    "q4_0": {"block_elements": 32, "block_bytes": 18},
     "q4_K": {"block_elements": 256, "block_bytes": Q4_BLOCK_BYTES},
+    "q5_0": {"block_elements": 32, "block_bytes": 22},
     "q5_K": {"block_elements": 256, "block_bytes": 176},
     "q6_K": {"block_elements": 256, "block_bytes": Q6_BLOCK_BYTES},
+    "iq4_nl": {"block_elements": 32, "block_bytes": 18},
     "q8_0": {"block_elements": 32, "block_bytes": 34},
 }
+Q8_0_ACTIVATION_WEIGHTS = {"q4_0", "q5_0", "iq4_nl", "q8_0"}
 
 
 def sha256(path: Path) -> str:
@@ -276,7 +281,7 @@ def main() -> None:
         "weight_type": weight_type,
         "activation_quantization": (
             "F32_to_Q8_0_at_runtime"
-            if weight_type == "q8_0"
+            if weight_type in Q8_0_ACTIVATION_WEIGHTS
             else "F32_to_Q8_K_at_runtime"
         ),
         "k": k,
@@ -291,7 +296,7 @@ def main() -> None:
         "embedded_weight_layout": embedded_layout,
         "runtime_timed_region": (
             "F32_to_Q8_0_plus_quantized_matmul"
-            if weight_type == "q8_0"
+            if weight_type in Q8_0_ACTIVATION_WEIGHTS
             else "F32_to_Q8_K_plus_quantized_matmul"
         ),
         "runtime_setup_cycles": 0,

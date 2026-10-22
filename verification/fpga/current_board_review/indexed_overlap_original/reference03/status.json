@@ -1,0 +1,10 @@
+{
+  "status": "THREE_HOST_SPIKE_REFERENCES_PASS_NOT_DUT",
+  "isa": "rv64gcv_zfh_zvfh_zvl1024b",
+  "cases": [
+    "d32m2_i64_fault_ov1",
+    "d32m2_i64_resident_ov1",
+    "d32m2_i64_fault_ov0"
+  ],
+  "VCS_launched": false
+}

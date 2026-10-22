@@ -74,12 +74,12 @@ def _memory_mode(mnemonic: str) -> str | None:
         return "whole_register"
     if mnemonic in {"vlm.v", "vsm.v"}:
         return "mask"
+    if "seg" in mnemonic and mnemonic.startswith(("vl", "vs")):
+        return "segment"
     if any(token in mnemonic for token in ("luxei", "loxei", "suxei", "soxei")):
         return "indexed"
     if mnemonic.startswith(("vlse", "vsse", "vlsseg", "vssseg")):
         return "strided"
-    if "seg" in mnemonic and mnemonic.startswith(("vl", "vs")):
-        return "segment"
     if mnemonic.startswith(("vle", "vse")):
         return "fault_first" if "ff" in mnemonic else "unit_stride"
     return None
@@ -131,8 +131,7 @@ def analyze_stimulus(source: Path) -> dict[str, object]:
     }
 
 
-def write_stimulus_coverage(output: Path, test: str) -> Path:
-    sources = sorted((output / "asm_test").glob(f"{test}_*.S"))
+def collect_stimulus_coverage(sources: Sequence[Path], test: str) -> dict[str, object]:
     records = [analyze_stimulus(source) for source in sources]
     aggregate: dict[str, Counter[str]] = {
         name: Counter()
@@ -144,7 +143,7 @@ def write_stimulus_coverage(output: Path, test: str) -> Path:
     for record in records:
         for name, counter in aggregate.items():
             counter.update(record[name])
-    report = {
+    return {
         "test": test,
         "source_count": len(records),
         "vector_instruction_count": sum(
@@ -161,6 +160,11 @@ def write_stimulus_coverage(output: Path, test: str) -> Path:
         },
         "sources": records,
     }
+
+
+def write_stimulus_coverage(output: Path, test: str) -> Path:
+    sources = sorted((output / "asm_test").glob(f"{test}_*.S"))
+    report = collect_stimulus_coverage(sources, test)
     path = output / "stimulus_coverage.json"
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path

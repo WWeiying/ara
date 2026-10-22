@@ -1,0 +1,120 @@
+{
+  "status": "HOST_SPIKE_PASS_NOT_DUT",
+  "trials": [
+    60,
+    61,
+    62,
+    63
+  ],
+  "checks": 11882,
+  "commits": 727578,
+  "checkpoints": [
+    {
+      "trial": 60,
+      "phase": 2,
+      "commits": 220883,
+      "checks": 2969,
+      "checked_bytes": 33368
+    },
+    {
+      "trial": 61,
+      "phase": 2,
+      "commits": 388159,
+      "checks": 5935,
+      "checked_bytes": 33368
+    },
+    {
+      "trial": 62,
+      "phase": 2,
+      "commits": 555435,
+      "checks": 8901,
+      "checked_bytes": 33368
+    },
+    {
+      "trial": 63,
+      "phase": 2,
+      "commits": 722711,
+      "checks": 11867,
+      "checked_bytes": 33368
+    }
+  ],
+  "actions": {
+    "60": [
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    "61": [
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    "62": [
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    "63": [
+      "target",
+      "younger",
+      "final_checkpoint"
+    ]
+  },
+  "traps": [
+    [
+      "trap_supervisor_ecall",
+      2147489092
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147489092
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147489092
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147489092
+    ]
+  ],
+  "target_events": [
+    {
+      "trial": 60,
+      "pc": "0x80001624",
+      "insn": "0xe9c56c27",
+      "access": []
+    },
+    {
+      "trial": 61,
+      "pc": "0x80001624",
+      "insn": "0xe9c56c27",
+      "access": []
+    },
+    {
+      "trial": 62,
+      "pc": "0x80001624",
+      "insn": "0xe9c56c27",
+      "access": []
+    },
+    {
+      "trial": 63,
+      "pc": "0x80001624",
+      "insn": "0xe9c56c27",
+      "access": []
+    }
+  ],
+  "case_checks": [
+    2966,
+    2966,
+    2966,
+    2966
+  ],
+  "VCS_launched": false,
+  "Linux_replay": false,
+  "elapsed_s": 32.61104525765404,
+  "elf_sha256": {
+    "soc": "94eedd83f77ce35a92fb0fe73613c49f0c4d8e172e37b29409ce23eea9e2e2cc",
+    "spike": "a8d3f80c39fd10efd3e7e669b309c26111104b0a6f5cbd902a2e0cf1f54a1840"
+  }
+}

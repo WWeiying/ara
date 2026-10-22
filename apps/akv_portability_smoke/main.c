@@ -3,6 +3,10 @@
 #include <string.h>
 #include "../../software/akv/include/akv/akv_features.h"
 
+#ifndef AKV_PORTABLE_TEST_COUNT
+#define AKV_PORTABLE_TEST_COUNT 7
+#endif
+
 static uint16_t query[64] __attribute__((aligned(64)));
 static uint16_t keys[65][64] __attribute__((aligned(64)));
 static uint16_t values[65][64] __attribute__((aligned(64)));
@@ -30,7 +34,7 @@ int main(void) {
   };
   akv_attention_plan_t plan;
   if (akv_attention_plan_create_v2(&device, &problem, &plan) != AKV_STATUS_OK) return 2;
-  for (unsigned test = 0; test < 7; ++test) {
+  for (unsigned test = 0; test < AKV_PORTABLE_TEST_COUNT; ++test) {
     akv_attention_features_t features = {0};
     float expected = 2.0f;
     memset(mask, 0, sizeof(mask));
@@ -62,6 +66,10 @@ int main(void) {
            test, status, errors, (unsigned long)elapsed);
     if (errors) return 3;
   }
+#ifdef AKV_COLUMN_COVERAGE_SMOKE
+  printf("AKV column coverage smoke: PASS\n");
+  return 0;
+#endif
   // Nonconstant data makes score processing observable in the final output.
   query[0] = 0x3c00u;
   for (unsigned t = 0; t < 65; ++t) {

@@ -1,0 +1,15 @@
+{
+  "paired_manifest": "verification/out/qbs-akv-pairs-correct-image-20260924-01/paired_manifest.json",
+  "cases": [
+    {"name": "q2_K", "source_kind": "uvm", "source_result": "verification/out/qbs-akv-pairs-correct-image-20260924-01/q2_K/qbs/uvm_result.json", "term_cycles": 200000, "timeout_s": 7200},
+    {"name": "q3_K", "source_kind": "uvm", "source_result": "verification/out/qbs-akv-pairs-correct-image-20260924-01/q3_K/qbs/uvm_result.json", "term_cycles": 200000, "timeout_s": 7200},
+    {"name": "q4_K", "source_kind": "uvm", "source_result": "verification/out/qbs-akv-pairs-correct-image-20260924-01/q4_K/qbs/uvm_result.json", "term_cycles": 200000, "timeout_s": 7200},
+    {"name": "q4_K_prefill_n32_m4", "source_kind": "uvm", "source_result": "verification/out/qbs-akv-pairs-correct-image-20260924-01/q4_K_prefill_n32_m4/qbs/uvm_result.json", "term_cycles": 250000, "timeout_s": 10800},
+    {"name": "q4_0", "source_kind": "uvm", "source_result": "verification/out/qbs-akv-pairs-correct-image-20260924-01/q4_0/qbs/uvm_result.json", "term_cycles": 100000, "timeout_s": 5400},
+    {"name": "q5_K", "source_kind": "uvm", "source_result": "verification/out/qbs-akv-pairs-correct-image-20260924-01/q5_K/qbs/uvm_result.json", "term_cycles": 200000, "timeout_s": 7200},
+    {"name": "q5_0", "source_kind": "uvm", "source_result": "verification/out/qbs-akv-pairs-correct-image-20260924-01/q5_0/qbs/uvm_result.json", "term_cycles": 100000, "timeout_s": 5400},
+    {"name": "q6_K", "source_kind": "uvm", "source_result": "verification/out/qbs-akv-pairs-correct-image-20260924-01/q6_K/qbs/uvm_result.json", "term_cycles": 200000, "timeout_s": 7200},
+    {"name": "q8_0", "source_kind": "uvm", "source_result": "verification/out/qbs-akv-pairs-correct-image-20260924-01/q8_0/qbs/uvm_result.json", "term_cycles": 200000, "timeout_s": 7200},
+    {"name": "iq4_nl", "source_kind": "uvm", "source_result": "verification/out/qbs-akv-pairs-correct-image-20260924-01/iq4_nl/qbs/uvm_result.json", "term_cycles": 100000, "timeout_s": 5400}
+  ]
+}

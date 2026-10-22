@@ -1,0 +1,57 @@
+{
+  "decision": "APPROVE_CONDITIONAL_E16_MF4_TERMINAL_OBSERVER",
+  "status": "STATIC_CONDITIONAL_OBSERVER_REVIEW_NO_BLOCKER",
+  "ready_sha256": "c741ea5647461c3ee6dec714a1adc96ddb250b16a7f4157c71dd26ca9fe292b3",
+  "pins_sha256": "7030cd815dafce22f28d2ad9ef84c86ca7b7ae535010236a5f95566ea1a6d8e4",
+  "verified_pins": 972,
+  "worker_pid": 1842515,
+  "launch_sha256": "bac85c5ee5f33bf4b04f81b0393598fb7a7da749af264b2b9aceec952d31c120",
+  "host_receipt": {
+    "returncode": 0,
+    "timed_out": false,
+    "elapsed_s": 0.4674154482781887,
+    "pid": 1843553,
+    "attempt": 1
+  },
+  "ast_equal_functions": [
+    "one_pass",
+    "HashLines",
+    "outcome_gate",
+    "wait_fd",
+    "publish_success"
+  ],
+  "live_proc_queries": 0,
+  "active_CSV_reads": 0,
+  "new_tests": 0,
+  "terminal_script_sha256": "ce6d46d2d780a4b7572df2a9d535488e89adf8f267f85badfd110a12109269a6",
+  "worker_plan_sha256": "17fc37e50f5420488a62872513fa77ce28ea89814ee2d5d3401ddcef27c751e0",
+  "worker_entry_sha256": "962d5bc3dd83c88ff34c9c54fc747d6d37d4572fa330c83d00384846fe072fe2",
+  "worker_parent_sha256": "d54061a36dfa826f08e9007ab3b3e88818476171a1a9847421f429251e8568bc",
+  "blocking_findings": [],
+  "approved_scope": {
+    "calls": 4095,
+    "results": 65520,
+    "guards": 8190,
+    "vstart_checks": 4095,
+    "helper_instructions": 53235,
+    "future_terminal_csv_traversals": 1
+  },
+  "conditions": [
+    "Owner attaches once to exact worker1842515 via pidfd after exact argv/cgroup and launch identity checks; no replacement PID or DUT rerun.",
+    "Actual whole COMPLETE/PASS, numeric simulator wait0, no abort/retry, exact evidence pins and empty worker cgroup are required before the sole CSV is opened.",
+    "Offline audit child must have persisted actual numeric wait0 with no timeout/error before terminal acceptance.",
+    "Worker service exit remains UNCONFIRMED; pidfd exit notification does not supply wait status."
+  ],
+  "limitations": [
+    "No live worker identity/capacity query was made in this review. Worker PID is bound to the saved launch plus the parent's observation, not a new observation by this reviewer.",
+    "The existing already-absent-plus-terminal fallback does not claim a pidfd attachment or service exit0; live attachment remains the parent-authorized path.",
+    "No current architectural outcome is claimed. This is observer-entry approval, not DUT terminal acceptance."
+  ],
+  "review_tool_receipt": {
+    "session_id": 60870,
+    "completion_chunk": "9138b9",
+    "actual_exit_code": 0
+  },
+  "observer_started_by_reviewer": false,
+  "old_files_modified": false
+}

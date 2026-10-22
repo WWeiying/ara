@@ -1,0 +1,81 @@
+#include <stdint.h>
+static uint64_t raw_word32(const void *p,unsigned offset) {
+    uint64_t value; __builtin_memcpy(&value,(const unsigned char *)p+offset,8); return value;
+}
+static void initialize_output(void *p) {
+    const uint64_t value=UINT64_C(0x0000005b0000005b);
+    __builtin_memcpy((unsigned char *)p+0,&value,8);
+    __builtin_memcpy((unsigned char *)p+8,&value,8);
+    __builtin_memcpy((unsigned char *)p+16,&value,8);
+    __builtin_memcpy((unsigned char *)p+24,&value,8);
+    __builtin_memcpy((unsigned char *)p+32,&value,8);
+    __builtin_memcpy((unsigned char *)p+40,&value,8);
+    __builtin_memcpy((unsigned char *)p+48,&value,8);
+    __builtin_memcpy((unsigned char *)p+56,&value,8);
+    __builtin_memcpy((unsigned char *)p+64,&value,8);
+    __builtin_memcpy((unsigned char *)p+72,&value,8);
+    __builtin_memcpy((unsigned char *)p+80,&value,8);
+    __builtin_memcpy((unsigned char *)p+88,&value,8);
+    __builtin_memcpy((unsigned char *)p+96,&value,8);
+    __builtin_memcpy((unsigned char *)p+104,&value,8);
+    __builtin_memcpy((unsigned char *)p+112,&value,8);
+    __builtin_memcpy((unsigned char *)p+120,&value,8);
+    __builtin_memcpy((unsigned char *)p+128,&value,8);
+    __builtin_memcpy((unsigned char *)p+136,&value,8);
+    __builtin_memcpy((unsigned char *)p+144,&value,8);
+    __builtin_memcpy((unsigned char *)p+152,&value,8);
+    __builtin_memcpy((unsigned char *)p+160,&value,8);
+    __builtin_memcpy((unsigned char *)p+168,&value,8);
+    __builtin_memcpy((unsigned char *)p+176,&value,8);
+    __builtin_memcpy((unsigned char *)p+184,&value,8);
+    __builtin_memcpy((unsigned char *)p+192,&value,8);
+    __builtin_memcpy((unsigned char *)p+200,&value,8);
+    __builtin_memcpy((unsigned char *)p+208,&value,8);
+    __builtin_memcpy((unsigned char *)p+216,&value,8);
+    __builtin_memcpy((unsigned char *)p+224,&value,8);
+    __builtin_memcpy((unsigned char *)p+232,&value,8);
+    __builtin_memcpy((unsigned char *)p+240,&value,8);
+    __builtin_memcpy((unsigned char *)p+248,&value,8);
+    __builtin_memcpy((unsigned char *)p+256,&value,8);
+}
+static unsigned packed_mismatch(const void *p,uint64_t ordinal) {
+    const uint64_t *b0=expected_blocks[expected_ids[ordinal][0]];
+    if(raw_word32(p,0)!=b0[0])return 1;
+    if(raw_word32(p,8)!=b0[1])return 1;
+    if(raw_word32(p,16)!=b0[2])return 1;
+    if(raw_word32(p,24)!=b0[3])return 1;
+    if(raw_word32(p,32)!=b0[4])return 1;
+    if(raw_word32(p,40)!=b0[5])return 1;
+    if(raw_word32(p,48)!=b0[6])return 1;
+    if(raw_word32(p,56)!=b0[7])return 1;
+    const uint64_t *b1=expected_blocks[expected_ids[ordinal][1]];
+    if(raw_word32(p,64)!=b1[0])return 1;
+    if(raw_word32(p,72)!=b1[1])return 1;
+    if(raw_word32(p,80)!=b1[2])return 1;
+    if(raw_word32(p,88)!=b1[3])return 1;
+    if(raw_word32(p,96)!=b1[4])return 1;
+    if(raw_word32(p,104)!=b1[5])return 1;
+    if(raw_word32(p,112)!=b1[6])return 1;
+    if(raw_word32(p,120)!=b1[7])return 1;
+    const uint64_t *b2=expected_blocks[expected_ids[ordinal][2]];
+    if(raw_word32(p,128)!=b2[0])return 1;
+    if(raw_word32(p,136)!=b2[1])return 1;
+    if(raw_word32(p,144)!=b2[2])return 1;
+    if(raw_word32(p,152)!=b2[3])return 1;
+    if(raw_word32(p,160)!=b2[4])return 1;
+    if(raw_word32(p,168)!=b2[5])return 1;
+    if(raw_word32(p,176)!=b2[6])return 1;
+    if(raw_word32(p,184)!=b2[7])return 1;
+    const uint64_t *b3=expected_blocks[expected_ids[ordinal][3]];
+    if(raw_word32(p,192)!=b3[0])return 1;
+    if(raw_word32(p,200)!=b3[1])return 1;
+    if(raw_word32(p,208)!=b3[2])return 1;
+    if(raw_word32(p,216)!=b3[3])return 1;
+    if(raw_word32(p,224)!=b3[4])return 1;
+    if(raw_word32(p,232)!=b3[5])return 1;
+    if(raw_word32(p,240)!=b3[6])return 1;
+    if(raw_word32(p,248)!=b3[7])return 1;
+    const uint64_t *b4=expected_blocks[expected_ids[ordinal][4]];
+    if(raw_word32(p,256)!=b4[0])return 1;
+    return 0;
+}

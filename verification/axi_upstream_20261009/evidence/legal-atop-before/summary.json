@@ -1,0 +1,27 @@
+{
+  "backup": "/tmp/ara-signoff-upstream-before-20261009.tgz",
+  "backup_sha256": "bbc7a77d13e5bd7832f8001b54884b35b08d18675f56e698e35d365383802601",
+  "complete": true,
+  "passed": 1,
+  "rows": [
+    {
+      "case": 13,
+      "log": "/tmp/axi-upstream-legal-atop-before-20261009/case-13.log",
+      "returncode": 0,
+      "seconds": 10.644400609657168,
+      "sha256": "faa2d608d1a901358fd07bef305a8d6bb3fe3cacd1615e2456b9ac26e8467cd1",
+      "status": "PASS"
+    },
+    {
+      "case": 131,
+      "log": "/tmp/axi-upstream-legal-atop-before-20261009/case-131.log",
+      "returncode": 0,
+      "seconds": 10.646315245889127,
+      "sha256": "e7409c600b14463a5760db1dba11a4f7ff2db9977fcc02a51ad7f0000966f5f0",
+      "status": "FAIL"
+    }
+  ],
+  "seconds": 38.68548098579049,
+  "source": "current",
+  "total": 2
+}

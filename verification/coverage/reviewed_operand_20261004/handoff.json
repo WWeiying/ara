@@ -1,0 +1,111 @@
+{
+  "additional_checks": {
+    "CLI_dynamic648_and_separate_retained_counts": "PASS_SYNTHETIC_NOT_CORPUS",
+    "CLI_help": "PASS",
+    "old_helper_count": 16,
+    "old_helpers_unchanged_after_tests_and_admission": true,
+    "python_AST_sources": 7
+  },
+  "admission_attempt": {
+    "automatic_retries": 0,
+    "elapsed_seconds": 124.443,
+    "error": "ValueError('Requested baseline is stale/not latest')",
+    "fresh_latest_1144_zero_claim": false,
+    "started_on_completed_tests": 647,
+    "status": "REJECTED"
+  },
+  "application_status": "NOT_APPLIED",
+  "budget": {
+    "capture_DVE_cap_seconds": 280,
+    "capture_exact_selections": 3612,
+    "capture_feasibility": "UNRESOLVED_LAUNCH_BLOCKER",
+    "capture_individual_exclude_calls": 1144,
+    "capture_metadata_leaf_visits": 7272,
+    "capture_scope_activations": 216,
+    "capture_state_exclusion_queries": 2468,
+    "capture_total_cap_seconds": 300,
+    "full_export_measured_seconds": [
+      197.608,
+      184.643
+    ],
+    "pilot18_session_seconds": 50.986,
+    "pilot18_state_span_seconds": 19.958442,
+    "post_reset_full_score_export": false,
+    "report_DVE_cap_seconds": 880,
+    "report_full_exports": 2,
+    "report_total_cap_seconds": 900
+  },
+  "composition": {
+    "CSR_branch_leaves": 626,
+    "CSR_retained_neighbors": 519,
+    "csr_points": 107,
+    "existing_points": 94,
+    "inherited_observers": 10,
+    "new_operand_points": 1144,
+    "new_wildcards_or_module_waivers": 0,
+    "operand_branch_leaves": 3636,
+    "operand_instances": 36,
+    "original_missing_retained_coordinates": 1269,
+    "prior_operand_points": 16,
+    "retained_operand_neighbors": 2476,
+    "union_points": 1345
+  },
+  "evidence_files": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_operand_20261004/admission-results.json": "d503fe61a32e1dbae0a14c242a5b4b925dce2d3b05a26c20dfd73ee97ddcdd83",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_operand_20261004/test-results.json": "cb78ae2dff4f04a49a0d95518c7f7a0609c66cfdbd9218e5b5aff46577a2e69e"
+  },
+  "final_coverage_application": false,
+  "frozen_implementation": true,
+  "gates_remaining": [
+    "Maxwell independent agent code review and parent review; no human signoff implied",
+    "Successful fresh latest-tip admission; previous647 attempt correctly rejected as648 completed",
+    "Evidence-based capture budget/work plan and separately authorized reviewed snapshot receipt",
+    "Full1144 native capture and independent review;18-point pilot is not sufficient",
+    "Separate parent receipt for actual composite report snapshot and one scoped report session"
+  ],
+  "latest_census_only": {
+    "collection_sha256": "372fbb66d9c7f892213a285f54b75968b62e206363455433be2b22bf870293b3",
+    "independent_full_admission": false,
+    "passed": 648,
+    "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/gap59-current-20261004-01",
+    "plan_sha256": "7079d5d9a2762a73520c0415c2378d8c7c98598e3387c3b2949b32d637317625",
+    "raw_summary_sha256": "111cfe2dfe3a363640d82fb1c228e600af388158091b69274d4670d692340f2c",
+    "status": "PASS"
+  },
+  "prepared_snapshots": 0,
+  "raw_reports_modified": false,
+  "real_DVE_launches": 0,
+  "real_URG_launches": 0,
+  "real_VCS_launches": 0,
+  "source_edits_after_tests": "Only CLI count-label correction separately contract-tested; README independent-review clarification coordinated with Maxwell. Core implementation/tests unchanged.",
+  "source_files": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_operand_20261004/README.md": "0d3bb9c8a5463c16d1b406d444c042128616782f97dac0d03e0f5f08324fd5b7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_operand_20261004/admission_check.py": "0ce29aa9850f381db83dd1f6c34e8547d7ffb8c7b0329afc7a241779a71bed9e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_operand_20261004/capture_entry.tcl": "1ecb46d3926355817109daac3a5e2c76b238d8961bb6c2b5e890dc9404db0e7d",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_operand_20261004/dve_operand.tcl": "3ed78ecdd271b067a640ca10e68cd4f2b03b78bdefdbd06d111047ba485536ec",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_operand_20261004/mock_session.tcl": "523700e1df37233c2e6e70cca4576aeb1997a05da3e18c708466acdfe4350e5b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_operand_20261004/operand_guard.py": "a9aeae8be2cfbe1de27f7073fe4f49ea64d9296f5b8eba234cf4c0a87e253fff",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_operand_20261004/operand_runtime.py": "6747b98b4d540aa16ba3db6138eba7c9fe2500ced7e71f3f0fc9aa7e71079268",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_operand_20261004/operand_support.py": "b1f5b9de5582aeec06f067e194756352b4e25fe73547e9fd892f80f568b0b74c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_operand_20261004/operand_workflow.py": "09d5d9932f82a8fb8c1d3c991e9299803546d988f230aebcd6155d3b8acf5664",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/reviewed_operand_20261004/test_operand.py": "5a871a607008d155b43f6bed81aad46995d176e64c96cce7cf2faf639bc05874",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/run_reviewed_operand_dve_20261004.py": "debc85075226019db2276b113d6eeb7edcecb82aebe501eff8debdfc752d3d14"
+  },
+  "status": "FINAL_READY_FOR_INDEPENDENT_CODE_REVIEW_ONLY_NOT_DVE",
+  "unit_tests": {
+    "counts": {
+      "DVE_launches": 0,
+      "callback_mutations": 35,
+      "capture_pin_omissions": 17,
+      "parser_mutations": 2296,
+      "snapshot_mutations": 47,
+      "tcl_cases": 20
+    },
+    "elapsed_seconds": 133.373,
+    "errors": 0,
+    "failures": 0,
+    "limitation": "Synthetic full1144 native fixtures, never real signatures beyond the separately pinned pilot18; Tcl API model only.",
+    "status": "PASS",
+    "tests": 11
+  }
+}

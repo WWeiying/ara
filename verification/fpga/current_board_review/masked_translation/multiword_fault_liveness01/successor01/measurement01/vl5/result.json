@@ -1,0 +1,10 @@
+{
+  "vl": 5,
+  "returncode": 0,
+  "elapsed_s": 10.641119855921715,
+  "expected_marker": "PREDICATE_DRAIN_IDLE_PASS",
+  "observed": true,
+  "observations": [
+    "OBSERVATION vl=5 accepted=1 mmu=1 ack=1 descriptor=1 ld_done=1 mask_done=1 response=1 mask_accepts=2 global_idle=1 mask_commit=0 stable_rows=21"
+  ]
+}

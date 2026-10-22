@@ -1,0 +1,61 @@
+--- 
++++ 
+@@ -27,10 +27,8 @@
+ typedef unsigned long (*operation)(const void *,const void *,void *,unsigned long,
+                                    unsigned long,const void *,unsigned long,unsigned long);
+ static operation functions[]={FUNCTIONS};
+-static long syscall3(long n,long x,long y,long z) {
+-    register long a0 __asm__("a0")=x,a1 __asm__("a1")=y,a2 __asm__("a2")=z,a7 __asm__("a7")=n;
+-    __asm__ volatile("ecall":"+r"(a0):"r"(a1),"r"(a2),"r"(a7):"memory");return a0;
+-}
++extern long replay_write(long,long,long,long);
++#define syscall3 replay_write
+ static void text(const char *s) {long n=0;while(s[n])++n;syscall3(64,1,(long)s,n);}
+ static void num(uint64_t n) {char s[24];unsigned i=23;s[i]=0;do{s[--i]='0'+n%10;n/=10;}while(n);text(s+i);}
+ static unsigned bit(const uint8_t *p,unsigned i) {return (p[i/8]>>(i%8))&1;}
+@@ -38,14 +36,12 @@
+ static unsigned rhs_index(unsigned seed,unsigned i,unsigned op) {
+     return op<4 ? (i*3+seed*5+seed/16)%16:seed%16;
+ }
+-void probe_main(void) {
++int unmasked_alias_v16_e32_m8_t0_ctx1_main(void) {
+     unsigned cap=capacity(),errors=0,cases=0,details=0;
+-    if(!cap || cap>1024){text("RVV_FP_COMPARE_CAPACITY_FAIL\n");syscall3(94,2,0,0);for(;;){}}
++    if(!cap || cap>1024){text("RVV_FP_COMPARE_CAPACITY_FAIL\n");return 2;}
+     unsigned lengths[]={0,1,2,3,cap/2,cap-1,cap},bytes=(cap+7)/8;
+-    for(unsigned seed=0;seed<32;++seed)for(unsigned op=0;op<10;++op)
+-    for(unsigned l=0;l<7;++l)for(unsigned mode=0;mode<4;++mode)
+-    for(unsigned sticky=0;sticky<2;++sticky)
+-    for(unsigned trial=0;trial<(RESTART_COMPARISONS ? 4U:1U);++trial) {
++    { unsigned seed=5,op=3,l=2,mode=1,sticky=0,trial=0;
++        (void)trial;
+         unsigned prior=errors,vl=lengths[l],flags=sticky,start=0;
+         if(RESTART_COMPARISONS)
+             start=trial==0 ? 1:trial==1 ? vl/2:trial==2 ? vl:cap-1;
+@@ -58,7 +54,7 @@
+         for(unsigned i=0;i<130;++i)output[i]=0x5b;
+         if(RESTART_COMPARISONS && !seed && !op && !mode && !sticky) {
+             text("RVV_FP_COMPARE_TRIAL vl=");num(vl);text(" vstart=");num(start);text("\n");
+-            syscall3(29,1,0x5409,1);
++            (void)0; /* Linux UART drain only. */
+         }
+         unsigned long status=functions[op](a,b,output+1,vl,cap,mask,start,sticky);
+         if((uint32_t)status)++errors;
+@@ -78,7 +74,7 @@
+             unsigned active=i>=start && i<vl && (UNMASKED_COMPARISONS || bit(mask,i));
+             if(active) {
+                 flags|=wanted.flags;
+-                if(actual!=wanted.bit)++errors;
++                if(actual!=wanted.bit){++errors;text("FP_BIT index=");num(i);text(" expected=");num(wanted.bit);text(" actual=");num(actual);text("\n");}
+             } else if(start>=vl || i<start) {
+                 if(actual!=old)++errors;
+             } else if(i<vl) {
+@@ -100,7 +96,5 @@
+     }
+     text(errors ? "RVV_FP_COMPARE_FAIL sew=":"RVV_FP_COMPARE_PASS sew=");num(SEW);
+     text(" cases=");num(cases);text(" errors=");num(errors);text("\n");
+-    syscall3(94,errors ? 1:0,0,0);for(;;){}
++    return errors ? 1:0;
+ }
+-__asm__(".global _start\n_start:\n.option push\n.option norelax\n"
+-        "la gp,__global_pointer$\n.option pop\ntail probe_main\n");

@@ -1,0 +1,98 @@
+diff --git a/axi/src/axi_to_detailed_mem.sv b/axi/src/axi_to_detailed_mem.sv
+--- a/axi/src/axi_to_detailed_mem.sv
++++ b/axi/src/axi_to_detailed_mem.sv
+@@ -39,6 +39,9 @@ module axi_to_detailed_mem #(
+   parameter bit          HideStrb   = 1'b0,
+   /// Depth of output fifo/fall_through_register. Increase for asymmetric backpressure (contention) on banks.
+   parameter int unsigned OutFifoDepth = 1,
++  /// Carry the selected read byte range in mem_strb_o for side-effecting MMIO.
++  /// The consumer must locally complete banks whose byte mask is zero.
++  parameter bit          EnableReadByteMask = 1'b0,
+   /// Dependent parameter, do not override. Memory address type.
+   localparam type addr_t     = logic [AddrWidth-1:0],
+   /// Dependent parameter, do not override. Memory data type.
+@@ -371,12 +374,25 @@ module axi_to_detailed_mem #(
+     .usage_o    ( /* unused */   )
+   );
+ 
++  function automatic axi_strb_t read_byte_mask(input addr_t address, input axi_pkg::size_t size);
++    int unsigned first_byte;
++    first_byte = int'(address % (DataWidth/8));
++    // An unaligned first beat ends at its size-aligned boundary, not addr+size.
++    for (int unsigned b = 0; b < DataWidth/8; b++) begin
++      read_byte_mask[b] = (b >= first_byte) && ((b >> size) == (first_byte >> size));
++    end
++  endfunction
++
++  axi_strb_t response_read_mask;
++  assign response_read_mask = read_byte_mask(meta_buf.addr, meta_buf.size);
++
+   // Assemble the actual memory request from meta information and write data.
+   assign m2s_req = mem_req_t'{
+     addr:   meta.addr,
+     atop:   meta.atop,
+     lock:   meta.lock,
+-    strb:   axi_req_i.w.strb,
++    strb:   (EnableReadByteMask && !meta.write) ?
++              read_byte_mask(meta.addr, meta.size) : axi_req_i.w.strb,
+     wdata:  axi_req_i.w.data,
+     we:     meta.write,
+     id:     meta.id,
+@@ -504,9 +520,14 @@ module axi_to_detailed_mem #(
+   for (genvar i = 0; i < NumBanks; i++) begin
+     // Set active write banks based on strobe
+     assign meta_buf_bank_strb[i] = |meta_buf.strb[i*NumBytesPerBank +: NumBytesPerBank];
+-    // Set active read banks based on size and address offset: (bank.end > addr) && (bank.start < addr+size)
+-    assign meta_buf_size_enable[i] = ((i*NumBytesPerBank + NumBytesPerBank) > (meta_buf.addr % DataWidth/8)) &&
+-                                     ((i*NumBytesPerBank) < ((meta_buf.addr % DataWidth/8) + 1<<meta_buf.size));
++    if (EnableReadByteMask) begin : gen_read_mask
++      // Match error attribution to the exact request range, including unaligned first beats.
++      assign meta_buf_size_enable[i] = |response_read_mask[i*NumBytesPerBank +: NumBytesPerBank];
++    end else begin : gen_legacy_read_mask
++      // Preserve non-MMIO instances; they do not consume read byte strobes.
++      assign meta_buf_size_enable[i] = ((i*NumBytesPerBank + NumBytesPerBank) > (meta_buf.addr % DataWidth/8)) &&
++                                       ((i*NumBytesPerBank) < ((meta_buf.addr % DataWidth/8) + 1<<meta_buf.size));
++    end
+   end
+   assign resp_b_err    = |(m2s_resp.err    &  meta_buf_bank_strb);   // Ensure only active banks are used (strobe)
+   assign resp_b_exokay = &(m2s_resp.exokay | ~meta_buf_bank_strb) & meta_buf.lock;   // Ensure only active banks are used (strobe)
+diff --git a/register_interface/src/axi_to_reg_v2.sv b/register_interface/src/axi_to_reg_v2.sv
+--- a/register_interface/src/axi_to_reg_v2.sv
++++ b/register_interface/src/axi_to_reg_v2.sv
+@@ -79,6 +79,7 @@ module axi_to_reg_v2 #(
+     .NumBanks     ( NumBanks      ),
+     .BufDepth     ( 32'd1         ),
+     .HideStrb     ( 1'b0          ),
++    .EnableReadByteMask ( 1'b1    ),
+     .OutFifoDepth ( 32'd1         )
+   ) i_axi_to_detailed_mem (
+     .clk_i,
+@@ -198,7 +199,9 @@ module axi_to_reg_v2 #(
+       .reg_rsp_i ( reg_rsp[i] )
+     );
+ 
+-    // filter zero strobe writes early, directly ack them
++    // Complete inactive banks locally. Reads carry their accepted byte range
++    // through the bank FIFO and request cut, so no unrelated MMIO read escapes.
++    // Keep a response per bank for the upstream response join.
+     reg_demux #(
+       .NoPorts ( 32'd2     ),
+       .req_t   ( reg_req_t ),
+@@ -206,7 +209,7 @@ module axi_to_reg_v2 #(
+     ) i_reg_demux (
+       .clk_i,
+       .rst_ni,
+-      .in_select_i ( reg_req[i].write & (reg_req[i].wstrb == '0) ),
++      .in_select_i ( reg_req[i].wstrb == '0                    ),
+       .in_req_i    ( reg_req[i]                                  ),
+       .in_rsp_o    ( reg_rsp[i]                                  ),
+       .out_req_o   ( {zero_w_req[i], valid_req[i]}               ),
+@@ -213,7 +216,7 @@ module axi_to_reg_v2 #(
+       .out_rsp_i   ( {zero_w_rsp[i], valid_rsp[i]}               )
+     );
+ 
+-    // ack zero strobe writes here
++    // Ack inactive read banks and zero-strobe writes without register side effects.
+     assign zero_w_rsp[i].ready = 1'b1;
+     assign zero_w_rsp[i].error = 1'b0;
+     assign zero_w_rsp[i].rdata = '0;

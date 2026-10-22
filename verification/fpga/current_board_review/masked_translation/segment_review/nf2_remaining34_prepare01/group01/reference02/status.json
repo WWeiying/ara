@@ -1,0 +1,211 @@
+{
+  "status": "HOST_SPIKE_PASS_NOT_DUT",
+  "cases": [
+    "u0_s0_b1_m2_f0",
+    "u0_s0_b1_m3_f0",
+    "u0_s0_b1_m3_f1",
+    "u0_s0_b3_m2_f0"
+  ],
+  "checkpoints": [
+    {
+      "id": 0,
+      "name": "u0_s0_b1_m2_f0",
+      "phase": 1,
+      "checked_bytes": 23032,
+      "commit": 260442
+    },
+    {
+      "id": 0,
+      "name": "u0_s0_b1_m2_f0",
+      "phase": 2,
+      "checked_bytes": 23024,
+      "commit": 390764
+    },
+    {
+      "id": 1,
+      "name": "u0_s0_b1_m3_f0",
+      "phase": 3,
+      "checked_bytes": 23044,
+      "commit": 522991
+    },
+    {
+      "id": 1,
+      "name": "u0_s0_b1_m3_f0",
+      "phase": 2,
+      "checked_bytes": 23044,
+      "commit": 652525
+    },
+    {
+      "id": 2,
+      "name": "u0_s0_b1_m3_f1",
+      "phase": 3,
+      "checked_bytes": 23044,
+      "commit": 784752
+    },
+    {
+      "id": 2,
+      "name": "u0_s0_b1_m3_f1",
+      "phase": 2,
+      "checked_bytes": 23044,
+      "commit": 914286
+    },
+    {
+      "id": 3,
+      "name": "u0_s0_b3_m2_f0",
+      "phase": 1,
+      "checked_bytes": 23032,
+      "commit": 1086757
+    },
+    {
+      "id": 3,
+      "name": "u0_s0_b3_m2_f0",
+      "phase": 2,
+      "checked_bytes": 23024,
+      "commit": 1217137
+    }
+  ],
+  "checks": 3565,
+  "case_checks": [
+    756,
+    474,
+    474,
+    756
+  ],
+  "commits": 1261953,
+  "traps": [
+    [
+      "trap_load_page_fault",
+      "0000000080001180"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "000000008000122c"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "000000008000122c"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "000000008000122c"
+    ],
+    [
+      "trap_load_page_fault",
+      "0000000080001180"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "000000008000122c"
+    ]
+  ],
+  "actions": [
+    [
+      "target",
+      "fault_checkpoint",
+      "repair_sfence",
+      "retry_mret",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    [
+      "target",
+      "younger",
+      "precleanup_checkpoint",
+      "cleanup_sfence",
+      "final_checkpoint"
+    ],
+    [
+      "target",
+      "younger",
+      "precleanup_checkpoint",
+      "cleanup_sfence",
+      "final_checkpoint"
+    ],
+    [
+      "target",
+      "fault_checkpoint",
+      "repair_sfence",
+      "retry_mret",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ]
+  ],
+  "target_events": [
+    [
+      {
+        "opcode": "0x20055c07",
+        "access": []
+      },
+      {
+        "opcode": "0x20055c07",
+        "access": [
+          [
+            1073745924,
+            null
+          ],
+          [
+            1073745926,
+            null
+          ],
+          [
+            1073745936,
+            null
+          ],
+          [
+            1073745938,
+            null
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "opcode": "0x20055c07",
+        "access": []
+      }
+    ],
+    [
+      {
+        "opcode": "0x20055c07",
+        "access": []
+      }
+    ],
+    [
+      {
+        "opcode": "0x20055c07",
+        "access": [
+          [
+            1073745916,
+            null
+          ],
+          [
+            1073745918,
+            null
+          ]
+        ]
+      },
+      {
+        "opcode": "0x20055c07",
+        "access": [
+          [
+            1073745928,
+            null
+          ],
+          [
+            1073745930,
+            null
+          ]
+        ]
+      }
+    ]
+  ],
+  "VCS_launched": false,
+  "Linux_launched": false,
+  "reference_elapsed_s": 47.8783939643763,
+  "process_returncode": 0,
+  "isa": "rv64gcv_zfh_zvfh_zvl1024b",
+  "raw_bytes": 154667494,
+  "raw_sha256": "23f06aa619e6847a367a7a622df094dd29cd511c7e96ce6b6411cb2b60b57838"
+}

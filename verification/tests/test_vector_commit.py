@@ -1,16 +1,20 @@
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
 from ara_verify.spike_trace import SpikeCommit
 from ara_verify.vector_commit import (
     ArchActivity,
+    VectorWrite,
     VectorCommitComparisonError,
     VectorRetire,
     _advance_unknown_state,
     _architectural_compare_mask,
     _deshuffle_byte,
+    _identity_trap_write_bytes,
+    _known_identity_load_fault,
     _is_non_bit_exact_vector_result,
     _map_spike_commits,
     _vector_scalar_source_unknown,
@@ -20,6 +24,74 @@ from ara_verify.vector_commit import (
 
 
 class VectorCommitComparisonTests(unittest.TestCase):
+    def test_identity_load_requires_fault_csrs_and_no_partial_effects(self):
+        insn = 0x27df7f07
+        activity = ArchActivity(insn, allocations=3, completions=3, vl=1, vstart=0)
+        commit = SpikeCommit(0x80000514, insn, {}, {}, {}, {8: 0}, (),
+                             vector_vl=1, vector_vstart=0)
+        fault = {"matched_fault_csrs": {
+            "0x341": commit.pc, "0x342": 4, "0x343": 0x80000002}}
+        self.assertTrue(_known_identity_load_fault(activity, commit, fault))
+        for csr in ("0x341", "0x342", "0x343"):
+            missing = dict(fault["matched_fault_csrs"])
+            missing.pop(csr)
+            self.assertFalse(_known_identity_load_fault(
+                activity, commit, {"matched_fault_csrs": missing}))
+        for damaged in (replace(commit, vector_writes={30: 0}),
+                        replace(commit, memory_accesses=((0x80000000, None),)),
+                        replace(commit, csr_writes={8: 1}),
+                        replace(commit, vector_vstart=1),
+                        replace(commit, csr_writes={}),
+                        replace(commit, vector_vl=0)):
+            self.assertFalse(_known_identity_load_fault(activity, damaged, fault))
+        self.assertFalse(_known_identity_load_fault(
+            replace(activity, completions=2), commit, fault))
+        for csr in ("0x341", "0x342"):
+            wrong = dict(fault["matched_fault_csrs"])
+            wrong[csr] += 1
+            self.assertFalse(_known_identity_load_fault(
+                activity, commit, {"matched_fault_csrs": wrong}))
+
+    def test_load_identity_checks_every_known_byte_and_rejects_duplicates(self):
+        write = VectorWrite(1, 10, 0, 0, 0, 4, 0x27df7f07, 3, 4,
+                            0xff, 0x1122334455667788, 0xff)
+        activity = ArchActivity(write.instruction, writes=[write])
+        state = {1: write.data}
+        self.assertEqual(_identity_trap_write_bytes(activity, state, {}, 4, 1024), 0)
+        self.assertEqual(_identity_trap_write_bytes(
+            activity, state, {}, 4, 1024, allow_load=True), 8)
+        for writes, prior, unknown in (
+            ([replace(write, data=write.data ^ 1)], state, {}),
+            ([replace(write, known_be=0xfe)], state, {}),
+            ([write], state, {1: 0xff}),
+            ([write], {}, {}),
+            ([write, replace(write, cycle=11)], state, {}),
+            ([replace(write, source=2)], state, {}),
+        ):
+            self.assertEqual(_identity_trap_write_bytes(
+                replace(activity, writes=writes), prior, unknown, 4, 1024,
+                allow_load=True), 0)
+
+    def test_trapped_store_reshuffle_requires_known_identity_writes(self):
+        write = VectorWrite(
+            row=1, cycle=10, arch_seq=0, vid=0, lane=0, source=3,
+            instruction=0x2dfb6ca7, eew=3, addr=4, be=0xff,
+            data=0x1122334455667788, known_be=0xff,
+        )
+        activity = ArchActivity(instruction=write.instruction, writes=[write])
+        state = {1: write.data}
+        self.assertEqual(_identity_trap_write_bytes(activity, state, {}, 4, 1024), 8)
+        self.assertEqual(_identity_trap_write_bytes(activity, {1: 0}, {}, 4, 1024), 0)
+        self.assertEqual(_identity_trap_write_bytes(activity, state, {1: 0xff}, 4, 1024), 0)
+        self.assertEqual(_identity_trap_write_bytes(activity, {}, {}, 4, 1024), 0)
+        self.assertEqual(_identity_trap_write_bytes(
+            replace(activity, writes=[replace(write, source=4)]), state, {}, 4, 1024
+        ), 0)
+        self.assertEqual(_identity_trap_write_bytes(
+            replace(activity, writes=[write, replace(write, row=2, cycle=11)]),
+            state, {}, 4, 1024
+        ), 0)
+
     def test_spike_mapping_can_preserve_a_strict_prefix(self):
         commits = [
             SpikeCommit(
@@ -510,25 +582,53 @@ class VectorCommitComparisonTests(unittest.TestCase):
             spike, commit, vector = self._write_fixture(root)
             trapped = "eb1b0907"
             valid = "02000057"
+            spike.write_text(
+                f"core 0: 3 0x0000000080000000 (0x{trapped}) e32 m1 l1 c8_vstart 0x0\n"
+                + spike.read_text().replace("0x0000000080000000", "0x0000000080000004")
+            )
+            fault = {"index": 0, "pc": "0x0000000080000000", "instruction": f"0x{trapped}"}
             commit.write_text(
                 "cycle,event,order,port,trans_id,pc,insn,rd,rd_wdata,mem_addr,mem_rmask,mem_wmask,mem_wdata,trap\n"
                 f"1,arch_start,0,-1,2,0000000000000000,{trapped},0,0,0,00,00,0,0\n"
                 f"1,cvx_req,-1,-1,2,0000000000000000,{trapped},0,0,0,00,00,0,0\n"
                 "1,cvx_resp,-1,-1,2,0000000000000000,00000000,0,0,0,00,00,0,1\n"
                 f"2,arch_start,1,-1,3,0000000000000000,{valid},0,0,0,00,00,0,0\n"
-                f"3,retire,0,0,-1,0000000080000000,{valid},0,0,0,00,00,0,0\n",
+                f"3,retire,0,0,-1,0000000080000004,{valid},0,0,0,00,00,0,0\n",
                 encoding="utf-8",
             )
             vector.write_text(
                 vector.read_text(encoding="utf-8").replace(
                     ",0,0,0,0,02000057,", ",1,0,0,0,02000057,"
+                )
+                + f"2,alloc,0,0,0,4,{trapped},1,1,2,1,0,0,00,0000000000000000,4,1024\n"
+                + f"2,write,0,0,0,4,{trapped},1,1,2,1,0,0,00,0000000000000000,4,1024\n"
+                + f"2,done,0,0,0,4,{trapped},1,1,2,1,0,0,00,0000000000000000,4,1024\n",
+                encoding="utf-8",
+            )
+            no_fault_proof = compare_vector_commits(spike, commit, vector, entry=0x80000000)
+            self.assertEqual(no_fault_proof["status"], "PREFIX")
+            result = compare_vector_commits(
+                spike, commit, vector, entry=0x80000000,
+                aligned_vector_faults=[fault],
+            )
+            self.assertEqual(result["status"], "PASS")
+            self.assertEqual(result["trapped_requests"], [0])
+            self.assertEqual(result["verified_zero_write_traps"], [0])
+            self.assertEqual(result["instructions"][0]["arch_seq"], 1)
+
+            vector.write_text(
+                vector.read_text(encoding="utf-8").replace(
+                    f"2,write,0,0,0,4,{trapped},1,1,2,1,0,0,00,",
+                    f"2,write,0,0,0,4,{trapped},1,1,2,1,0,0,0f,",
                 ),
                 encoding="utf-8",
             )
-            result = compare_vector_commits(spike, commit, vector, entry=0x80000000)
-            self.assertEqual(result["status"], "PASS")
-            self.assertEqual(result["trapped_requests"], [0])
-            self.assertEqual(result["instructions"][0]["arch_seq"], 1)
+            nonzero_write = compare_vector_commits(
+                spike, commit, vector, entry=0x80000000,
+                aligned_vector_faults=[fault],
+            )
+            self.assertEqual(nonzero_write["status"], "PREFIX")
+            self.assertEqual(nonzero_write["verified_zero_write_traps"], [])
 
     def test_incomplete_tail_reports_a_compared_prefix(self):
         with tempfile.TemporaryDirectory() as directory:

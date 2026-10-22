@@ -1,0 +1,122 @@
+Notice: timing checks disabled with +notimingcheck at compile-time
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Oct 18 04:40 2026
+Dump results on ../gold_results.txt
+
+Warning-[RT-NCMUCS] No condition matches in statement
+/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/src/axi_inval_filter.sv, 85
+  No condition matches in 'unique case' statement. 'default' specification is 
+  missing, inside ara_tb.dut.i_ara_soc.i_system.i_axi_inval_filter.inval_fsm, 
+  at time 0fs.
+
+Loading ELF file /home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/soc.elf
+Loading section 0000000080000000 of length 0000000000005ca8
+[TRACER] Output filename is: trace_hart_0.log
+BOARD_CASE_BEGIN unboxed_unmasked_alias_v16_e16_m4_t1_ctx1
+FP_BIT index=6 expected=1 actual=0
+FP_BIT index=7 expected=0 actual=1
+FP_BIT index=9 expected=1 actual=0
+FP_BIT index=11 expected=1 actual=0
+FP_BIT index=13 expected=0 actual=1
+FP_BIT index=14 expected=1 actual=0
+FP_BIT index=22 expected=1 actual=0
+FP_BIT index=23 expected=0 actual=1
+FP_BIT index=25 expected=1 actual=0
+FP_BIT index=27 expected=1 actual=0
+FP_BIT index=29 expected=0 actual=1
+FP_BIT index=30 expected=1 actual=0
+FP_BIT index=38 expected=1 actual=0
+FP_BIT index=39 expected=0 actual=1
+FP_BIT index=41 expected=1 actual=0
+FP_BIT index=43 expected=1 actual=0
+FP_BIT index=45 expected=0 actual=1
+FP_BIT index=46 expected=1 actual=0
+FP_BIT index=54 expected=1 actual=0
+FP_BIT index=55 expected=0 actual=1
+FP_BIT index=57 expected=1 actual=0
+FP_BIT index=59 expected=1 actual=0
+FP_BIT index=61 expected=0 actual=1
+FP_BIT index=62 expected=1 actual=0
+FP_BIT index=70 expected=1 actual=0
+FP_BIT index=71 expected=0 actual=1
+FP_BIT index=73 expected=1 actual=0
+FP_BIT index=75 expected=1 actual=0
+FP_BIT index=77 expected=0 actual=1
+FP_BIT index=78 expected=1 actual=0
+FP_BIT index=86 expected=1 actual=0
+FP_BIT index=87 expected=0 actual=1
+FP_BIT index=89 expected=1 actual=0
+FP_BIT index=91 expected=1 actual=0
+FP_BIT index=93 expected=0 actual=1
+FP_BIT index=94 expected=1 actual=0
+FP_BIT index=102 expected=1 actual=0
+FP_BIT index=103 expected=0 actual=1
+FP_BIT index=105 expected=1 actual=0
+FP_BIT index=107 expected=1 actual=0
+FP_BIT index=109 expected=0 actual=1
+FP_BIT index=110 expected=1 actual=0
+FP_BIT index=118 expected=1 actual=0
+FP_BIT index=119 expected=0 actual=1
+FP_BIT index=121 expected=1 actual=0
+FP_BIT index=123 expected=1 actual=0
+FP_BIT index=125 expected=0 actual=1
+FP_BIT index=126 expected=1 actual=0
+FP_BIT index=134 expected=1 actual=0
+FP_BIT index=135 expected=0 actual=1
+FP_BIT index=137 expected=1 actual=0
+FP_BIT index=139 expected=1 actual=0
+FP_BIT index=141 expected=0 actual=1
+FP_BIT index=142 expected=1 actual=0
+FP_BIT index=150 expected=1 actual=0
+FP_BIT index=151 expected=0 actual=1
+FP_BIT index=153 expected=1 actual=0
+FP_BIT index=155 expected=1 actual=0
+FP_BIT index=157 expected=0 actual=1
+FP_BIT index=158 expected=1 actual=0
+FP_BIT index=166 expected=1 actual=0
+FP_BIT index=167 expected=0 actual=1
+FP_BIT index=169 expected=1 actual=0
+FP_BIT index=171 expected=1 actual=0
+FP_BIT index=173 expected=0 actual=1
+FP_BIT index=174 expected=1 actual=0
+FP_BIT index=182 expected=1 actual=0
+FP_BIT index=183 expected=0 actual=1
+FP_BIT index=185 expected=1 actual=0
+FP_BIT index=187 expected=1 actual=0
+FP_BIT index=189 expected=0 actual=1
+FP_BIT index=190 expected=1 actual=0
+FP_BIT index=198 expected=1 actual=0
+FP_BIT index=199 expected=0 actual=1
+FP_BIT index=201 expected=1 actual=0
+FP_BIT index=203 expected=1 actual=0
+FP_BIT index=205 expected=0 actual=1
+FP_BIT index=206 expected=1 actual=0
+FP_BIT index=214 expected=1 actual=0
+FP_BIT index=215 expected=0 actual=1
+FP_BIT index=217 expected=1 actual=0
+FP_BIT index=219 expected=1 actual=0
+FP_BIT index=221 expected=0 actual=1
+FP_BIT index=222 expected=1 actual=0
+FP_BIT index=230 expected=1 actual=0
+FP_BIT index=231 expected=0 actual=1
+FP_BIT index=233 expected=1 actual=0
+FP_BIT index=235 expected=1 actual=0
+FP_BIT index=237 expected=0 actual=1
+FP_BIT index=238 expected=1 actual=0
+FP_BIT index=246 expected=1 actual=0
+FP_BIT index=247 expected=0 actual=1
+FP_BIT index=249 expected=1 actual=0
+FP_BIT index=251 expected=1 actual=0
+FP_BIT index=253 expected=0 actual=1
+FP_BIT index=254 expected=1 actual=0
+RVV_FP_COMPARE_DETAIL op=3 seed=21 vl=256 mask=3 sticky=1 expected_flags=17 actual_flags=17 errors=96
+RVV_FP_COMPARE_FAIL sew=16 cases=1 errors=96
+Warning: "/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/tb/ara_tb.sv", 1534: ara_tb: at time 125325500000 fs
+Core Test *** FAILED *** (tohost = 1)
+$finish called from file "/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/tb/ara_tb.sv", line 1558.
+$finish at simulation time           1253255000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 125325500000 fs
+CPU Time:    147.570 seconds;       Data structure size:  13.3Mb
+Sun Oct 18 04:43:18 2026

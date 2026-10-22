@@ -1,0 +1,13 @@
+{
+  "returncode": 0,
+  "elapsed_s": 45.33768963813782,
+  "image": "/home/wangwy/fpga_runs/fp_compare_alias_fix_20261018_01/image",
+  "elf_sha256": "23178038a32b9082d1d1cd78cfc7119e356a924f367541a6acf7f8b25a4beef4",
+  "signals": 77,
+  "window_ns": [
+    15700,
+    17000
+  ],
+  "architectural_pass": true,
+  "terminal": true
+}

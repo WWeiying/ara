@@ -1,0 +1,35 @@
+{
+  "purpose": "Second eight-worker wave after RVV/system gap replay; split conversion oracles and specialized profiles",
+  "tests": [
+    "rvv:rvv_coverage_operand_edges_e8",
+    "rvv:rvv_coverage_operand_edges_e16",
+    "rvv:rvv_coverage_operand_edges_e32",
+    "rvv:rvv_coverage_operand_edges_e64",
+    "rvv:coverage_fp16_int8_s0",
+    "rvv:coverage_fp16_int8_s1",
+    "rvv:coverage_fp16_int8_s2",
+    "rvv:coverage_fp16_int8_s3",
+    "rvv:coverage_fp16_int8_s4",
+    "rvv:coverage_fp16_int8_s5",
+    "rvv:coverage_fp16_int8_s6",
+    "rvv:coverage_fp16_int8_s7",
+    "app:llama_qwen25_q2k_decode_ffn_down_4r_qbs",
+    "app:llama_qwen25_q3k_decode_attn_q_qbs",
+    "app:llama_qwen25_q5k_decode_attn_q_qbs",
+    "app:llama_qwen25_q6k_decode_attn_q_qbs",
+    "app:llama_qwen25_q8_0_decode_attn_q_qbs",
+    "app:llama_qwen25_q4_0_decode_attn_q_qbs",
+    "app:llama_qwen25_q5_0_decode_attn_q_qbs",
+    "app:llama_qwen25_iq4_nl_decode_attn_q_qbs",
+    "app:llama_qwen25_decode_attn_q_qbs_ctx2",
+    "app:llama_qwen25_decode_attn_q_qbs_chain3_operation",
+    "app:llama_qwen25_decode_attn_q_qbs_chain3_crossop",
+    "app:llama_qwen25_shape_decode_n32_qbs_prebuilt",
+    "app:akv_portability_smoke",
+    "app:akv_d256_reuse_smoke"
+  ],
+  "references": ["gap_qbs_akv_20260927.json"],
+  "deferred": {
+    "app:llama_qwen25_prefill_attn_q_qbs_m8": "Large 96-command shape; prefer short discriminating coverage stimuli first"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "returncode": 0,
+  "seconds": 50.54,
+  "case": "fault_overlap_mid",
+  "elf_sha256": "7bd9234726df11ed1e18baa79530eb6d0f0afae38e27fdd8293fe40c57a09d9b",
+  "status": "PASS",
+  "faults": [
+    "SYSTEM_FAULT n=0000000000000000 cause=000000000000000d pc=00000000800007ec tval=0000000040004000 vstart=0000000000000011 vl=0000000000000020 vtype=0000000000000010"
+  ],
+  "diagnostics": [
+    "SYSTEM_PASS faults=0000000000000001 errors=0000000000000000 overlap=0000000000000001 context=0000000000000000"
+  ],
+  "fsdb_bytes": 6783528
+}

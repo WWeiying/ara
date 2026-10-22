@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 
 
@@ -23,6 +24,8 @@ class VectorSignatureRewrite:
     checkpoint_memory_regions: tuple[str, ...] = ()
     checkpoint_memory_sites: tuple[int, ...] = ()
     checkpoint_mask_register: int | None = None
+    defined_scalar_source_reads: int = 0
+    preserved_index_rotation_reads: int = 0
 
     @property
     def signature_bytes(self) -> int:
@@ -68,6 +71,12 @@ _USER_STACK_RE = re.compile(
     r"(?:h\d+_)?user_stack_end\s*(?:#.*)?$",
     re.MULTILINE,
 )
+_KERNEL_STACK_RE = re.compile(
+    r"^\s*kernel_sp:\s*(?:#.*)?\n\s*la\s+"
+    r"(?P<register>x(?:[1-9]|[12][0-9]|3[01]))\s*,\s*"
+    r"(?:h\d+_)?kernel_stack_end\s*(?:#.*)?$",
+    re.MULTILINE,
+)
 _LABEL_RE = re.compile(
     r"^(?P<label>(?:[.$a-zA-Z_][.$a-zA-Z0-9_]*|[0-9]+)):(?P<body>.*)$"
 )
@@ -88,6 +97,198 @@ _VECTOR_STORE_RE = re.compile(
 _CHECKPOINT_TEMP_REGISTERS = (
     "x5", "x6", "x7", "x28", "x29", "x30", "x31", "x10", "x11", "x12",
 )
+_SCALAR_VECTOR_READ_RE = re.compile(
+    r"^(?:vcpop\.m|vfirst\.m|vmv\.x\.s|vfmv\.f\.s)\s+[^,]+,\s*"
+    r"v(?P<source>[0-9]|[12][0-9]|3[01])"
+    r"(?P<mask>\s*,\s*v0\.t)?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _program_region(label: str | None, active: bool) -> bool:
+    if label == "main" or (label is not None and re.fullmatch(r"sub_[0-9]+", label)):
+        return True
+    if label in {"test_done", "write_tohost"}:
+        return False
+    return active
+
+
+def _count_program_vector_scalar_reads(lines: list[str]) -> int:
+    mnemonics = {"vcpop.m", "vfirst.m", "vmv.x.s", "vfmv.f.s"}
+    in_program = False
+    count = 0
+    for line in lines:
+        label, _ = _instruction_on_line(line)
+        in_program = _program_region(label, in_program)
+        instruction = _instruction_text_on_line(line) if in_program else None
+        if instruction and instruction.split(None, 1)[0].lower() in mnemonics:
+            count += 1
+    return count
+
+
+def _proven_index_rotation_reads(lines: list[str], vlen: int) -> frozenset[int]:
+    """Recognize the riscv-dv bounded slide-index constructor, not general vmv.
+
+    K literal inserts followed by VLMAX-K rotations put precisely those K
+    literals in [0, K). The rotated prior contents reach only the unused suffix;
+    the scalar temporary is overwritten before use. Loading a whole register
+    before these reads destroys the literals this constructor is preserving.
+    """
+    ops = [re.sub(r"\s+", " ", _instruction_text_on_line(line) or "") for line in lines]
+    config = re.compile(r"vsetvli (\w+), (\w+), e(8|16|32|64), (mf[248]|m1), tu, mu$")
+    indexed = re.compile(r"v[ls][ou]x(?:seg([2-8]))?ei(8|16|32|64)\.v v\d+, \((\w+)\), (v\d+)(?:, v0\.t)?$")
+    gap_ops = {"li", "csrrw", "vnmsub.vx", "vmsgtu.vi", "srlw", "vnsra.wv",
+               "vredmaxu.vs", "vmerge.vim", "vsub.vx", "vrgather.vi", "c.andi",
+               "vmand.mm", "vsext.vf2"}
+
+    def lmul(text: str) -> Fraction:
+        return Fraction(1, int(text[2:])) if text.startswith("mf") else Fraction(1)
+
+    preserved: set[int] = set()
+    in_program = False
+    for start, line in enumerate(lines):
+        label, _ = _instruction_on_line(line)
+        in_program = _program_region(label, in_program)
+        if not in_program or "#start riscv_vector_load_store_instr_stream_" not in line:
+            continue
+        cfg = config.fullmatch(ops[start])
+        if (cfg is None or cfg[2] not in {"zero", "x0"}
+                or _normalize_gpr(cfg[1]) in {None, "x0"}):
+            continue
+        scalar, width = cfg[1], int(cfg[3])
+        slots = Fraction(vlen, width) * lmul(cfg[4])
+        cursor, literals, index = start + 1, [], None
+        while cursor + 1 < len(lines):
+            immediate = re.fullmatch(rf"li {scalar}, (0x[0-9a-f]+|[0-9]+)", ops[cursor])
+            slide = re.fullmatch(rf"vslide1down.vx (v\d+), \1, {scalar}", ops[cursor + 1])
+            if not immediate or not slide or (index is not None and index != slide[1]):
+                break
+            index = slide[1]
+            literals.append(int(immediate[1], 0))
+            cursor += 2
+        rotations = []
+        while cursor + 1 < len(lines) and index is not None and ops[cursor:cursor + 2] == [
+                f"vmv.x.s {scalar}, {index}", f"vslide1down.vx {index}, {index}, {scalar}"]:
+            rotations.append(cursor)
+            cursor += 2
+        if (not literals or not rotations or not re.fullmatch(r"v(?:[1-9]|[12][0-9]|3[01])", index or "")
+                or len(literals) + len(rotations) != slots):
+            continue
+        if cursor + 1 >= len(lines) or ops[cursor] not in {
+                f"li {scalar}, {len(literals)}", f"li {scalar}, {hex(len(literals))}"}:
+            continue
+        data_cfg = config.fullmatch(ops[cursor + 1])
+        if (data_cfg is None or data_cfg[2] != scalar or lmul(data_cfg[4]) > Fraction(1, 2)
+                or lmul(data_cfg[4]) * width / int(data_cfg[3]) != lmul(cfg[4])):
+            continue
+        addresses, destinations = {}, set()
+        access = cursor + 2
+        while access < len(lines) and not indexed.fullmatch(ops[access]):
+            op = ops[access]
+            addr = re.fullmatch(r"la (\w+), (region_\d+)\+([0-9]+)", op)
+            if addr:
+                addresses[_GPR_ALIASES.get(addr[1], addr[1])] = (addr[2], int(addr[3]))
+            elif op:
+                if op.split()[0] not in gap_ops or (op.startswith("csrrw") and
+                        not re.fullmatch(r"csrrw \w+, vstart, \w+", op)):
+                    break
+                dest = op.split(" ", 1)[1].split(",")[0]
+                destinations.add(_GPR_ALIASES.get(dest, dest))
+            access += 1
+        if access >= len(lines):
+            continue
+        mem = indexed.fullmatch(ops[access])
+        if (mem is None or mem[4] != index or int(mem[2]) != width or index in destinations
+                or any(_instruction_on_line(item)[0] is not None for item in lines[start + 1:access + 1])):
+            continue
+        base = _GPR_ALIASES.get(mem[3], mem[3])
+        if base not in addresses or base in destinations:
+            continue
+        region, offset = addresses[base]
+        region_start = next((i for i, item in enumerate(lines) if item.strip() == f"{region}:"), None)
+        region_end = next((i for i, item in enumerate(lines) if item.strip() == f"__ara_{region}_end:"), None)
+        if region_start is None or region_end is None or region_start >= region_end:
+            continue
+        size = 0
+        for item in lines[region_start + 1:region_end]:
+            data = re.fullmatch(r"\s*\.(byte|half|word|dword)\s+([^#]+?)(?:#.*)?\s*", item)
+            if not data:
+                size = 0
+                break
+            size += {"byte": 1, "half": 2, "word": 4, "dword": 8}[data[1]] * len(data[2].split(","))
+        element_bytes = int(data_cfg[3]) // 8
+        if (any(value >= 1 << width or value % element_bytes for value in literals)
+                or offset + max(literals) + int(mem[1] or 1) * element_bytes > size):
+            continue
+        preserved.update(rotations)
+    return frozenset(preserved)
+
+
+def _insert_defined_scalar_sources(
+    lines: list[str], stack_register: str, kernel_stack_register: str | None,
+    *, preserved_indices: frozenset[int] = frozenset(),
+) -> tuple[list[str], int]:
+    scratch = next(
+        (register for register in _CHECKPOINT_TEMP_REGISTERS
+         if register not in {stack_register, kernel_stack_register}), None
+    )
+    if scratch is None:
+        raise VectorSignatureError("cannot select scalar-source scratch register")
+    rewritten: list[str] = []
+    in_program = False
+    count = 0
+    for line_index, line in enumerate(lines):
+        label, _ = _instruction_on_line(line)
+        in_program = _program_region(label, in_program)
+        instruction = _instruction_text_on_line(line) if in_program else None
+        match = _SCALAR_VECTOR_READ_RE.fullmatch(instruction or "")
+        if match is None or line_index in preserved_indices:
+            rewritten.append(line)
+            continue
+        if label is not None:
+            colon = line.index(":")
+            rewritten.append(line[:colon + 1] + "\n")
+            line = "                  " + line[colon + 1:].lstrip()
+        source = int(match.group("source"))
+        rewritten.extend([
+            f"                  # ARA_DSA_DEFINED_SCALAR_SOURCE_{count:03d}\n",
+            f"                  addi {stack_register}, {stack_register}, -16\n",
+            f"                  sd {scratch}, 0({stack_register})\n",
+            f"                  csrr {scratch}, vstart\n",
+            f"                  sd {scratch}, 8({stack_register})\n",
+            "                  csrw vstart, zero\n",
+            f"                  la {scratch}, __ara_defined_scalar_source\n",
+            f"                  vl1re8.v v{source}, ({scratch})\n",
+        ])
+        if match.group("mask") and source != 0:
+            rewritten.extend([
+                f"                  la {scratch}, __ara_defined_scalar_predicate\n",
+                f"                  vl1re8.v v0, ({scratch})\n",
+            ])
+        rewritten.extend([
+            f"                  ld {scratch}, 8({stack_register})\n",
+            f"                  csrw vstart, {scratch}\n",
+            f"                  ld {scratch}, 0({stack_register})\n",
+            f"                  addi {stack_register}, {stack_register}, 16\n",
+            line if line.endswith("\n") else line + "\n",
+        ])
+        count += 1
+    return rewritten, count
+
+
+def _defined_scalar_source_storage(bytes_per_register: int) -> str:
+    def array(label: str, seed: int, stride: int) -> str:
+        values = [(seed + stride * index) & 0xFF
+                  for index in range(bytes_per_register)]
+        rows = ["                  .byte " + ", ".join(
+            f"0x{value:02x}" for value in values[index:index + 16]
+        ) for index in range(0, len(values), 16)]
+        return label + ":\n" + "\n".join(rows) + "\n"
+
+    return ("\n.section .data\n.balign 128\n" +
+            array("__ara_defined_scalar_source", 0x5A, 37) +
+            ".balign 128\n" +
+            array("__ara_defined_scalar_predicate", 0xA5, 29))
 
 
 def _signature_routine(bytes_per_register: int, stack_register: str) -> str:
@@ -258,11 +459,13 @@ def _checkpoint_routine(
     checkpoint: int,
     instruction: str,
     stack_register: str,
+    kernel_stack_register: str | None,
     memory_regions: tuple[str, ...],
     mask_register: int | None = None,
 ) -> str:
     temporary_registers = [
-        register for register in _CHECKPOINT_TEMP_REGISTERS if register != stack_register
+        register for register in _CHECKPOINT_TEMP_REGISTERS
+        if register not in {stack_register, kernel_stack_register}
     ][:3]
     if len(temporary_registers) != 3:
         raise VectorSignatureError("cannot select checkpoint temporary registers")
@@ -292,8 +495,13 @@ def _checkpoint_routine(
         f"                  sd {address}, 0({stack_register})",
         f"                  sd {count}, 8({stack_register})",
         f"                  sd {value}, 16({stack_register})",
-        f"                  la {address}, __ara_vector_signature",
     ]
+    if checkpoint == 0:
+        lines.extend([
+            f"                  li {value}, 0x6000",
+            f"                  csrs mstatus, {value}",
+        ])
+    lines.append(f"                  la {address}, __ara_vector_signature")
     for register in range(32):
         lines.append(f"                  vs1r.v v{register}, ({address})")
         lines.append(f"                  csrr {value}, vl")
@@ -339,6 +547,7 @@ def _checkpoint_routine(
 
 def _insert_vector_checkpoints(
     lines: list[str], bytes_per_register: int, stack_register: str,
+    kernel_stack_register: str | None,
     memory_regions: tuple[str, ...], checkpoint_indices: set[int] | None = None,
     mask_register: int | None = None,
 ) -> tuple[list[str], tuple[str, ...], tuple[int, ...], tuple[int, ...]]:
@@ -369,6 +578,7 @@ def _insert_vector_checkpoints(
                 0,
                 "initial_state",
                 stack_register,
+                kernel_stack_register,
                 (),
                 mask_register,
             ))
@@ -405,6 +615,7 @@ def _insert_vector_checkpoints(
                 checkpoint,
                 instruction_text,
                 stack_register,
+                kernel_stack_register,
                 checkpoint_regions,
                 mask_register,
             ))
@@ -447,7 +658,7 @@ def _label_test_exit_ecall(lines: list[str]) -> list[str]:
 
 
 def _normalize_vector_policies(
-    lines: list[str], source: Path
+    lines: list[str], source: Path, spill_stack_register: str | None = None
 ) -> tuple[list[str], int, int]:
     rewritten_lines = []
     policy_rewrites = 0
@@ -489,12 +700,43 @@ def _normalize_vector_policies(
         deterministic_vtype = vtype & ~0xC0
         rs1 = dynamic_match.group("rs1")
         rd = dynamic_match.group("rd")
-        if deterministic_vtype != vtype and _normalize_gpr(rs1) == _normalize_gpr(rs2):
-            raise VectorSignatureError(
-                f"vsetvl in {source} uses {rs2} as both AVL and vtype; "
-                "cannot force deterministic policy without changing AVL"
-            )
         indent = line[: len(line) - len(line.lstrip())]
+        if deterministic_vtype != vtype and _normalize_gpr(rs1) == _normalize_gpr(rs2):
+            if _normalize_gpr(rd) in ("x0", _normalize_gpr(rs1)):
+                # riscv-dv may use sp as an ordinary random operand; only its
+                # reserved user-stack register is safe for this local spill.
+                if spill_stack_register is None or _normalize_gpr(spill_stack_register) in (
+                    _normalize_gpr(rs1), _normalize_gpr(rd)
+                ):
+                    raise VectorSignatureError(
+                        f"vsetvl in {source} needs a distinct reserved stack register "
+                        "to spill a temporary vtype register"
+                    )
+                scratch = next(reg for reg in ("t6", "t5", "t4", "t3")
+                               if _normalize_gpr(reg) not in (
+                                   _normalize_gpr(rs1), _normalize_gpr(rd),
+                                   _normalize_gpr(spill_stack_register)
+                               ))
+                dynamic_lines.extend((
+                    f"{indent}addi {spill_stack_register}, {spill_stack_register}, -16\n",
+                    f"{indent}sd {scratch}, 0({spill_stack_register})\n",
+                    f"{indent}li {scratch}, 0x{deterministic_vtype:x}\n",
+                    line[:dynamic_match.start("rs2")] + scratch +
+                    line[dynamic_match.end("rs2"):],
+                    f"{indent}ld {scratch}, 0({spill_stack_register})\n",
+                    f"{indent}addi {spill_stack_register}, {spill_stack_register}, 16\n",
+                ))
+                dynamic_policy_rewrites += 1
+                continue
+            # rd is overwritten by vsetvl, so it can carry the rewritten vtype
+            # without changing the AVL source or any live register after the call.
+            dynamic_lines.append(f"{indent}li {rd}, 0x{deterministic_vtype:x}\n")
+            dynamic_lines.append(
+                line[:dynamic_match.start("rs2")] + rd +
+                line[dynamic_match.end("rs2"):]
+            )
+            dynamic_policy_rewrites += 1
+            continue
         if deterministic_vtype != vtype:
             dynamic_lines.append(f"{indent}li {rs2}, 0x{deterministic_vtype:x}\n")
         dynamic_lines.append(line)
@@ -508,8 +750,11 @@ def _normalize_vector_policies(
 
 
 def rewrite_deterministic_vector_policies(source: Path) -> tuple[int, int]:
+    text = source.read_text(encoding="utf-8")
+    stack_matches = list(_USER_STACK_RE.finditer(text))
     lines, policy_rewrites, dynamic_policy_rewrites = _normalize_vector_policies(
-        source.read_text(encoding="utf-8").splitlines(keepends=True), source
+        text.splitlines(keepends=True), source,
+        stack_matches[0].group("register") if len(stack_matches) == 1 else None,
     )
     source.write_text("".join(lines), encoding="utf-8")
     return policy_rewrites, dynamic_policy_rewrites
@@ -519,6 +764,7 @@ def rewrite_vector_signature(
     source: Path, vlen_bits: int = 1024, vector_checkpoints: bool = False,
     checkpoint_indices: tuple[int, ...] = (),
     checkpoint_mask_register: int | None = None,
+    defined_scalar_sources: bool = False,
 ) -> VectorSignatureRewrite:
     if vlen_bits <= 0 or vlen_bits % 64:
         raise VectorSignatureError("VLEN must be a positive multiple of 64 bits")
@@ -529,18 +775,45 @@ def rewrite_vector_signature(
     text = source.read_text(encoding="utf-8")
     if _BEGIN_MARKER in text or "__ara_vector_signature:" in text:
         raise VectorSignatureError(f"vector signature is already present in {source}")
-    rewritten_lines, policy_rewrites, dynamic_policy_rewrites = _normalize_vector_policies(
-        text.splitlines(keepends=True), source
-    )
-
-    rewritten_lines, checkpoint_memory_regions = _annotate_memory_regions(rewritten_lines)
-
-    stack_matches = list(_USER_STACK_RE.finditer("".join(rewritten_lines)))
+    stack_matches = list(_USER_STACK_RE.finditer(text))
     if len(stack_matches) != 1:
         raise VectorSignatureError(
             "cannot identify a unique riscv-dv user stack register for vector signatures"
         )
     scratch_stack_register = stack_matches[0].group("register")
+    rewritten_lines, policy_rewrites, dynamic_policy_rewrites = _normalize_vector_policies(
+        text.splitlines(keepends=True), source, scratch_stack_register
+    )
+
+    rewritten_lines, checkpoint_memory_regions = _annotate_memory_regions(rewritten_lines)
+
+    kernel_stack_matches = list(_KERNEL_STACK_RE.finditer("".join(rewritten_lines)))
+    if len(kernel_stack_matches) > 1:
+        raise VectorSignatureError("cannot identify a unique riscv-dv kernel stack register")
+    kernel_stack_register = (
+        kernel_stack_matches[0].group("register") if kernel_stack_matches else None
+    )
+    if kernel_stack_register == scratch_stack_register:
+        raise VectorSignatureError("kernel and user stack registers overlap")
+    if defined_scalar_sources and vector_checkpoints:
+        raise VectorSignatureError(
+            "defined scalar sources cannot be combined with vector checkpoints"
+        )
+    defined_scalar_source_reads = 0
+    preserved_index_rotation_reads = 0
+    if defined_scalar_sources:
+        expected_scalar_reads = _count_program_vector_scalar_reads(rewritten_lines)
+        preserved_indices = _proven_index_rotation_reads(rewritten_lines, bytes_per_register * 8)
+        preserved_index_rotation_reads = len(preserved_indices)
+        rewritten_lines, defined_scalar_source_reads = _insert_defined_scalar_sources(
+            rewritten_lines, scratch_stack_register, kernel_stack_register,
+            preserved_indices=preserved_indices,
+        )
+        if defined_scalar_source_reads + preserved_index_rotation_reads != expected_scalar_reads:
+            raise VectorSignatureError(
+                "vector-to-scalar source definitions do not cover every read: "
+                f"{defined_scalar_source_reads}/{expected_scalar_reads}"
+            )
 
     if checkpoint_indices and not vector_checkpoints:
         raise VectorSignatureError("checkpoint indices require vector checkpoints")
@@ -563,6 +836,7 @@ def rewrite_vector_signature(
                 rewritten_lines,
                 bytes_per_register,
                 scratch_stack_register,
+                kernel_stack_register,
                 checkpoint_memory_regions,
                 selected_checkpoint_indices,
                 checkpoint_mask_register,
@@ -583,7 +857,10 @@ def rewrite_vector_signature(
         raise VectorSignatureError(f"cannot find a unique test_done label in {source}")
 
     signature_bytes = 32 * bytes_per_register
-    source.write_text(rewritten + _signature_storage(signature_bytes), encoding="utf-8")
+    storage = _signature_storage(signature_bytes)
+    if defined_scalar_source_reads:
+        storage += _defined_scalar_source_storage(bytes_per_register)
+    source.write_text(rewritten + storage, encoding="utf-8")
     return VectorSignatureRewrite(
         source=source,
         policy_rewrites=policy_rewrites,
@@ -597,4 +874,6 @@ def rewrite_vector_signature(
         checkpoint_memory_regions=checkpoint_memory_regions,
         checkpoint_memory_sites=checkpoint_memory_sites,
         checkpoint_mask_register=checkpoint_mask_register,
+        defined_scalar_source_reads=defined_scalar_source_reads,
+        preserved_index_rotation_reads=preserved_index_rotation_reads,
     )

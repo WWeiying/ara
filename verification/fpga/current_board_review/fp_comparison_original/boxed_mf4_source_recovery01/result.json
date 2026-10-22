@@ -1,0 +1,49 @@
+{
+  "status": "NOT_RECOVERED_WITHIN_BOUNDED_SEARCH",
+  "name": "rvv_fp_compare_unmasked_e16_mf4",
+  "scope": "FINAL_PENDING broader FP; not unboxed, not alias, not arithmetic22 union",
+  "historical_C_recovered": false,
+  "existing_provenance_modified": false,
+  "expected_C_sha256": "9060f2931a5a2b6b51e3ff7be14ce420efaeb5c34800e496dad95dd78fc89dcf",
+  "expected_ELF_sha256": "bef54674b16fdeefdb37295d035b1b9a58cd446cd54662078aa24e83cced7b2d",
+  "original_ELF_current_hash_matches": true,
+  "original_ELF_bytes": 15648,
+  "defines": {
+    "SEW": 16,
+    "UNBOXED_COMPARISONS": 0,
+    "UNMASKED_COMPARISONS": 1,
+    "RESTART_COMPARISONS": 0,
+    "DESTINATION_KIND": 0
+  },
+  "lmul": "mf4",
+  "original_configurations": 17920,
+  "original_board_record": {
+    "status": "failed",
+    "exit_code": 1,
+    "cases": 17920,
+    "errors": 1216,
+    "seconds": 4.750074699986726,
+    "report_sha256": "6352fd7cf3834eff0bff08b324b5b2ac2757f442b5f9bbf9e5d06b7951e60e4c",
+    "three_report_paths_are_identical_not_three_reproductions": true,
+    "first_detail": {"op": 4, "seed": 0, "vl": 15, "mask": 0, "sticky": 0, "expected_flags": 0, "actual_flags": 16, "errors": 1}
+  },
+  "candidate_later_parent_C": {
+    "path": "verification/fpga/current_board_review/fp_compare_unboxed_full17920_prepare01/source_model02/software/original/parent.c",
+    "bytes": 4900,
+    "sha256": "03cc50313dee7cda6476658bbe025409617242c06cd06cdaff8d83d2812e9bad",
+    "equals_current_canonical_oracle": true,
+    "matches_expected_historical_C": false,
+    "equivalence_to_original_parent_ELF_proven": false
+  },
+  "pre_unboxed_template_sha256": "3652ca2d4f3f7b63995234bf624514dfb318db9cd781aeee0a7533d6c564491c",
+  "known_parent_C_copies_checked": 9,
+  "historical_generator_sha256": "38ec87ba8599a95a6762ed626ca6c08a31652ae96bea824522df7b4d29692cca",
+  "current_generator_sha256": "ae5675cb9a518a72009682bb1e55d42480d612c5badbaebc3afe445dedecde62",
+  "single_identity_rebuild_proposed_not_executed": true,
+  "compile_Host_reference_DUT_authorized": false,
+  "compile_Host_reference_DUT_executed": false,
+  "RTL_changed": false,
+  "raw_or_active_trace_read": false,
+  "whole_home_search": false,
+  "current_image_acceptance_claimed": false
+}

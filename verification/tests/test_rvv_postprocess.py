@@ -8,6 +8,32 @@ from ara_verify.rvv_postprocess import RvvPostprocessOptions, postprocess_existi
 
 
 class RvvPostprocessTest(unittest.TestCase):
+    def test_complete_terminal_match_passes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "run"
+            case = output / "tests" / "random_0"
+            case.mkdir(parents=True)
+            elf = root / "random_0.o"
+            elf.write_bytes(b"elf")
+            (case / "rtl.command.json").write_text(json.dumps({
+                "command": ["/tmp/simv", f"+PRELOAD={elf}",
+                            f"+VECTOR_TRACE={case / 'ara_vector_trace.csv'}"]
+            }))
+            (case / "rtl_console.log").write_text("Core Test *** SUCCESS ***\n")
+
+            with patch("ara_verify.rvv_postprocess._elf_entry", return_value=0x80000000), \
+                 patch("ara_verify.rvv_postprocess.unobservable_vector_scalar_write_indices",
+                       return_value=set()), \
+                 patch("ara_verify.rvv_postprocess.compare_commit_prefix",
+                       return_value={"status": "TERMINAL_MATCH"}), \
+                 patch("ara_verify.rvv_postprocess.validate_trace", return_value={"rows": 3}), \
+                 patch("ara_verify.rvv_postprocess.compare_vector_commits",
+                       return_value={"status": "PASS"}):
+                results = postprocess_existing_run(RvvPostprocessOptions(output=output), root)
+
+            self.assertEqual(results[0]["status"], "PASS")
+
     def test_rebuilds_result_without_rerunning_simulation(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -37,7 +63,7 @@ class RvvPostprocessTest(unittest.TestCase):
                     RvvPostprocessOptions(output=output), root
                 )
 
-            self.assertEqual(results[0]["status"], "PASS")
+            self.assertEqual(results[0]["status"], "INCOMPLETE_PREFIX")
             self.assertEqual(results[0]["seed"], 7)
             self.assertTrue(results[0]["postprocessed_existing_artifacts"])
             self.assertTrue((output / "summary.json").is_file())
@@ -72,7 +98,7 @@ class RvvPostprocessTest(unittest.TestCase):
                     RvvPostprocessOptions(output=output), root
                 )
 
-            self.assertEqual(results[0]["status"], "VECTOR_MISMATCH")
+            self.assertEqual(results[0]["status"], "VECTOR_INCOMPLETE")
 
     def test_reports_missing_command_metadata(self):
         with tempfile.TemporaryDirectory() as temp:

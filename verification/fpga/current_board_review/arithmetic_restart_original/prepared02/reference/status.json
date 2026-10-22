@@ -1,0 +1,55 @@
+{
+  "status": "SPIKE_PASS_NOT_DUT",
+  "results": [
+    {
+      "name": "arithmetic_e8_m4_prefix56",
+      "status": "PASS",
+      "configurations": 56,
+      "instructions_to_replay_exit": 1180150,
+      "elapsed_s": 0.21799219213426113,
+      "isa": "rv64gcv_zvl1024b",
+      "elf_sha256": "586f6103d6a66054ae958e50c0f3d2bb63d6469347627c33802e853eee1d5d0c",
+      "log_sha256": "5565f3ff2a56e05e3aed87dd34f6e40478f4d6e718ad16fa288ee5b7411af756"
+    },
+    {
+      "name": "arithmetic_e8_m8_prefix38",
+      "status": "PASS",
+      "configurations": 38,
+      "instructions_to_replay_exit": 1474919,
+      "elapsed_s": 0.26807617023587227,
+      "isa": "rv64gcv_zvl1024b",
+      "elf_sha256": "d326343de92e0faf4a794cd51bd83fe75f19f9d7dc51be63020a2fea039d6338",
+      "log_sha256": "f25bd76c11424b77604378dfb50729d0fde8818911b6339384926ce764024acc"
+    },
+    {
+      "name": "arithmetic_e16_m8_prefix56",
+      "status": "PASS",
+      "configurations": 56,
+      "instructions_to_replay_exit": 1103733,
+      "elapsed_s": 0.21791262784972787,
+      "isa": "rv64gcv_zvl1024b",
+      "elf_sha256": "303978fcdd5358fa7547cf129f172eb7b68ca0785b128bab21922dcb1330bcd7",
+      "log_sha256": "019f8fc8f481460ee5e4a3451bdfdd27709678e33ee2814f6bca1fa5a91e3844"
+    },
+    {
+      "name": "arithmetic_e8_m2_prefix56",
+      "status": "PASS",
+      "configurations": 56,
+      "instructions_to_replay_exit": 602560,
+      "elapsed_s": 0.11779524572193623,
+      "isa": "rv64gcv_zvl1024b",
+      "elf_sha256": "7b708accb22308e81d7fa56bdd41370da96eb24a38ae600ef6d2448f56176225",
+      "log_sha256": "cda16d3fe39928204315762030d662b89e06b634b6c4b63ef61f81c0fb4833c0"
+    },
+    {
+      "name": "arithmetic_e16_m4_prefix56",
+      "status": "PASS",
+      "configurations": 56,
+      "instructions_to_replay_exit": 565161,
+      "elapsed_s": 0.11769809992983937,
+      "isa": "rv64gcv_zvl1024b",
+      "elf_sha256": "c7466bc4cc5908e4b29b5175452ad5fff129acc1868b17de93805fb7865838f9",
+      "log_sha256": "faffe866f77205e974deb42ef3806a0a45bf43589a90471f5a7ee0b7403d329c"
+    }
+  ]
+}

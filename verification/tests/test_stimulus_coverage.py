@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from ara_verify.stimulus_coverage import (
+    _memory_mode,
     analyze_stimulus,
     merge_stimulus_coverage,
     write_stimulus_coverage,
@@ -11,6 +12,13 @@ from ara_verify.stimulus_coverage import (
 
 
 class StimulusCoverageTests(unittest.TestCase):
+    def test_segment_prefix_does_not_alias_strided(self):
+        for mnemonic in ("vlseg2e32.v", "vsseg2e32.v", "vlsseg2e32.v",
+                         "vluxseg2ei32.v"):
+            self.assertEqual(_memory_mode(mnemonic), "segment")
+        self.assertEqual(_memory_mode("vlse32.v"), "strided")
+        self.assertEqual(_memory_mode("vluxei32.v"), "indexed")
+
     def test_reports_instructions_in_main_and_generated_subroutines(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "sample.S"

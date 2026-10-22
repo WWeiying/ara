@@ -1,0 +1,55 @@
+{
+  "status": "ARCHITECTURAL_E8MF2_FULL4095_OFFLINE_ACCEPTED_ORIGINAL_SERVICE_FAILED_NOT_LINUX",
+  "started": 1791995979.5633385,
+  "retries": 0,
+  "DUT_runs": 0,
+  "plan_sha256": "8e024ca0498e48adc0cd737be9552db72d33a7df4602d7f8b557ddd6e4583ff0",
+  "csv_sha256": "ba18b2979d919dc619c00eb5e20808d5e74800d37e3f966e1758929ec731cfcc",
+  "pins_pre_post_unchanged": true,
+  "scope": {
+    "calls": 4095,
+    "results": 262080,
+    "guards": 8190,
+    "returned_vstart_zero": 4095,
+    "helper_instructions": 53235,
+    "packed_output_reads": 36855,
+    "fresh_output_bytes_each_call": 66
+  },
+  "required_owners": {
+    "compulsory_memory_owners": 20475,
+    "required_target_owners": 2592,
+    "required_op24_memory_targets": 117,
+    "minimum_required_owners": 23067
+  },
+  "original_monitor": {
+    "schema": "UNVALIDATED_CHILD_OUTCOME_V2",
+    "architectural_acceptance": false,
+    "returncode": 0,
+    "elapsed_s": 1932.2219585250132,
+    "timed_out": false,
+    "failure_seen": false,
+    "cancelled": false,
+    "command": [
+      "/home/wangwy/fpga_runs/current_board_memory_candidate09/campaign/image/_build/vcs/simv",
+      "-l",
+      "run.vcs.log",
+      "+ntb_random_seed=1",
+      "+PRELOAD=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf2_packed_vcs_m9_plan01/prepared01/replay/tests/arithmetic_original_e8_mf2_full4095_packed/input.elf",
+      "+TESTCASE=arithmetic_original_e8_mf2_full4095_packed",
+      "+NO_FSDB",
+      "+COMMIT_TRACE=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf2_packed_vcs_m9_plan01/prepared01/replay/tests/arithmetic_original_e8_mf2_full4095_packed/commit_trace.csv"
+    ],
+    "cwd": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf2_packed_vcs_m9_plan01/prepared01/replay/tests/arithmetic_original_e8_mf2_full4095_packed/work",
+    "command_sha256": "1b9218f9e4ee2cdc02faf9718fe7b49ecc4837897bc1978d139b922fe03dbf74"
+  },
+  "original_service": {
+    "SERVICE_RESULT": "exit-code",
+    "EXIT_CODE": "exited",
+    "EXIT_STATUS": "1",
+    "observed_at": 1791994062.8902507,
+    "hook_pid": 3140706,
+    "kind": "SYSTEMD_EXEC_STOP_POST_ACTUAL_ENVIRONMENT"
+  },
+  "strict_sha256": "1572cd3509135755bc7adc4cfaf3a4a87aaa36ef6a0819a8cbf02d4d6561918b",
+  "finished": 1791996113.3097947
+}

@@ -1,0 +1,68 @@
+{
+  "state": "NORMAL_AB_IDENTICAL_AND_SEVEN_CANDIDATE_SCENARIOS_PASS_NOT_SOC",
+  "pid": 1888865,
+  "versions": [
+    {
+      "version": "baseline",
+      "compile_returncode": 0,
+      "compile_seconds": 29.684828989673406,
+      "returncode": 0,
+      "run_seconds": 10.79114818898961,
+      "instruction_receipts": [
+        "INSTRUCTION_PASS case=0 phase=0 VL=9 start=0 fault=-1 fof=0 bytes=40 AR=5 R=5 skip=4 words=3 pops=3 firstaccept=23 firstfinal=24 lastfinal=42 done=43 blocked=0",
+        "INSTRUCTION_PASS case=0 phase=1 VL=5 start=0 fault=-1 fof=0 bytes=16 AR=2 R=2 skip=3 words=2 pops=2 firstaccept=67 firstfinal=68 lastfinal=70 done=71 blocked=0",
+        "INSTRUCTION_PASS case=1 phase=0 VL=9 start=0 fault=-1 fof=0 bytes=72 AR=1 R=3 skip=0 words=0 pops=0 firstaccept=15 firstfinal=16 lastfinal=18 done=19 blocked=0",
+        "INSTRUCTION_PASS case=1 phase=1 VL=5 start=0 fault=-1 fof=0 bytes=16 AR=2 R=2 skip=3 words=2 pops=2 firstaccept=43 firstfinal=44 lastfinal=46 done=47 blocked=0"
+      ],
+      "scenario_receipts": [
+        "SCENARIO_PASS case=0 full_group_bytes=1024",
+        "SCENARIO_PASS case=1 full_group_bytes=1024"
+      ],
+      "csv_rows": 120,
+      "csv_sha256": "1e09fc99d37eb955cac1c90d8d8ac3b733bfa19154cc4bba3af2e5ed78831a04"
+    },
+    {
+      "version": "candidate",
+      "compile_returncode": 0,
+      "compile_seconds": 29.182323491200805,
+      "returncode": 0,
+      "run_seconds": 10.69136963877827,
+      "instruction_receipts": [
+        "INSTRUCTION_PASS case=0 phase=0 VL=9 start=0 fault=-1 fof=0 bytes=40 AR=5 R=5 skip=4 words=3 pops=3 firstaccept=23 firstfinal=24 lastfinal=42 done=43 blocked=0",
+        "INSTRUCTION_PASS case=0 phase=1 VL=5 start=0 fault=-1 fof=0 bytes=16 AR=2 R=2 skip=3 words=2 pops=2 firstaccept=67 firstfinal=68 lastfinal=70 done=71 blocked=0",
+        "INSTRUCTION_PASS case=1 phase=0 VL=9 start=0 fault=-1 fof=0 bytes=72 AR=1 R=3 skip=0 words=0 pops=0 firstaccept=15 firstfinal=16 lastfinal=18 done=19 blocked=0",
+        "INSTRUCTION_PASS case=1 phase=1 VL=5 start=0 fault=-1 fof=0 bytes=16 AR=2 R=2 skip=3 words=2 pops=2 firstaccept=43 firstfinal=44 lastfinal=46 done=47 blocked=0",
+        "INSTRUCTION_PASS case=2 phase=0 VL=9 start=3 fault=5 fof=0 bytes=16 AR=2 R=2 skip=0 words=3 pops=3 firstaccept=17 firstfinal=66 lastfinal=67 done=71 blocked=192",
+        "INSTRUCTION_PASS case=2 phase=1 VL=5 start=0 fault=-1 fof=0 bytes=16 AR=2 R=2 skip=3 words=2 pops=2 firstaccept=99 firstfinal=100 lastfinal=102 done=103 blocked=0",
+        "INSTRUCTION_PASS case=3 phase=0 VL=13 start=5 fault=7 fof=0 bytes=16 AR=2 R=2 skip=0 words=3 pops=3 firstaccept=25 firstfinal=66 lastfinal=66 done=71 blocked=160",
+        "INSTRUCTION_PASS case=3 phase=1 VL=5 start=0 fault=-1 fof=0 bytes=16 AR=2 R=2 skip=3 words=2 pops=2 firstaccept=99 firstfinal=100 lastfinal=102 done=103 blocked=0",
+        "INSTRUCTION_PASS case=4 phase=0 VL=9 start=0 fault=8 fof=0 bytes=64 AR=8 R=8 skip=0 words=3 pops=3 firstaccept=29 firstfinal=66 lastfinal=67 done=70 blocked=144",
+        "INSTRUCTION_PASS case=4 phase=1 VL=5 start=0 fault=-1 fof=0 bytes=16 AR=2 R=2 skip=3 words=2 pops=2 firstaccept=98 firstfinal=99 lastfinal=101 done=102 blocked=0",
+        "INSTRUCTION_PASS case=5 phase=0 VL=9 start=0 fault=5 fof=1 bytes=40 AR=5 R=5 skip=0 words=3 pops=3 firstaccept=29 firstfinal=66 lastfinal=67 done=71 blocked=144",
+        "INSTRUCTION_PASS case=5 phase=1 VL=5 start=0 fault=-1 fof=0 bytes=16 AR=2 R=2 skip=3 words=2 pops=2 firstaccept=99 firstfinal=100 lastfinal=102 done=103 blocked=0",
+        "INSTRUCTION_PASS case=6 phase=0 VL=9 start=0 fault=0 fof=1 bytes=0 AR=0 R=0 skip=0 words=3 pops=3 firstaccept=-1 firstfinal=-1 lastfinal=-1 done=22 blocked=0",
+        "INSTRUCTION_PASS case=6 phase=1 VL=5 start=0 fault=-1 fof=0 bytes=16 AR=2 R=2 skip=3 words=2 pops=2 firstaccept=50 firstfinal=51 lastfinal=53 done=54 blocked=0"
+      ],
+      "scenario_receipts": [
+        "SCENARIO_PASS case=0 full_group_bytes=1024",
+        "SCENARIO_PASS case=1 full_group_bytes=1024",
+        "SCENARIO_PASS case=2 full_group_bytes=1024",
+        "SCENARIO_PASS case=3 full_group_bytes=1024",
+        "SCENARIO_PASS case=4 full_group_bytes=1024",
+        "SCENARIO_PASS case=5 full_group_bytes=1024",
+        "SCENARIO_PASS case=6 full_group_bytes=1024"
+      ],
+      "csv_rows": 590,
+      "csv_sha256": "2908c705bcce2ed0f9ba0bde57cfa60f9dbca9332ab7b7e0e4ca48b174a2fd1a"
+    }
+  ],
+  "scope": "Local four-module AXI/VRF models; not SoC/Linux",
+  "host_bound_per_batch_s": 60,
+  "progress_bound_per_instruction_cycles": 200,
+  "pins_unchanged": true,
+  "normal_complete_cycle_bytes_identical": true,
+  "normal_trace_sha256": "1e09fc99d37eb955cac1c90d8d8ac3b733bfa19154cc4bba3af2e5ed78831a04",
+  "changed_inputs": [
+    "hardware/src/vlsu/vldu.sv"
+  ]
+}

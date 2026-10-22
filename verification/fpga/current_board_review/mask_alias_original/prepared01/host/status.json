@@ -1,0 +1,95 @@
+{
+  "status": "HOST_PASS_NOT_RTL",
+  "full_matrix_runs": [
+    {
+      "name": "rvv_masks_alias_restart_e8_m4",
+      "tail_policy": 0,
+      "calls": 5376,
+      "elapsed_s": 0.11744032381102443,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4",
+      "tail_policy": 1,
+      "calls": 5376,
+      "elapsed_s": 0.11751776281744242,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4",
+      "tail_policy": 2,
+      "calls": 5376,
+      "elapsed_s": 0.11765628261491656,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8",
+      "tail_policy": 0,
+      "calls": 5376,
+      "elapsed_s": 0.1676006899215281,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8",
+      "tail_policy": 1,
+      "calls": 5376,
+      "elapsed_s": 0.16760000120848417,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8",
+      "tail_policy": 2,
+      "calls": 5376,
+      "elapsed_s": 0.1678646788932383,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8",
+      "tail_policy": 0,
+      "calls": 5376,
+      "elapsed_s": 0.11770791606977582,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8",
+      "tail_policy": 1,
+      "calls": 5376,
+      "elapsed_s": 0.11743873218074441,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8",
+      "tail_policy": 2,
+      "calls": 5376,
+      "elapsed_s": 0.11762603325769305,
+      "status": "PASS"
+    }
+  ],
+  "negative_oracle": [
+    {
+      "name": "active_result",
+      "rejected": true
+    },
+    {
+      "name": "prestart",
+      "rejected": true
+    },
+    {
+      "name": "no_body",
+      "rejected": true
+    },
+    {
+      "name": "forbidden_tail",
+      "rejected": true
+    },
+    {
+      "name": "guard",
+      "rejected": true
+    },
+    {
+      "name": "returned_vstart",
+      "rejected": true
+    }
+  ],
+  "limitation": "Scalar models cross-check original C oracle/input/order; not vector execution"
+}

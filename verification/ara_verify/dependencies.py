@@ -7,6 +7,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
+from .dependency_patches import (
+    PatchError,
+    apply_patch_bundle,
+    ensure_submodules,
+    load_registry,
+    patch_state,
+    validate_submodules,
+)
+
 
 class DependencyError(RuntimeError):
     pass
@@ -117,17 +126,29 @@ def _git_output(path: Path, *args: str) -> Optional[str]:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def _checkout_state(path: Path, name: str) -> Optional[str]:
+def _checkout_revision(path: Path) -> Optional[str]:
+    if path.is_symlink():
+        raise DependencyError(f"refusing symlink dependency path: {path}")
     if not path.exists():
         return None
-    if _git_output(path, "rev-parse", "--is-inside-work-tree") != "true":
+    if not (path / ".git").exists() or _git_output(path, "rev-parse", "--is-inside-work-tree") != "true":
         raise DependencyError(f"refusing to replace non-Git dependency path: {path}")
+    actual = _git_output(path, "rev-parse", "HEAD")
+    if actual is None:
+        raise DependencyError(f"cannot read Git revision: {path}")
+    return actual
+
+
+def _checkout_state(path: Path, name: str) -> Optional[str]:
+    actual = _checkout_revision(path)
+    if actual is None:
+        return None
     status = _git_output(path, "status", "--porcelain=v1", "--ignore-submodules=none")
     if status is None:
         raise DependencyError(f"cannot read Git status: {path}")
     if status:
         raise DependencyError(f"refusing to overwrite dirty dependency {name}: {status.splitlines()[0]}")
-    return _git_output(path, "rev-parse", "HEAD")
+    return actual
 
 
 def _sync_locked_tool(repo_root: Path, tool: LockedTool, dry_run: bool) -> Tuple[str, str]:
@@ -144,7 +165,7 @@ def _sync_locked_tool(repo_root: Path, tool: LockedTool, dry_run: bool) -> Tuple
         _run(["git", "clone", "--no-checkout", tool.url, str(path)])
     _run(["git", "fetch", "--depth=1", "origin", tool.fetch_ref], cwd=path)
     _run(["git", "checkout", "--detach", tool.revision], cwd=path)
-    actual = _git_output(path, "rev-parse", "HEAD")
+    actual = _checkout_state(path, tool.name)
     if actual != tool.revision:
         raise DependencyError(f"{tool.name}: expected {tool.revision}, found {actual or 'unknown'}")
     return label, f"checked out {tool.revision}"
@@ -154,28 +175,54 @@ def sync_dependencies(repo_root: Path, dry_run: bool = False) -> List[Tuple[str,
     dependency_root = repo_root / "hardware" / "deps"
     actions: List[Tuple[str, str]] = []
 
-    for dependency in locked_dependencies(repo_root / "Bender.lock"):
-        path = dependency_root / dependency.name
-        actual = _checkout_state(path, dependency.name)
+    try:
+        registry = load_registry(repo_root)
+        dependencies = locked_dependencies(repo_root / "Bender.lock")
+        for dependency in dependencies:
+            spec = registry.get(dependency.name)
+            if spec is not None and spec["revision"] != dependency.revision:
+                raise DependencyError(f"{dependency.name}: patch base does not match Bender.lock")
 
-        if actual == dependency.revision:
-            actions.append((dependency.name, "unchanged"))
-            continue
-        if dry_run:
-            actions.append((dependency.name, f"checkout {dependency.revision}"))
-            continue
+        for dependency in dependencies:
+            path = dependency_root / dependency.name
+            actual = _checkout_revision(path)
 
-        dependency_root.mkdir(parents=True, exist_ok=True)
-        if not path.exists():
-            _run(["git", "clone", "--no-checkout", dependency.url, str(path)])
-        _run(["git", "fetch", "--depth=1", dependency.url, dependency.revision], cwd=path)
-        _run(["git", "checkout", "--detach", dependency.revision], cwd=path)
-        actual = _git_output(path, "rev-parse", "HEAD")
-        if actual != dependency.revision:
-            raise DependencyError(
-                f"{dependency.name}: expected {dependency.revision}, found {actual or 'unknown'}"
-            )
-        actions.append((dependency.name, f"checked out {dependency.revision}"))
+            if actual == dependency.revision:
+                state = patch_state(repo_root, dependency.name, path, dependency.revision)
+                if dry_run:
+                    validate_submodules(path, dependency.name)
+                else:
+                    # Preflight nested checkouts before changing the parent worktree.
+                    ensure_submodules(path, dependency.name)
+                    apply_patch_bundle(repo_root, dependency.name, path, dependency.revision)
+                action = "unchanged"
+                if state == "missing":
+                    action = "apply required patch" if dry_run else "applied required patch"
+                actions.append((dependency.name, action))
+                continue
+
+            # A revision change never permits local edits, including nested dirt.
+            if actual is not None:
+                _checkout_state(path, dependency.name)
+            if dry_run:
+                actions.append((dependency.name, f"checkout {dependency.revision}"))
+                continue
+
+            dependency_root.mkdir(parents=True, exist_ok=True)
+            if not path.exists():
+                _run(["git", "clone", "--no-checkout", dependency.url, str(path)])
+            _run(["git", "fetch", "--depth=1", dependency.url, dependency.revision], cwd=path)
+            _run(["git", "checkout", "--detach", dependency.revision], cwd=path)
+            actual = _git_output(path, "rev-parse", "HEAD")
+            if actual != dependency.revision:
+                raise DependencyError(
+                    f"{dependency.name}: expected {dependency.revision}, found {actual or 'unknown'}"
+                )
+            ensure_submodules(path, dependency.name)
+            apply_patch_bundle(repo_root, dependency.name, path, dependency.revision)
+            actions.append((dependency.name, f"checked out {dependency.revision}"))
+    except PatchError as error:
+        raise DependencyError(str(error)) from error
 
     for tool in locked_tools(repo_root / "verification" / "toolchain.lock.json"):
         actions.append(_sync_locked_tool(repo_root, tool, dry_run))

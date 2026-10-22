@@ -1,0 +1,16 @@
+{
+  "decision": "NO_BLOCKER_FOR_SCALAR_TRANSFORMATION_ONLY_NOT_DUT_ENTRY",
+  "blocking_findings": [],
+  "source_ready_sha256": "64f82d0e893179b253b4cced76f6f73b7820f1427b865889bd127c7d9eee62e4",
+  "evidence_sha256": "6853c8454ac079b0c04a5e6cb58df2c8440421f2f0bac9e80ae80c779aff5a5e",
+  "elf_rom_sha256": "e5776eae6d15028df8f32e9014a5ab5213769af4c77736148306c82167b24792",
+  "actual_pins_checked": 126,
+  "scope": "First682 original order, CAP512/e16m8/unmasked/destination-v8-alias/vstart0. Not full17920 parent or original Linux ABI.",
+  "remaining_before_DUT": [
+    "Relocated-PC packed source/oracle worker and Host",
+    "Dynamic helper/input/VRF/history verification"
+  ],
+  "DUT_launched": false,
+  "RTL_modified": false,
+  "source_preparation_modified": false
+}

@@ -1,0 +1,157 @@
+{
+  "started": 1791689990.3440578,
+  "finished": 1791691001.8383768,
+  "tasks": [
+    {
+      "name": "flags-sequence",
+      "case": "flags_sequence",
+      "argv": [
+        "/usr/bin/python3",
+        "-B",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/integration/run.py",
+        "run",
+        "--image",
+        "/home/wangwy/fpga_runs/current_board_integration_final03/campaign/image",
+        "--programs",
+        "/tmp/current-board-flags-sequence02/soc",
+        "--out",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/extension_overlap/final03_successor01/flags-sequence",
+        "--jobs",
+        "1",
+        "--timeout",
+        "600",
+        "--execute",
+        "--case",
+        "flags_sequence"
+      ],
+      "elf_sha256": "fcc22a2e11dbd4c445c0a8963dbacc4984e3731fa9a7eec8f20d63a79318297b",
+      "status": "PASS",
+      "returncode": 0,
+      "results": [
+        {
+          "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/extension_overlap/final03_successor01/flags-sequence/tests/flags_sequence",
+          "elapsed_s": 39.176630111876875,
+          "kind": "app",
+          "name": "flags_sequence",
+          "reason": "",
+          "returncode": 0,
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "name": "reduction-epoch",
+      "case": "all",
+      "argv": [
+        "/usr/bin/python3",
+        "-B",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/integration/run.py",
+        "run",
+        "--image",
+        "/home/wangwy/fpga_runs/current_board_integration_final03/campaign/image",
+        "--programs",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/reduction_epoch/measurement01/soc",
+        "--out",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/extension_overlap/final03_successor01/reduction-epoch",
+        "--jobs",
+        "1",
+        "--timeout",
+        "600",
+        "--execute",
+        "--case",
+        "all"
+      ],
+      "elf_sha256": "85bfeb0e80d15881a632de83876be4dc9c532bb8d83afceb5e5f6292091b1d73",
+      "status": "PASS",
+      "returncode": 0,
+      "results": [
+        {
+          "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/extension_overlap/final03_successor01/reduction-epoch/tests/all",
+          "elapsed_s": 22.159998056013137,
+          "kind": "app",
+          "name": "all",
+          "reason": "",
+          "returncode": 0,
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "name": "matrix-e32",
+      "case": "matrix_e32",
+      "argv": [
+        "/usr/bin/python3",
+        "-B",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/integration/run.py",
+        "run",
+        "--image",
+        "/home/wangwy/fpga_runs/current_board_integration_final03/campaign/image",
+        "--programs",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/soc_matrix",
+        "--out",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/extension_overlap/final03_successor01/matrix-e32",
+        "--jobs",
+        "1",
+        "--timeout",
+        "600",
+        "--execute",
+        "--case",
+        "matrix_e32"
+      ],
+      "elf_sha256": "14c6b144e45f88cfa272e0fed59a9bd4a5b95c3ffb4ff95d995dd2322ab07ec8",
+      "status": "PASS",
+      "returncode": 0,
+      "results": [
+        {
+          "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/extension_overlap/final03_successor01/matrix-e32/tests/matrix_e32",
+          "elapsed_s": 337.65477327117696,
+          "kind": "app",
+          "name": "matrix_e32",
+          "reason": "",
+          "returncode": 0,
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "name": "matrix-e16",
+      "case": "matrix_e16",
+      "argv": [
+        "/usr/bin/python3",
+        "-B",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/integration/run.py",
+        "run",
+        "--image",
+        "/home/wangwy/fpga_runs/current_board_integration_final03/campaign/image",
+        "--programs",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/soc_matrix",
+        "--out",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/extension_overlap/final03_successor01/matrix-e16",
+        "--jobs",
+        "1",
+        "--timeout",
+        "600",
+        "--execute",
+        "--case",
+        "matrix_e16"
+      ],
+      "elf_sha256": "36352972969effa9f606d097dd8e4407fda17f76978e00b0755c43e0baa35e63",
+      "status": "FAIL",
+      "returncode": 1,
+      "results": [
+        {
+          "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/extension_overlap/final03_successor01/matrix-e16/tests/matrix_e16",
+          "elapsed_s": 600.1578627061099,
+          "kind": "app",
+          "name": "matrix_e16",
+          "reason": "timeout after 600s",
+          "returncode": null,
+          "status": "TIMEOUT"
+        }
+      ]
+    }
+  ],
+  "status": "FAIL",
+  "no_build": true,
+  "original_status_preserved": true
+}

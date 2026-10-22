@@ -1,0 +1,122 @@
+{
+  "status": "CLOSED_M6_CHECKER_BRIDGE_PASS_NOT_NEW_DUT",
+  "results": [
+    {
+      "name": "fof_original_e8_scenario0",
+      "sew": 8,
+      "status": "PASS_FOF_ORIGINAL_SINGLE",
+      "checks": 5477,
+      "rows": 161807,
+      "csv": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m6_plan01/prepared01/replay/tests/fof_original_e8_scenario0/commit_trace.csv",
+      "csv_sha256": "d617cb9fbee4fc4ac32049786e09631f5ebd70661b0f360e165b9cdb19e3da49",
+      "full_csv_parses": 1,
+      "negative_count": 9,
+      "negatives": [
+        {
+          "site": "old_vd",
+          "reason": "Missing nonempty backend lifecycle for old_vd"
+        },
+        {
+          "site": "mask",
+          "reason": "Missing nonempty backend lifecycle for mask"
+        },
+        {
+          "site": "target",
+          "reason": "Missing nonempty backend lifecycle for target"
+        },
+        {
+          "site": "result",
+          "reason": "Missing nonempty backend lifecycle for result"
+        },
+        {
+          "kind": "unknown_owner",
+          "reason": "Allocation owner/op/transaction"
+        },
+        {
+          "kind": "zero_vl",
+          "reason": "Actual source nonempty VL8/SEWm1/start0"
+        },
+        {
+          "kind": "wrong_vtype",
+          "reason": "Actual source nonempty VL8/SEWm1/start0"
+        },
+        {
+          "kind": "bad_target_base",
+          "reason": "Original target protected-page geometry"
+        },
+        {
+          "kind": "bad_mask",
+          "reason": "Exact original predicate; allactive FOF or alloff FOF"
+        }
+      ],
+      "report_sha256": "3879e611c27b30836951d03920ef7221761684a0603677cf9260c3b5b435cd1c"
+    },
+    {
+      "name": "fof_original_e64_scenario5",
+      "sew": 64,
+      "status": "PASS_FOF_ORIGINAL_SINGLE",
+      "checks": 5481,
+      "rows": 166262,
+      "csv": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m6_plan01/prepared01/replay/tests/fof_original_e64_scenario5/commit_trace.csv",
+      "csv_sha256": "2380c8ea30fe9501737787402b807d22c901b85f2002759a5142a9c5994cafb5",
+      "full_csv_parses": 1,
+      "negative_count": 9,
+      "negatives": [
+        {
+          "site": "old_vd",
+          "reason": "Missing nonempty backend lifecycle for old_vd"
+        },
+        {
+          "site": "mask",
+          "reason": "Missing nonempty backend lifecycle for mask"
+        },
+        {
+          "site": "target",
+          "reason": "Missing nonempty backend lifecycle for target"
+        },
+        {
+          "site": "result",
+          "reason": "Missing nonempty backend lifecycle for result"
+        },
+        {
+          "kind": "unknown_owner",
+          "reason": "Allocation owner/op/transaction"
+        },
+        {
+          "kind": "zero_vl",
+          "reason": "Actual source nonempty VL8/SEWm1/start0"
+        },
+        {
+          "kind": "wrong_vtype",
+          "reason": "Actual source nonempty VL8/SEWm1/start0"
+        },
+        {
+          "kind": "bad_target_base",
+          "reason": "Original target protected-page geometry"
+        },
+        {
+          "kind": "bad_mask",
+          "reason": "Exact original predicate; allactive FOF or alloff FOF"
+        }
+      ],
+      "report_sha256": "6b8507e1825d19ddab3947cada2bcf1acd6e0b4e99dd2ac714b397c7a312177c"
+    }
+  ],
+  "code_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/checker.py": "5e274a083da7ef182516435b8152c4aaa8d9cb407c8b2833b306ce6ff1df85ce",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/source_owners.py": "9d1c0e44c1a357b65c99066c10ec6b48d3f03418316bad8630721ad2370d05f1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/successor.py": "93fc206a74b8323abf3dc85b8c13537a0a4de3d9bf56959e7f0ce5254db49067",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/successor_handler.py": "86916f6c87d5dc8cb3968329b80310830beab7f984d11a12cdf58c065f65ecb6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/strict_csv.py": "3511b3ad7101ad50473bea58a9e4098f4dd325712830d20024b2c21d4262c7d7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/test_host.py": "da6e8d9bae95c2c208575ae3a2e572071958c106f17ab83cde23c3d5a7f83dec",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/test_handler.py": "d3fef3324a8d6b06c88f4d7c0d9eef0ab884e540e8ca1bac70f7b012826dda3a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/host_bridge.py": "c1b01b0c0c76b7cfb21c481bd95dcd89637f6ff11b32fc347c8bfcd54ce8af36",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/replay.py": "8bb144a51f35d96fcc978993fded21060a475ee6d88d57e6332d2e727e68922b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/service_launch.py": "cf4a58ac299cd8c14074915efce847ed42b8f7c3450ab6a008f2cc54c4c1efe9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/observe_startup.py": "61126d82f44f36c1c0d4c173049ca07931f9e0ba164dc295adf2d8cf103624c6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_two_singles_vcs_m9_plan01/delta_check.py": "d4c0f2da4432b4c6620cbda29d2ad4a68da3c10b80d63d9aad1d6a5be1cecfa7"
+  },
+  "elapsed_s": 16.620017528533936,
+  "new_simulations": 0,
+  "reference_reruns": 0
+}

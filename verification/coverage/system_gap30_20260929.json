@@ -1,0 +1,12 @@
+{
+  "tests": [
+    "rvv:system_gap30_read",
+    "rvv:system_gap30_write",
+    "rvv:system_gap30_superpage",
+    "rvv:system_gap30_tlb",
+    "rvv:system_gap30_csr",
+    "rvv:system_gap30_status",
+    "rvv:system_gap30_cache",
+    "rvv:system_gap30_icache"
+  ]
+}

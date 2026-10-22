@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "selection_policy": "ALL_PLANNED_CASES_REGARDLESS_OF_OLD_VERDICT",
+  "workers": 8,
+  "expected_unique_cases": 600,
+  "gate": {
+    "fp16_tests": ["rvv:vrvv_gap29_fp16_rne_m4", "rvv:vrvv_gap29_fp16_rtz_m4", "rvv:vrvv_gap29_fp16_rdn_m4", "rvv:vrvv_gap29_fp16_rup_m4", "rvv:vrvv_gap29_fp16_rmm_m4", "rvv:vrvv_gap29_fp16_rod_m4"],
+    "adjacent_smoke": ["vec_fp_csr_order", "vfdiv_mask_flags", "vstore_axi_error", "vstore_axi_error_bursts"],
+    "conversion_tests": ["rvv:vfncvt", "rvv:vfwcvt", "rvv:vfcvt"],
+    "axpy": true,
+    "all_memory_matrix": true,
+    "all_gap28_store_timeouts": true,
+    "expected_count": 60,
+    "dispatch_order": ["six_fp16", "six_gap28_store_timeouts", "adjacent_smoke_conversion_axpy", "forty_memory"],
+    "policy": "ALL_SIXTY_PASS_BEFORE_FULL_DISPATCH"
+  },
+  "plans": [
+    {"path": "verification/out/vcs-original503-gap29-20260928-01/plan.json", "count": 528},
+    {"path": "verification/out/vcs-dve-timeout-repair-20260927-05/plan.json", "count": 445},
+    {"path": "verification/out/vcs-memory-gap-20260928-01/plan.json", "count": 485},
+    {"path": "verification/out/vcs-memory-vl0-repair-20260928-01/plan.json", "count": 51}
+  ],
+  "historical_chain": {
+    "path": "verification/out/vcs-original509-akv-reset-20260928-01/collection.json",
+    "added_count": 6,
+    "passed": 510
+  },
+  "latest": {
+    "path": "verification/out/dispatcher-state-reset-20260928-01/dve_main_closed/inputs.txt",
+    "count": 48
+  },
+  "memory_selection": "verification/tests/rvv_memory_gap_selection.json",
+  "gap29_selection": "verification/tests/next_gap29_selection.json",
+  "repair_smoke": {
+    "path": "verification/out/merged-store-fp16-smoke-20260926-01",
+    "cases": {"csr": "vec_fp_csr_order", "div_mask": "vfdiv_mask_flags", "store_fault": "vstore_axi_error", "store_bursts": "vstore_axi_error_bursts"}
+  },
+  "required_gap28_timeouts": ["vqueue_gap28_store_e32_m1", "vqueue_gap28_store_e32_m2", "vqueue_gap28_store_e32_m4", "vqueue_gap28_store_e64_m1", "vqueue_gap28_store_e64_m2", "vqueue_gap28_store_e64_m4"],
+  "wall_budget_review": {
+    "reviewer": "Dirac",
+    "status": "STATIC_TRACE_REVIEWED_NOT_A_PASS_CLAIM",
+    "basis": "Old 300s traces advance bounded scalar init/check loops; slowest complete passes about 33k/e32 and 66k/e64 cycles at about 367/309 cycles per second, six-pass estimates about 540/1290s before output overhead.",
+    "policy": "WALL_TIMEOUT_ONLY_ELF_CHECKER_WATCHDOG_UNCHANGED_NO_RETRY",
+    "outcomes": "verification/out/vcs-original473-gap28-20260928-01/outcomes",
+    "source_ready": "verification/tests/rvv_queue_gap28_ready.json",
+    "source_body": "apps/riscv-tests/isa/rv64uv/vqueue_gap28_body.h",
+    "diagnosis": "WALL_BUDGET_EXHAUSTED_WITH_PROGRESS_NOT_RTL_PASS",
+    "pass_numbering": "0..5; unexecuted VL0/vstart remain open until fresh gate PASS",
+    "observations": [
+      {"test": "e32_m1", "last_cycle": 110115, "pass": 4, "phase": "initialize", "counter_tail": [-189, -188, -187, -186]},
+      {"test": "e32_m2", "last_cycle": 111502, "pass": 3, "phase": "check", "byte": 450, "bound": 536},
+      {"test": "e32_m4", "last_cycle": 111804, "pass": 3, "phase": "check", "byte": 451, "bound": 536},
+      {"test": "e64_m1", "last_cycle": 111137, "pass": 2, "phase": "initialize", "counter_tail": [-799, -798, -797, -796]},
+      {"test": "e64_m2", "last_cycle": 108834, "pass": 1, "phase": "check", "byte": 871, "bound": 1064},
+      {"test": "e64_m4", "last_cycle": 92632, "pass": 1, "phase": "check", "byte": 207, "bound": 1064}
+    ],
+    "seconds_by_test": {
+      "rvv:vqueue_gap28_store_e32_m1": 900,
+      "rvv:vqueue_gap28_store_e32_m2": 900,
+      "rvv:vqueue_gap28_store_e32_m4": 900,
+      "rvv:vqueue_gap28_store_e64_m1": 1800,
+      "rvv:vqueue_gap28_store_e64_m2": 1800,
+      "rvv:vqueue_gap28_store_e64_m4": 1800
+    }
+  },
+  "excluded_static_seeds": [{"seed": 719, "replacement_seed": 721, "reason": "static preprocessing proof failed; not an RTL execution case"}],
+  "image_policy": "EXPLICIT_POST_REPAIR_FREEZE_REQUIRED_NO_BUILD_NO_OLD_VDB",
+  "waiver_policy": "AUTO_EXACT_DESIGN_ONLY_REPORT_NOT_APPLICABLE_OTHERWISE"
+}

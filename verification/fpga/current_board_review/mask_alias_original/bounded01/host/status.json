@@ -1,0 +1,283 @@
+{
+  "status": "HOST_PASS_NOT_DUT",
+  "results": [
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_prefix",
+      "policy": 0,
+      "calls": 98,
+      "elapsed_s": 0.005983113776892424,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_prefix",
+      "policy": 1,
+      "calls": 98,
+      "elapsed_s": 0.005896710325032473,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_prefix",
+      "policy": 2,
+      "calls": 98,
+      "elapsed_s": 0.00599508685991168,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_tuple",
+      "policy": 0,
+      "calls": 1,
+      "elapsed_s": 0.006001865956932306,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_tuple",
+      "policy": 1,
+      "calls": 1,
+      "elapsed_s": 0.005851258989423513,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_tuple",
+      "policy": 2,
+      "calls": 1,
+      "elapsed_s": 0.005779355764389038,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_prefix",
+      "policy": 0,
+      "calls": 66,
+      "elapsed_s": 0.006281723268330097,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_prefix",
+      "policy": 1,
+      "calls": 66,
+      "elapsed_s": 0.006263677962124348,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_prefix",
+      "policy": 2,
+      "calls": 66,
+      "elapsed_s": 0.006235715001821518,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_tuple",
+      "policy": 0,
+      "calls": 1,
+      "elapsed_s": 0.0063070631586015224,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_tuple",
+      "policy": 1,
+      "calls": 1,
+      "elapsed_s": 0.004011077806353569,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_tuple",
+      "policy": 2,
+      "calls": 1,
+      "elapsed_s": 0.005698296241462231,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_prefix",
+      "policy": 0,
+      "calls": 98,
+      "elapsed_s": 0.0063567450270056725,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_prefix",
+      "policy": 1,
+      "calls": 98,
+      "elapsed_s": 0.006552941165864468,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_prefix",
+      "policy": 2,
+      "calls": 98,
+      "elapsed_s": 0.006500736810266972,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_tuple",
+      "policy": 0,
+      "calls": 1,
+      "elapsed_s": 0.0062963939271867275,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_tuple",
+      "policy": 1,
+      "calls": 1,
+      "elapsed_s": 0.006153859198093414,
+      "status": "PASS"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_tuple",
+      "policy": 2,
+      "calls": 1,
+      "elapsed_s": 0.006153860129415989,
+      "status": "PASS"
+    }
+  ],
+  "negatives": [
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_prefix",
+      "mutation": 1,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_prefix",
+      "mutation": 2,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_prefix",
+      "mutation": 3,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_prefix",
+      "mutation": 4,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_prefix",
+      "mutation": 5,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_prefix",
+      "mutation": 6,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_tuple",
+      "mutation": 1,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_tuple",
+      "mutation": 2,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_tuple",
+      "mutation": 5,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_tuple",
+      "mutation": 6,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_prefix",
+      "mutation": 1,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_prefix",
+      "mutation": 2,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_prefix",
+      "mutation": 3,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_prefix",
+      "mutation": 4,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_prefix",
+      "mutation": 5,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_prefix",
+      "mutation": 6,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_tuple",
+      "mutation": 1,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_tuple",
+      "mutation": 2,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_tuple",
+      "mutation": 5,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_tuple",
+      "mutation": 6,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_prefix",
+      "mutation": 1,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_prefix",
+      "mutation": 2,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_prefix",
+      "mutation": 3,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_prefix",
+      "mutation": 4,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_prefix",
+      "mutation": 5,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_prefix",
+      "mutation": 6,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_tuple",
+      "mutation": 1,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_tuple",
+      "mutation": 2,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_tuple",
+      "mutation": 5,
+      "rejected": true
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_tuple",
+      "mutation": 6,
+      "rejected": true
+    }
+  ]
+}

@@ -1,0 +1,386 @@
+{
+  "state": "PASS",
+  "cases": [
+    {
+      "name": "measured_slot2_alloff",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=1 vl=8 start=0 nv=5 pattern=2 integer=0 unmasked=0 slices=1 pulses=1 nv_pulses=0 input_stalls=4 output_stalls=0"
+      ]
+    },
+    {
+      "name": "measured_slot2_active",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+PATTERN=3"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=1 vl=8 start=0 nv=5 pattern=3 integer=0 unmasked=0 slices=1 pulses=1 nv_pulses=1 input_stalls=4 output_stalls=0"
+      ]
+    },
+    {
+      "name": "quiet_payload",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+NV=-1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=1 vl=8 start=0 nv=-1 pattern=2 integer=0 unmasked=0 slices=1 pulses=1 nv_pulses=0 input_stalls=4 output_stalls=0"
+      ]
+    },
+    {
+      "name": "multiword_unstalled",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+VL=273",
+        "+NV=261",
+        "+PATTERN=1",
+        "+TRACE_QUEUE"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=1 vl=273 start=0 nv=261 pattern=1 integer=0 unmasked=0 slices=18 pulses=18 nv_pulses=1 input_stalls=4 output_stalls=0"
+      ]
+    },
+    {
+      "name": "multiword_active",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+VL=273",
+        "+NV=261",
+        "+PATTERN=1",
+        "+STALLS=1",
+        "+TRACE_QUEUE"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=1 vl=273 start=0 nv=261 pattern=1 integer=0 unmasked=0 slices=18 pulses=18 nv_pulses=1 input_stalls=6 output_stalls=184"
+      ]
+    },
+    {
+      "name": "multiword_off",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+VL=273",
+        "+NV=260",
+        "+PATTERN=1",
+        "+STALLS=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=1 vl=273 start=0 nv=260 pattern=1 integer=0 unmasked=0 slices=18 pulses=18 nv_pulses=0 input_stalls=6 output_stalls=184"
+      ]
+    },
+    {
+      "name": "multiword_prefix",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+VL=273",
+        "+START=262",
+        "+NV=261",
+        "+PATTERN=0",
+        "+STALLS=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=1 vl=273 start=262 nv=261 pattern=0 integer=0 unmasked=0 slices=18 pulses=18 nv_pulses=0 input_stalls=6 output_stalls=184"
+      ]
+    },
+    {
+      "name": "full_two_word",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+VL=512",
+        "+NV=511",
+        "+PATTERN=0",
+        "+STALLS=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=1 vl=512 start=0 nv=511 pattern=0 integer=0 unmasked=0 slices=32 pulses=32 nv_pulses=1 input_stalls=6 output_stalls=184"
+      ]
+    },
+    {
+      "name": "e16_prefix",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+SEW=1",
+        "+STALLS=1",
+        "+VL=8",
+        "+START=6",
+        "+NV=5",
+        "+PATTERN=0"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=1 vl=8 start=6 nv=5 pattern=0 integer=0 unmasked=0 slices=1 pulses=1 nv_pulses=0 input_stalls=6 output_stalls=244"
+      ]
+    },
+    {
+      "name": "e16_tail",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+SEW=1",
+        "+STALLS=1",
+        "+VL=7",
+        "+NV=7",
+        "+PATTERN=0"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=1 vl=7 start=0 nv=7 pattern=0 integer=0 unmasked=0 slices=1 pulses=1 nv_pulses=0 input_stalls=6 output_stalls=244"
+      ]
+    },
+    {
+      "name": "e16_unmasked",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+SEW=1",
+        "+STALLS=1",
+        "+VL=8",
+        "+NV=5",
+        "+UNMASKED=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=1 vl=8 start=0 nv=5 pattern=2 integer=0 unmasked=1 slices=1 pulses=1 nv_pulses=1 input_stalls=6 output_stalls=244"
+      ]
+    },
+    {
+      "name": "e16_multislice",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+SEW=1",
+        "+STALLS=1",
+        "+VL=65",
+        "+NV=61",
+        "+PATTERN=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=1 vl=65 start=0 nv=61 pattern=1 integer=0 unmasked=0 slices=5 pulses=5 nv_pulses=1 input_stalls=6 output_stalls=228"
+      ]
+    },
+    {
+      "name": "e16_integer",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+SEW=1",
+        "+STALLS=1",
+        "+VL=65",
+        "+NV=-2",
+        "+PATTERN=1",
+        "+INTEGER=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=1 vl=65 start=0 nv=-2 pattern=1 integer=1 unmasked=0 slices=5 pulses=0 nv_pulses=0 input_stalls=6 output_stalls=228"
+      ]
+    },
+    {
+      "name": "e32_prefix",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+SEW=2",
+        "+STALLS=1",
+        "+VL=8",
+        "+START=6",
+        "+NV=5",
+        "+PATTERN=0"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=2 vl=8 start=6 nv=5 pattern=0 integer=0 unmasked=0 slices=1 pulses=1 nv_pulses=0 input_stalls=6 output_stalls=244"
+      ]
+    },
+    {
+      "name": "e32_tail",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+SEW=2",
+        "+STALLS=1",
+        "+VL=7",
+        "+NV=7",
+        "+PATTERN=0"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=2 vl=7 start=0 nv=7 pattern=0 integer=0 unmasked=0 slices=1 pulses=1 nv_pulses=0 input_stalls=6 output_stalls=244"
+      ]
+    },
+    {
+      "name": "e32_unmasked",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+SEW=2",
+        "+STALLS=1",
+        "+VL=8",
+        "+NV=5",
+        "+UNMASKED=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=2 vl=8 start=0 nv=5 pattern=2 integer=0 unmasked=1 slices=1 pulses=1 nv_pulses=1 input_stalls=6 output_stalls=244"
+      ]
+    },
+    {
+      "name": "e32_multislice",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+SEW=2",
+        "+STALLS=1",
+        "+VL=65",
+        "+NV=61",
+        "+PATTERN=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=2 vl=65 start=0 nv=61 pattern=1 integer=0 unmasked=0 slices=9 pulses=9 nv_pulses=1 input_stalls=6 output_stalls=212"
+      ]
+    },
+    {
+      "name": "e32_integer",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+SEW=2",
+        "+STALLS=1",
+        "+VL=65",
+        "+NV=-2",
+        "+PATTERN=1",
+        "+INTEGER=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=2 vl=65 start=0 nv=-2 pattern=1 integer=1 unmasked=0 slices=9 pulses=0 nv_pulses=0 input_stalls=6 output_stalls=212"
+      ]
+    },
+    {
+      "name": "e64_prefix",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+SEW=3",
+        "+STALLS=1",
+        "+VL=8",
+        "+START=6",
+        "+NV=5",
+        "+PATTERN=0"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=3 vl=8 start=6 nv=5 pattern=0 integer=0 unmasked=0 slices=2 pulses=2 nv_pulses=0 input_stalls=6 output_stalls=240"
+      ]
+    },
+    {
+      "name": "e64_tail",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+SEW=3",
+        "+STALLS=1",
+        "+VL=7",
+        "+NV=7",
+        "+PATTERN=0"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=3 vl=7 start=0 nv=7 pattern=0 integer=0 unmasked=0 slices=2 pulses=2 nv_pulses=0 input_stalls=6 output_stalls=240"
+      ]
+    },
+    {
+      "name": "e64_unmasked",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+SEW=3",
+        "+STALLS=1",
+        "+VL=8",
+        "+NV=5",
+        "+UNMASKED=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=3 vl=8 start=0 nv=5 pattern=2 integer=0 unmasked=1 slices=2 pulses=2 nv_pulses=1 input_stalls=6 output_stalls=240"
+      ]
+    },
+    {
+      "name": "e64_multislice",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+SEW=3",
+        "+STALLS=1",
+        "+VL=65",
+        "+NV=61",
+        "+PATTERN=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=3 vl=65 start=0 nv=61 pattern=1 integer=0 unmasked=0 slices=17 pulses=17 nv_pulses=1 input_stalls=6 output_stalls=180"
+      ]
+    },
+    {
+      "name": "e64_integer",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after05/simv",
+        "-no_save",
+        "+SEW=3",
+        "+STALLS=1",
+        "+VL=65",
+        "+NV=-2",
+        "+PATTERN=1",
+        "+INTEGER=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "CONSUMER_PASS sew=3 vl=65 start=0 nv=-2 pattern=1 integer=1 unmasked=0 slices=17 pulses=0 nv_pulses=0 input_stalls=6 output_stalls=180"
+      ]
+    }
+  ]
+}

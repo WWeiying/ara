@@ -7,7 +7,8 @@ import subprocess
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
-from .dependencies import DependencyError, LockedTool, locked_tools
+from .dependencies import DependencyError, LockedTool, locked_dependencies, locked_tools
+from .dependency_patches import PatchError, patch_state, validate_submodules
 from .model import CheckResult
 
 
@@ -53,20 +54,7 @@ def resolve_bender(repo_root: Path) -> Optional[Path]:
 def bender_lock_revision(path: Path, package: str) -> Optional[str]:
     if not path.is_file():
         return None
-    package_pattern = re.compile(rf"^  {re.escape(package)}:\s*$")
-    revision_pattern = re.compile(r"^    revision:\s*([0-9a-fA-F]+)\s*$")
-    in_package = False
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if package_pattern.match(line):
-            in_package = True
-            continue
-        if in_package and line.startswith("  ") and not line.startswith("    "):
-            break
-        if in_package:
-            match = revision_pattern.match(line)
-            if match:
-                return match.group(1).lower()
-    return None
+    return next((item.revision for item in locked_dependencies(path) if item.name == package), None)
 
 
 def _git_output(path: Path, *args: str) -> Optional[str]:
@@ -77,7 +65,8 @@ def _git_output(path: Path, *args: str) -> Optional[str]:
         stderr=subprocess.DEVNULL,
         check=False,
     )
-    return result.stdout.strip() if result.returncode == 0 else None
+    # Preserve the two-column porcelain status prefix for diagnostics.
+    return result.stdout.rstrip() if result.returncode == 0 else None
 
 
 def _command_output(command: List[str]) -> Optional[str]:
@@ -93,10 +82,15 @@ def _command_output(command: List[str]) -> Optional[str]:
 
 def _dependency_check(repo_root: Path, package: str) -> List[CheckResult]:
     dependency = repo_root / "hardware" / "deps" / package
+    if dependency.is_symlink():
+        return [CheckResult("ERROR", f"{package} revision", f"symlink dependency: {dependency}")]
     if not dependency.is_dir():
         return [CheckResult("ERROR", f"{package} revision", f"missing: {dependency}")]
 
-    expected = bender_lock_revision(repo_root / "Bender.lock", package)
+    try:
+        expected = bender_lock_revision(repo_root / "Bender.lock", package)
+    except DependencyError as error:
+        return [CheckResult("ERROR", f"{package} revision", str(error))]
     actual = _git_output(dependency, "rev-parse", "HEAD")
     if expected is None:
         revision = CheckResult("ERROR", f"{package} revision", "missing from Bender.lock")
@@ -109,19 +103,44 @@ def _dependency_check(repo_root: Path, package: str) -> List[CheckResult]:
     else:
         revision = CheckResult("OK", f"{package} revision", actual.lower())
 
-    status = _git_output(dependency, "status", "--porcelain=v1", "--ignore-submodules=none")
-    if status is None:
-        cleanliness = CheckResult("ERROR", f"{package} worktree", "cannot read Git status")
-    elif status:
-        first = status.splitlines()[0]
-        cleanliness = CheckResult("ERROR", f"{package} worktree", f"dirty: {first}")
+    if expected is None:
+        cleanliness = CheckResult("ERROR", f"{package} worktree", "cannot validate without a locked revision")
     else:
-        cleanliness = CheckResult("OK", f"{package} worktree", "clean")
-    return [revision, cleanliness]
+        try:
+            state = patch_state(repo_root, package, dependency, expected)
+            detail = {
+                "clean": "clean",
+                "missing": "required patch is missing",
+                "applied": "approved patch applied",
+            }[state]
+            if package == "cva6":
+                detail = f"compiled target sources: {detail}"
+            cleanliness = CheckResult(
+                "ERROR" if state == "missing" else "OK",
+                f"{package} worktree",
+                detail,
+            )
+        except PatchError as error:
+            cleanliness = CheckResult("ERROR", f"{package} worktree", str(error))
+    checks = [revision, cleanliness]
+    if package == "cva6":
+        try:
+            validate_submodules(dependency, package)
+            checks.append(CheckResult("OK", "cva6 submodules", "required nested revisions are pinned and clean"))
+        except PatchError as error:
+            checks.append(CheckResult("ERROR", "cva6 submodules", str(error)))
+        for relative in (
+            "core/cache_subsystem/hpdcache/rtl/src/hpdcache_pkg.sv",
+            "core/cache_subsystem/hpdcache/rtl/src/hpdcache.sv",
+        ):
+            checks.append(_path_check(f"cva6/{relative}", dependency / relative))
+    return checks
 
 
 def _tool_check(repo_root: Path, tool: LockedTool) -> List[CheckResult]:
     path = repo_root / tool.path
+    if path.is_symlink():
+        return [CheckResult("ERROR", f"tool:{tool.name}", f"symlink dependency: {path}")]
     if not path.is_dir():
         return [CheckResult("ERROR", f"tool:{tool.name}", f"missing: {path}")]
 

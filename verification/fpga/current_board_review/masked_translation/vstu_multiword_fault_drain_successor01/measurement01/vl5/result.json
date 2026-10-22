@@ -1,0 +1,10 @@
+{
+  "vl": 5,
+  "returncode": 0,
+  "elapsed_s": 10.640463758260012,
+  "expected_marker": "BOUNDARY_MASK_DRAIN_GLOBAL_IDLE",
+  "observed": true,
+  "observations": [
+    "OBSERVATION vl=5 accepted=1 mmu=1 ack=1 descriptor=1 st_done=1 mask_done=1 response=1 mask_accepts=2 global_idle=1 mask_commit=0 stable_rows=21 aw=0 w=0 mask_pops=2 st_done_cycle=13 last_mask_cycle=7 last_pop_cycle=12 windows=2 local_idle=1 pending_b=0"
+  ]
+}

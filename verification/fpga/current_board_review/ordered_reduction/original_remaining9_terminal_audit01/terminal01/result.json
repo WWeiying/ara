@@ -1,0 +1,310 @@
+{
+  "status": "INDEPENDENT_M6_REMAINING9_SINGLES1296_ACCEPTED_NOT_FULL_PARENTS",
+  "accepted": true,
+  "plan_sha256": "10807a26d22d6beb48acdd075e3e1ccea37e5ca69f38c783ce2ed9027375891a",
+  "image_sha256": "a681e2744dc51a9ebfbef39d6da68707e29041e7fe4ad79ed392c62466167da0",
+  "complete_sha256": "d2b57da8b703fb5e301e3c584856be1d802bb5b0c688c72accef715e531330bc",
+  "prepared_sha256": "0eae1de4381ab00d1f76203b1c39cfbfd8e3c59747ee4dc7763323bcd7341154",
+  "shapes": [
+    "e16_mf2",
+    "e16_m1",
+    "e16_m2",
+    "e16_m4",
+    "e16_m8",
+    "e32_mf2",
+    "e32_m2",
+    "e32_m4",
+    "e32_m8"
+  ],
+  "geometry": [
+    {
+      "shape": "e16_mf2",
+      "sew": 16,
+      "cap": 32,
+      "vl": 16,
+      "word_bytes": 2,
+      "result": "0x7e00",
+      "full_oracle_bytes": 144,
+      "input_stores": 256,
+      "seed_stores": 512,
+      "mask_stores": 215040,
+      "fixture_field_reads": 6720,
+      "helper_instructions": 21,
+      "soc_elf_sha256": "fddb4e340617f856ff26e3e0498689755f2700f68e2c0a18b3ba4b90f7e68dff",
+      "source": "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_verified_handoff03/rvv_small_redspecial02/rvv_small_fp_redspecial_e16_mf2",
+      "unused_ranges": [
+        [
+          2147485482,
+          2147485562
+        ],
+        [
+          2147485562,
+          2147485642
+        ]
+      ]
+    },
+    {
+      "shape": "e16_m1",
+      "sew": 16,
+      "cap": 64,
+      "vl": 32,
+      "word_bytes": 2,
+      "result": "0x7e00",
+      "full_oracle_bytes": 144,
+      "input_stores": 512,
+      "seed_stores": 512,
+      "mask_stores": 215040,
+      "fixture_field_reads": 6720,
+      "helper_instructions": 21,
+      "soc_elf_sha256": "3e4a1c4c4a3b230f535a1ca377fcbe9ae98614f7cb787914c3e9f95c890d367d",
+      "source": "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_verified_handoff03/rvv_small_redspecial02/rvv_small_fp_redspecial_e16_m1",
+      "unused_ranges": [
+        [
+          2147485480,
+          2147485560
+        ],
+        [
+          2147485560,
+          2147485640
+        ]
+      ]
+    },
+    {
+      "shape": "e16_m2",
+      "sew": 16,
+      "cap": 128,
+      "vl": 64,
+      "word_bytes": 2,
+      "result": "0x7e00",
+      "full_oracle_bytes": 144,
+      "input_stores": 1024,
+      "seed_stores": 512,
+      "mask_stores": 215040,
+      "fixture_field_reads": 6720,
+      "helper_instructions": 21,
+      "soc_elf_sha256": "0e6f6fde661fd0ec91ec1f99818353303cf2a467dbec8e204802efce2883b7d7",
+      "source": "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_verified_handoff03/rvv_small_redspecial02/rvv_small_fp_redspecial_e16_m2",
+      "unused_ranges": [
+        [
+          2147485476,
+          2147485556
+        ],
+        [
+          2147485556,
+          2147485636
+        ]
+      ]
+    },
+    {
+      "shape": "e16_m4",
+      "sew": 16,
+      "cap": 256,
+      "vl": 128,
+      "word_bytes": 2,
+      "result": "0x7e00",
+      "full_oracle_bytes": 144,
+      "input_stores": 2048,
+      "seed_stores": 512,
+      "mask_stores": 215040,
+      "fixture_field_reads": 6720,
+      "helper_instructions": 21,
+      "soc_elf_sha256": "c83482c9a5e25f82d24514f7002a459bdcd7a1d390414c4f5fae86eddc555c02",
+      "source": "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_verified_handoff03/rvv_small_redspecial02/rvv_small_fp_redspecial_e16_m4",
+      "unused_ranges": [
+        [
+          2147485478,
+          2147485558
+        ],
+        [
+          2147485558,
+          2147485638
+        ]
+      ]
+    },
+    {
+      "shape": "e16_m8",
+      "sew": 16,
+      "cap": 512,
+      "vl": 256,
+      "word_bytes": 2,
+      "result": "0x7e00",
+      "full_oracle_bytes": 144,
+      "input_stores": 4096,
+      "seed_stores": 512,
+      "mask_stores": 215040,
+      "fixture_field_reads": 6720,
+      "helper_instructions": 21,
+      "soc_elf_sha256": "184aa540895f2bbfcf924e049d9d73b9f96e7e8ed2c2a59c47446740c089495a",
+      "source": "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_verified_handoff03/rvv_small_redspecial02/rvv_small_fp_redspecial_e16_m8",
+      "unused_ranges": [
+        [
+          2147485484,
+          2147485564
+        ],
+        [
+          2147485564,
+          2147485644
+        ]
+      ]
+    },
+    {
+      "shape": "e32_mf2",
+      "sew": 32,
+      "cap": 16,
+      "vl": 8,
+      "word_bytes": 4,
+      "result": "0x7fc00000",
+      "full_oracle_bytes": 144,
+      "input_stores": 128,
+      "seed_stores": 512,
+      "mask_stores": 215040,
+      "fixture_field_reads": 6720,
+      "helper_instructions": 21,
+      "soc_elf_sha256": "ee10a1887632925d64b3d780a36a208f350e9de9d5607fc94dc40849c2ceaa00",
+      "source": "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_verified_handoff03/rvv_small_redspecial02/rvv_small_fp_redspecial_e32_mf2",
+      "unused_ranges": [
+        [
+          2147485484,
+          2147485564
+        ],
+        [
+          2147485564,
+          2147485644
+        ]
+      ]
+    },
+    {
+      "shape": "e32_m2",
+      "sew": 32,
+      "cap": 64,
+      "vl": 32,
+      "word_bytes": 4,
+      "result": "0x7fc00000",
+      "full_oracle_bytes": 144,
+      "input_stores": 512,
+      "seed_stores": 512,
+      "mask_stores": 215040,
+      "fixture_field_reads": 6720,
+      "helper_instructions": 21,
+      "soc_elf_sha256": "cf7a145d1cbf282a6736fe3e0ea7152ae9d764db32ed784ae71da06a7baa53d2",
+      "source": "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_verified_handoff03/rvv_small_redspecial02/rvv_small_fp_redspecial_e32_m2",
+      "unused_ranges": [
+        [
+          2147485484,
+          2147485564
+        ],
+        [
+          2147485564,
+          2147485644
+        ]
+      ]
+    },
+    {
+      "shape": "e32_m4",
+      "sew": 32,
+      "cap": 128,
+      "vl": 64,
+      "word_bytes": 4,
+      "result": "0x7fc00000",
+      "full_oracle_bytes": 144,
+      "input_stores": 1024,
+      "seed_stores": 512,
+      "mask_stores": 215040,
+      "fixture_field_reads": 6720,
+      "helper_instructions": 21,
+      "soc_elf_sha256": "ec1ea608219380c4cd0f984a7460614d53b939d9dcc42b0d8b8714f9a477ee13",
+      "source": "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_verified_handoff03/rvv_small_redspecial02/rvv_small_fp_redspecial_e32_m4",
+      "unused_ranges": [
+        [
+          2147485478,
+          2147485558
+        ],
+        [
+          2147485558,
+          2147485638
+        ]
+      ]
+    },
+    {
+      "shape": "e32_m8",
+      "sew": 32,
+      "cap": 256,
+      "vl": 128,
+      "word_bytes": 4,
+      "result": "0x7fc00000",
+      "full_oracle_bytes": 144,
+      "input_stores": 2048,
+      "seed_stores": 512,
+      "mask_stores": 215040,
+      "fixture_field_reads": 6720,
+      "helper_instructions": 21,
+      "soc_elf_sha256": "276f495c4a40bd5479bc14fe2ce249e0e58d4930bd6fa75f651e45237a73ed40",
+      "source": "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_verified_handoff03/rvv_small_redspecial02/rvv_small_fp_redspecial_e32_m8",
+      "unused_ranges": [
+        [
+          2147485482,
+          2147485562
+        ],
+        [
+          2147485562,
+          2147485642
+        ]
+      ]
+    }
+  ],
+  "results": {
+    "e16_mf2": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/original_remaining9_terminal_audit01/terminal01/e16_mf2.json",
+      "sha256": "ab51a8d1df09da1f2c826875a40ff31ac4e6e9b7eb615d6dc5d8f4a20153ae87"
+    },
+    "e16_m1": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/original_remaining9_terminal_audit01/terminal01/e16_m1.json",
+      "sha256": "0b55eb5d398cdef20ec7326d2e4557d0246a43c149cd8df44a2c8a4197ca5dc7"
+    },
+    "e16_m2": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/original_remaining9_terminal_audit01/terminal01/e16_m2.json",
+      "sha256": "2032e0091c0909e2a7c340a5b543eb63d2df9a1c17ea922246d0f95f338e4a41"
+    },
+    "e16_m4": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/original_remaining9_terminal_audit01/terminal01/e16_m4.json",
+      "sha256": "3a5de6f87bc89435ef97f2758bf08d933ccba3e7c3aeffff022bcbae65d9079b"
+    },
+    "e16_m8": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/original_remaining9_terminal_audit01/terminal01/e16_m8.json",
+      "sha256": "4358201e819d09f58dedff4ad7eb028029e538f13d72b6d22219b04be6424b94"
+    },
+    "e32_mf2": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/original_remaining9_terminal_audit01/terminal01/e32_mf2.json",
+      "sha256": "6f7498336537a74baf4e31bc12b4a76d40222c9041c001d159069cbb24fb5db6"
+    },
+    "e32_m2": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/original_remaining9_terminal_audit01/terminal01/e32_m2.json",
+      "sha256": "f226a616d1334b116b4ca1f56d2f3f879e93ef3277c70642db006961bfed5c8e"
+    },
+    "e32_m4": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/original_remaining9_terminal_audit01/terminal01/e32_m4.json",
+      "sha256": "4926f75589e16cfe43063e40d618ce9466cd77f35db5ca496d8c5e6fcb587a6d"
+    },
+    "e32_m8": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/original_remaining9_terminal_audit01/terminal01/e32_m8.json",
+      "sha256": "278952db45f3c83effe803d5f64df53d6ab0b1b8076f636028237a8a5721b225"
+    }
+  },
+  "pins_pre_post_unchanged": true,
+  "pins_verified": 1438,
+  "full_plan_pins": 1352,
+  "evidence_pins": 75,
+  "total_csv_parses": 9,
+  "total_oracle_bytes": 1296,
+  "total_fixture_field_reads": 60480,
+  "target_calls": 9,
+  "post_restore_csr_state_directly_measured": false,
+  "limitation": "DUT observes original CSR reads and retirement/saved-zero operands of restore writes; no post-restore frm/fflags readback or internal signal observation. Reference CSR logs do not extend DUT scope.",
+  "outer_service_terminal_observed": false,
+  "outer_service_returncode": null,
+  "outer_service_result": null,
+  "full_parents_accepted": false,
+  "all11_accepted": false,
+  "no_guest_execution": true,
+  "audit_seconds": 1765.189921578858
+}

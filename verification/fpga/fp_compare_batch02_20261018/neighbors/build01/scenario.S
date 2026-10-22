@@ -1,0 +1,1263 @@
+.text
+.balign 4
+.global neighbor_0
+neighbor_0:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+csrwi fflags,1
+vmseq.vv v8,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_1
+neighbor_1:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+csrwi fflags,1
+vmseq.vv v16,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v16,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_2
+neighbor_2:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+csrwi fflags,1
+vmseq.vv v8,v8,v8,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_3
+neighbor_3:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+csrwi fflags,1
+vmsne.vv v8,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_4
+neighbor_4:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+csrwi fflags,1
+vmsne.vv v16,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v16,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_5
+neighbor_5:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+csrwi fflags,1
+vmsne.vv v8,v8,v8,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_6
+neighbor_6:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+csrwi fflags,1
+vmslt.vv v8,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_7
+neighbor_7:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+csrwi fflags,1
+vmslt.vv v16,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v16,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_8
+neighbor_8:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+csrwi fflags,1
+vmslt.vv v8,v8,v8,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_9
+neighbor_9:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+csrwi fflags,1
+vmsltu.vv v8,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_10
+neighbor_10:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+csrwi fflags,1
+vmsltu.vv v16,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v16,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_11
+neighbor_11:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+csrwi fflags,1
+vmsltu.vv v8,v8,v8,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_12
+neighbor_12:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+vle8.v v24,(a2)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,63
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,1
+csrw vstart,t0
+csrwi fflags,1
+vmadc.vv v24,v8,v16
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v24,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_13
+neighbor_13:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+vle8.v v24,(a2)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,63
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,1
+csrw vstart,t0
+csrwi fflags,1
+vmadc.vvm v24,v8,v16,v0
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v24,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_14
+neighbor_14:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+vle8.v v24,(a2)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,63
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,1
+csrw vstart,t0
+csrwi fflags,1
+vmsbc.vv v24,v8,v16
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v24,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_15
+neighbor_15:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+vle8.v v24,(a2)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,63
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,1
+csrw vstart,t0
+csrwi fflags,1
+vmsbc.vvm v24,v8,v16,v0
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v24,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_16
+neighbor_16:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+vle8.v v24,(a2)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,64
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,0
+csrw vstart,t0
+csrwi fflags,1
+vmseq.vv v24,v8,v16
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v24,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_17
+neighbor_17:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+vle8.v v24,(a2)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,64
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,0
+csrw vstart,t0
+csrwi fflags,1
+vmsltu.vv v24,v8,v16
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v24,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_18
+neighbor_18:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+addi t1,a0,128
+vle8.v v9,(t1)
+addi t1,a1,128
+vle8.v v17,(t1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,61
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,33
+csrw vstart,t0
+csrwi fflags,1
+vmsltu.vv v8,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_19
+neighbor_19:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+addi t1,a0,128
+vle8.v v9,(t1)
+addi t1,a1,128
+vle8.v v17,(t1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,61
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,33
+csrw vstart,t0
+csrwi fflags,1
+vmsltu.vv v16,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v16,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_20
+neighbor_20:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmseq.vv v8,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_21
+neighbor_21:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmseq.vv v16,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v16,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_22
+neighbor_22:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmseq.vv v8,v8,v8,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_23
+neighbor_23:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmsne.vv v8,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_24
+neighbor_24:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmsne.vv v16,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v16,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_25
+neighbor_25:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmsne.vv v8,v8,v8,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_26
+neighbor_26:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmslt.vv v8,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_27
+neighbor_27:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmslt.vv v16,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v16,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_28
+neighbor_28:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmslt.vv v8,v8,v8,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_29
+neighbor_29:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmsltu.vv v8,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_30
+neighbor_30:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmsltu.vv v16,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v16,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_31
+neighbor_31:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,37
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,3
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmsltu.vv v8,v8,v8,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_32
+neighbor_32:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+vle8.v v24,(a2)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,63
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,1
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmadc.vv v24,v8,v16
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v24,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_33
+neighbor_33:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+vle8.v v24,(a2)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,63
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,1
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmadc.vvm v24,v8,v16,v0
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v24,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_34
+neighbor_34:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+vle8.v v24,(a2)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,63
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,1
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmsbc.vv v24,v8,v16
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v24,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_35
+neighbor_35:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+vle8.v v24,(a2)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,63
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,1
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmsbc.vvm v24,v8,v16,v0
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v24,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_36
+neighbor_36:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+vle8.v v24,(a2)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,64
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,0
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmseq.vv v24,v8,v16
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v24,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_37
+neighbor_37:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+vle8.v v24,(a2)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,64
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,0
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmsltu.vv v24,v8,v16
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v24,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_38
+neighbor_38:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+addi t1,a0,128
+vle8.v v9,(t1)
+addi t1,a1,128
+vle8.v v17,(t1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,61
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,33
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmsltu.vv v8,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v8,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+.global neighbor_39
+neighbor_39:
+addi sp,sp,-16
+sd ra,0(sp)
+vsetvli t0,zero,e32,m2,tu,mu
+vle32.v v8,(a0)
+vle32.v v16,(a1)
+vsetvli t0,zero,e8,m1,tu,mu
+addi t1,a0,128
+vle8.v v9,(t1)
+addi t1,a1,128
+vle8.v v17,(t1)
+vsetvli t0,zero,e32,m2,tu,mu
+vlm.v v0,(a3)
+li t0,61
+vsetvli t0,t0,e32,m2,tu,mu
+li t0,33
+csrw vstart,t0
+call context_roundtrip
+csrwi fflags,1
+vmsltu.vv v16,v8,v16,v0.t
+csrr t2,vstart
+csrr t1,fflags
+slli t1,t1,32
+or a0,t2,t1
+vsetvli t0,zero,e32,m2,tu,mu
+vsm.v v16,(a4)
+csrr zero,vl
+fence rw,rw
+ld ra,0(sp)
+addi sp,sp,16
+ret
+.text
+.balign 4
+context_roundtrip:
+addi sp,sp,-176
+sd ra,0(sp)
+sd a0,8(sp)
+sd a1,16(sp)
+sd a2,24(sp)
+sd a3,32(sp)
+sd a4,40(sp)
+sd a5,48(sp)
+sd a6,56(sp)
+sd a7,64(sp)
+sd t0,72(sp)
+sd t1,80(sp)
+sd t2,88(sp)
+sd t3,96(sp)
+sd t4,104(sp)
+sd t5,112(sp)
+sd t6,120(sp)
+csrr t0,vl
+sd t0,128(sp)
+csrr t0,vtype
+sd t0,136(sp)
+csrr t0,vstart
+sd t0,144(sp)
+csrr t0,vcsr
+sd t0,152(sp)
+csrr t0,fcsr
+sd t0,160(sp)
+la t2,context_buffer
+vsetvli t0,zero,e8,m8,ta,ma
+vse8.v v0,(t2)
+add t2,t2,t0
+vse8.v v8,(t2)
+add t2,t2,t0
+vse8.v v16,(t2)
+add t2,t2,t0
+vse8.v v24,(t2)
+la t2,context_buffer
+vsetvli t0,zero,e8,m8,ta,ma
+vle8.v v0,(t2)
+add t2,t2,t0
+vle8.v v8,(t2)
+add t2,t2,t0
+vle8.v v16,(t2)
+add t2,t2,t0
+vle8.v v24,(t2)
+ld t0,128(sp)
+ld t1,136(sp)
+vsetvl zero,t0,t1
+ld t0,144(sp)
+csrw vstart,t0
+ld t0,152(sp)
+csrw vcsr,t0
+ld t0,160(sp)
+csrw fcsr,t0
+ld ra,0(sp)
+ld a0,8(sp)
+ld a1,16(sp)
+ld a2,24(sp)
+ld a3,32(sp)
+ld a4,40(sp)
+ld a5,48(sp)
+ld a6,56(sp)
+ld a7,64(sp)
+ld t0,72(sp)
+ld t1,80(sp)
+ld t2,88(sp)
+ld t3,96(sp)
+ld t4,104(sp)
+ld t5,112(sp)
+ld t6,120(sp)
+addi sp,sp,176
+ret
+.bss
+.balign 64
+context_buffer:
+.zero 4096

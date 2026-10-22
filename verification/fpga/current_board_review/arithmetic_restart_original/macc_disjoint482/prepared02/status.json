@@ -1,0 +1,22 @@
+{
+  "status": "READY_ORIGINAL_MACC_PREFIX482_HOST_SPIKE_NOT_DUT",
+  "reference": {
+    "status": "SPIKE_PASS_NOT_DUT",
+    "name": "macc_disjoint_e8_m4_prefix482",
+    "configurations": 482,
+    "isa": "rv64gcv_zvl1024b",
+    "instructions_to_replay_exit": 16438522,
+    "cycle_counter": 16438522,
+    "elapsed_s": 2.5792472274042666,
+    "elf_sha256": "0500bac3477b4a850b0f50170927dee982c43c0c78f31226d7d778b08349ff18",
+    "log_sha256": "25b0f6d5ed6ba006ac1d88825cda287d2ffabda154bd13b122721e35f8e066c7",
+    "historical_prints_matched": 26
+  },
+  "original_elf_sha256": "608e941760443563f055058d60f18ce466a06d016fb277989fc332ed9cdb347d",
+  "soc_programs": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/prepared02/soc/programs.json",
+  "soc_programs_sha256": "c41228e032836863c778fba60fb4246754e9b9b5c812a271ad323eaf8c165e5e",
+  "VCS_launched": false,
+  "RTL_modified": false,
+  "full22400_executed": false,
+  "prefixes5_modified": false
+}

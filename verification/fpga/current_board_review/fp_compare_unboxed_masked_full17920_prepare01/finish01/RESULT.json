@@ -1,0 +1,17 @@
+{
+  "status": "DUAL_COMPILED_PENDING_LINKED_COST",
+  "binaries": {
+    "soc": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_masked_full17920_prepare01/build01/soc/program.elf",
+      "sha256": "18294ae7aa7a2a503e0ab82d532f6c7dcc6f92ad752e3972e50038a7c03173ea"
+    },
+    "spike": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_masked_full17920_prepare01/build01/spike/program.elf",
+      "sha256": "09c4eaf6033b25922a57e1c7223616e6a849d30b6393a67fd64d91da097a7634"
+    }
+  },
+  "inputs_unchanged": true,
+  "original_ubsan_link_failure_preserved": true,
+  "reference_executed": false,
+  "DUT_executed": false
+}

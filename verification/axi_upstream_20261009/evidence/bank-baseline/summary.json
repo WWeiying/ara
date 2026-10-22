@@ -1,0 +1,24 @@
+{
+  "complete": true,
+  "rows": [
+    {
+      "case": 0,
+      "log": "/tmp/axi-bank-baseline-20261009-03/case-0.log",
+      "sha256": "f6a020951acccd875544930df28350125770820bcb3422ab75f42bb19f66a219",
+      "status": "PASS"
+    },
+    {
+      "case": 1,
+      "log": "/tmp/axi-bank-baseline-20261009-03/case-1.log",
+      "sha256": "8009b06d38939d6bc68b389e6f53b118a0f36fd1e5097b56d57f4f56f676954a",
+      "status": "FAIL"
+    },
+    {
+      "case": 2,
+      "log": "/tmp/axi-bank-baseline-20261009-03/case-2.log",
+      "sha256": "ab9676d8c4cc2ad5af77986470e3f84821611438243fd8b4c1cc062f3436ccc1",
+      "status": "FAIL"
+    }
+  ],
+  "source": "baseline"
+}

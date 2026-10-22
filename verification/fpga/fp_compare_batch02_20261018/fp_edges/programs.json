@@ -1,0 +1,229 @@
+{
+  "programs": {
+    "e16_g0": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0",
+      "elf_sha256": "8a2571892277bca91b3495b0af942ab16937cdb267b5d5b155acb5cab2c6560d",
+      "pass_markers": [
+        "FP_EDGES_PASS group=e16_g0 cases=4 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "reference_elf_sha256": "6c2f01dca49b60fa242584223e812a1bd1073cd2ca7aa3a4ee555023f2dbdd22",
+      "spike_exit_code": 0,
+      "spike_retired_instructions": 7918,
+      "case_ids": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "attribution": "New directed FP edge tests; not original Linux ELF."
+    },
+    "e16_g1": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1",
+      "elf_sha256": "73da86b51b11c97b6d31b9afc67c4386e6509e50affe65b6c38072332cedbd1e",
+      "pass_markers": [
+        "FP_EDGES_PASS group=e16_g1 cases=4 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "reference_elf_sha256": "f224708d8e6f0d60462d89ae5879bce45cdb9bf41f05beda046c3424a8c7f35f",
+      "spike_exit_code": 0,
+      "spike_retired_instructions": 7855,
+      "case_ids": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "attribution": "New directed FP edge tests; not original Linux ELF."
+    },
+    "e32_g0": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0",
+      "elf_sha256": "59672dcb58c5ab868b2841bd1cf4e43a12f4e9510b598306360859b1f287992a",
+      "pass_markers": [
+        "FP_EDGES_PASS group=e32_g0 cases=4 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "reference_elf_sha256": "72f0ea5334040b3268dfcd9fe74267bd98b9e2c35324bd8919c45bd56c2ed4f1",
+      "spike_exit_code": 0,
+      "spike_retired_instructions": 7747,
+      "case_ids": [
+        8,
+        9,
+        10,
+        11
+      ],
+      "attribution": "New directed FP edge tests; not original Linux ELF."
+    },
+    "e32_g1": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1",
+      "elf_sha256": "14147d038f3213d481300842fe04ad9dbc17c8ed6c296dc136803869f59d2505",
+      "pass_markers": [
+        "FP_EDGES_PASS group=e32_g1 cases=4 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "reference_elf_sha256": "cddb03487c6917a5804e40a4dd7e6ffefaf3b2a1f88f1ab7d0050c102625e0a7",
+      "spike_exit_code": 0,
+      "spike_retired_instructions": 7683,
+      "case_ids": [
+        12,
+        13,
+        14,
+        15
+      ],
+      "attribution": "New directed FP edge tests; not original Linux ELF."
+    },
+    "e64_g0": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0",
+      "elf_sha256": "a08b2f83d4119bc46b7e58cc7bf42382cc686b93f1868da6e912761e226798a7",
+      "pass_markers": [
+        "FP_EDGES_PASS group=e64_g0 cases=4 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "reference_elf_sha256": "c1a8548de181ba33c720b506afee77400943b4e40c1f62c0b66c499736f1ae27",
+      "spike_exit_code": 0,
+      "spike_retired_instructions": 7571,
+      "case_ids": [
+        16,
+        17,
+        18,
+        19
+      ],
+      "attribution": "New directed FP edge tests; not original Linux ELF."
+    },
+    "e64_g1": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1",
+      "elf_sha256": "b6f84f18c26a493e8aa3ec534ad17e698c8e2a0ba5a62dfee638409a1eb3c058",
+      "pass_markers": [
+        "FP_EDGES_PASS group=e64_g1 cases=4 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "reference_elf_sha256": "54f03fd60702a103b64cbd129e1489e748493b4ab4832fa59e1c8fee44a071af",
+      "spike_exit_code": 0,
+      "spike_retired_instructions": 7500,
+      "case_ids": [
+        20,
+        21,
+        22,
+        23
+      ],
+      "attribution": "New directed FP edge tests; not original Linux ELF."
+    }
+  },
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/prepare.py": "73dddc1f666aa53687d6e9d52884e79a87969c4bb5c99016f3965e711e4e3d23",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios.py": "4a6992187a1c4cff5b269078e5c1f0f2b5402b8579e0b3e6e6e70cd9e8f44f23",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/run.py": "265a02e800a321ace820af04fbb4df7267312a3278b4ac9c514b8a2337238611",
+    "/home/wangwy/openproject/ara/install/riscv-gcc/bin/riscv64-unknown-elf-gcc": "7af14c2b2b9f8ce5dc7b07521a929537a5306078df2a3a20bb367b7448828bbc",
+    "/home/wangwy/openproject/riscv-isa-sim-ara-dsa-vstart/build/spike": "c03c5a84f2313b2e0bb28be7aba496836b8d7b29e472c918457bca21f8abc7d2",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/integration/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/integration/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/integration/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a"
+  },
+  "files": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/cases.json": "30405ece7da4e60853b6437096de49ce71d40940ac0a3c9d1bb8d2560e9bdf72",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/host_oracle_selftest.json": "bff27d490631a435d7d5580e2319445747c6edd7f1061ecf4045ffbde21a462b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/main.c": "9aecf2ef68e7810dbb06366cf98d8032a1c0ef63a9fca4041e8064f7f12d0bff",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/scenario.S": "1b175d23325e6dd6ef3a1a46f66b7ad4e53447286b88717c556222a7c05f6fdf",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/soc_compile.command.json": "30a1ec1f8f868eb4db31a657e15a42f4b3028813ebdef3079c0627c7ebbede0c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/soc.elf": "8a2571892277bca91b3495b0af942ab16937cdb267b5d5b155acb5cab2c6560d",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/soc_compile.process.json": "3fce3155fdc945a63847263ce44158d586f5973a072a3026a706723bae736436",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/spike_compile.command.json": "da6fae143a52240193dc59c348fbbb1ab45f618366167103d34b55dc418f6e37",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/spike.elf": "6c2f01dca49b60fa242584223e812a1bd1073cd2ca7aa3a4ee555023f2dbdd22",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/spike_compile.process.json": "d2c6dc06013d81c4fb98822ccfa60d478d66e3ccfac51f7a2312b4a80d8efb18",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/spike.cmd": "c4f11368c66b6fa49576865c57b01123e8e955bf1ce4a4172bbe72a8be58507a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/spike.command.json": "58f13d86b3033f8f81a17e26d98fb0f25de9e9229611ecb42e5d2915aaccb454",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/spike.log": "eb4a65347ef1b553cf2bdeb07c988d8eb1970e7f27194da36c5df2e113cae0da",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g0/spike.process.json": "66b6f549b9e7ec68431ac7bf308b27ebac2e1b8a20667d3584e1ec0cba44037e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/main.c": "05b4a0690014fc2d78106a5fbcdbf13de1053098a8cf86763728941c3fd3a5d7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/scenario.S": "4aa5578e8fbcd3f11c1f8b7510b73af1234d4adbbc52192d69be96e7fca97add",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/soc_compile.command.json": "37273bb97346cd6a30e9ae657ca83a3ef027d6503ae091f9acb59e527b3d90b8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/soc.elf": "73da86b51b11c97b6d31b9afc67c4386e6509e50affe65b6c38072332cedbd1e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/soc_compile.process.json": "44c29ca7c3d5eeb7ce512fd929036158709dd1ed32a559e2969f1f2b729a36e8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/spike_compile.command.json": "4fa883076734422c8b968ddd390109e77dbe103691ac1c3eec8a2d7897a5d515",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/spike.elf": "f224708d8e6f0d60462d89ae5879bce45cdb9bf41f05beda046c3424a8c7f35f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/spike_compile.process.json": "afa29789de178008f3924b0990cdc5d3c80ba0362760283afe94124328e6b493",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/spike.cmd": "c4f11368c66b6fa49576865c57b01123e8e955bf1ce4a4172bbe72a8be58507a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/spike.command.json": "256967ff70f45f51ba826d022bd3c0afc96c2caf40ae8cae2843e78d7eef61fe",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/spike.log": "d17a26528e00db18519ff6ef1e13d9f784a26cb199f31cda99adb111caa78ef3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e16_g1/spike.process.json": "a191b12e86bc0a8bb05ebebe421b08cd63f0b65337f2694d186cdf4fc786133f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/main.c": "db111112034b35a9ce374a28046aa1f99b7dfcc666ad5f857aef385c5acac297",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/scenario.S": "07ce6d03425edf5b01023557ea4aae35f4c201176cc037f61cefa14c01b58742",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/soc_compile.command.json": "74db252d132165b35fb37f372e30814f611cae5b98635d377dcbc51904b51ae4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/soc.elf": "59672dcb58c5ab868b2841bd1cf4e43a12f4e9510b598306360859b1f287992a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/soc_compile.process.json": "29941330381c152bb7848dea44b34cc461198cb017389b9e562f507dcfcaee84",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/spike_compile.command.json": "32521178a280da0021598bc701fc802a7b14d3c037fd19e89370a9452d571061",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/spike.elf": "72f0ea5334040b3268dfcd9fe74267bd98b9e2c35324bd8919c45bd56c2ed4f1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/spike_compile.process.json": "ef017d4c039d9c6cfb51540c38943396fa0db693dae79bda378ba44c55a97894",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/spike.cmd": "c4f11368c66b6fa49576865c57b01123e8e955bf1ce4a4172bbe72a8be58507a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/spike.command.json": "d4b5f7dea3b4fccddeb18cb4676ad29cd19adf1a533e2c2fdb789089eefa8702",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/spike.log": "46736abc214d5394c82a143ff4dc5910c21d5c9e2371586807d5a45c08f9a5e7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g0/spike.process.json": "51f1223bf6783aac799749dcff8089defaa0fe9dd28a19a416375a52fdaf6b4a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/main.c": "95e4b7163603342fac8286fdb1431140de41e55612b7b7c8eb440a7013bfc4b2",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/scenario.S": "067df0be8a579aa16f06cc5293657469df559099db5f8f237ffe3d21fb8fb5af",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/soc_compile.command.json": "b202a7d9d3aaf89527f2c75d7f69488588f63707895a65152998818cc8c51cc0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/soc.elf": "14147d038f3213d481300842fe04ad9dbc17c8ed6c296dc136803869f59d2505",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/soc_compile.process.json": "028dbfa118dd58591d0b8ba0cafdc293c4136342ce7588bae9630df89181d12d",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/spike_compile.command.json": "37638ea0730c443b0d24cc8ae573b6725483b1fa7dc7bf618c339682409d5a12",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/spike.elf": "cddb03487c6917a5804e40a4dd7e6ffefaf3b2a1f88f1ab7d0050c102625e0a7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/spike_compile.process.json": "b2d3ffcd80eac457a527eb60f319b66ab95bf2f257dc8dbbbd019c00a6ef2ac0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/spike.cmd": "c4f11368c66b6fa49576865c57b01123e8e955bf1ce4a4172bbe72a8be58507a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/spike.command.json": "afd53b10f709083b37a76a8b786c4ee7aa4cba2126b7fad2187a5379f7079cbf",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/spike.log": "34ff77de79760d045b9dc858235dc7915a36866157e497847ddef9e542418f2a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e32_g1/spike.process.json": "6b41394ab7c9879b11650d935e18db4086bb7eef7198b55d46cc3138d15e043e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/main.c": "a08c8dca76780b27c88d1aca8f2d988f0aa9bad688dbefbb30f2a7b9ae344268",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/scenario.S": "fa6c883742d1117e6646bd22b8a865ae8e46bcf0dd0d8e657fcf4b794c26c9a6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/soc_compile.command.json": "2c8b0b4b60ecb716fe8fe9eaea4146290b194690eb6e31e8b55b05a5fcc499f4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/soc.elf": "a08b2f83d4119bc46b7e58cc7bf42382cc686b93f1868da6e912761e226798a7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/soc_compile.process.json": "401c49ab36ebf693aadc5490ac2a84d00c272913ea8f8e676181332a1524146c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/spike_compile.command.json": "bc5b40ea0fc7bf626c9727b87ebc351eb50579fa8ca5d2cfd4b9e8d97fe6d616",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/spike.elf": "c1a8548de181ba33c720b506afee77400943b4e40c1f62c0b66c499736f1ae27",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/spike_compile.process.json": "4a47155bafb9a0ac69fc4e128a5b8137a07e283f8764881c98b5f0c001870a37",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/spike.cmd": "b567a33afe541178c5523ade707e1acdb2f58db0c339239be4e4c1317bf77c38",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/spike.command.json": "f75aa79042ec7c88b244d4d5e18f7dc79786a00f6877e50fcc1da0b5acc95842",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/spike.log": "1aa68a1ef0c03036b98de99ba15b2fa4c7ba274e34e72f11cb9c346b85c08cf6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g0/spike.process.json": "8c3005a3f851f579f664e48d7019087e27a407c9229a52c5f685fc784708f7dc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/main.c": "42be6fb73abaa3ea4fda6f7b8ce82c6fcc70ea732fa3c692e0527645f6e07500",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/scenario.S": "0cdcaadf64cead215e9f7b0d73ef9b948b9cf3d714780df1079e928a2d72dfc6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/soc_compile.command.json": "fc5c6c7a40467b52292c5cf210293a9e301d230c9b77ed61fc74001b881ada07",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/soc.elf": "b6f84f18c26a493e8aa3ec534ad17e698c8e2a0ba5a62dfee638409a1eb3c058",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/soc_compile.process.json": "a0cba8bc02a92f105a1deeb1a236a696d0d935bc00f985b3e367520b7f4f9c83",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/spike_compile.command.json": "7eb9bc829f0e9dba723fd4aa811f2ef339020b671580db81f4dc448a38131948",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/spike.elf": "54f03fd60702a103b64cbd129e1489e748493b4ab4832fa59e1c8fee44a071af",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/spike_compile.process.json": "86e1c14718c9442ab6f6fbd5aadbc7f831b15860cc9546d6fe413cbf8e504d5e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/spike.cmd": "b567a33afe541178c5523ade707e1acdb2f58db0c339239be4e4c1317bf77c38",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/spike.command.json": "dfc50ac372a10628ff17f356e7f14b7122af074d3c0a11676659d66ee317860b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/spike.log": "180549404091130facffbdcc77366263f68216d57c54665c3ab427361c4a11ee",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/fp_edges/build01/e64_g1/spike.process.json": "08cf43a4c0b7fd59506b975885de6c8fc28fe18c4b93a0d612235b3fd074e14b"
+  },
+  "scope": "24 new directed FP16/32/64 tests, six four-case ELFs; precomputed byte allowed-set oracle; host-only negative selftests; Spike reference only, no DUT run, not original Linux ELF attribution."
+}

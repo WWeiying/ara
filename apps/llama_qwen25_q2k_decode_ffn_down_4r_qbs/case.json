@@ -1,0 +1,12 @@
+{
+  "case_id": "q2k_decode_ffn_down_4r_qbs",
+  "capture_root": "/home/wangwy/openproject/ara_verification_archive/captures/qbs-format-closure-q2k-20260923-03/capture",
+  "phase": "decode",
+  "operator": "blk_0_ffn_down_weight",
+  "weight_type": "q2_K",
+  "k": 4864,
+  "rows": 4,
+  "inputs": 1,
+  "capture_rows": 896,
+  "capture_inputs": 1
+}

@@ -1,0 +1,11 @@
+{
+  "tests": [
+    "rvv:vrvv_gap29_fp16_rne_m4",
+    "rvv:vrvv_gap29_fp16_rtz_m4",
+    "rvv:vrvv_gap29_fp16_rdn_m4",
+    "rvv:vrvv_gap29_fp16_rup_m4",
+    "rvv:vrvv_gap29_fp16_rmm_m4",
+    "rvv:vrvv_gap29_fp16_rod_m4",
+    "app:akv_d96_gap29"
+  ]
+}

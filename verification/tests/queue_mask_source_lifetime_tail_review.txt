@@ -1,0 +1,29 @@
+MASK TAIL CORRECTION - SUPERSEDES OLD UNIQUE-GOLD TAIL CONTRACT
+
+Official rule: https://docs.riscv.org/reference/isa/v20260120/unpriv/v-st-ext.html
+Section30.1.3.4.3: mask destination tail is agnostic regardless of vta.
+Each tail bit may independently retain its old value or become1; old1
+cannot clear. Non-mask-load results may additionally compute tails with
+VL=VLMAX. THIS matrix already has VL=VLMAX, so that exception adds no
+positions. VMSLTU is not an extended mask-logical operation.
+
+Final observation: vsm.v exports exactly VL/8 active bytes (all VL are
+multiples of8). It never exports v8 agnostic tails. For LMUL2 an additional
+vs1r.v exports v9 to output+128: v9 is NOT the mask destination.
+The DIV/compare adjacent pair, VL, registers and operands stay unchanged.
+There are60 explicit RVV PCs, with no added vset, hints or shorter lengths.
+Frozen dispatcher4446..4450 defines ceil(VL/8) byte mask-store; raw738 line
+raw1297/source4448 is already hit. This is not a new gain target.
+
+All6912 MEMORY snapshot bytes are now strictly defined: sources, original
+source division,90 active mask bytes (720bits),512 v9 bytes and guards.
+Unused output bytes stay memory guards, not snapshots of mask tails.
+24 CSR values and6936 software checks remain exact. No active bit skipped.
+7472 agnostic v8 VRF tailbits are not read by C. Future vector differential
+qualification must accept ISA tail policy, not require Spike tail equality.
+No scalar trace branch or loaded value depends on an agnostic tail bit.
+
+Old app/preflight remain preserved and must not be launched. New output
+will be fresh. Same eight cells EEW8/16/32/64 x LMUL1/2.
+Primary four-lane requester cond665/vector010 is actual738 before0.
+No DUT run, coverage hit, cycle qualification, native EL or admission.

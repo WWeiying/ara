@@ -1,0 +1,16 @@
+{
+  "status": "PASS",
+  "tests": 11,
+  "failures": 0,
+  "errors": 0,
+  "elapsed_seconds": 133.373,
+  "counts": {
+    "parser_mutations": 2296,
+    "snapshot_mutations": 47,
+    "callback_mutations": 35,
+    "capture_pin_omissions": 17,
+    "tcl_cases": 20,
+    "DVE_launches": 0
+  },
+  "limitation": "Synthetic full1144 native fixtures, never real signatures beyond the separately pinned pilot18; Tcl API model only."
+}

@@ -1,0 +1,14 @@
+{
+  "returncode": 0,
+  "elapsed_s": 41.85211753845215,
+  "name": "unmasked_alias_v8_e32_mf2_t0_ctx1",
+  "status": "NOT_PASS",
+  "diagnostics": [
+    "FP_BIT index=9 expected=0 actual=1",
+    "FP_BIT index=10 expected=0 actual=1",
+    "FP_BIT index=12 expected=1 actual=0",
+    "FP_BIT index=13 expected=1 actual=0",
+    "RVV_FP_COMPARE_DETAIL op=5 seed=16 vl=15 mask=0 sticky=0 expected_flags=16 actual_flags=0 errors=5",
+    "RVV_FP_COMPARE_FAIL sew=32 cases=1 errors=5"
+  ]
+}

@@ -1,0 +1,193 @@
+{
+  "status": "PASS_HOST_ONLY_NOT_DUT",
+  "failures": 0,
+  "tests": 44,
+  "cases": [
+    {
+      "name": "exact_source_two_ELFs_CTRL_only_specs",
+      "positive": true
+    },
+    {
+      "name": "scenario1_four_source_owners",
+      "positive": true
+    },
+    {
+      "name": "isolated_done",
+      "rejected": true
+    },
+    {
+      "name": "delete_full_alloc_done_pair_0",
+      "rejected": true
+    },
+    {
+      "name": "delete_full_alloc_done_pair_1",
+      "rejected": true
+    },
+    {
+      "name": "delete_full_alloc_done_pair_2",
+      "rejected": true
+    },
+    {
+      "name": "delete_full_alloc_done_pair_3",
+      "rejected": true
+    },
+    {
+      "name": "done_wrong_owner",
+      "rejected": true
+    },
+    {
+      "name": "empty_VL",
+      "rejected": true
+    },
+    {
+      "name": "start_equals_VL",
+      "rejected": true
+    },
+    {
+      "name": "target_wrong_alloff_mask",
+      "rejected": true
+    },
+    {
+      "name": "scenario2_four_source_owners",
+      "positive": true
+    },
+    {
+      "name": "isolated_done",
+      "rejected": true
+    },
+    {
+      "name": "delete_full_alloc_done_pair_0",
+      "rejected": true
+    },
+    {
+      "name": "delete_full_alloc_done_pair_1",
+      "rejected": true
+    },
+    {
+      "name": "delete_full_alloc_done_pair_2",
+      "rejected": true
+    },
+    {
+      "name": "delete_full_alloc_done_pair_3",
+      "rejected": true
+    },
+    {
+      "name": "done_wrong_owner",
+      "rejected": true
+    },
+    {
+      "name": "empty_VL",
+      "rejected": true
+    },
+    {
+      "name": "start_equals_VL",
+      "rejected": true
+    },
+    {
+      "name": "target_wrong_alloff_mask",
+      "rejected": true
+    },
+    {
+      "name": "missing_oracle",
+      "rejected": true
+    },
+    {
+      "name": "duplicate_oracle",
+      "rejected": true
+    },
+    {
+      "name": "PASS_plus_UNIT_FOF_E64_SUFFIX_FAIL",
+      "rejected": true
+    },
+    {
+      "name": "PASS_plus_BOARD_REPLAY_MISMATCH",
+      "rejected": true
+    },
+    {
+      "name": "PASS_plus_BOARD_REPLAY_TRAP",
+      "rejected": true
+    },
+    {
+      "name": "PASS_plus_Fatal: failure",
+      "rejected": true
+    },
+    {
+      "name": "jobs_drift",
+      "rejected": true
+    },
+    {
+      "name": "timeout_s_drift",
+      "rejected": true
+    },
+    {
+      "name": "service_timeout_s_drift",
+      "rejected": true
+    },
+    {
+      "name": "image_sha256_drift",
+      "rejected": true
+    },
+    {
+      "name": "cases_drift",
+      "rejected": true
+    },
+    {
+      "name": "no_retry_drift",
+      "rejected": true
+    },
+    {
+      "name": "ELF_drift",
+      "rejected": true
+    },
+    {
+      "name": "not_direct_service",
+      "rejected": true
+    },
+    {
+      "name": "wrong_service_bound",
+      "rejected": true
+    },
+    {
+      "name": "resource_cap",
+      "rejected": true
+    },
+    {
+      "name": "memory_floor",
+      "rejected": true
+    },
+    {
+      "name": "numeric_first_child0_postcheck_sticky",
+      "positive": true
+    },
+    {
+      "name": "numeric_first_child17_postcheck_sticky",
+      "positive": true
+    },
+    {
+      "name": "monitor_logread_exception",
+      "rejected": true
+    },
+    {
+      "name": "late_disk_plan_hash",
+      "rejected": true
+    },
+    {
+      "name": "late_abort_terminal",
+      "positive": true
+    },
+    {
+      "name": "actual_host_partial_FAIL_monitor",
+      "positive": true,
+      "actual_rc": -15,
+      "elapsed_s": 0.10538721596822143
+    }
+  ],
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_vcs_m9_plan01/test_worker.py": "635266c0932740c1565064c3e454ccf581dd7164b1025b17790088d00a8108c9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_vcs_m9_plan01/checker.py": "215f4298d5ae56f1c5102ce3d5a714ecb2f1f277176bf535f6a33eff750878bb",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_vcs_m9_plan01/replay.py": "672196e5799683b56fc86bf9df09254694159d53a77356b2fe6f2c19395790e0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_prepare01/READY.json": "816491edd10f338f435c3bcf473cb7cc4434d1ce65fbe7cfb419dab9bce6a2c5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_prepare01/csv_check.py": "81a20eeed449bfcb6aef1860e4b2cf1773e051b9a79ab9e3573c6d7d0905d487",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/vcs_m8_plan03/terminal_publish.py": "495a2f91dde233c040eea231531d414b734184100b7c33a88dda98b6070ec718"
+  }
+}

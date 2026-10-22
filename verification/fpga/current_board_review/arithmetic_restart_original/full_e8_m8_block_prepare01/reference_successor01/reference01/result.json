@@ -1,0 +1,50 @@
+{
+  "status": "ACCEPTED_FULL4095_SPIKE_SOURCE_ONLY_NOT_DUT",
+  "calls": 4095,
+  "results": 4193280,
+  "guards": 8190,
+  "vstart_zero": 4095,
+  "helper_instruction_counts": [
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095,
+    4095
+  ],
+  "helper_instructions": 53235,
+  "packed_output_reads": 528255,
+  "per_call_fresh_output_bytes": 1026,
+  "physical_mask_bytes": 128,
+  "firmware_to_exit": 3271926,
+  "firmware_to_HTIF": 3271932,
+  "boot": 5,
+  "console": "RVV_MATRIX_PASS sew=8 vlmax=1024 cases=4095 elements=4193280 errors=0 seeds=3 guard_tail_mask_vstart=checked\n",
+  "closed_raw_parses": 1,
+  "final_context": {
+    "line": 3271937,
+    "retired": 3271932,
+    "call": 4095,
+    "pc": "8000007a",
+    "insn": "00a2b023"
+  },
+  "raw_sha256": "13d93f081e22a7ad38cc56aa8ef8a9cc403c8e3227741aac748540e7e72ec7fc",
+  "raw_bytes": 684293609,
+  "actual_execution": {
+    "returncode": 0,
+    "pid": 2991086,
+    "timeout": false,
+    "elapsed_s": 16.746144423261285,
+    "retries": 0,
+    "validated": false
+  },
+  "pins_unchanged": true,
+  "raw_parse_count": 1
+}

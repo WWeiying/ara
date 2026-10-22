@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import re
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Set, Tuple
@@ -60,6 +61,22 @@ _MEMORY_RE = re.compile(
 _VECTOR_CONTEXT_RE = re.compile(
     r"^\s+e(8|16|32|64)\s+(mf8|mf4|mf2|m1|m2|m4|m8)\s+l(\d+)(?:\s|$)"
 )
+_ARA_EXCEPTION_RE = re.compile(
+    r"^Exception @\s+\d+, PC: ([0-9a-fA-F]+), Cause: ([^,]+),"
+)
+
+
+def _rtl_vector_exceptions(path: Path) -> Counter[int]:
+    events: Counter[int] = Counter()
+    try:
+        with path.open(encoding="utf-8", errors="replace") as file:
+            for line in file:
+                match = _ARA_EXCEPTION_RE.match(line)
+                if match is not None:
+                    events[int(match.group(1), 16)] += 1
+    except OSError as error:
+        raise CommitComparisonError(f"cannot read RTL exception log: {error}") from error
+    return events
 
 
 def _optional_hex(value: str) -> Optional[int]:
@@ -232,7 +249,9 @@ def _retire_dict(retire: Optional[AraRetire]) -> Optional[Dict[str, object]]:
     }
 
 
-def _packed_store_value(mask: int, data: int) -> int:
+def _packed_store_value(mask: int, data: int, layout: str = "lane_aligned") -> int:
+    if layout == "unshifted":
+        return data & ((1 << (8 * _set_bit_count(mask))) - 1)
     packed = 0
     packed_byte = 0
     for byte in range(8):
@@ -271,7 +290,43 @@ def compare_commit_prefix(
     ara_trace: Path,
     entry: int,
     unobservable_register_value_indices: Optional[Set[int]] = None,
+    terminal_ecall_pc: Optional[int] = None,
+    terminal_tohost_address: Optional[int] = None,
+    rtl_exception_log: Optional[Path] = None,
+    fault_vector_trace: Optional[Path] = None,
+    fault_probe_log: Optional[Path] = None,
+    rvfi_store_data_layout: str = "lane_aligned",
 ) -> Dict[str, object]:
+    if rvfi_store_data_layout not in {"lane_aligned", "unshifted"}:
+        raise CommitComparisonError("unknown RVFI store data layout")
+    if (fault_vector_trace is None) != (fault_probe_log is None):
+        raise CommitComparisonError("fault_vector_trace and fault_probe_log must be supplied together")
+    proven_faults = {}
+    if fault_probe_log is not None:
+        if rtl_exception_log is None:
+            raise CommitComparisonError("probed fault requires RTL exception log")
+        # Local import avoids a parser dependency cycle. Partial rows are aligned
+        # only after every accepted fault write has already been proved.
+        from .vector_commit import prove_load_faults
+        for proof in prove_load_faults(spike_log, ara_trace, fault_vector_trace, fault_probe_log, entry):
+            proven_faults[proof["index"]] = proof
+        try:
+            with rtl_exception_log.open(encoding="utf-8") as stream:
+                exception_events = [
+                    (int(match.group(1)), int(match.group(2), 16))
+                    for line in stream
+                    for match in [re.match(r"^Exception @\s+(\d+), PC: ([0-9a-fA-F]+),", line)]
+                    if match is not None
+                ]
+        except (OSError, ValueError) as error:
+            raise CommitComparisonError(f"cannot read probed RTL exception log: {error}") from error
+        for proof in proven_faults.values():
+            if exception_events.count((proof["probe_next_time"], int(proof["pc"], 16))) != 1:
+                raise CommitComparisonError("probe and RTL exception event identity/timing differ")
+    rtl_exceptions = (
+        _rtl_vector_exceptions(rtl_exception_log)
+        if rtl_exception_log is not None else Counter()
+    )
     spike_source = _iter_spike_commits(spike_log)
     saw_spike_commit = False
     first_spike: Optional[SpikeCommit] = None
@@ -296,6 +351,7 @@ def compare_commit_prefix(
     ara_retired = 0
     ara_committed = 0
     ara_traps = 0
+    last_ara_retire: Optional[AraRetire] = None
 
     def take_spike() -> Optional[SpikeCommit]:
         nonlocal spike_count, spike_vector_writes
@@ -308,9 +364,10 @@ def compare_commit_prefix(
         return item
 
     def take_ara_commit() -> Optional[AraRetire]:
-        nonlocal ara_retired, ara_committed, ara_traps
+        nonlocal ara_retired, ara_committed, ara_traps, last_ara_retire
         for item in ara_iter:
             ara_retired += 1
+            last_ara_retire = item
             if item.trap:
                 ara_traps += 1
                 continue
@@ -329,14 +386,46 @@ def compare_commit_prefix(
     stopped_at_unobservable: Optional[Dict[str, object]] = None
     mismatch: Optional[Dict[str, object]] = None
     last_matched: Optional[SpikeCommit] = None
+    aligned_vector_faults: List[Dict[str, object]] = []
     expected = take_spike()
     actual = take_ara_commit()
     if ara_retired == 0 and actual is None:
         raise CommitComparisonError("Ara trace contains no retire records")
 
     while expected is not None and actual is not None:
-        index = matched
+        index = spike_count - 1
         if expected.pc != actual.pc or expected.instruction != actual.instruction:
+            if (
+                rtl_exceptions[expected.pc] > 0
+                and is_vector_instruction(expected.instruction)
+                and not expected.gpr_writes
+                and not expected.fpr_writes
+                and ((not expected.vector_writes and not expected.memory_accesses)
+                     or index in proven_faults)
+            ):
+                after_fault = take_spike()
+                if after_fault is not None and after_fault.pc == actual.pc:
+                    rtl_exceptions[expected.pc] -= 1
+                    aligned_vector_faults.append({
+                        "index": index,
+                        "pc": f"0x{expected.pc:016x}",
+                        "instruction": f"0x{expected.instruction:08x}",
+                        "handler_pc": f"0x{actual.pc:016x}",
+                        "matched_fault_csrs": {},
+                        "invalidated_fault_csrs": [],
+                        "fault_handler_returned": False,
+                        **({"load_fault_proof": proven_faults[index]} if index in proven_faults else {}),
+                    })
+                    expected = after_fault
+                    continue
+                mismatch = {
+                    "index": index,
+                    "reason": "vector_fault_handler_pc_mismatch",
+                    "spike": _commit_dict(expected),
+                    "spike_after_fault": _commit_dict(after_fault),
+                    "ara": _retire_dict(actual),
+                }
+                break
             mismatch = {
                 "index": index,
                 "reason": "pc_or_instruction",
@@ -396,9 +485,12 @@ def compare_commit_prefix(
                 "ara": _retire_dict(actual),
             }
             break
-        state_writes = expected_writes if value_is_unobservable else actual_writes
+        unobservable_value_differs = value_is_unobservable and (
+            expected_writes != actual_writes or expected_fpr_writes != actual_fpr_writes
+        )
+        state_writes = expected_writes if unobservable_value_differs else actual_writes
         state_fpr_writes = (
-            expected_fpr_writes if value_is_unobservable else actual_fpr_writes
+            expected_fpr_writes if unobservable_value_differs else actual_fpr_writes
         )
         for register, value in state_writes.items():
             scalar_state[register] = value
@@ -407,7 +499,7 @@ def compare_commit_prefix(
             floating_state[register] = value
             floating_writes += 1
         skipped_unobservable_register_values += int(
-            value_is_unobservable and expects_register_write
+            unobservable_value_differs and expects_register_write
         )
 
         memory_access = _scalar_memory_access(expected.instruction)
@@ -426,7 +518,7 @@ def compare_commit_prefix(
                 break
             if kind in {"write", "amo"} and expected_store_value is not None:
                 if actual.mem_wdata is None or _packed_store_value(
-                    actual_mask, actual.mem_wdata
+                    actual_mask, actual.mem_wdata, rvfi_store_data_layout
                 ) != (expected_store_value & ((1 << (8 * width)) - 1)):
                     mismatch = {
                         "index": index,
@@ -436,11 +528,31 @@ def compare_commit_prefix(
                     }
                     break
             scalar_memory_accesses += 1
+        if (aligned_vector_faults and
+                not aligned_vector_faults[-1]["fault_handler_returned"] and
+                (expected.instruction & 0x7f) == 0x73):
+            # Only first, value-checked CSR observations before a write can
+            # attest to the trap state. Later handler values are not evidence.
+            fault = aligned_vector_faults[-1]
+            csr = expected.instruction >> 20
+            funct3 = (expected.instruction >> 12) & 7
+            rs1 = (expected.instruction >> 15) & 31
+            if csr in (0x341, 0x342, 0x343) and funct3 in (1, 2, 3, 5, 6, 7):
+                key = f"0x{csr:03x}"
+                observed = fault["matched_fault_csrs"]
+                invalidated = fault["invalidated_fault_csrs"]
+                if (key not in observed and key not in invalidated and
+                        expected_writes and not value_is_unobservable):
+                    observed[key] = next(iter(expected_writes.values()))
+                if funct3 in (1, 5) or rs1 != 0:
+                    invalidated.append(key)
+            if expected.instruction in (0x30200073, 0x10200073):
+                fault["fault_handler_returned"] = True
         matched += 1
         last_matched = expected
         expected = take_spike()
         actual = take_ara_commit()
-        if value_is_unobservable and expects_register_write and (
+        if unobservable_value_differs and expects_register_write and (
             expected is not None or actual is not None
         ):
             stopped_at_unobservable = {
@@ -452,6 +564,39 @@ def compare_commit_prefix(
             }
             break
 
+    if mismatch is None and proven_faults:
+        for index, proof in proven_faults.items():
+            aligned = [fault for fault in aligned_vector_faults if fault["index"] == index]
+            if (len(aligned) != 1 or aligned[0]["pc"] != proof["pc"] or
+                    aligned[0]["instruction"] != proof["instruction"] or
+                    aligned[0]["matched_fault_csrs"] != proof["expected_fault_csrs"]):
+                mismatch = {"index": index, "reason": "unverified_probed_fault_csrs"}
+                break
+
+    terminal_match = (
+        terminal_ecall_pc is not None
+        and mismatch is None
+        and stopped_at_unobservable is None
+        and expected is not None
+        and actual is None
+        and last_ara_retire is not None
+        and last_ara_retire.trap
+        and last_ara_retire.pc == terminal_ecall_pc
+        and last_ara_retire.instruction == 0x00000073
+        and matched == ara_committed
+    )
+    terminal_tohost_match = (
+        terminal_tohost_address is not None
+        and mismatch is None
+        and stopped_at_unobservable is None
+        and expected is not None
+        and actual is None
+        and last_matched is not None
+        and _scalar_memory_access(last_matched.instruction) is not None
+        and _scalar_memory_access(last_matched.instruction)[0] == "write"
+        and last_matched.memory_accesses == ((terminal_tohost_address, 1),)
+        and matched == ara_committed
+    )
     if mismatch is not None:
         status = "MISMATCH"
     elif stopped_at_unobservable is not None:
@@ -464,6 +609,10 @@ def compare_commit_prefix(
             "spike": None,
             "ara": _retire_dict(actual),
         }
+    elif terminal_match:
+        status = "TERMINAL_MATCH"
+    elif terminal_tohost_match:
+        status = "TERMINAL_TOHOST_MATCH"
     elif expected is not None:
         status = "PREFIX"
     else:
@@ -481,12 +630,14 @@ def compare_commit_prefix(
     return {
         "status": status,
         "entry": f"0x{entry:016x}",
+        "rvfi_store_data_layout": rvfi_store_data_layout,
         "matched_instructions": matched,
         "matched_scalar_writes": scalar_writes,
         "matched_floating_writes": floating_writes,
         "skipped_unobservable_register_values": skipped_unobservable_register_values,
         "stopped_at_unobservable": stopped_at_unobservable,
         "matched_scalar_memory_accesses": scalar_memory_accesses,
+        "aligned_vector_faults": aligned_vector_faults,
         "ara_retired_instructions": ara_retired,
         "ara_committed_instructions": ara_committed,
         "ara_trap_events": ara_traps,
@@ -494,6 +645,15 @@ def compare_commit_prefix(
         "spike_vector_write_instructions": spike_vector_writes,
         "last_matched": _commit_dict(last_matched),
         "next_spike": _commit_dict(next_spike),
+        "terminal_ecall": (
+            _retire_dict(last_ara_retire) if terminal_match else None
+        ),
+        "terminal_tohost": (
+            {"pc": f"0x{last_matched.pc:016x}",
+             "instruction": f"0x{last_matched.instruction:08x}",
+             "address": f"0x{terminal_tohost_address:016x}", "write_value": "0x1"}
+            if terminal_tohost_match else None
+        ),
         "mismatch": mismatch,
         "matched_prefix_scalar_state": {
             "sha256": hashlib.sha256(scalar_state_bytes).hexdigest(),

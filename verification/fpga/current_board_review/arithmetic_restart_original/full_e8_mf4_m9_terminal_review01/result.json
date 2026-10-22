@@ -1,0 +1,68 @@
+{
+  "status": "ACCEPTED_TERMINAL_METADATA_REVIEW_NOT_LINUX",
+  "scope": "M9 e8mf4 cap32 original continuous4095; not e8m4",
+  "calls": 4095,
+  "results": 131040,
+  "guards": 8190,
+  "vstart": 4095,
+  "rows": 4627616,
+  "retired": 4446338,
+  "required_memory_owners": 20592,
+  "required_op24_targets": 117,
+  "child_elapsed_s": 7872.941444882192,
+  "collector_elapsed_s": 26.006832502782345,
+  "actual_child_rc": 0,
+  "actual_collector_rc": 0,
+  "actual_service": {
+    "SERVICE_RESULT": "success",
+    "EXIT_CODE": "exited",
+    "EXIT_STATUS": "0",
+    "observed_at": 1791980685.9796538,
+    "hook_pid": 2966627,
+    "kind": "SYSTEMD_EXEC_STOP_POST_ACTUAL_ENVIRONMENT"
+  },
+  "input_pin_count": 896,
+  "evidence_pin_count": 12,
+  "small_evidence_rehashed": 11,
+  "inherited_large_evidence": [
+    {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/replay/tests/arithmetic_full_e8_mf4/commit_trace.csv",
+      "sha256": "29efc7db8289f7821c4f03c3a42666c800617db4ae9266207cd2ff6657685cb1"
+    }
+  ],
+  "collector_binding": "Transitive: plan-pinned exit_hook hardcodes exact collect.py SHA; actual collector wait records same SHA",
+  "metadata_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/plan.json": "57d3d71260ae7b06f2bd6498ab9246bf1e4cbc9146935a916bc6d39ca9139ca8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/complete.json": "1d1a5288221e5d4310bea98c973688bfda1f8c09abfbb2214f80eda971fca471",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/collector_result.json": "dfd8884901dcb68041e0cfd361793405cd44bf92c62cfc515f20b0fc8b2caaa4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/collector_exit.json": "bcd98102b4c540adfa2195dba78abc78184b2e6b30d03e43016d99dafda9efca",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/service_exit.json": "391046d01f51c4e3185260dfd184f8b8e369cf4d2b6b6646373946893600188b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/launch_invocation.json": "7510c9d3249c287d53ea0252db75765196650dc72196f856fbd5d52f70e87d85",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_m9_entry_review02/REVIEW.json": "fd037688c41dce7efd371e82aed37534ee00588391f1f71c44c7da7bb128c764",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/launch.json": "778c71fcc5187c0fafd5f33771fa89169793559978926b285581f21c12f390be",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/service_submission.json": "b686f287f895066418dcb06299401101ab186ed2330027dd7aeb9c9904c4a24b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/USER_AUTHORIZATION.md": "701eaf4fd4c2f57e8b3f581404947c3066c0495345330e7ee61264e2d664d84c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/exit_hook.py": "0de1b923e420d27a9ceed09259aacc290acfec33758dc099d96801b1975fcf2c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/checker.py": "f9cc17d150d80bb7829b41e803d1abec121a622dd29b38de48eedf71707c7a75",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/replay.py": "1810d8d162efbee18828d22cf50498b3f382423564eea8314b87e818ef8dc1cc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/collect.py": "1a8919214ff34462d1e61f11980a938c841d69a5d58386cba61afe03c5bc2698",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/replay/tests/arithmetic_full_e8_mf4/child_outcome.unvalidated.json": "849c0d02d5090a665becce0bc365dfd9d830ac82383ff546b0345d974094543a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/replay/tests/arithmetic_full_e8_mf4/command.json": "077605be92ee556f455e696071185bcf3da5ef48e1bb51876b1d491e736c47bf",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/replay/tests/arithmetic_full_e8_mf4/inputs.json": "5d7283fca8a93ec249a02c3bf1cacb3eff9f983596f0078cf1825409e4cd1d7b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/replay/tests/arithmetic_full_e8_mf4/strict_original.json": "48f971a4868be2ead3fcc97c7fedfe617ea38ad7aa5ff4e3d4314c7b3974d5d5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/replay/tests/arithmetic_full_e8_mf4/trace_summary.json": "df500a98c7f052150b985d7ec3f41ae1c97d6f2734ac6fb7c36e865018b1ce7d",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/replay/run.json": "b48a7d6e3d90b75d0538310400820ec8c710b872043017ba98667d58a92dabb3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/replay/summary.json": "abde7d5be420d8a017afc8fcda75330db04a1db1a7d0d842b4169e93981a95bf",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/replay/tests/arithmetic_full_e8_mf4/input.elf": "33fac90cb3c541657ede2d3b01e2cbd52d7ddd97cd0b78599ac237f237c16f44",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/replay/tests/arithmetic_full_e8_mf4/console.log": "e5750f0fc2763db9ac18a314a60881cb052087d983b58f236bb92f147b7b0a79",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/replay/tests/arithmetic_full_e8_mf4/work/run.vcs.log": "a746ade4d4af621bf19f2a41ed1bed94a9a62262432bcb9b8d6719a6f560aeb5"
+  },
+  "csv_reads": 0,
+  "large_file_rehashes": 0,
+  "old_HOLD_modified": false,
+  "review_process": {
+    "exit_code": 0,
+    "wall_time_seconds": 1.032216565,
+    "tool_chunk": "d65e5a"
+  }
+}

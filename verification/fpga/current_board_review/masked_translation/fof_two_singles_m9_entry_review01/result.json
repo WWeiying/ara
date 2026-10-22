@@ -1,0 +1,37 @@
+{
+  "decision": "NO_BLOCKER",
+  "blockers": [],
+  "scope": "Independent entry review only: unchanged original e8/sc0 and e64/sc5 SoC ELFs on M9; not DUT acceptance or Linux equivalence",
+  "plan_sha256": "03e31815439a6cecb8d7bd3f3650605163e5ea81b85d3ee22fa73bc9885e03fa",
+  "worker_sha256": "3c79acd902827f6d34fa95ad4a604711265c02e1c56170210d53b94f38f4ae04",
+  "checker_sha256": "5e274a083da7ef182516435b8152c4aaa8d9cb407c8b2833b306ce6ff1df85ce",
+  "reference_ready_sha256": "502c78d6d3466258f3452d28738c155eaa6c4701029f6a70ab677b2b58fa6f7d",
+  "launch_envelope_sha256": "1b8e4d9cde9be5830b36be6dcab81bb02aea34c64c609c8120693ea226457519",
+  "host_metadata_sha256": "8ab51c924b8947c0c09f1dbb4456138b4e8d01d8f004f197ae63166dd2c2d3c1",
+  "dryrun_sha256": "14d5dad204eb2ae47d63acddf446f87950f3601a583623e3ddb63b5dbc0371ca",
+  "verification": {
+    "exact_members": ["fof_original_e8_scenario0", "fof_original_e64_scenario5"],
+    "plan_pins": 790,
+    "scoped_code_elf_image_pins_rehashed": 75,
+    "launch_envelope_pins_rehashed": true,
+    "metadata_check_actual_exit": 0,
+    "host_tests_observed": 22,
+    "closed_M6_bridge_cases_observed": 2,
+    "owner_negative_results_observed": 18,
+    "new_reference_or_csv_parse": false,
+    "host_rerun": false,
+    "jobs": 2,
+    "case_timeout_s": 1800,
+    "worker_timeout_s": 3900,
+    "service_timeout_s": 4200
+  },
+  "findings": [
+    "Worker calls csv_check.analyze through strict_csv and successor_handler; sealed complete business oracle is inherited.",
+    "Each original helper requires four nonempty completed memory owners, including alloff target; deleting complete owner pairs is rejected in recorded Host bridge tests.",
+    "Unknown GPR values are captured only at exact ELF-bound main14 and completion-handler17 spills with actual address, BE and value; business stores remain known-only and all16 handler restores are checked.",
+    "Original checks5477/5481 retained; e8 returnVL4 has only original output5..8 undefined, helper restoresVL8; e64 alloff retains typed seed0x5b and VL8.",
+    "Generic protocol and strict trace extent must agree; numeric child and monitor outcomes precede artifact validation, firstfailure and lateabort veto terminal PASS.",
+    "Launch is direct worker ownership with real systemd ExecStopPost receipt, no retry/build/FSDB; submission exit is not worker exit.",
+    "Launch permission is the existing main/user authorization; this record supplies independent entry binding, not a new DUT result. Aquinas remains sole launcher."
+  ]
+}

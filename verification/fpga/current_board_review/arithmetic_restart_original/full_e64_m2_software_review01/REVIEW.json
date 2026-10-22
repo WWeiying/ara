@@ -1,0 +1,50 @@
+{
+  "status": "NO_BLOCKER_SOFTWARE_ARTIFACT_REVIEW_BUDGET_HOLD",
+  "scope": "original_e64_m2_full5985_software01",
+  "software_equivalence_blockers": [],
+  "reference_admission": false,
+  "DUT_admission": false,
+  "Linux_closure": false,
+  "review_method": "static_source_actual_disassembly_and_existing_Host_receipt_review_no_test_rerun",
+  "software_pins_previously_verified": 202,
+  "host_runs_verified": 31,
+  "software_actual_wait_returncode": 0,
+  "software_elapsed_s": 27.623255940619856,
+  "producer_compiled_inspection_exit": 0,
+  "reviewer_execution_of_tests": false,
+  "scope_counts": {
+    "operations": 35, "seeds": 3, "calls": 5985,
+    "integer_calls": 4095, "FP_calls": 1890,
+    "results": 191520, "guards": 11970,
+    "output_bytes": 272, "output_words_per_call": 34,
+    "physical_mask_bytes": 128, "actual_mask_bytes": 4,
+    "FP_stores_per_call": 64, "FP_stores_total": 120960,
+    "static_helper_instructions": 458
+  },
+  "cost": {
+    "basis": "producer_actual_compiled_CFG_static_accounting_not_measurement",
+    "mandatory_core": 2888970,
+    "conservative_positive_upper": 3074202,
+    "target": 3000000,
+    "actual_firmware_instructions": null,
+    "decision": "HOLD"
+  },
+  "sha256": {
+    "software/pins.json": "e9279f7c076268eaf28801695a72b5c635f8a92aa75ea00341f01c3075c6c49a",
+    "software/proof.json": "fc4bb250c7f5e43f3b9677ae31cebdf1f1e12a2767d74a4e6fa8da97996c0e5d",
+    "software/execution_receipt.json": "cdffdbfe9ee946baedaec2ac0af02f4ed60cdabf6ced7e5b6cfd0e090ad8ff20",
+    "software/compiled_review.json": "e86d41ab511f32af942d8eeffff7bf135b6158c5e247606289a76b783b0acf8d",
+    "software/compiled_inspection_execution.json": "1c3835031ef2d087616cb939fe33d1a872e6e75225ef6048bd06df56fbedffdf",
+    "software/inspect_compiled.py": "dd91dc4abc92355882ab1c67edfd1507997586aa7dce386204e1c3aaa3dd0f85",
+    "software/COST_STATUS.json": "6d3c0f74e7963ebadc3b73081a9b3825d5d9ba4f776a6d3ceeb7c6c3655fa80d",
+    "software/case.c": "14814418f676a643d24a9762e464e10c4986dfdef5d7f044eb425aeddc39ef23",
+    "software/packed.h": "af804191b9cd4b19004c6db4c958c838a1bc091dc278b14587c8415017add0a4",
+    "software/mask_clear.h": "96927c638459143ecca3e948a2644f7e14c127baed98906e31b292b37268ac9e",
+    "software/host.c": "ad7c3e2013fe97fae76dbfaf992960b9a46788e28b777d9c296085adcc771090",
+    "software/source.diff": "0cfdb31aec79047ff5557ea6cb636e2f36801987cf39cb319e53f9b2a7063f66",
+    "software/soc/program.elf": "27818fa29e1bd44df680950d787dda939b38bdd57b30112e8ad7e6d204f5ec3c",
+    "software/spike/program.elf": "fdad6edbd20942f357ad1f377061793e8958ca35bfc1066bf8fcec6d7dc6152c"
+  },
+  "evidence_root": "../full_e64_m2_block_software01",
+  "next_scope": "separate_static_FP_period_unroll_proposal_only_not_accepted_here"
+}

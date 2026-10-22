@@ -1,0 +1,1125 @@
+{
+  "schema_version": 1,
+  "status": "REVIEWED_OFFLINE_NOT_APPLIED",
+  "audit_sha256": "c5b22441813b9cdf08194fb86f19f216761166ebbe62cfbdea16759cc5c21a01",
+  "design_sha256": "6ba9f4af477f14793ca1967e7d9aa3fc8274864d897dee88de267597cd3be3be",
+  "guard": "Revalidate audit.json input hashes and exact objects; never fingerprint-only approval",
+  "allowed_points": [
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Branch 2 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 2 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Branch 7 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 7 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Branch 2 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 2 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Branch 7 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 7 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_mask_b",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_mask_b",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_mask_b",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "885747700"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_mfpu_a",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_mfpu_a",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_mfpu_a",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_mfpu_b",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_mfpu_b",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_mfpu_b",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_mfpu_c",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_mfpu_c",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_operand_queues.i_operand_queue_mfpu_c",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Branch 2 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 2 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Branch 7 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 7 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Branch 2 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 2 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Branch 7 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 7 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_mask_b",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_mask_b",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_mask_b",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "885747700"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_mfpu_a",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_mfpu_a",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_mfpu_a",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_mfpu_b",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_mfpu_b",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_mfpu_b",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_mfpu_c",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_mfpu_c",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_operand_queues.i_operand_queue_mfpu_c",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Branch 2 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 2 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Branch 7 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 7 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Branch 2 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 2 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Branch 7 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 7 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_mask_b",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_mask_b",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_mask_b",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "885747700"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_mfpu_a",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_mfpu_a",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_mfpu_a",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_mfpu_b",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_mfpu_b",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_mfpu_b",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_mfpu_c",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_mfpu_c",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_operand_queues.i_operand_queue_mfpu_c",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Branch 2 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 2 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Branch 7 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 7 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_alu_a",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Branch 2 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 2 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Branch 7 (0)",
+      "checksum": [
+        "1532764271",
+        "1417162425"
+      ],
+      "native_directive": "Branch 7 \"949433246\" \"flush_i\" (0) \"flush_i 1\"",
+      "nativepointchecksum": "949433246",
+      "native_signature": "flush_i 1"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_alu_b",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_mask_b",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_mask_b",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_mask_b",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "885747700"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_mfpu_a",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_mfpu_a",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_mfpu_a",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_mfpu_b",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_mfpu_b",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_mfpu_b",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_mfpu_c",
+      "point": "Block 172",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 172 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_mfpu_c",
+      "point": "Block 7",
+      "checksum": [
+        "1532764271",
+        "3998926456"
+      ],
+      "native_directive": "Block 7 \"3393845244\" \"if (flush_i)\"",
+      "nativepointchecksum": "3393845244",
+      "native_signature": "if (flush_i)"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_operand_queues.i_operand_queue_mfpu_c",
+      "point": "Toggle flush_i",
+      "checksum": [
+        "1532764271",
+        "2109767059"
+      ],
+      "native_directive": "Toggle flush_i \"logic flush_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic flush_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ariane",
+      "point": "Toggle debug_req_i",
+      "checksum": [
+        "376119937",
+        "1939539040"
+      ],
+      "native_directive": "Toggle debug_req_i \"logic debug_req_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic debug_req_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ariane",
+      "point": "Toggle ipi_i",
+      "checksum": [
+        "376119937",
+        "1939539040"
+      ],
+      "native_directive": "Toggle ipi_i \"logic ipi_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic ipi_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ariane",
+      "point": "Toggle time_irq_i",
+      "checksum": [
+        "376119937",
+        "1939539040"
+      ],
+      "native_directive": "Toggle time_irq_i \"logic time_irq_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic time_irq_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i",
+      "point": "Toggle debug_req_i",
+      "checksum": [
+        "1371260681",
+        "1176918775"
+      ],
+      "native_directive": "Toggle debug_req_i \"logic debug_req_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic debug_req_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i",
+      "point": "Toggle ipi_i",
+      "checksum": [
+        "1371260681",
+        "1176918775"
+      ],
+      "native_directive": "Toggle ipi_i \"logic ipi_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic ipi_i"
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i",
+      "point": "Toggle time_irq_i",
+      "checksum": [
+        "1371260681",
+        "1176918775"
+      ],
+      "native_directive": "Toggle time_irq_i \"logic time_irq_i\"",
+      "nativepointchecksum": null,
+      "native_signature": "logic time_irq_i"
+    }
+  ],
+  "allowed_observers": [
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.i_ara_fault_vstart_probe",
+      "checksum": [
+        "1623180263"
+      ],
+      "recursive": 1
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara_acc_contract_monitor",
+      "checksum": [
+        "3628195876"
+      ],
+      "recursive": 1
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ara_commit_monitor",
+      "checksum": [
+        "182875116"
+      ],
+      "recursive": 1
+    },
+    {
+      "scope": "ara_tb.dut.i_ara_soc.i_system.i_ariane.i_cva6_rvfi_probes",
+      "checksum": [
+        "1089031276"
+      ],
+      "recursive": 1
+    },
+    {
+      "scope": "ara_tb.i_llm_perf_monitor",
+      "checksum": [
+        "4011875712"
+      ],
+      "recursive": 1
+    },
+    {
+      "scope": "ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor",
+      "checksum": [
+        "3494332113"
+      ],
+      "recursive": 1
+    },
+    {
+      "scope": "ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor",
+      "checksum": [
+        "3494332113"
+      ],
+      "recursive": 1
+    },
+    {
+      "scope": "ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor",
+      "checksum": [
+        "3494332113"
+      ],
+      "recursive": 1
+    },
+    {
+      "scope": "ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor",
+      "checksum": [
+        "3494332113"
+      ],
+      "recursive": 1
+    },
+    {
+      "scope": "uvm_custom_install_verdi_recording",
+      "checksum": [
+        "2787408814"
+      ],
+      "recursive": 1
+    }
+  ],
+  "application": {
+    "applied": false,
+    "native_current_validation": "NOT_RUN_USER_PROHIBITED",
+    "require_zero_checksum_mismatch": true,
+    "require_zero_need_review": true,
+    "require_zero_unmappable": true,
+    "require_exact_saved_exclusions": true,
+    "bypass_checks_allowed": false,
+    "adjusted_percentages": null
+  }
+}

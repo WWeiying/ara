@@ -1,0 +1,1159 @@
+{
+  "status": "REFERENCE_CHECKER_PASS_NOT_DUT",
+  "commits": 2165653,
+  "firmware_commits": 2165648,
+  "scalar_checks": 19212,
+  "checkpoints": [
+    {
+      "case": 0,
+      "phase": 0,
+      "bytes": 38256,
+      "commit": 61220
+    },
+    {
+      "case": 0,
+      "phase": 1,
+      "bytes": 37736,
+      "commit": 62045
+    },
+    {
+      "case": 0,
+      "phase": 2,
+      "bytes": 37736,
+      "commit": 62077
+    },
+    {
+      "case": 0,
+      "phase": 3,
+      "bytes": 37728,
+      "commit": 63226
+    },
+    {
+      "case": 0,
+      "phase": 4,
+      "bytes": 37728,
+      "commit": 175253
+    },
+    {
+      "case": 1,
+      "phase": 0,
+      "bytes": 38240,
+      "commit": 195012
+    },
+    {
+      "case": 1,
+      "phase": 1,
+      "bytes": 37728,
+      "commit": 195873
+    },
+    {
+      "case": 1,
+      "phase": 2,
+      "bytes": 37728,
+      "commit": 195923
+    },
+    {
+      "case": 1,
+      "phase": 3,
+      "bytes": 37720,
+      "commit": 197072
+    },
+    {
+      "case": 1,
+      "phase": 4,
+      "bytes": 37720,
+      "commit": 309123
+    },
+    {
+      "case": 2,
+      "phase": 0,
+      "bytes": 38224,
+      "commit": 328882
+    },
+    {
+      "case": 2,
+      "phase": 1,
+      "bytes": 37720,
+      "commit": 329779
+    },
+    {
+      "case": 2,
+      "phase": 2,
+      "bytes": 37720,
+      "commit": 329847
+    },
+    {
+      "case": 2,
+      "phase": 3,
+      "bytes": 37712,
+      "commit": 330996
+    },
+    {
+      "case": 2,
+      "phase": 4,
+      "bytes": 37712,
+      "commit": 443071
+    },
+    {
+      "case": 3,
+      "phase": 0,
+      "bytes": 38208,
+      "commit": 462574
+    },
+    {
+      "case": 3,
+      "phase": 3,
+      "bytes": 38200,
+      "commit": 463724
+    },
+    {
+      "case": 3,
+      "phase": 4,
+      "bytes": 38200,
+      "commit": 571840
+    },
+    {
+      "case": 4,
+      "phase": 0,
+      "bytes": 38200,
+      "commit": 591621
+    },
+    {
+      "case": 4,
+      "phase": 1,
+      "bytes": 37680,
+      "commit": 592445
+    },
+    {
+      "case": 4,
+      "phase": 2,
+      "bytes": 37680,
+      "commit": 592477
+    },
+    {
+      "case": 4,
+      "phase": 3,
+      "bytes": 37672,
+      "commit": 593625
+    },
+    {
+      "case": 4,
+      "phase": 4,
+      "bytes": 37672,
+      "commit": 699501
+    },
+    {
+      "case": 5,
+      "phase": 0,
+      "bytes": 38184,
+      "commit": 719260
+    },
+    {
+      "case": 5,
+      "phase": 1,
+      "bytes": 37672,
+      "commit": 720110
+    },
+    {
+      "case": 5,
+      "phase": 2,
+      "bytes": 37672,
+      "commit": 720160
+    },
+    {
+      "case": 5,
+      "phase": 3,
+      "bytes": 37664,
+      "commit": 721308
+    },
+    {
+      "case": 5,
+      "phase": 4,
+      "bytes": 37664,
+      "commit": 827208
+    },
+    {
+      "case": 6,
+      "phase": 0,
+      "bytes": 38168,
+      "commit": 846967
+    },
+    {
+      "case": 6,
+      "phase": 1,
+      "bytes": 37664,
+      "commit": 847843
+    },
+    {
+      "case": 6,
+      "phase": 2,
+      "bytes": 37664,
+      "commit": 847911
+    },
+    {
+      "case": 6,
+      "phase": 3,
+      "bytes": 37656,
+      "commit": 849059
+    },
+    {
+      "case": 6,
+      "phase": 4,
+      "bytes": 37656,
+      "commit": 954983
+    },
+    {
+      "case": 7,
+      "phase": 0,
+      "bytes": 38152,
+      "commit": 974486
+    },
+    {
+      "case": 7,
+      "phase": 3,
+      "bytes": 38144,
+      "commit": 975635
+    },
+    {
+      "case": 7,
+      "phase": 4,
+      "bytes": 38144,
+      "commit": 1081671
+    },
+    {
+      "case": 8,
+      "phase": 0,
+      "bytes": 38144,
+      "commit": 1101466
+    },
+    {
+      "case": 8,
+      "phase": 1,
+      "bytes": 37624,
+      "commit": 1102285
+    },
+    {
+      "case": 8,
+      "phase": 2,
+      "bytes": 37624,
+      "commit": 1107445
+    },
+    {
+      "case": 8,
+      "phase": 3,
+      "bytes": 37616,
+      "commit": 1108594
+    },
+    {
+      "case": 8,
+      "phase": 4,
+      "bytes": 37616,
+      "commit": 1220621
+    },
+    {
+      "case": 9,
+      "phase": 0,
+      "bytes": 38128,
+      "commit": 1240378
+    },
+    {
+      "case": 9,
+      "phase": 1,
+      "bytes": 37616,
+      "commit": 1241233
+    },
+    {
+      "case": 9,
+      "phase": 2,
+      "bytes": 37616,
+      "commit": 1246411
+    },
+    {
+      "case": 9,
+      "phase": 3,
+      "bytes": 37608,
+      "commit": 1247560
+    },
+    {
+      "case": 9,
+      "phase": 4,
+      "bytes": 37608,
+      "commit": 1359611
+    },
+    {
+      "case": 10,
+      "phase": 0,
+      "bytes": 38112,
+      "commit": 1379368
+    },
+    {
+      "case": 10,
+      "phase": 1,
+      "bytes": 37608,
+      "commit": 1380259
+    },
+    {
+      "case": 10,
+      "phase": 2,
+      "bytes": 37608,
+      "commit": 1385455
+    },
+    {
+      "case": 10,
+      "phase": 3,
+      "bytes": 37600,
+      "commit": 1386604
+    },
+    {
+      "case": 10,
+      "phase": 4,
+      "bytes": 37600,
+      "commit": 1498679
+    },
+    {
+      "case": 11,
+      "phase": 0,
+      "bytes": 38096,
+      "commit": 1518180
+    },
+    {
+      "case": 11,
+      "phase": 3,
+      "bytes": 38088,
+      "commit": 1519324
+    },
+    {
+      "case": 11,
+      "phase": 4,
+      "bytes": 38088,
+      "commit": 1632568
+    },
+    {
+      "case": 12,
+      "phase": 0,
+      "bytes": 38088,
+      "commit": 1652347
+    },
+    {
+      "case": 12,
+      "phase": 1,
+      "bytes": 37568,
+      "commit": 1653165
+    },
+    {
+      "case": 12,
+      "phase": 2,
+      "bytes": 37568,
+      "commit": 1658325
+    },
+    {
+      "case": 12,
+      "phase": 3,
+      "bytes": 37560,
+      "commit": 1659473
+    },
+    {
+      "case": 12,
+      "phase": 4,
+      "bytes": 37560,
+      "commit": 1765349
+    },
+    {
+      "case": 13,
+      "phase": 0,
+      "bytes": 38072,
+      "commit": 1785106
+    },
+    {
+      "case": 13,
+      "phase": 1,
+      "bytes": 37560,
+      "commit": 1785950
+    },
+    {
+      "case": 13,
+      "phase": 2,
+      "bytes": 37560,
+      "commit": 1791128
+    },
+    {
+      "case": 13,
+      "phase": 3,
+      "bytes": 37552,
+      "commit": 1792276
+    },
+    {
+      "case": 13,
+      "phase": 4,
+      "bytes": 37552,
+      "commit": 1898176
+    },
+    {
+      "case": 14,
+      "phase": 0,
+      "bytes": 38056,
+      "commit": 1917933
+    },
+    {
+      "case": 14,
+      "phase": 1,
+      "bytes": 37552,
+      "commit": 1918803
+    },
+    {
+      "case": 14,
+      "phase": 2,
+      "bytes": 37552,
+      "commit": 1923999
+    },
+    {
+      "case": 14,
+      "phase": 3,
+      "bytes": 37544,
+      "commit": 1925147
+    },
+    {
+      "case": 14,
+      "phase": 4,
+      "bytes": 37544,
+      "commit": 2031071
+    },
+    {
+      "case": 15,
+      "phase": 0,
+      "bytes": 38040,
+      "commit": 2050572
+    },
+    {
+      "case": 15,
+      "phase": 3,
+      "bytes": 38032,
+      "commit": 2051715
+    },
+    {
+      "case": 15,
+      "phase": 4,
+      "bytes": 38032,
+      "commit": 2162879
+    }
+  ],
+  "targets": [
+    {
+      "case": 0,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f4c",
+      "commit": 61257,
+      "accesses": []
+    },
+    {
+      "case": 0,
+      "attempt": 1,
+      "vstart": 0,
+      "pc": "0x80000f4c",
+      "commit": 62118,
+      "accesses": [
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ]
+      ]
+    },
+    {
+      "case": 1,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f4c",
+      "commit": 195049,
+      "accesses": []
+    },
+    {
+      "case": 1,
+      "attempt": 1,
+      "vstart": 1,
+      "pc": "0x80000f4c",
+      "commit": 195964,
+      "accesses": [
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ]
+      ]
+    },
+    {
+      "case": 2,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f4c",
+      "commit": 328919,
+      "accesses": []
+    },
+    {
+      "case": 2,
+      "attempt": 1,
+      "vstart": 2,
+      "pc": "0x80000f4c",
+      "commit": 329888,
+      "accesses": [
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ]
+      ]
+    },
+    {
+      "case": 3,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f4c",
+      "commit": 462611,
+      "accesses": []
+    },
+    {
+      "case": 4,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f72",
+      "commit": 591658,
+      "accesses": []
+    },
+    {
+      "case": 4,
+      "attempt": 1,
+      "vstart": 0,
+      "pc": "0x80000f72",
+      "commit": 592518,
+      "accesses": [
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ]
+      ]
+    },
+    {
+      "case": 5,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f72",
+      "commit": 719297,
+      "accesses": []
+    },
+    {
+      "case": 5,
+      "attempt": 1,
+      "vstart": 1,
+      "pc": "0x80000f72",
+      "commit": 720201,
+      "accesses": [
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ]
+      ]
+    },
+    {
+      "case": 6,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f72",
+      "commit": 847004,
+      "accesses": []
+    },
+    {
+      "case": 6,
+      "attempt": 1,
+      "vstart": 2,
+      "pc": "0x80000f72",
+      "commit": 847952,
+      "accesses": [
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ]
+      ]
+    },
+    {
+      "case": 7,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f72",
+      "commit": 974523,
+      "accesses": []
+    },
+    {
+      "case": 8,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f4c",
+      "commit": 1101503,
+      "accesses": []
+    },
+    {
+      "case": 8,
+      "attempt": 1,
+      "vstart": 0,
+      "pc": "0x80000f4c",
+      "commit": 1107486,
+      "accesses": [
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ]
+      ]
+    },
+    {
+      "case": 9,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f4c",
+      "commit": 1240415,
+      "accesses": []
+    },
+    {
+      "case": 9,
+      "attempt": 1,
+      "vstart": 1,
+      "pc": "0x80000f4c",
+      "commit": 1246452,
+      "accesses": [
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ]
+      ]
+    },
+    {
+      "case": 10,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f4c",
+      "commit": 1379405,
+      "accesses": []
+    },
+    {
+      "case": 10,
+      "attempt": 1,
+      "vstart": 2,
+      "pc": "0x80000f4c",
+      "commit": 1385496,
+      "accesses": [
+        [
+          1073745920,
+          null
+        ],
+        [
+          1073745920,
+          null
+        ]
+      ]
+    },
+    {
+      "case": 11,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f4c",
+      "commit": 1518217,
+      "accesses": []
+    },
+    {
+      "case": 12,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f72",
+      "commit": 1652384,
+      "accesses": []
+    },
+    {
+      "case": 12,
+      "attempt": 1,
+      "vstart": 0,
+      "pc": "0x80000f72",
+      "commit": 1658366,
+      "accesses": [
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ]
+      ]
+    },
+    {
+      "case": 13,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f72",
+      "commit": 1785143,
+      "accesses": []
+    },
+    {
+      "case": 13,
+      "attempt": 1,
+      "vstart": 1,
+      "pc": "0x80000f72",
+      "commit": 1791169,
+      "accesses": [
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ]
+      ]
+    },
+    {
+      "case": 14,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f72",
+      "commit": 1917970,
+      "accesses": []
+    },
+    {
+      "case": 14,
+      "attempt": 1,
+      "vstart": 2,
+      "pc": "0x80000f72",
+      "commit": 1924040,
+      "accesses": [
+        [
+          1073745920,
+          101
+        ],
+        [
+          1073745920,
+          101
+        ]
+      ]
+    },
+    {
+      "case": 15,
+      "attempt": 0,
+      "vstart": 0,
+      "pc": "0x80000f72",
+      "commit": 2050609,
+      "accesses": []
+    }
+  ],
+  "retry_mrets": [
+    {
+      "case": 0,
+      "commit": 62117,
+      "pc": "0x80000f4c",
+      "vstart": 0,
+      "base": "0x40001000",
+      "stride": 0
+    },
+    {
+      "case": 1,
+      "commit": 195963,
+      "pc": "0x80000f4c",
+      "vstart": 1,
+      "base": "0x40001000",
+      "stride": 0
+    },
+    {
+      "case": 2,
+      "commit": 329887,
+      "pc": "0x80000f4c",
+      "vstart": 2,
+      "base": "0x40001000",
+      "stride": 0
+    },
+    {
+      "case": 4,
+      "commit": 592517,
+      "pc": "0x80000f72",
+      "vstart": 0,
+      "base": "0x40001000",
+      "stride": 0
+    },
+    {
+      "case": 5,
+      "commit": 720200,
+      "pc": "0x80000f72",
+      "vstart": 1,
+      "base": "0x40001000",
+      "stride": 0
+    },
+    {
+      "case": 6,
+      "commit": 847951,
+      "pc": "0x80000f72",
+      "vstart": 2,
+      "base": "0x40001000",
+      "stride": 0
+    },
+    {
+      "case": 8,
+      "commit": 1107485,
+      "pc": "0x80000f4c",
+      "vstart": 0,
+      "base": "0x40001000",
+      "stride": 0
+    },
+    {
+      "case": 9,
+      "commit": 1246451,
+      "pc": "0x80000f4c",
+      "vstart": 1,
+      "base": "0x40001000",
+      "stride": 0
+    },
+    {
+      "case": 10,
+      "commit": 1385495,
+      "pc": "0x80000f4c",
+      "vstart": 2,
+      "base": "0x40001000",
+      "stride": 0
+    },
+    {
+      "case": 12,
+      "commit": 1658365,
+      "pc": "0x80000f72",
+      "vstart": 0,
+      "base": "0x40001000",
+      "stride": 0
+    },
+    {
+      "case": 13,
+      "commit": 1791168,
+      "pc": "0x80000f72",
+      "vstart": 1,
+      "base": "0x40001000",
+      "stride": 0
+    },
+    {
+      "case": 14,
+      "commit": 1924039,
+      "pc": "0x80000f72",
+      "vstart": 2,
+      "base": "0x40001000",
+      "stride": 0
+    }
+  ],
+  "traps": [
+    [
+      "trap_load_page_fault",
+      2147487564
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ],
+    [
+      "trap_load_page_fault",
+      2147487564
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ],
+    [
+      "trap_load_page_fault",
+      2147487564
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ],
+    [
+      "trap_store_page_fault",
+      2147487602
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ],
+    [
+      "trap_store_page_fault",
+      2147487602
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ],
+    [
+      "trap_store_page_fault",
+      2147487602
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ],
+    [
+      "trap_load_page_fault",
+      2147487564
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ],
+    [
+      "trap_load_page_fault",
+      2147487564
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ],
+    [
+      "trap_load_page_fault",
+      2147487564
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ],
+    [
+      "trap_store_page_fault",
+      2147487602
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ],
+    [
+      "trap_store_page_fault",
+      2147487602
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ],
+    [
+      "trap_store_page_fault",
+      2147487602
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487528
+    ]
+  ],
+  "refills": [
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "cases": 16,
+  "helper_entries": 16,
+  "helper_instructions": 172,
+  "capacity_calls": 1,
+  "bootstrap_calls": 1,
+  "output_elements": 1024,
+  "output_guards": 32,
+  "memory_words": 16384,
+  "returned_vstart": 16,
+  "faults": 12,
+  "htif": [
+    1
+  ],
+  "continuous": true,
+  "linux_signal_equivalence": false,
+  "historical_linux_stall_closed": false,
+  "execution": {
+    "returncode": 0,
+    "timeout": false,
+    "elapsed_s": 39.10516029596329,
+    "raw_bytes": 270381207,
+    "command": [
+      "/home/wangwy/openproject/riscv-isa-sim-ara-dsa-vstart/build/spike",
+      "--isa=rv64gcv_zfh_zvfh_zvl1024b",
+      "--priv=msu",
+      "--pmpregions=0",
+      "-m2",
+      "--instructions=8000000",
+      "-l",
+      "--log-commits",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/zero_stride_e64_m4_original16_prepare01/software01/spike.elf"
+    ]
+  },
+  "raw_sha256": "b26941b031b25aa6e5be2d03b95e296d299293f647d7733136d049d11ec4a2ad",
+  "pins_unchanged": true
+}

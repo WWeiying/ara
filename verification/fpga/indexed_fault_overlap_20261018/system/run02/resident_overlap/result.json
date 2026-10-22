@@ -1,0 +1,12 @@
+{
+  "returncode": 0,
+  "seconds": 47.652,
+  "case": "resident_overlap",
+  "elf_sha256": "66c22cd783bb40eb35399d93729fd3079469a0b9cafa267527debba5d76408c3",
+  "status": "PASS",
+  "faults": [],
+  "diagnostics": [
+    "SYSTEM_PASS faults=0000000000000000 errors=0000000000000000 overlap=0000000000000001 context=0000000000000000"
+  ],
+  "fsdb_bytes": 6778764
+}

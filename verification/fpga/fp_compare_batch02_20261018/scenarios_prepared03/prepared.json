@@ -1,0 +1,866 @@
+{
+  "programs": {
+    "unboxed_unmasked_alias_v16_e32_m1_t0_ctx0": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0",
+      "elf_sha256": "cc2bda2946bb44855df5c7f95fb08153c85f8257f606171c14d5c5f279617fdf",
+      "pass_markers": [
+        "RVV_FP_COMPARE_PASS sew=32 cases=1 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "sew": 32,
+      "lmul": "m1",
+      "context": 0,
+      "tuple": [
+        27,
+        2,
+        6,
+        2,
+        1
+      ],
+      "original": {
+        "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1",
+        "sha256": "df847db0c09834783d85a1931e7f74b9f0950f1a6aec4d502e43ab915c840efb",
+        "family": "rvv_fp_compare_unboxed_unmasked_alias_v16",
+        "reference": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1",
+          "status": "passed",
+          "output": "RVV_FP_COMPARE_PASS sew=32 cases=17920 errors=0\n\n",
+          "exit_code": 0,
+          "seconds": 0.1773560931906104
+        },
+        "board": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1",
+          "status": "failed",
+          "output": "RVV_FP_COMPARE_DETAIL op=2 seed=27 vl=32 mask=2 sticky=1 expected_flags=17 actual_flags=17 errors=2\nRVV_FP_COMPARE_FAIL sew=32 cases=17920 errors=2\n\n",
+          "exit_code": 1,
+          "seconds": 2.446904899959918
+        }
+      }
+    },
+    "unboxed_unmasked_alias_v16_e32_m1_t0_ctx1": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1",
+      "elf_sha256": "eb7c58879e4ad4cb73e296c097f91e244ff9184e6ad1467351779c08ecfd5d67",
+      "pass_markers": [
+        "RVV_FP_COMPARE_PASS sew=32 cases=1 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "sew": 32,
+      "lmul": "m1",
+      "context": 1,
+      "tuple": [
+        27,
+        2,
+        6,
+        2,
+        1
+      ],
+      "original": {
+        "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1",
+        "sha256": "df847db0c09834783d85a1931e7f74b9f0950f1a6aec4d502e43ab915c840efb",
+        "family": "rvv_fp_compare_unboxed_unmasked_alias_v16",
+        "reference": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1",
+          "status": "passed",
+          "output": "RVV_FP_COMPARE_PASS sew=32 cases=17920 errors=0\n\n",
+          "exit_code": 0,
+          "seconds": 0.1773560931906104
+        },
+        "board": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1",
+          "status": "failed",
+          "output": "RVV_FP_COMPARE_DETAIL op=2 seed=27 vl=32 mask=2 sticky=1 expected_flags=17 actual_flags=17 errors=2\nRVV_FP_COMPARE_FAIL sew=32 cases=17920 errors=2\n\n",
+          "exit_code": 1,
+          "seconds": 2.446904899959918
+        }
+      }
+    },
+    "unmasked_alias_v8_e32_m4_t0_ctx0": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0",
+      "elf_sha256": "07e85b2aea64ac90d44b7a397d103cc1371b8056fe517ad72cbdd5343baabef8",
+      "pass_markers": [
+        "RVV_FP_COMPARE_PASS sew=32 cases=1 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "sew": 32,
+      "lmul": "m4",
+      "context": 0,
+      "tuple": [
+        0,
+        5,
+        4,
+        3,
+        0
+      ],
+      "original": {
+        "name": "rvv_fp_compare_unmasked_alias_v8_e32_m4",
+        "sha256": "f865b29fb96de73afab71abcf4dbdbb739803ace01edbaae344eb3733b4c212f",
+        "family": "rvv_fp_compare_unmasked_alias_v8",
+        "reference": {
+          "name": "rvv_fp_compare_unmasked_alias_v8_e32_m4",
+          "status": "passed",
+          "output": "RVV_FP_COMPARE_PASS sew=32 cases=17920 errors=0\n\n",
+          "exit_code": 0,
+          "seconds": 0.3411358902230859
+        },
+        "board": {
+          "name": "rvv_fp_compare_unmasked_alias_v8_e32_m4",
+          "status": "failed",
+          "output": "RVV_FP_COMPARE_DETAIL op=5 seed=0 vl=64 mask=3 sticky=0 expected_flags=16 actual_flags=0 errors=9\nRVV_FP_COMPARE_FAIL sew=32 cases=17920 errors=9\n\n",
+          "exit_code": 1,
+          "seconds": 5.928373000002466
+        }
+      }
+    },
+    "unmasked_alias_v8_e32_m4_t0_ctx1": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1",
+      "elf_sha256": "23178038a32b9082d1d1cd78cfc7119e356a924f367541a6acf7f8b25a4beef4",
+      "pass_markers": [
+        "RVV_FP_COMPARE_PASS sew=32 cases=1 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "sew": 32,
+      "lmul": "m4",
+      "context": 1,
+      "tuple": [
+        0,
+        5,
+        4,
+        3,
+        0
+      ],
+      "original": {
+        "name": "rvv_fp_compare_unmasked_alias_v8_e32_m4",
+        "sha256": "f865b29fb96de73afab71abcf4dbdbb739803ace01edbaae344eb3733b4c212f",
+        "family": "rvv_fp_compare_unmasked_alias_v8",
+        "reference": {
+          "name": "rvv_fp_compare_unmasked_alias_v8_e32_m4",
+          "status": "passed",
+          "output": "RVV_FP_COMPARE_PASS sew=32 cases=17920 errors=0\n\n",
+          "exit_code": 0,
+          "seconds": 0.3411358902230859
+        },
+        "board": {
+          "name": "rvv_fp_compare_unmasked_alias_v8_e32_m4",
+          "status": "failed",
+          "output": "RVV_FP_COMPARE_DETAIL op=5 seed=0 vl=64 mask=3 sticky=0 expected_flags=16 actual_flags=0 errors=9\nRVV_FP_COMPARE_FAIL sew=32 cases=17920 errors=9\n\n",
+          "exit_code": 1,
+          "seconds": 5.928373000002466
+        }
+      }
+    },
+    "unmasked_alias_v16_e32_m8_t0_ctx0": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0",
+      "elf_sha256": "f56475b8c1950971a9fb218b4c9de8299bbae7fcd514d69868b8e112f26238d0",
+      "pass_markers": [
+        "RVV_FP_COMPARE_PASS sew=32 cases=1 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "sew": 32,
+      "lmul": "m8",
+      "context": 0,
+      "tuple": [
+        5,
+        3,
+        2,
+        1,
+        0
+      ],
+      "original": {
+        "name": "rvv_fp_compare_unmasked_alias_v16_e32_m8",
+        "sha256": "b188a7184720f484b916d2719813fca297ee430b51207a9e8dda633f00225f56",
+        "family": "rvv_fp_compare_unmasked_alias_v16",
+        "reference": {
+          "name": "rvv_fp_compare_unmasked_alias_v16_e32_m8",
+          "status": "passed",
+          "output": "RVV_FP_COMPARE_PASS sew=32 cases=17920 errors=0\n\n",
+          "exit_code": 0,
+          "seconds": 0.5128154898993671
+        },
+        "board": {
+          "name": "rvv_fp_compare_unmasked_alias_v16_e32_m8",
+          "status": "failed",
+          "output": "RVV_FP_COMPARE_DETAIL op=3 seed=5 vl=2 mask=1 sticky=0 expected_flags=0 actual_flags=0 errors=1\nRVV_FP_COMPARE_FAIL sew=32 cases=17920 errors=1\n\n",
+          "exit_code": 1,
+          "seconds": 10.583392400003504
+        }
+      }
+    },
+    "unmasked_alias_v16_e32_m8_t0_ctx1": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1",
+      "elf_sha256": "3f4ba857a58c738bf552c2b314139ce3b935ced8a35e0214f43fb5a60d61ef1c",
+      "pass_markers": [
+        "RVV_FP_COMPARE_PASS sew=32 cases=1 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "sew": 32,
+      "lmul": "m8",
+      "context": 1,
+      "tuple": [
+        5,
+        3,
+        2,
+        1,
+        0
+      ],
+      "original": {
+        "name": "rvv_fp_compare_unmasked_alias_v16_e32_m8",
+        "sha256": "b188a7184720f484b916d2719813fca297ee430b51207a9e8dda633f00225f56",
+        "family": "rvv_fp_compare_unmasked_alias_v16",
+        "reference": {
+          "name": "rvv_fp_compare_unmasked_alias_v16_e32_m8",
+          "status": "passed",
+          "output": "RVV_FP_COMPARE_PASS sew=32 cases=17920 errors=0\n\n",
+          "exit_code": 0,
+          "seconds": 0.5128154898993671
+        },
+        "board": {
+          "name": "rvv_fp_compare_unmasked_alias_v16_e32_m8",
+          "status": "failed",
+          "output": "RVV_FP_COMPARE_DETAIL op=3 seed=5 vl=2 mask=1 sticky=0 expected_flags=0 actual_flags=0 errors=1\nRVV_FP_COMPARE_FAIL sew=32 cases=17920 errors=1\n\n",
+          "exit_code": 1,
+          "seconds": 10.583392400003504
+        }
+      }
+    },
+    "unmasked_alias_v8_e32_mf2_t0_ctx0": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0",
+      "elf_sha256": "f942243d802fd7cd8df9283eaa9a039b773911394045982d3944025854b70ad1",
+      "pass_markers": [
+        "RVV_FP_COMPARE_PASS sew=32 cases=1 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "sew": 32,
+      "lmul": "mf2",
+      "context": 0,
+      "tuple": [
+        16,
+        5,
+        5,
+        0,
+        0
+      ],
+      "original": {
+        "name": "rvv_fp_compare_unmasked_alias_v8_e32_mf2",
+        "sha256": "6aa519f13aa6b82bb22b991fb3f1b0cc8f8367ef3889a7073033f9674b1e4e4d",
+        "family": "rvv_fp_compare_unmasked_alias_v8",
+        "reference": {
+          "name": "rvv_fp_compare_unmasked_alias_v8_e32_mf2",
+          "status": "passed",
+          "output": "RVV_FP_COMPARE_PASS sew=32 cases=17920 errors=0\n\n",
+          "exit_code": 0,
+          "seconds": 0.13007722003385425
+        },
+        "board": {
+          "name": "rvv_fp_compare_unmasked_alias_v8_e32_mf2",
+          "status": "failed",
+          "output": "RVV_FP_COMPARE_DETAIL op=5 seed=16 vl=15 mask=0 sticky=0 expected_flags=16 actual_flags=0 errors=5\nRVV_FP_COMPARE_FAIL sew=32 cases=17920 errors=5\n\n",
+          "exit_code": 1,
+          "seconds": 2.038764299999457
+        }
+      }
+    },
+    "unmasked_alias_v8_e32_mf2_t0_ctx1": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1",
+      "elf_sha256": "61b2fdb7b60769b4a6c1a6ba2057402d5f42663d6c41117c405534c4317dc0ea",
+      "pass_markers": [
+        "RVV_FP_COMPARE_PASS sew=32 cases=1 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "sew": 32,
+      "lmul": "mf2",
+      "context": 1,
+      "tuple": [
+        16,
+        5,
+        5,
+        0,
+        0
+      ],
+      "original": {
+        "name": "rvv_fp_compare_unmasked_alias_v8_e32_mf2",
+        "sha256": "6aa519f13aa6b82bb22b991fb3f1b0cc8f8367ef3889a7073033f9674b1e4e4d",
+        "family": "rvv_fp_compare_unmasked_alias_v8",
+        "reference": {
+          "name": "rvv_fp_compare_unmasked_alias_v8_e32_mf2",
+          "status": "passed",
+          "output": "RVV_FP_COMPARE_PASS sew=32 cases=17920 errors=0\n\n",
+          "exit_code": 0,
+          "seconds": 0.13007722003385425
+        },
+        "board": {
+          "name": "rvv_fp_compare_unmasked_alias_v8_e32_mf2",
+          "status": "failed",
+          "output": "RVV_FP_COMPARE_DETAIL op=5 seed=16 vl=15 mask=0 sticky=0 expected_flags=16 actual_flags=0 errors=5\nRVV_FP_COMPARE_FAIL sew=32 cases=17920 errors=5\n\n",
+          "exit_code": 1,
+          "seconds": 2.038764299999457
+        }
+      }
+    },
+    "unboxed_unmasked_alias_v16_e16_m4_t0_ctx0": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0",
+      "elf_sha256": "7240e07e747717b4c16e62e764a2bc2cde7e7dda7cbb94a6c37f6bc5841333de",
+      "pass_markers": [
+        "RVV_FP_COMPARE_PASS sew=16 cases=1 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "sew": 16,
+      "lmul": "m4",
+      "context": 0,
+      "tuple": [
+        19,
+        3,
+        6,
+        2,
+        0
+      ],
+      "original": {
+        "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4",
+        "sha256": "1d174b627de410d77f16ea92949d67ef233787edeb4673dd57ab4af1a8958011",
+        "family": "rvv_fp_compare_unboxed_unmasked_alias_v16",
+        "reference": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4",
+          "status": "passed",
+          "output": "RVV_FP_COMPARE_PASS sew=16 cases=17920 errors=0\n\n",
+          "exit_code": 0,
+          "seconds": 0.5041667059995234
+        },
+        "board": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4",
+          "status": "failed",
+          "output": "RVV_FP_COMPARE_DETAIL op=3 seed=19 vl=256 mask=2 sticky=0 expected_flags=16 actual_flags=16 errors=48\nRVV_FP_COMPARE_DETAIL op=3 seed=21 vl=256 mask=3 sticky=1 expected_flags=17 actual_flags=17 errors=96\nRVV_FP_COMPARE_FAIL sew=16 cases=17920 errors=144\n\n",
+          "exit_code": 1,
+          "seconds": 9.760738800046965
+        }
+      }
+    },
+    "unboxed_unmasked_alias_v16_e16_m4_t0_ctx1": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1",
+      "elf_sha256": "736b96d8416c6758557e90c22c8ae19783a38a522e86f07529499e1e29426c9e",
+      "pass_markers": [
+        "RVV_FP_COMPARE_PASS sew=16 cases=1 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "sew": 16,
+      "lmul": "m4",
+      "context": 1,
+      "tuple": [
+        19,
+        3,
+        6,
+        2,
+        0
+      ],
+      "original": {
+        "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4",
+        "sha256": "1d174b627de410d77f16ea92949d67ef233787edeb4673dd57ab4af1a8958011",
+        "family": "rvv_fp_compare_unboxed_unmasked_alias_v16",
+        "reference": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4",
+          "status": "passed",
+          "output": "RVV_FP_COMPARE_PASS sew=16 cases=17920 errors=0\n\n",
+          "exit_code": 0,
+          "seconds": 0.5041667059995234
+        },
+        "board": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4",
+          "status": "failed",
+          "output": "RVV_FP_COMPARE_DETAIL op=3 seed=19 vl=256 mask=2 sticky=0 expected_flags=16 actual_flags=16 errors=48\nRVV_FP_COMPARE_DETAIL op=3 seed=21 vl=256 mask=3 sticky=1 expected_flags=17 actual_flags=17 errors=96\nRVV_FP_COMPARE_FAIL sew=16 cases=17920 errors=144\n\n",
+          "exit_code": 1,
+          "seconds": 9.760738800046965
+        }
+      }
+    },
+    "unboxed_unmasked_alias_v16_e16_m4_t1_ctx0": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0",
+      "elf_sha256": "eb4bf9c995dc28521023c4cc414ba7cce29e1438d192ce6aef3eb7e01201007c",
+      "pass_markers": [
+        "RVV_FP_COMPARE_PASS sew=16 cases=1 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "sew": 16,
+      "lmul": "m4",
+      "context": 0,
+      "tuple": [
+        21,
+        3,
+        6,
+        3,
+        1
+      ],
+      "original": {
+        "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4",
+        "sha256": "1d174b627de410d77f16ea92949d67ef233787edeb4673dd57ab4af1a8958011",
+        "family": "rvv_fp_compare_unboxed_unmasked_alias_v16",
+        "reference": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4",
+          "status": "passed",
+          "output": "RVV_FP_COMPARE_PASS sew=16 cases=17920 errors=0\n\n",
+          "exit_code": 0,
+          "seconds": 0.5041667059995234
+        },
+        "board": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4",
+          "status": "failed",
+          "output": "RVV_FP_COMPARE_DETAIL op=3 seed=19 vl=256 mask=2 sticky=0 expected_flags=16 actual_flags=16 errors=48\nRVV_FP_COMPARE_DETAIL op=3 seed=21 vl=256 mask=3 sticky=1 expected_flags=17 actual_flags=17 errors=96\nRVV_FP_COMPARE_FAIL sew=16 cases=17920 errors=144\n\n",
+          "exit_code": 1,
+          "seconds": 9.760738800046965
+        }
+      }
+    },
+    "unboxed_unmasked_alias_v16_e16_m4_t1_ctx1": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1",
+      "elf_sha256": "b2eb24a04d19d4f47be0d5d28183ad1913c45cdf03c774329127f73e955016a2",
+      "pass_markers": [
+        "RVV_FP_COMPARE_PASS sew=16 cases=1 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "sew": 16,
+      "lmul": "m4",
+      "context": 1,
+      "tuple": [
+        21,
+        3,
+        6,
+        3,
+        1
+      ],
+      "original": {
+        "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4",
+        "sha256": "1d174b627de410d77f16ea92949d67ef233787edeb4673dd57ab4af1a8958011",
+        "family": "rvv_fp_compare_unboxed_unmasked_alias_v16",
+        "reference": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4",
+          "status": "passed",
+          "output": "RVV_FP_COMPARE_PASS sew=16 cases=17920 errors=0\n\n",
+          "exit_code": 0,
+          "seconds": 0.5041667059995234
+        },
+        "board": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4",
+          "status": "failed",
+          "output": "RVV_FP_COMPARE_DETAIL op=3 seed=19 vl=256 mask=2 sticky=0 expected_flags=16 actual_flags=16 errors=48\nRVV_FP_COMPARE_DETAIL op=3 seed=21 vl=256 mask=3 sticky=1 expected_flags=17 actual_flags=17 errors=96\nRVV_FP_COMPARE_FAIL sew=16 cases=17920 errors=144\n\n",
+          "exit_code": 1,
+          "seconds": 9.760738800046965
+        }
+      }
+    },
+    "unboxed_unmasked_alias_v8_e16_m4_t0_ctx0": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0",
+      "elf_sha256": "c685c50526b389a1bd1a015ace46fdb47e8800c2cd9827f28847211a3bbac933",
+      "pass_markers": [
+        "RVV_FP_COMPARE_PASS sew=16 cases=1 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "sew": 16,
+      "lmul": "m4",
+      "context": 0,
+      "tuple": [
+        1,
+        2,
+        2,
+        1,
+        0
+      ],
+      "original": {
+        "name": "rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4",
+        "sha256": "47b57119e11ddbec38c569b50bb67726e9242500d0fcf73eb31a6d14e9c09a2e",
+        "family": "rvv_fp_compare_unboxed_unmasked_alias_v8",
+        "reference": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4",
+          "status": "passed",
+          "output": "RVV_FP_COMPARE_PASS sew=16 cases=17920 errors=0\n\n",
+          "exit_code": 0,
+          "seconds": 0.5053358320146799
+        },
+        "board": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4",
+          "status": "failed",
+          "output": "RVV_FP_COMPARE_DETAIL op=2 seed=1 vl=2 mask=1 sticky=0 expected_flags=0 actual_flags=16 errors=2\nRVV_FP_COMPARE_FAIL sew=16 cases=17920 errors=2\n\n",
+          "exit_code": 1,
+          "seconds": 9.767358599987347
+        }
+      }
+    },
+    "unboxed_unmasked_alias_v8_e16_m4_t0_ctx1": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1",
+      "elf_sha256": "bf9222d6803c90e187f91e5b7112381557ebaaa9e7bb53de7f3b054f6fc5e15f",
+      "pass_markers": [
+        "RVV_FP_COMPARE_PASS sew=16 cases=1 errors=0",
+        "BOARD_REPLAY_PASS"
+      ],
+      "sew": 16,
+      "lmul": "m4",
+      "context": 1,
+      "tuple": [
+        1,
+        2,
+        2,
+        1,
+        0
+      ],
+      "original": {
+        "name": "rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4",
+        "sha256": "47b57119e11ddbec38c569b50bb67726e9242500d0fcf73eb31a6d14e9c09a2e",
+        "family": "rvv_fp_compare_unboxed_unmasked_alias_v8",
+        "reference": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4",
+          "status": "passed",
+          "output": "RVV_FP_COMPARE_PASS sew=16 cases=17920 errors=0\n\n",
+          "exit_code": 0,
+          "seconds": 0.5053358320146799
+        },
+        "board": {
+          "name": "rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4",
+          "status": "failed",
+          "output": "RVV_FP_COMPARE_DETAIL op=2 seed=1 vl=2 mask=1 sticky=0 expected_flags=0 actual_flags=16 errors=2\nRVV_FP_COMPARE_FAIL sew=16 cases=17920 errors=2\n\n",
+          "exit_code": 1,
+          "seconds": 9.767358599987347
+        }
+      }
+    }
+  },
+  "pins": {
+    "/home/wangwy/fpga_runs/ara_va_rvv_explore_20261018_02/summary.json": "9190fdcf805b93dcee706ab6a63afd6645f213df2972c8f71d1837b6c654110b",
+    "/home/wangwy/fpga_runs/ara_va_rvv_explore_20261018_04/summary.json": "76269be4201272a97be1d50eb38cd43ddb0fafca93e3d0d81a8ee2b6c4709001",
+    "/home/wangwy/fpga_runs/ara_va_rvv_explore_20261018_06/summary.json": "b9e530a6c29ed1df2af7f6e8d51ef5eced17040374248490d899394fb98b7114",
+    "/home/wangwy/fpga_runs/ara_va_rvv_explore_20261018_07/summary.json": "3e30873721172889eccc203d25af79a14572a014f27184bf420d73ffe709ff6c",
+    "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/linux/diagnostics/rvv_matrix/fp_compare_oracle.c": "03cc50313dee7cda6476658bbe025409617242c06cd06cdaff8d83d2812e9bad",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unboxed_v16_unmasked_01/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1.S": "e83d6ac0a0ce23edee4c4a80275c58e809cf94569fe314a4228838ef2f6f13c4",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unboxed_v16_unmasked_01/e32/fixtures.h": "ec7f1d6b54e6f386aa006511792bfe02aba308e035501b223f7adc39e0a936eb",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unboxed_v16_unmasked_01/e32/operations.h": "cd0e50739a57ccd54ead1092113528d6535ec62468e8fe4863dbb64fbf2fee64",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/integration/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/integration/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/integration/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unmasked_alias_v8_01/rvv_fp_compare_unmasked_alias_v8_e32_m4.S": "fb75ded82603866f7ee86a5672b11e2dfbe46c89068c18a45015b3d40d923de9",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unmasked_alias_v8_01/e32/fixtures.h": "ec7f1d6b54e6f386aa006511792bfe02aba308e035501b223f7adc39e0a936eb",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unmasked_alias_v8_01/e32/operations.h": "cd0e50739a57ccd54ead1092113528d6535ec62468e8fe4863dbb64fbf2fee64",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unmasked_alias_v16_01/rvv_fp_compare_unmasked_alias_v16_e32_m8.S": "d550f9bc5d972d2704f81f9291b6124d3bc8578b0a03050b134abe35deaff0ad",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unmasked_alias_v16_01/e32/fixtures.h": "ec7f1d6b54e6f386aa006511792bfe02aba308e035501b223f7adc39e0a936eb",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unmasked_alias_v16_01/e32/operations.h": "cd0e50739a57ccd54ead1092113528d6535ec62468e8fe4863dbb64fbf2fee64",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unmasked_alias_v8_01/rvv_fp_compare_unmasked_alias_v8_e32_mf2.S": "6be4764077a24a139bb4aa2cd37f118ce0f1002c302102ef73ab0807f9332fa7",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unboxed_v16_unmasked_01/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4.S": "5244a26de55fce38ea238518d0feb6dce35829cb21c9fef0ee486ea2b470353e",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unboxed_v16_unmasked_01/e16/fixtures.h": "5664c1a4546bb402fe64ef190ca8e4910efa21fc35daea5229a187377eba7cb1",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unboxed_v16_unmasked_01/e16/operations.h": "cd0e50739a57ccd54ead1092113528d6535ec62468e8fe4863dbb64fbf2fee64",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unboxed_v8_unmasked_01/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4.S": "92b9b67d216d56c5806fcd708396c33883965ec4d9dc1c012dd2ff03fd37ccea",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unboxed_v8_unmasked_01/e16/fixtures.h": "5664c1a4546bb402fe64ef190ca8e4910efa21fc35daea5229a187377eba7cb1",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fp_comparisons_unboxed_v8_unmasked_01/e16/operations.h": "cd0e50739a57ccd54ead1092113528d6535ec62468e8fe4863dbb64fbf2fee64",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios.py": "4a6992187a1c4cff5b269078e5c1f0f2b5402b8579e0b3e6e6e70cd9e8f44f23"
+  },
+  "files": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/original_rebuild.command.json": "3ff31fda9dcca727637bebec3de3dbaec217a1991fca60fde451debc85d9c3b0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/original_rebuild.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/original_rebuilt.elf": "df847db0c09834783d85a1931e7f74b9f0950f1a6aec4d502e43ab915c840efb",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/original_rebuild.process.json": "254113aa2a458e69fc4aef0e2a4ea4a40a432cf03340c8e2f14e8620d2814779",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/original/parent.c": "03cc50313dee7cda6476658bbe025409617242c06cd06cdaff8d83d2812e9bad",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/original/scenario.S": "e83d6ac0a0ce23edee4c4a80275c58e809cf94569fe314a4228838ef2f6f13c4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/original/fixtures.h": "ec7f1d6b54e6f386aa006511792bfe02aba308e035501b223f7adc39e0a936eb",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/original/operations.h": "cd0e50739a57ccd54ead1092113528d6535ec62468e8fe4863dbb64fbf2fee64",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/case.c": "9c25cebe9a820a41de92703432ae8942f83cedec5d8a137ba840f7cda5a3e7a4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/source.diff": "f21f3e6fd06450dd95e9dd3c42a9967dd35da237a73b4ce752706bf86686fef7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/scenario.S": "e83d6ac0a0ce23edee4c4a80275c58e809cf94569fe314a4228838ef2f6f13c4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/main.c": "770da17edd20603fe3fce22540ff0dcebe0b7d59b0ae54864e4a8b9947811326",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/soc_compile.command.json": "1cc5cfd03897aea53f7daab0462398d2dcc1fb783d4d6d73ba7a740e89a3917b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/soc.elf": "cc2bda2946bb44855df5c7f95fb08153c85f8257f606171c14d5c5f279617fdf",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/soc_compile.process.json": "c834f377c4cacc1be71273c3ad05d6d36f67d408960da1beea123e9dd6416a6f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/spike_compile.command.json": "b5221128fe6fdfbb389be347eb7bd0f652f669223227464f629e49f7ff3106fe",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/spike.elf": "f76f27a5d57bd58c7ca59f27c898048a3f2131aa6978346d84cd1e63f3dd814f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/spike_compile.process.json": "0396deaea550d54548685bec77bad1787d87e7cc4ffb3b2b675e0125ddca2030",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/spike.cmd": "90be4d586a4fdb60acfe4cbc1a64f301534a78dcc64f34da0498e73d7af7c77b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/spike.command.json": "05a205bb97b3b172e401040aeb739446e57956a1bd474d37cf0a564fb07c5635",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/spike.log": "63953ec9455bf967bec5e19f09f6258a9f3b640b9a68fa324b833c4fad4fc480",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx0/spike.process.json": "c9fee226efa256a9becde11c635c0c3a2c658017a79116dd704f610f032e6e91",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/case.c": "1b9e1165042186797a164294e5672528387facbbc2ee4da79796b28d0b11a66a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/source.diff": "b8f365809d2afafb21836983eab7e81093466b3345e7dd207c79426f244cf27c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/scenario.S": "c62ef2336e1e817b09aa0ee78bfca033aaf6baca3176edaf1efa27dea3656c8f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/main.c": "f27455569ed874e0628b90b0bfe341259e88cde361a3c7ba0ae15239c9a0fdbb",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/soc_compile.command.json": "a36bd50ea228c4c835648441ad19f8239f86a06de76a09e77817d3b2c00114e7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/soc.elf": "eb7c58879e4ad4cb73e296c097f91e244ff9184e6ad1467351779c08ecfd5d67",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/soc_compile.process.json": "8917da8dceda41405d8c7b30e5f0b664902f7e575c4608599f64ee432997552a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/spike_compile.command.json": "259b0d0b2915d8f9f984c4f92b4242eba5c00b4e336ab0c6897ff51652184e73",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/spike.elf": "127795c7a4d8c5cd71f69f91603adb7ecaf56f3093092197006a01007e6769a9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/spike_compile.process.json": "b7bccbeea32eebfdacde37f656dc7c0e15b2e88f3d25736b2902e9f77d63f3ef",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/spike.cmd": "ca2bca36fdca3efb4180fa33143bdd4ed82933046ecf4f89fd8143f8ec895915",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/spike.command.json": "c4be345e68ded3b6fe7370c291596b199e69af7ded7c3a45f41078101d437d77",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/spike.log": "747a38f3852dea377ecc31ce36917b23835fa902b0bdf221866deaea4bc71cd5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1/t0_ctx1/spike.process.json": "75c8b6a70714323b6b586ef45932b0804db5b633f652540eab4443413eb3b65a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/original_rebuild.command.json": "75bb02b48dc1cc255073fd10ac0b3d01a52927c117f5338d1074a636c07956bc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/original_rebuild.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/original_rebuilt.elf": "f865b29fb96de73afab71abcf4dbdbb739803ace01edbaae344eb3733b4c212f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/original_rebuild.process.json": "adab1755b14d80327b66327b818cf462fb0d72b47ba668dbeae4779e9d5efec4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/original/parent.c": "03cc50313dee7cda6476658bbe025409617242c06cd06cdaff8d83d2812e9bad",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/original/scenario.S": "fb75ded82603866f7ee86a5672b11e2dfbe46c89068c18a45015b3d40d923de9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/original/fixtures.h": "ec7f1d6b54e6f386aa006511792bfe02aba308e035501b223f7adc39e0a936eb",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/original/operations.h": "cd0e50739a57ccd54ead1092113528d6535ec62468e8fe4863dbb64fbf2fee64",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/case.c": "bf84e5a770e7c709f950e3a046f37e91435ec772dcc5b56bd8a50fd2b4a8bb30",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/source.diff": "0774a1e729aa7890407ceff1ecffd0055f600ace43e9a477ee8b7cffd442887c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/scenario.S": "fb75ded82603866f7ee86a5672b11e2dfbe46c89068c18a45015b3d40d923de9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/main.c": "53ab000b0a215dece5a84c2cf41cae81ee30cf85ed23d03c89a2a0426d8d73b9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/soc_compile.command.json": "9e2e181fa5fb877fac2d10c6fdab09cc3aaca9675f8eed18aa9296a62a221ec7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/soc.elf": "07e85b2aea64ac90d44b7a397d103cc1371b8056fe517ad72cbdd5343baabef8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/soc_compile.process.json": "ded4334a8c2898f8116cb3de048190a9ef5d02ffc2d795c0338f12ed1d6d8e8a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/spike_compile.command.json": "6de0a117165152ab81d94c9491a42c943ad7aa3ec9ba1f2f3d09840772d347e0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/spike.elf": "c1310c032c151fa225e70baee204d0af18909df118b8d4bc334a6e5995fc2d51",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/spike_compile.process.json": "9f47b8b6e7344043de592f3be8e07cfb3bc79fccdc5376a53ddc369fa6309d25",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/spike.cmd": "e607343ecb2a73ad9df8759ab26a20971d18086ab74c6273cf4f6c2b3aead2c7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/spike.command.json": "7ec672cd92f6256c4b2b0b58cb5f2f61fe1b7245b72fc85e78d7258dbf3779f5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/spike.log": "1b67c85d7ffa60480cceff5ef788c60dcb0b5d1e5c2e6465336a559a2a217117",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx0/spike.process.json": "3b213c9138b8213ed516483871288d401ba766964884e04cbb9e6007bec88150",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/case.c": "33872670a8b13d32a92b57b484b210219a45cd06dcd5394de9d44ba332106617",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/source.diff": "7667150d5422143f2eb3204bfd47c55a6ab3da2ca119e970f19f12865bff67b3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/scenario.S": "709737aba3c4948609991da2c68b518691d48441753deff5a6bdd0b7b65b45fc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/main.c": "bd1f11260ac1636890c111e4d5bc55b56d9f92d5fd34df4ea69d18a1129b5e2a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/soc_compile.command.json": "c3533ce6097b269ed6dead58d592e822c1156e8608a4f68a20ea5c5ae4380b1c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/soc.elf": "23178038a32b9082d1d1cd78cfc7119e356a924f367541a6acf7f8b25a4beef4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/soc_compile.process.json": "d786e20c26c1552204523a9f41ed183faad445c7735a2e92130ee3d8cad84215",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/spike_compile.command.json": "9de5144befeb8b8bd8d032d441e61191f8cd5b3f390cb2afa3d1bab01c559fb6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/spike.elf": "f2f2c5eb4f3cc72e11df061286cb33bb243f0f32d59d3527269be39bba7e2c34",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/spike_compile.process.json": "b10ec3b9ef9011badacc7caa6cd075fa1fb947806af48bd230b39357071b9d8e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/spike.cmd": "ca2bca36fdca3efb4180fa33143bdd4ed82933046ecf4f89fd8143f8ec895915",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/spike.command.json": "b4a368e6eb5374d14fb10e8a1b9f416aef5d715ff0b46cd21708f6fdb0cd259b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/spike.log": "45fe07ea838d314e6b7f577fe34ecf684fe882b0d4406ea4ce9f1ffaa037b981",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/spike.process.json": "368e4ca77f4afe5066fe011519d4dd4e057de6c565386476fe9ca55be42b1cc3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/original_rebuild.command.json": "7e89ba3e839fb301eda6ee13ad3a887fad5b9e3b6c397b634265d855833378b9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/original_rebuild.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/original_rebuilt.elf": "b188a7184720f484b916d2719813fca297ee430b51207a9e8dda633f00225f56",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/original_rebuild.process.json": "90f9a66a9c568fb5d74fa2f7bb04fa9274692ae2f1ae44d1d4ec91d9734cec9a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/original/parent.c": "03cc50313dee7cda6476658bbe025409617242c06cd06cdaff8d83d2812e9bad",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/original/scenario.S": "d550f9bc5d972d2704f81f9291b6124d3bc8578b0a03050b134abe35deaff0ad",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/original/fixtures.h": "ec7f1d6b54e6f386aa006511792bfe02aba308e035501b223f7adc39e0a936eb",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/original/operations.h": "cd0e50739a57ccd54ead1092113528d6535ec62468e8fe4863dbb64fbf2fee64",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/case.c": "2cceb34e273289b71413b9a28f69667bc16399e1bbdbd4b6d2c96a4fc157b8a5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/source.diff": "bc989460510988f922b9c87babe866b149fb95ad4b1d12418aa00e1b7d05c9de",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/scenario.S": "d550f9bc5d972d2704f81f9291b6124d3bc8578b0a03050b134abe35deaff0ad",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/main.c": "5c4eaaa3521bf73441871062df8128c61a4457f8cd151cbd8e4bacb9f4650910",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/soc_compile.command.json": "2d0e2ecd9c3726495aeb38187c590b5460b5752a6aba2e99dbc45bb4d798c6bb",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/soc.elf": "f56475b8c1950971a9fb218b4c9de8299bbae7fcd514d69868b8e112f26238d0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/soc_compile.process.json": "de975eca3877edffd6af87ff0facce1cebd8f667a35edf886a103bc7717adfe8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/spike_compile.command.json": "d5e87f764f9a8acd356d20608692d162643540e8698300fdc3eae61866074f46",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/spike.elf": "b3199fb7a0b3e4dd5d71a22c2fb4ebbcb4364c91024dba454c3413a836e86fa1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/spike_compile.process.json": "1e8c82cd72661c5873bc42d7ca4f49a5a47184500c5d7266aaf694eeae67ad6f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/spike.cmd": "90be4d586a4fdb60acfe4cbc1a64f301534a78dcc64f34da0498e73d7af7c77b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/spike.command.json": "1959f4655cda99e0ed498ab6b51b9e7b5de375198697a491e426565dfb5fde6d",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/spike.log": "0e043782571d50eb21ac5b7ba0d733b1a643ba03d9818eb286bf070067d25c48",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/spike.process.json": "5bdfe386b2126210be391484dd32c81bbf1657edc2ac8de02f4d10e22f865de1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/case.c": "a64891d8b96fc95654d9e79dc890c5cda429fb4534d20cba137bcd24d89bb22f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/source.diff": "c719bc2ffc2d860e6c360262168e44bcb582d61f4a88c6655076aff3319807e7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/scenario.S": "5911da49e6804e26381de38711c43e9d8b718d632032515df4507935b32b94c5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/main.c": "80f8204c1cfe5ec6c19b28e0b2009a15be36b340d57cb446812194e0a95caa46",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/soc_compile.command.json": "b6da11cbe6bc57c2a7b9fbb57f6cb7a33bf1c2edf3b98a67ac725466f33cef53",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/soc.elf": "3f4ba857a58c738bf552c2b314139ce3b935ced8a35e0214f43fb5a60d61ef1c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/soc_compile.process.json": "f332f7d13f483e9063f18d099bae7690fbe78b8657715599c339311b010bfd9c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/spike_compile.command.json": "739fe07a6583ec2893e44be5393eaf9291df671c1a63d67b6d379fadd9ba9083",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/spike.elf": "937ad923baf1f3ac5b1c225aa66bb5e8bb476a69c4a19cf650890c5912e1d574",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/spike_compile.process.json": "e24f53b8dfdc95096a0a1623bc0ba04ad7bf703b7bb1fff9f57b0601cd72b814",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/spike.cmd": "158eeadc49ee6d9343879586b8aa18b810ac8580c945dd429079ec6eb104bd3c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/spike.command.json": "14acb67e9161aebabb1408addc6f4e0533854ab5aa0ac730e06077b3c9a5b02a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/spike.log": "22b5ede139f4ebeea40fd2c05ee1fa61bb4f2a6dc4837f7c2c5cb898949468df",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx1/spike.process.json": "9861144f181dd565c0031b2b5f9ffd51d72fc456a27b5741614d7f4bc4506aac",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/original_rebuild.command.json": "20e0b90e773d69a390fead13939ba04c1c1fb7a9c814021688481b1f7f5026e0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/original_rebuild.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/original_rebuilt.elf": "6aa519f13aa6b82bb22b991fb3f1b0cc8f8367ef3889a7073033f9674b1e4e4d",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/original_rebuild.process.json": "16ebbd447d48bc30d8dc6a942140dfc147886945b78ffd62eb998a518f4bfc59",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/original/parent.c": "03cc50313dee7cda6476658bbe025409617242c06cd06cdaff8d83d2812e9bad",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/original/scenario.S": "6be4764077a24a139bb4aa2cd37f118ce0f1002c302102ef73ab0807f9332fa7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/original/fixtures.h": "ec7f1d6b54e6f386aa006511792bfe02aba308e035501b223f7adc39e0a936eb",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/original/operations.h": "cd0e50739a57ccd54ead1092113528d6535ec62468e8fe4863dbb64fbf2fee64",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/case.c": "4b90cd204d619e2f215f893bb9ef5086ec23915f290e55886a2eb1450b07b72c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/source.diff": "28da837846e829bcea3a081d71a0d1c7fc9465467282f7e44aad914c51ecc9d5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/scenario.S": "6be4764077a24a139bb4aa2cd37f118ce0f1002c302102ef73ab0807f9332fa7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/main.c": "c355c13e48c3e02858cb60e867eb5a8c682ce72be450d6a227df4a2ea2c2fec0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/soc_compile.command.json": "55f33c287d3cced55f7be2927c9a1fee915c1aa18180395703cd2fbe5bc495fa",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/soc.elf": "f942243d802fd7cd8df9283eaa9a039b773911394045982d3944025854b70ad1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/soc_compile.process.json": "1901b6108982503bba6f004544228849c6056f9984ea9a471b6631932be5b960",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/spike_compile.command.json": "0cdf5ae694e6c91ec72814f2d1c85709d9fae9901197fc582a25711b37b61609",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/spike.elf": "153da4e0f66d1499859ca94e6162c5ffa17449c1289737deb6d4aa2131f48e9a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/spike_compile.process.json": "fe53bdeba0536ef08a9182b08a33bebcc60711feb6eaaa02a32e15a662896a93",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/spike.cmd": "90be4d586a4fdb60acfe4cbc1a64f301534a78dcc64f34da0498e73d7af7c77b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/spike.command.json": "6dac27fb2dc3641513fdbabca1b36ef18022a65aeaaa7ae51de4bee012a75ac5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/spike.log": "87dd099d51e2ad36f5c6dfce97b85ed4afc140ac04572cbe67fb595dd42c10dc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx0/spike.process.json": "ee7c4b892ba7b34e2197e0a0c1440b0037bce39b1b9584c95e7b71437a1648be",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/case.c": "1297d338d945b831e42f89aa47415fa6870402397ef1e7d91b346fae5de6fd6f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/source.diff": "bd1822a5fad6980e75c9a3b10c2420f049b9f42ff347a0f384bf8a720cf28ad6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/scenario.S": "777f691bbf4628c6a5e4b0aaa25e9cfb771e14890a97eba50f096e99ad6c69b4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/main.c": "e9ec7197403605884c23b3c47e605137f47c562f7d24914dca705f400920baae",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/soc_compile.command.json": "49d344e22cc0784741915a6077c8907745abe8155f5e77cec5ee82556eaa1d41",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/soc.elf": "61b2fdb7b60769b4a6c1a6ba2057402d5f42663d6c41117c405534c4317dc0ea",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/soc_compile.process.json": "096c7c3b5d20f164efcfc5364d2c04bc714f1439bc3e1dfdb28f643ac0e29c10",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/spike_compile.command.json": "7d2d29402324f80116b94424899e5c1e38652b0b4052c81fd00797b1d47a58fc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/spike.elf": "1bffa5e72fc3022db84e0819a49a7f18b653e04adac069734fe23c84987cb194",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/spike_compile.process.json": "f4cd32b46ec4bba76e46de4a28653bfaabc9761089e8429e7862191308590c08",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/spike.cmd": "158eeadc49ee6d9343879586b8aa18b810ac8580c945dd429079ec6eb104bd3c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/spike.command.json": "c01af0f6d3fce6b268d475342c9df9a7747e74e73a123cad7fa239b6f687e3b0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/spike.log": "71e3a020a486bc4bf9aaf1769591cd50fc13c93bd9f9b405893a4bb4ad9f18eb",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_mf2/t0_ctx1/spike.process.json": "27ed93c2e8d3a47e384c97155941f4e994eb8777f97e3ce824d740608599c071",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/original_rebuild.command.json": "3426c497b304eeac78d879e6ae4c23a11ed2c6ce7fa8ba4ac47ab1b3100c0fcf",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/original_rebuild.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/original_rebuilt.elf": "1d174b627de410d77f16ea92949d67ef233787edeb4673dd57ab4af1a8958011",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/original_rebuild.process.json": "a78af44e5d91b368c818d09c14a05b695d56a2e9b2cd1955a1c7f78621ac317a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/original/parent.c": "03cc50313dee7cda6476658bbe025409617242c06cd06cdaff8d83d2812e9bad",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/original/scenario.S": "5244a26de55fce38ea238518d0feb6dce35829cb21c9fef0ee486ea2b470353e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/original/fixtures.h": "5664c1a4546bb402fe64ef190ca8e4910efa21fc35daea5229a187377eba7cb1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/original/operations.h": "cd0e50739a57ccd54ead1092113528d6535ec62468e8fe4863dbb64fbf2fee64",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/case.c": "fa158711ff6112a90910b98366bfb43a725722c3af0293b855ef6464717ef73c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/source.diff": "4ff3ebd9d559643de6b4edf619c71a71bbd27c9079f9588f8f661d55d018f201",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/scenario.S": "5244a26de55fce38ea238518d0feb6dce35829cb21c9fef0ee486ea2b470353e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/main.c": "95716d2f3b710b0498a4df1bfb22bf8f4bdb4bfd7c41378bee863b6ecaa17f40",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/soc_compile.command.json": "0e67ef54d17018595d2c16a2a80cad5a84215826694bb64ac063dc58342ed2f0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/soc.elf": "7240e07e747717b4c16e62e764a2bc2cde7e7dda7cbb94a6c37f6bc5841333de",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/soc_compile.process.json": "a192708e62658ded252c2961bd8386286d4f0adf8911f10194463398fe4e57e8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/spike_compile.command.json": "afa167546daaeb32ae067e497601e746249665d6b4a50fc6894759f297ecf6c6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/spike.elf": "3b8819046b7ddad4816083d2490f7b8d7ff4e962067bda6819501a0f36e90154",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/spike_compile.process.json": "beddf16ca091ec2aea7e1e922ebd33df0694a5b737a2dfbb99413d62c9b94704",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/spike.cmd": "cd164634b60c1fd24fd41e17d3a5ca20636c0fde1272eb253b9392ca7e8935fc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/spike.command.json": "20f4fd19ef0c0ff3dbf9624c6e0e2a1b3d9970da2bb264f7544d614d38fc7e96",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/spike.log": "fd80ce994932ba6fff5aa52f37369b1e807697d515f3d0f281ad6b13e6b8bf18",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx0/spike.process.json": "5b621d18b81d102e3efab866c21bbd9222a2f6da72f9ccea8d13a708b5052d4e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/case.c": "6c45bf35c130fdef08a70c951973d5f7d97763e10217ed7bca1faa83a3651ad3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/source.diff": "13ca6d15400fd8591240e0e634046bc5ddcb974d52a190daa4a4076600024ad2",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/scenario.S": "808aac18515729d69560fa2cad8dafd9d96289d68647f3911d39000b920633f3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/main.c": "e554c7356be2ba7f5e71b73b9f28f0f019e8b2e40d8be4e73d850ac10b458d56",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/soc_compile.command.json": "8cda8796cd38dded8e1a4748c4b69697f1b12a83949853a8c56e7c1226834627",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/soc.elf": "736b96d8416c6758557e90c22c8ae19783a38a522e86f07529499e1e29426c9e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/soc_compile.process.json": "4b4bcd013b742e0f928836158d5db97c8ec65fc4bece57ea7fa80902608313fa",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/spike_compile.command.json": "ea6f0d8e4145c39dffa4b63bdf2442cb6e0dd6d3dc167b5e9cf35f7b131feb49",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/spike.elf": "18f4470ac276a2972cea55561bb76dfb4d9a229c015a826986dcd868123463c5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/spike_compile.process.json": "64f021c7498aefc777cb8d18fb60c9c0c74ea95e814bc0e1ebd67eeee45c2940",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/spike.cmd": "9421d38dde218caba74336cdb84207557b0d567c463afad88790b19a8f683fa4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/spike.command.json": "e05fd0e88a620dd219b663b66506e8f6a664c5559ddcb325e9b3460f031ff6f8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/spike.log": "1d5984e95d7b455410c9d251e5cff983b9a4e74071bad07738ccdf1b0c2c2078",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t0_ctx1/spike.process.json": "afb9da1dcdd9741fe6287e0199ffb4389429f9fafe697a14db5736ec5aec8c86",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/case.c": "a646e040377749c761217410ae6ab91835e7a27b0d48c7079d1cd7434b742e92",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/source.diff": "c5f3f4ba35282a6dd6038d377384f6ba7fff28ca17150c4eec39d16944edbdd2",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/scenario.S": "5244a26de55fce38ea238518d0feb6dce35829cb21c9fef0ee486ea2b470353e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/main.c": "d6bc6ad149c60a6cfaa27c862825006aa93f075807fb4f5fc035b982e105efb2",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/soc_compile.command.json": "1e5ac82b304465ad942d5d1ca5008a6de38d5d90f51bc36aa1c770e8e0e9a95e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/soc.elf": "eb4bf9c995dc28521023c4cc414ba7cce29e1438d192ce6aef3eb7e01201007c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/soc_compile.process.json": "bdc6529de2ff43bb8ff660a7560ac1b2ed472b5cd3760f6f369c3c31ab5cf090",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/spike_compile.command.json": "a94975fd0a09a547e12295fa31b8d7b8293800996307256916ba66773d66956e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/spike.elf": "06661028b252a8a13ec3ae03555161ac05acaf6ccc334afe2bd983a6c39e59d7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/spike_compile.process.json": "9d47512e9a4a55ef9f13054e7c0ae632206155dac38a432cb1b872d1f2bfb776",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/spike.cmd": "ab3b8720c9617062cfe583ff55549b63a65c2a3338f0d21073a6f12eefe9f29e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/spike.command.json": "d71aea04645bef61e612193b2188d05c90053cd441856599c112c41801afd923",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/spike.log": "1ae912c6c88c6787ad56c6f7915fdeb377ef1d215f91b03dee21591d16ae4e84",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx0/spike.process.json": "e794ad4c35771725a7904ecd21551eb0d273b99f3592c82bd7efff9f1074afc6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/case.c": "31326afcf721a0e53649f517e64c08442cb66ab54465bff88d4ef1ee91ca9865",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/source.diff": "cff203da3e278477855ae88e91eff149561e3672293d9d4da04983378e261317",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/scenario.S": "808aac18515729d69560fa2cad8dafd9d96289d68647f3911d39000b920633f3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/main.c": "a99fbb38eb26e1d3b76e3275f01adb2671b96549a71cdfa83f34465613ff66a6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/soc_compile.command.json": "9eedf48e9171028520fdff551264ecc23531ea8c2ced6e1bea64345d6c60ae6f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/soc.elf": "b2eb24a04d19d4f47be0d5d28183ad1913c45cdf03c774329127f73e955016a2",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/soc_compile.process.json": "1e8c0932fa5c4202d663641e2ae54f5ea29ae6be491cc683c18751f73f3b8a44",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/spike_compile.command.json": "256286bfd08a29e140d71100e08c0fe1800d02c3597ff0d00740027f934b9780",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/spike.elf": "b44c381279b6c5b4b3a80931b5ba609bba63b7fc7547802a9fb137a05e716cbf",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/spike_compile.process.json": "806b9761dbf8b764e5669d18f35e0828696c1c4216bbc43d1787e18f1b5e5cf9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/spike.cmd": "b7104b053d2c9b9fe6b62ca33cf9f86c02e7f64d82e7bda6bce96c066a677565",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/spike.command.json": "1a27203572b9a18801428177795bc035b1f838e5da0334b00e60ca7ab2cd3b1b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/spike.log": "81c6ffda68201e0151aebb9eefc1753543bcb6600ae59ee582bf1bbb85afb786",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v16_e16_m4/t1_ctx1/spike.process.json": "199ccd9169e3c8cae96cfa64419fce7e277ae395a7eb8a898e6d6179a8827214",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/original_rebuild.command.json": "f5e8c552b501e7f4948db88b81e19b4b8ba685681cf72f65f81093079ac94ec3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/original_rebuild.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/original_rebuilt.elf": "47b57119e11ddbec38c569b50bb67726e9242500d0fcf73eb31a6d14e9c09a2e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/original_rebuild.process.json": "25e2f768074c3bfcf7021db196d4aa78ea23f72d2f38270af93d45df3fb664e6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/original/parent.c": "03cc50313dee7cda6476658bbe025409617242c06cd06cdaff8d83d2812e9bad",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/original/scenario.S": "92b9b67d216d56c5806fcd708396c33883965ec4d9dc1c012dd2ff03fd37ccea",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/original/fixtures.h": "5664c1a4546bb402fe64ef190ca8e4910efa21fc35daea5229a187377eba7cb1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/original/operations.h": "cd0e50739a57ccd54ead1092113528d6535ec62468e8fe4863dbb64fbf2fee64",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/case.c": "bb892b880ff11bf21722312d38220070298ea080742feb5282d8f2eca20b6f92",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/source.diff": "958ad13259cc93f1421640d2eda01bd439721f952d3d6ba056a5536e43616ea1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/scenario.S": "92b9b67d216d56c5806fcd708396c33883965ec4d9dc1c012dd2ff03fd37ccea",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/main.c": "d8cc13e597cdf80321ee8cb2757e8f1f2c945493f30cdde84dfc710541e4a05c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/soc_compile.command.json": "904d673b3b42af8ff852fbf24925893e70ef0bf5d9792f63a0663af6e1f6af70",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/soc.elf": "c685c50526b389a1bd1a015ace46fdb47e8800c2cd9827f28847211a3bbac933",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/soc_compile.process.json": "999263ade57cd3c33e1dabb2f9f6d04feb80187181ca66d097f4a3bfb0df0ead",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/spike_compile.command.json": "43b555011035d88cd2ca02e3117729328f5a22672f904cb38f403fe3a9f59a54",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/spike.elf": "ebdc2759c2098c310951030abc458d27f2bfc2e7a10ac2f2c80d03c732f4f5ca",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/spike_compile.process.json": "f7c59bfd209afac1e2f175f4adca0118944f1043b85549695f439c7ff5528457",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/spike.cmd": "ab3b8720c9617062cfe583ff55549b63a65c2a3338f0d21073a6f12eefe9f29e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/spike.command.json": "99ab224d050bdd5847362e85d5d07a2eb038a13907d90e60c187e614147b78fd",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/spike.log": "34586f856c7d9a13184eae09808323ebe6e4442784fcaed32685c266862568d1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx0/spike.process.json": "5c39988b8970c6fc00a1f3b84aa5416ea9d6f76ca79f0cfbdd69fc6bd3ba1613",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/case.c": "b837c018f91df0577ce65e9a304ad9e883638d2debabf9afd99d2faca6ea0b5f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/source.diff": "6f91b2dc23c3e22cdca463ea6b7c079c403ea0fd0ef60053fbb62b46c95a3ff8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/scenario.S": "739f02627cbc67f8e04a065bb7fb6d384a469b2b35be3426348d24dd21bdd0b5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/main.c": "69635deeab9d0c7f313f880be3d8580e409c5ade2b6ce19f7cfaad940220c71b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/soc_compile.command.json": "8e0e2339e6ed540c9c0f4e317e6f91c5231a7e5115b664d3b7780fe3bca272cd",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/soc_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/soc.elf": "bf9222d6803c90e187f91e5b7112381557ebaaa9e7bb53de7f3b054f6fc5e15f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/soc_compile.process.json": "e14f4484765810cb23790d6c57f556a3eafd3e3dbb8908f78a1fa510414dd6d5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/spike_compile.command.json": "181cd99df663f1d06ff9b596359c8513b4a888464eb5757213151a9485bacf69",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/spike_compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/spike.elf": "537c3a74c29c22980872f9e5806e8ec54f7afd32c2bd1097d75f7d91092fd06d",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/spike_compile.process.json": "8adcbc825fb1849ca0230ed243fde327e2b484ca1e8f3c69c9368380b0da2d1c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/spike.cmd": "b7104b053d2c9b9fe6b62ca33cf9f86c02e7f64d82e7bda6bce96c066a677565",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/spike.command.json": "f3511d7bff5993322f84d6a135d76240b341eec867f3b23d7c32bdef23f224cd",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/spike.log": "af5db33fb330c468a7556637240c0472d638be2fa19e41a22b72d5a06083036a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unboxed_unmasked_alias_v8_e16_m4/t0_ctx1/spike.process.json": "a1b9966a5d82a8a176a8e8bf2b6e1543333aff0b04b99ba0cb55782192261939"
+  },
+  "scope": "7 authentic first-failure tuples; 7 separate context-layout controls. Not full sequence or Linux execution."
+}

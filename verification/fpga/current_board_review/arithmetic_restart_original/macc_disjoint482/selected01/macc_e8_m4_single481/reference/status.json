@@ -1,0 +1,16 @@
+{
+  "name": "macc_e8_m4_single481",
+  "status": "SPIKE_PASS_SOURCE_SELECTION_NOT_PREFIX",
+  "calls": 1,
+  "original_trials": [
+    481
+  ],
+  "isa": "rv64gcv_zvl1024b",
+  "instructions_to_replay_exit": 1940068,
+  "cycles_to_replay_exit": 1940068,
+  "elapsed_s": 0.32626557210460305,
+  "elf_sha256": "2470b1b555ec329b916123b349172846b3f610aca6a80ea9cf764017e61586e0",
+  "log_sha256": "62c5b8f60f5b3578979d053e9655843e5410ccfea67414fd3bd035ef39deb723",
+  "original_prefix_acceptance": false,
+  "DUT_started": false
+}

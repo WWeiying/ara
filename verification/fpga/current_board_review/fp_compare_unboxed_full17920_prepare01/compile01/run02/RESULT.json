@@ -1,0 +1,17 @@
+{
+  "status": "DUAL_COMPILED_COST_AND_LOWERING_PENDING_NOT_REFERENCE",
+  "host": "PASS",
+  "binaries": {
+    "soc": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_full17920_prepare01/compile01/run02/soc/program.elf",
+      "sha256": "19afd0c6fd9c0810efbfdd9a635d092672554e6a1f3d4a3a537af00c4de13e37"
+    },
+    "spike": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_full17920_prepare01/compile01/run02/spike/program.elf",
+      "sha256": "0ecbd714c95e1aed2b1a6586cebdd7953e090d2da6d8c6521ee1101c2aec9671"
+    }
+  },
+  "source_pins_unchanged": true,
+  "reference_executed": false,
+  "DUT_executed": false
+}

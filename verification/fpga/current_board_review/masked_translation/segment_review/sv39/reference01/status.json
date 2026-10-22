@@ -1,0 +1,278 @@
+{
+  "status": "HOST_SPIKE_PASS_NOT_DUT",
+  "cases": [
+    "b3_sparse_load",
+    "b3_sparse_store",
+    "b5_laterfield_load",
+    "b5_laterfield_store"
+  ],
+  "checkpoints": [
+    {
+      "id": 0,
+      "name": "b3_sparse_load",
+      "phase": 1,
+      "checked_bytes": 23032,
+      "commit": 234605
+    },
+    {
+      "id": 0,
+      "name": "b3_sparse_load",
+      "phase": 2,
+      "checked_bytes": 23024,
+      "commit": 348491
+    },
+    {
+      "id": 1,
+      "name": "b3_sparse_store",
+      "phase": 1,
+      "checked_bytes": 23036,
+      "commit": 500224
+    },
+    {
+      "id": 1,
+      "name": "b3_sparse_store",
+      "phase": 2,
+      "checked_bytes": 23028,
+      "commit": 616223
+    },
+    {
+      "id": 2,
+      "name": "b5_laterfield_load",
+      "phase": 1,
+      "checked_bytes": 23040,
+      "commit": 759274
+    },
+    {
+      "id": 2,
+      "name": "b5_laterfield_load",
+      "phase": 2,
+      "checked_bytes": 23032,
+      "commit": 873160
+    },
+    {
+      "id": 3,
+      "name": "b5_laterfield_store",
+      "phase": 1,
+      "checked_bytes": 23042,
+      "commit": 1028972
+    },
+    {
+      "id": 3,
+      "name": "b5_laterfield_store",
+      "phase": 2,
+      "checked_bytes": 23036,
+      "commit": 1144971
+    }
+  ],
+  "checks": 4133,
+  "case_checks": [
+    756,
+    758,
+    756,
+    758
+  ],
+  "commits": 1189205,
+  "traps": [
+    [
+      "trap_load_page_fault",
+      "00000000800010c4"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "0000000080001170"
+    ],
+    [
+      "trap_store_page_fault",
+      "00000000800010cc"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "0000000080001170"
+    ],
+    [
+      "trap_load_page_fault",
+      "00000000800010c4"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "0000000080001170"
+    ],
+    [
+      "trap_store_page_fault",
+      "00000000800010cc"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "0000000080001170"
+    ]
+  ],
+  "actions": [
+    [
+      "target",
+      "fault_checkpoint",
+      "repair_sfence",
+      "retry_mret",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    [
+      "target",
+      "fault_checkpoint",
+      "repair_sfence",
+      "retry_mret",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    [
+      "target",
+      "fault_checkpoint",
+      "repair_sfence",
+      "retry_mret",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    [
+      "target",
+      "fault_checkpoint",
+      "repair_sfence",
+      "retry_mret",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ]
+  ],
+  "target_events": [
+    [
+      {
+        "opcode": "0x20055c07",
+        "access": [
+          [
+            1073745914,
+            null
+          ],
+          [
+            1073745916,
+            null
+          ]
+        ]
+      },
+      {
+        "opcode": "0x20055c07",
+        "access": [
+          [
+            1073745926,
+            null
+          ],
+          [
+            1073745928,
+            null
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "opcode": "0x20055c27",
+        "access": [
+          [
+            1073745914,
+            127
+          ],
+          [
+            1073745916,
+            156
+          ]
+        ]
+      },
+      {
+        "opcode": "0x20055c27",
+        "access": [
+          [
+            1073745926,
+            166
+          ],
+          [
+            1073745928,
+            195
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "opcode": "0x20055c07",
+        "access": [
+          [
+            1073745906,
+            null
+          ],
+          [
+            1073745908,
+            null
+          ],
+          [
+            1073745918,
+            null
+          ]
+        ]
+      },
+      {
+        "opcode": "0x20055c07",
+        "access": [
+          [
+            1073745918,
+            null
+          ],
+          [
+            1073745920,
+            null
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "opcode": "0x20055c27",
+        "access": [
+          [
+            1073745906,
+            127
+          ],
+          [
+            1073745908,
+            156
+          ],
+          [
+            1073745918,
+            166
+          ]
+        ]
+      },
+      {
+        "opcode": "0x20055c27",
+        "access": [
+          [
+            1073745918,
+            166
+          ],
+          [
+            1073745920,
+            195
+          ]
+        ]
+      }
+    ]
+  ],
+  "VCS_launched": false,
+  "Linux_launched": false,
+  "host_rows": 34816,
+  "elapsed_seconds": 45.85840977495536,
+  "isa": "rv64gcv_zfh_zvfh_zvl1024b",
+  "elf_sha256": {
+    "soc": "2ddce29de6d035fb02616f7924235b03e8863a74dfad161c3b2a4219ced61a67",
+    "spike": "9b3621b2952cbd16509d5574bd1afdc7bbe48ba10d3df414d0794c3d8ac102eb"
+  }
+}

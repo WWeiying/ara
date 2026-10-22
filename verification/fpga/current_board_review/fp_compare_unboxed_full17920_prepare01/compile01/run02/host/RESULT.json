@@ -1,0 +1,49 @@
+{
+  "status": "PASS_SHORT_C_HOST_ONLY",
+  "tests": {
+    "positive": {
+      "actual_wait_exit": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.11723506217822433,
+      "command_sha256": "c1b5724ee716dc733e1674b3ea6234fbb119ceb20f2ff47e4109461e95df77f7",
+      "log_sha256": "3500600e72224182c9ef307105479ba465a3279481aa6b49dfee1de49ca7d276"
+    },
+    "details": {
+      "actual_wait_exit": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.11724109807983041,
+      "command_sha256": "52562322794928bcad98ae4f51aa4777080f92bddb4cc07abb4aa708dd32cb83",
+      "log_sha256": "b7be6f4a469db225b72a63fb10834ab8ed7a7627775e86c3db60db2b410203d0"
+    },
+    "missing_input_store": {
+      "actual_wait_exit": -6,
+      "timed_out": false,
+      "elapsed_seconds": 0.16724766278639436,
+      "command_sha256": "b3d24ab44363cb77f14d1635293d307cc03ab757f5e2b245e21a49710101121a",
+      "log_sha256": "0731ddb5c6e8b6a3f698edd8514443a853d40ea7f4573f6e2c558dcbfa7d4add"
+    },
+    "missing_mask_store": {
+      "actual_wait_exit": -6,
+      "timed_out": false,
+      "elapsed_seconds": 0.21811532834544778,
+      "command_sha256": "18c2806dbd7364daae2dc0359d8a92ebace511083b41bcfa12046aacf4ddf02b",
+      "log_sha256": "0731ddb5c6e8b6a3f698edd8514443a853d40ea7f4573f6e2c558dcbfa7d4add"
+    },
+    "missing_output_tail": {
+      "actual_wait_exit": -6,
+      "timed_out": false,
+      "elapsed_seconds": 0.21752381417900324,
+      "command_sha256": "ea40a83c7e1d39ee30b1fa1f9e5c5e128e6e82a25e2cbbcc06e32bf15d3d08b1",
+      "log_sha256": "0731ddb5c6e8b6a3f698edd8514443a853d40ea7f4573f6e2c558dcbfa7d4add"
+    },
+    "wrong_raw_seed": {
+      "actual_wait_exit": -6,
+      "timed_out": false,
+      "elapsed_seconds": 0.21747208572924137,
+      "command_sha256": "3da9fb028c78d297f99a81d5f87aa3d842b49503d1a3d378f6f7768168817169",
+      "log_sha256": "7f9f3afe7a2a747be640b07acea7502ddd557bf1a409b3af8d3e952b100e59b0"
+    }
+  },
+  "helper_execution": "C fixture stub, not RVV hardware",
+  "full_calls_per_positive": 17920
+}

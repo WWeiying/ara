@@ -1,0 +1,83 @@
+{
+  "status": "ACCEPTED_M9_FULL4095_TERMINAL_BINDING_NOT_LINUX",
+  "shape": "e16_mf2",
+  "plan_sha256": "886fc1bacd80f5c3181411f69320c7be457877aa4b3aecdd2c94d50a12ad329b",
+  "entry_sha256": "abae7e77d461f12caa0945aba33bc7c74488ce09579344fe64fbae65ad4a5046",
+  "complete_sha256": "72a451ba34cd8f00b31317112b852ef97585f9d08b653255249791190f91770f",
+  "collector_result_sha256": "d9f9ef30eae17b38db9639c303e5d985de744b6ba4331d51665fc30fc4681048",
+  "strict_report_sha256": "33eeb62b95517e253616671a072ae41972b80cd1d71bee2c8d82cef23f39f3b8",
+  "accepted_producer_csv_sha256": "09a3c98d9a9cf865f1e26a34686ea8cd007f460948a1921f6f908cf0255a0ea1",
+  "actual_service": {
+    "SERVICE_RESULT": "success",
+    "EXIT_CODE": "exited",
+    "EXIT_STATUS": "0"
+  },
+  "actual_monitor": {
+    "returncode": 0,
+    "elapsed_s": 1677.0743964868598,
+    "timed_out": false,
+    "failure_seen": false,
+    "cancelled": false
+  },
+  "actual_collector": {
+    "returncode": 0,
+    "elapsed_s": 6.983081209938973,
+    "timed_out": false,
+    "retries": 0
+  },
+  "aborted": false,
+  "retries": 0,
+  "full_scope": {
+    "calls": 4095,
+    "results": 131040,
+    "guards": 8190,
+    "vstart_zero": 4095,
+    "helper_instructions": 53235,
+    "helper_counts": [
+      4095,
+      4095,
+      4095,
+      4095,
+      4095,
+      4095,
+      4095,
+      4095,
+      4095,
+      4095,
+      4095,
+      4095,
+      4095
+    ],
+    "fresh_output_bytes": 68,
+    "output_reads": 36855,
+    "typed_sentinel": "005b",
+    "tail_bytes": 4,
+    "vtype": 15,
+    "full_order": true,
+    "partitioned": false
+  },
+  "protocol": {
+    "rows": 749015,
+    "retired": 567740,
+    "last_cycle": 2131289,
+    "cvx_requests": 45047,
+    "cvx_responses": 45047,
+    "architectural_owners": 45047,
+    "uop_alloc": 23067,
+    "uop_done": 23067,
+    "required_memory": 20475,
+    "required_targets": 2592,
+    "required_op24": 117,
+    "additional_optional_vi2": 18,
+    "required_owner_ledger_rows": 23067,
+    "bad_owner_rows": 0
+  },
+  "bindings": "launch invocation -> exact ENTRY/pins -> plan -> numeric outcome/command/private ELF -> complete/evidence -> collector/service exit matched",
+  "nonCSV_pin_comparisons": 824,
+  "pin_drift": [],
+  "raw_reads": 0,
+  "CSV_semantic_reparses": 0,
+  "raw_rehashes": 0,
+  "method": "Existing pinned strict summary/owner ledger and terminal receipts only; not a second CSV semantic audit.",
+  "Linux_stall_closed": false
+}

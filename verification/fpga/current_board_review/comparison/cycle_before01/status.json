@@ -1,0 +1,9 @@
+{
+  "simulator_exit": 0,
+  "measurement": [],
+  "architectural_status": "UNKNOWN",
+  "fsdb_bytes": 454507,
+  "signal_count": 50,
+  "no_rtl_edits": true,
+  "no_build": true
+}

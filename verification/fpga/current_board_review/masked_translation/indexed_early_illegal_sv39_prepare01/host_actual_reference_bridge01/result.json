@@ -1,0 +1,133 @@
+{
+  "status": "HOST_ADAPTER_PASS_NOT_DUT",
+  "members": [
+    {
+      "status": "HOST_EXISTING_SPIKE_ROW_ADAPTER_PASS_NOT_DUT",
+      "member": "indexed",
+      "source_raw_sha256": "21848f514e898613087a1e739383a98d21a82b184ff56d6e2de4b1c42976443d",
+      "actual_endpoint": {
+        "HTIF": [
+          1
+        ]
+      },
+      "endpoint_bridge": "validated HTIF1 substitutes CTRL0 for Host finish test only",
+      "synthetic_cycle_order": true,
+      "partial_not_retired": 1,
+      "checks": 966,
+      "scalar_commits": 167827,
+      "saved_csrs": {
+        "768": 9223372079804474880,
+        "772": 0,
+        "773": 2147483732,
+        "833": 0,
+        "834": 0,
+        "835": 0,
+        "384": 0,
+        "770": 0,
+        "771": 0,
+        "3104": 0,
+        "3105": 9223372036854775808,
+        "8": 0,
+        "15": 0,
+        "3": 0
+      },
+      "traps": [
+        {
+          "0": 6,
+          "1": 2147487708,
+          "2": 1073741841,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 3,
+          "6": 24,
+          "7": 2,
+          "8": 117,
+          "9": 5
+        },
+        {
+          "0": 9,
+          "1": 2147488064,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 3,
+          "6": 24,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      ],
+      "actions": [
+        {
+          "name": "handler",
+          "cycle": 71431
+        },
+        {
+          "name": "mt_trap_vstart_read",
+          "cycle": 71457
+        },
+        {
+          "name": "mt_prefix_checkpoint",
+          "cycle": 77704
+        },
+        {
+          "name": "mt_prefix_poison",
+          "cycle": 77716
+        },
+        {
+          "name": "mt_repair_index",
+          "cycle": 77722
+        },
+        {
+          "name": "mt_restart_vstart_write",
+          "cycle": 77728
+        },
+        {
+          "name": "mt_retry_mret",
+          "cycle": 77737
+        },
+        {
+          "name": "mt_target",
+          "cycle": 77738
+        },
+        {
+          "name": "mt_successor_indexed_store",
+          "cycle": 77757
+        },
+        {
+          "name": "mt_recovery_load",
+          "cycle": 77770
+        },
+        {
+          "name": "mt_successor_add",
+          "cycle": 77787
+        },
+        {
+          "name": "mt_younger_store",
+          "cycle": 77803
+        },
+        {
+          "name": "handler",
+          "cycle": 77827
+        },
+        {
+          "name": "mt_trap_vstart_read",
+          "cycle": 77853
+        }
+      ],
+      "complete_finish_checks": true,
+      "restore_readback_checks": 14
+    }
+  ],
+  "negatives": [
+    "retire_gap",
+    "retire_duplicate",
+    "cycle_regressed",
+    "saved_CSR_mismatch",
+    "duplicate_handler_CSR"
+  ],
+  "checker_sha256": "52f982a04b1132fee4efb635a64b2dc23b958b0ce24272f82bdcfd003314d1ec",
+  "bridge_sha256": "0533006808d0befac135bf6f3e5b1c8b180f352a3f32faef9b8e34e59c5776b5",
+  "prior_failure_preserved": "host_actual_reference_bridge01/not_accepted.json",
+  "correction": "Only Host bridge regex literal backslash-b corrected to word boundary; reference/checker/ELF unchanged; no new Spike"
+}

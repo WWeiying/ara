@@ -1,0 +1,15 @@
+{
+  "status": "HOST_PASS_DUAL_COMPILE_COMPLETE_CFG_PENDING",
+  "binaries": {
+    "soc": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/full6720_e16_mf4_software01/execution01/soc/program.elf",
+      "sha256": "5242911cb3a64d2bab02be8babdad363d75796a5f25dd351b82706c6279aca7c"
+    },
+    "spike": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/full6720_e16_mf4_software01/execution01/spike/program.elf",
+      "sha256": "0326cc068509dd6a42a8840426de99fd251dcefe04e552bda5135c36040c7d1e"
+    }
+  },
+  "reference": false,
+  "DUT": false
+}

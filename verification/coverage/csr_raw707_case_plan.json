@@ -1,0 +1,46 @@
+{
+  "status": "STATIC_CASE_PLAN_SPIKE_PREFLIGHT_ONLY_NOT_DUT_COVERAGE",
+  "baseline": "verification/out/gap98-offline-admitted-707-20261006-02",
+  "inventory": "verification/out/csr-functional-inventory-707-20261006-02.json",
+  "inventory_sha256": "bb033cb005704f064463070855c8cf1f9b5d5239aadd04da9bc3e6f44a2c12e0",
+  "superseded_inventory": "verification/out/csr-functional-inventory-707-20261006-01.json",
+  "line_mapping_limit": "974 raw positions, 969 native block-start mappings; positions268/608/641/932/959 held without native identity. Exact shape regression rejects any changed gap. No official percentage/denominator inference.",
+  "classification_limits": [
+    "RVH=0 disables the entire privilege_check arm2504..2565, including its S/U counter permission rows; active non-H arm starts2566. Mixed blocks crossing the arm boundary remain unclassified.",
+    "NrPMPEntries=0 is the final ara_soc override, not base-package8. Do not propose PMP-deny; individual PMP CSR/loop points remain HOLD.",
+    "DebugEn=1, not0. debug_req_i/ipi_i/time_irq_i/irq_i are tied0. Only exact tied-input boolean TRUE rows receive diagnostic impossibility labels. debug_mode entry/reset/DCSR invariants remain independent review, not blanket debug waiver.",
+    "All output is diagnostic; no native exclusions, receipt, RTL signoff, or denominator approval. Unhit functional rows are review requirements, not proven reachable by a classifier."
+  ],
+  "duplicate_review": [
+    "GAP97 exercises Ara VXRM/VCSR operations and large AVL; new case uses core SATP/MSTATUS, not those probes.",
+    "gap37_csr_alias_tvm keeps SATP Bare and tests S TVM interception, not reserved MODE writes.",
+    "sv39_gap68_warm_permissions_pmp0 uses MPRV with Sv39 translation, not Bare MPRV U/S physical accesses.",
+    "gap37_csr_counters already targets MCOUNTINHIBIT, but its archived strict Spike precheck failed62 checks/readback0. It is not a ready new coverage case; no repetition is proposed."
+  ],
+  "combined_case": {
+    "source": "apps/riscv-tests/isa/rv64uv/vgap99_csr_satp_mprv.c",
+    "preflight": "verification/out/gap99-csr-satp-mprv-preflight-707-20261006-01",
+    "preflight_sha256": "c0ae86b2cbe504036eb5db7b2fc272641e680ae9e52c213f2751e11e65819447",
+    "checks": 14,
+    "independent_observed_bytes": 96,
+    "vector_destination_instructions": 0,
+    "stimuli": [
+      {
+        "target": "csr_regfile_i Condition raw155 checksum2216075028 width571 source1425 vector00",
+        "request": "M-mode CSRRW SATP reserved RV64 MODE1, two distinct nonzero PPN payloads; both previous SATP and readback0.",
+        "rationale": "Frozen RTL accepts only MODE0/8 and ignores all other writes while still flushing. MODE1 avoids Spike Sv48 support ambiguity of MODE9. This is a legal ignored CSR write, not an illegal memory request.",
+        "discriminators": ["csr_addr_i=0x180", "csr_we", "csr_wdata[63:60]=1", "satp_q.mode=0", "satp_d=satp_q", "flush_o"]
+      },
+      {
+        "target": "csr_regfile_i Condition raw334 checksum2216075028 width571 source2330 vector-1-01",
+        "request": "Remain architecturally in M, satp Bare0, MPRV1 with MPP=U thenS; one aligned DRAM load/store, exact data, restore MSTATUS in inline assembly before returning to C.",
+        "rationale": "MmuPresent/RVS=1, mprv1, mode comparison0, MPP!=M1 produce the previously zero row. ZeroPMP permits physical access; no PTW/PMP fault is requested.",
+        "discriminators": ["mstatus_q.mprv=1", "mstatus_q.mpp=U/S", "satp_q.mode=0", "en_ld_st_translation_d=0", "ld_st_priv_lvl_o=U/S"]
+      }
+    ],
+    "future_runtime_gate": "Full scalar TERMINAL_TOHOST_MATCH, exact96 observed bytes/14checks, trap0/tohost1, zero vector destination scope retained as UNOBSERVABLE rather than fake vector PASS, CVX activity only if actually visible, strict contract and newVDB identity. Compare raw125? NO: GAP99 has exactly two raw707 condition targets155/334; preserve GAP98 artifacts.",
+    "measured_DUT_gain": null,
+    "FSM_gain_promised": false,
+    "EDA_started": false
+  }
+}

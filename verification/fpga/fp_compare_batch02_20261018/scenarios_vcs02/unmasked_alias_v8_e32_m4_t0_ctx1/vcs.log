@@ -1,0 +1,36 @@
+Info: [VCS_SAVE_RESTORE_INFO] ASLR (Address Space Layout Randomization) is detected on the machine. To enable $save functionality, ASLR will be switched off and simv re-executed.
+Please use '-no_save' simv switch to avoid re-execution or '-suppress=ASLR_DETECTED_INFO' to suppress this message.
+Notice: timing checks disabled with +notimingcheck at compile-time
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Oct 18 04:27 2026
+Dump results on ../gold_results.txt
+
+Warning-[RT-NCMUCS] No condition matches in statement
+/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/src/axi_inval_filter.sv, 85
+  No condition matches in 'unique case' statement. 'default' specification is 
+  missing, inside ara_tb.dut.i_ara_soc.i_system.i_axi_inval_filter.inval_fsm, 
+  at time 0fs.
+
+Loading ELF file /home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/soc.elf
+Loading section 0000000080000000 of length 0000000000006ca8
+[TRACER] Output filename is: trace_hart_0.log
+BOARD_CASE_BEGIN unmasked_alias_v8_e32_m4_t0_ctx1
+FP_BIT index=4 expected=1 actual=0
+FP_BIT index=5 expected=1 actual=0
+FP_BIT index=20 expected=1 actual=0
+FP_BIT index=21 expected=1 actual=0
+FP_BIT index=36 expected=1 actual=0
+FP_BIT index=37 expected=1 actual=0
+FP_BIT index=52 expected=1 actual=0
+FP_BIT index=53 expected=1 actual=0
+RVV_FP_COMPARE_DETAIL op=5 seed=0 vl=64 mask=3 sticky=0 expected_flags=16 actual_flags=0 errors=9
+RVV_FP_COMPARE_FAIL sew=32 cases=1 errors=9
+Warning: "/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/tb/ara_tb.sv", 1534: ara_tb: at time 31452500000 fs
+Core Test *** FAILED *** (tohost = 1)
+$finish called from file "/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/frozen/sources/hardware/tb/ara_tb.sv", line 1558.
+$finish at simulation time            314525000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 31452500000 fs
+CPU Time:     32.910 seconds;       Data structure size:  13.3Mb
+Sun Oct 18 04:27:47 2026

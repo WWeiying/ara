@@ -1,0 +1,9 @@
+{
+  "returncode": 0,
+  "elapsed_s": 37.16335759777576,
+  "timed_out": false,
+  "oracle_pass": false,
+  "bounded_capture": true,
+  "no_rtl_build": true,
+  "no_rtl_edits": true
+}

@@ -1,0 +1,285 @@
+{
+  "status": "HOST_SPIKE_DERIVED_CSV_CHECKER_PASS_NOT_DUT",
+  "positive": {
+    "status": "NF7_CSV_ORACLE_PASS",
+    "trials": [
+      72,
+      73,
+      74,
+      75
+    ],
+    "checks": 12078,
+    "checkpoints": [
+      {
+        "trial": 72,
+        "phase": 1,
+        "checks": 369,
+        "cycle": 158370,
+        "checked_bytes": 32840
+      },
+      {
+        "trial": 72,
+        "phase": 2,
+        "checks": 3018,
+        "cycle": 311947,
+        "checked_bytes": 32832
+      },
+      {
+        "trial": 73,
+        "phase": 1,
+        "checks": 3384,
+        "cycle": 430046,
+        "checked_bytes": 32828
+      },
+      {
+        "trial": 73,
+        "phase": 2,
+        "checks": 6033,
+        "cycle": 583624,
+        "checked_bytes": 32832
+      },
+      {
+        "trial": 74,
+        "phase": 1,
+        "checks": 6399,
+        "cycle": 700961,
+        "checked_bytes": 32840
+      },
+      {
+        "trial": 74,
+        "phase": 2,
+        "checks": 9048,
+        "cycle": 853540,
+        "checked_bytes": 32832
+      },
+      {
+        "trial": 75,
+        "phase": 1,
+        "checks": 9414,
+        "cycle": 970861,
+        "checked_bytes": 32828
+      },
+      {
+        "trial": 75,
+        "phase": 2,
+        "checks": 12063,
+        "cycle": 1123441,
+        "checked_bytes": 32832
+      }
+    ],
+    "traps": [
+      {
+        "trial": 72,
+        "cycle": 76712,
+        "values": {
+          "0": 15,
+          "1": 2147489298,
+          "2": 1073745920,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 23,
+          "7": 1,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 72,
+        "cycle": 165752,
+        "values": {
+          "0": 9,
+          "1": 2147489092,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 73,
+        "cycle": 348405,
+        "values": {
+          "0": 15,
+          "1": 2147489298,
+          "2": 1073745920,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 23,
+          "7": 1,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 73,
+        "cycle": 437428,
+        "values": {
+          "0": 9,
+          "1": 2147489092,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 74,
+        "cycle": 620084,
+        "values": {
+          "0": 15,
+          "1": 2147489298,
+          "2": 1073745920,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 23,
+          "7": 1,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 74,
+        "cycle": 708266,
+        "values": {
+          "0": 9,
+          "1": 2147489092,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 75,
+        "cycle": 890001,
+        "values": {
+          "0": 15,
+          "1": 2147489298,
+          "2": 1073745920,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 23,
+          "7": 1,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 75,
+        "cycle": 978166,
+        "values": {
+          "0": 9,
+          "1": 2147489092,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      }
+    ],
+    "actions": {
+      "72": [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      "73": [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      "74": [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      "75": [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ]
+    },
+    "last_cycle": 1123881,
+    "observed_memory_bytes": 262664
+  },
+  "negatives_rejected": [
+    "fractional_upper_tail",
+    "output_guard",
+    "outside_data",
+    "PTE",
+    "wrong_vstart",
+    "invalid_tval",
+    "mask_byte",
+    "index_buffer",
+    "missing_magic",
+    "error",
+    "casecount",
+    "missing_target",
+    "missing_comparison",
+    "first_mismatch",
+    "equal_but_wrong_reference_want"
+  ],
+  "reference": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/indexed_review/sv39/reference02/group18",
+  "reference_sha256": "8078a28f508cda993961101e081ac82b50de7edee19f9689ef9c11571a0a35f9",
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/indexed_review/sv39/host_csv.py": "6696cb021a6ae40205d3f66ce0e712c938a4138254f84e84ff048ffe80c9280f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/indexed_review/sv39/csv_oracle.py": "246a21b910becd67dc271e32107fcfdce36191317924f7829a01b47f8c5b4451",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/indexed_review/sv39/reference.py": "f8ec3cc86956d6d1dacd4e99e9da74c10b9d70ee09e966acb47aa6fd7eb3e05d"
+  }
+}

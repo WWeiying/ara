@@ -1,0 +1,22 @@
+{
+  "state": "sealed_ready_for_fixed_vcs",
+  "manifest": "programs.json",
+  "manifest_sha256": "4e3f7306fcc45373993b34dd029069bf792b07d42cd5f2d4888fcca46453286e",
+  "prepared_sha256": "4e3f7306fcc45373993b34dd029069bf792b07d42cd5f2d4888fcca46453286e",
+  "checked_hashes": 112,
+  "hash_mismatches": [],
+  "spike_exit_code": 0,
+  "spike_programs_passed": 6,
+  "cases": 24,
+  "spike_retired_instructions": {
+    "e16_g0": 7918,
+    "e16_g1": 7855,
+    "e32_g0": 7747,
+    "e32_g1": 7683,
+    "e64_g0": 7571,
+    "e64_g1": 7500
+  },
+  "host_oracle_selftest": "build01/host_oracle_selftest.json",
+  "vcs_launched": false,
+  "budget": "Four cases per ELF, no DUT negative-test loops; instruction counts measured on Spike, VCS wall time not measured. Target four-way jobs below ten minutes per ELF."
+}

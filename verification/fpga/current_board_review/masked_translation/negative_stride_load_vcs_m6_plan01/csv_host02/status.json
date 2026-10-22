@@ -1,0 +1,1 @@
+{"status":"FAIL_HOST_FIXTURE_ONLY_NOT_DUT","actual_exit_code":1,"error":"KeyError: 6","cause":"Synthetic setter roster omitted t1 used by the actual younger-marker store. No simulator/reference executed.","scope":"Fixture generator failed before positive observer execution; retained, not PASS."}

@@ -1,0 +1,176 @@
+{
+  "status": "SHORT_CONSTRUCTED_DIFFERENTIAL_PASS_NOT_RAW_ACCEPTANCE",
+  "interpreter": "/usr/bin/python3.9",
+  "version": "3.9.21 (main, Dec  5 2024, 00:00:00) \n[GCC 11.5.0 20240719 (Red Hat 11.5.0-2)]",
+  "actual_csv_reads": 0,
+  "actual_reference_reads": 0,
+  "cProfile": false,
+  "full4095_stream": false,
+  "fixture_rows": 10994,
+  "fixture_sha256": "39ac3652cf05e8af0b206485328f32f45cbfee133014fe1bb4b2c772fb3022f4",
+  "calls_entered": 5,
+  "completed_calls": 4,
+  "setup_s": 15.245121069252491,
+  "samples": [
+    {
+      "mode": "old",
+      "elapsed_s": 1.968323091045022,
+      "rows": 10994
+    },
+    {
+      "mode": "new",
+      "elapsed_s": 1.0212289900518954,
+      "rows": 10994
+    },
+    {
+      "mode": "new",
+      "elapsed_s": 1.6313752168789506,
+      "rows": 10994
+    },
+    {
+      "mode": "old",
+      "elapsed_s": 2.663367297966033,
+      "rows": 10994
+    },
+    {
+      "mode": "old",
+      "elapsed_s": 2.2260238570161164,
+      "rows": 10994
+    },
+    {
+      "mode": "new",
+      "elapsed_s": 2.0060268635861576,
+      "rows": 10994
+    }
+  ],
+  "median_consumer_s": {
+    "old": 2.2260238570161164,
+    "new": 1.6313752168789506
+  },
+  "local_old_over_new": 1.364507584757118,
+  "all_four_delivery_digests": [
+    "708be1303b1954adfd5c02524150576dad287edc0690b34b5e5487f04f1e2112",
+    "708be1303b1954adfd5c02524150576dad287edc0690b34b5e5487f04f1e2112",
+    "708be1303b1954adfd5c02524150576dad287edc0690b34b5e5487f04f1e2112",
+    "708be1303b1954adfd5c02524150576dad287edc0690b34b5e5487f04f1e2112"
+  ],
+  "strict_rows": 10994,
+  "observer_rows": 10994,
+  "delivered_rows": 10994,
+  "owner_summary": {
+    "counts": {
+      "rows": 10994,
+      "retire": 10813,
+      "unmodified_delivered_rows": 10994,
+      "cvx_req": 47,
+      "arch_start": 47,
+      "cvx_resp": 47,
+      "uop_alloc": 20,
+      "uop_done": 20
+    },
+    "pending_cvx": {},
+    "pending_uop": {},
+    "pending_cvx_progress": {},
+    "pending_uop_progress": {},
+    "unmatched_arch": {
+      "count": 0,
+      "first": [],
+      "last": []
+    },
+    "unmatched_arch_requests": {
+      "count": 0,
+      "first": [],
+      "last": []
+    },
+    "unretired_accepted_requests": {
+      "count": 0,
+      "first": [],
+      "last": []
+    },
+    "matched_retired_requests": 47,
+    "matched_prefix_replays": 0,
+    "before_sha256": "708be1303b1954adfd5c02524150576dad287edc0690b34b5e5487f04f1e2112",
+    "after_sha256": "708be1303b1954adfd5c02524150576dad287edc0690b34b5e5487f04f1e2112",
+    "required_retired_owner_count": 20
+  },
+  "tests": [
+    "full_result_equal",
+    "full_mutable_Strict_equal",
+    "full_owner_protocol_equal",
+    "full_prefix_equal",
+    "all_before_after_digests_equal",
+    "front_guard",
+    "tail4_result",
+    "rear_guard",
+    "missing_fresh_store",
+    "deleted_required_owner_pair",
+    "missing_prior_output_read",
+    "first_record_dropped",
+    "first_record_duplicated",
+    "first_records_reordered",
+    "delivery_field_mutation_cycle",
+    "delivery_field_mutation_event",
+    "delivery_field_mutation_order",
+    "delivery_field_mutation_port",
+    "delivery_field_mutation_trans_id",
+    "delivery_field_mutation_pc",
+    "delivery_field_mutation_insn",
+    "delivery_field_mutation_rd",
+    "delivery_field_mutation_rd_wdata",
+    "delivery_field_mutation_mem_addr",
+    "delivery_field_mutation_mem_rmask",
+    "delivery_field_mutation_mem_wmask",
+    "delivery_field_mutation_mem_wdata",
+    "delivery_field_mutation_trap",
+    "delivery_structure_missing",
+    "delivery_structure_extra",
+    "delivery_structure_reordered",
+    "delivery_structure_nonstring",
+    "size1_values_and_missing_size1_size8_rejected",
+    "existing_counter_reused_new_bin_independent"
+  ],
+  "tests_count": 34,
+  "pins_unchanged": true,
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py": "76ea70dc65aa74c3b0a117283ebe74b2a844211eae08689df7d10a8a404c4d85",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/vcs_m8_plan03/checker.py": "ad52594870b9cbae5e20eb29e11f7e8feb5e8b952d507af24941546b872d0cc6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_small2_vcs_m6_plan01/checker.py": "18c9b86ab1a13b05d0f69823299d761a1f54a8d7c20c8b1ca30afd867ec8bf0f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_comparison_original/fp_alias50_terminal_eventcheck01/observer.py": "e96cf3c45d05ef971e031734cd094e57c41cf949eab9827387d71461980bd39a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/original_remaining9_terminal_audit01/observer.py": "7d15ce50da9918fa9b1d3bb1cea59871b4312385576da1fd6c8d5940dbad650f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_repair05/regression.py": "10358143c0b18f62bb4772aa9b0a117676eb9121d35bebbd80be7bd5e26c9966",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/integration/replay_memory_regression.py": "4c317b218d8558c09035f2b5b728f936df1b9dcb33783803ff8d736f24b868e2",
+    "/home/wangwy/fpga_runs/current_board_memory_candidate09/frozen/sources/verification/ara_verify/trace.py": "b5751d25426ba78893c52359519d3b6f1df6bc9c77eb341c91cdca1ff75b506a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/owner_policy.py": "7fd8e63316e28c30ad296bbfd48174086e95513ca2282c100a1bf967ecb8bc04",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/prepared01/plan.json": "0a2820506439278384569a58f72b76fcb72ae5276f4f302ba6a31f0c65a6335e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/prepared01/replay/tests/arithmetic_original_e16_m8_full4095_sentinel/input.elf": "8ae4c10e852a545ca61b5e4371c399cc6337360292d87ae2da2f5e4787b89b0a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/prepared01/replay/tests/arithmetic_original_e16_m8_full4095_sentinel/command.json": "f332029fa42ce386629d80b558ebd32fd78dfb267b7e61cee0d2f76944c5ecde",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/prepared01/replay/tests/arithmetic_original_e16_m8_full4095_sentinel/child_outcome.unvalidated.json": "81c13f8de5abc3a5e90b7f3ba57df05d638546f9942d8067f97dffefff411a6f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/prepared01/complete.json": "b5594fd289ea599278e25a576ec2e8629eeed47c31905e6af1ee1ef1c80664a3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/prepared01/service_exit.json": "34c9869e4b7ee3349e679d8af28d6cc7de215ae67d0b524490cae7199efeb80a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/prepared01/collector_result.json": "89869a8b6008f2ea89258cfa6590a6c384f2fc8bcb182ff3e6588cb62b3c6a0c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/prepared01/collector_exit.json": "e9c75fcd278ea6fad6d9c522a82569c2c5ac1d22895839ebfea06b2c18dc9714",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/reset_profile.json": "cd8de7a11c2cca8ec7fe0d5c89df649015f9e32a3894522d89615fd38e66bf2f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/soc_profile.json": "6f7189d2040ef99c6f9452b0c3a36f5865af206240191c32bd0c3dda44618f64",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_block_unrolled01/model.py": "c40043605179d0b0905b1bc6e77addfc1f4517a8a47db8bf1d56b8ff4b937e46",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_block_unrolled01/sequence.json": "b5f30f3320cf244e03214800ced68ed140c519ff30cfba8c8b3972059c127956",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_mask_software02/soc/program.elf": "8ae4c10e852a545ca61b5e4371c399cc6337360292d87ae2da2f5e4787b89b0a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_mask_software02/soc/program.dis": "4c3d90b6b71d4a127e62b3fb7383e89d19394ef67d4879527fd3a2ca193f3684",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_mask_software02/soc/symbols.json": "d167d4d928c70b537b01e96e5e754af8e5d59924f5f19dfbe762ce76ee57aaca",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_mask_software02/linked_cfg_cost02.py": "87ae1963fcad94985019932f53868515a8a171e21112eeba38045881869ff5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_mf4_prepare01/model.py": "4256eb88e08cf5fa6d11e1d7cecfac8a2bf6f5cd08e52171cd89e7fe011aa29e",
+    "/home/wangwy/fpga_runs/current_board_memory_candidate09/frozen/sources/hardware/tb/ara_commit_monitor.sv": "38b7642703c49e31fd0493b81e948388f2dbc72f97da418f3ed76e73bd42c782",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py": "253a2075f03091a783fd7f4335f90707186e4ae644450a11a639244f0d05c892",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/test_small.py": "2305db5acda4e64940e6de920d59a2bb6829ec3672d04cdaae7ff18dbbe8c004",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/run_once.py": "8fc09bbbdf4445aa1b1850e44a14ca4749b9d88ddf62d07a297f66c1ee10b0d4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/seal_entry.py": "a59b05b9fbfb9e3e48cc79b66cd834c749d8f96ae03b63be87dfdc1d2d19b91b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/host_records.py": "82db70e4e3c9bea4fda526a41b9a7889cae2286c479a99fb430a7585c3ec742a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/host.json": "80d0345e7869821dfdcb8b8a43e01d378a5a43d38ee16b3b2ea62d08d1326e91",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/host_wait.json": "bbd0fb32cd10e3b90b2c1facf83c18161aebaac0f5a8dbdeaf80bd8e0c44de1c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/host_command.json": "f9a1d9d35d08a82829ba118212dd86fc5d277ea62f845dd0f78c0973272c8b46",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/README.md": "d428447212e907a2b20cc5f31acc76717b29e4416818e6fb694fe13e0ce0bef6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/verification_performance02/sidecar.py": "492b3e9ceff98a720de3e821351f881b4f009c1e4c437b4158d3ae064d67f5d8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/verification_performance02/compare_short.py": "a52ca0632cd9140f4c30b8e3a949066e4c3d7c5de9df47e320fb18a2d1964a41",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/verification_performance02/run_once.py": "cf851f827f2bc94a5f1bded994f31adc212883bcddf7a1676f46e3edd9416f45"
+  },
+  "total_s": 45.427534809336066
+}

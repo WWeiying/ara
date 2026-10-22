@@ -1,0 +1,12 @@
+# e16/mf2 单次有界参考入口
+
+结论：NO_BLOCKER_SOURCE_SOFTWARE_FOR_ONE_BOUNDED_REFERENCE_NOT_DUT。
+绑定reference_entry.json SHA843512dd59ec074756de12a48c9abfc017993e70ca0ed27f0eace7124a441010，fresh152 pins全部一致。
+
+已消费软件actualwait0/12.145s、20份paired Host及两ELF实际编译证据；observer19项Host actualwait0/0.869s。核对实际seed SH每seed92次、8SD+SW初始化、8LD+LW完整68B读回。CAP32/fractional物理1寄存器低64B、mask128初始化/实际vlm4、4095顺序/131040结果/8190guards/53235helper指令不减。原helper机器码及LOAD/stack证明与实际ELF绑定。
+
+reference.py仅一次rs4M、120s、每文件768MiB；audit600s。子进程真实wait退出先fsync记录再验收，超时kill并wait，不自动重试。HTIF成功不提前return，继续至EOF并仅允许精确无副作用park；完整oracle、fresh生命周期、pins及closed raw身份均检查。固件超过3M则HOLD，不盲目扩预算。
+
+此前software.log快照差异已核为旧字节加唯一末尾preflight JSON，旧证据保留且后继closed pins正确；不是源码漂移。旧P1误判已由REVIEW02撤回，无新修改要求。
+
+本审查没有运行Host/编译/参考/DUT，也没有解析大trace。参考尚未执行，不声明动态PASS。此入口仅一次有界软件参考，不是DUT授权或原Linux症状闭环。

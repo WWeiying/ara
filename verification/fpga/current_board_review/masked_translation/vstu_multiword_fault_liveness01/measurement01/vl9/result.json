@@ -1,0 +1,10 @@
+{
+  "vl": 9,
+  "returncode": 0,
+  "elapsed_s": 10.642035824246705,
+  "expected_marker": "CANDIDATE_REPRODUCED_NOT_ARCH_PASS",
+  "observed": true,
+  "observations": [
+    "OBSERVATION vl=9 accepted=1 mmu=1 ack=1 descriptor=1 st_done=1 mask_done=0 response=1 mask_accepts=2 global_idle=0 mask_commit=1 stable_rows=21 aw=0 w=0 mask_pops=1 st_done_cycle=12 last_mask_cycle=7"
+  ]
+}

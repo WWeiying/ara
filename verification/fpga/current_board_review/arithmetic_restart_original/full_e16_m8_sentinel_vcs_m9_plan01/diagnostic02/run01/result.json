@@ -1,0 +1,604 @@
+{
+  "status": "DIAGNOSTIC_ONLY_PARTIAL_EOF_NOT_PASS",
+  "architectural_acceptance": false,
+  "full4095_finish_called": false,
+  "whole4095_accepted": false,
+  "rows": 2570844,
+  "retired": 2399641,
+  "last_cycle": 20211971,
+  "lastvalidrecord": {
+    "cycle": "20211971",
+    "event": "retire",
+    "order": "2399640",
+    "pc": "0000000080001d1a",
+    "insn": "0205d807",
+    "call_entered": 3869
+  },
+  "last_retire": {
+    "cycle": "20211971",
+    "event": "retire",
+    "order": "2399640",
+    "pc": "0000000080001d1a",
+    "insn": "0205d807",
+    "call_entered": 3869
+  },
+  "last_watchdog_progress": {
+    "cycle": "20211971",
+    "event": "retire",
+    "order": "2399640",
+    "pc": "0000000080001d1a",
+    "insn": "0205d807",
+    "call_entered": 3869
+  },
+  "observed_tail_since_progress_cycles": 0,
+  "completed_calls_with_data_and_owners": 3868,
+  "calls_entered": 3869,
+  "calls_with_all129_reads_and_vstart0": 3868,
+  "active_call": {
+    "ID_index": 0,
+    "gold_index": 0,
+    "ordinal": 3868,
+    "original_ordinal": 3869,
+    "op": 18,
+    "seed": 2,
+    "vl": 0,
+    "mode": 1,
+    "vstart": 0,
+    "returned_vstart": null,
+    "entry_retire": 2399639,
+    "oracle_reads_seen": 0,
+    "oracle_reads_missing_first8": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  "next_call": {
+    "ordinal": 3869,
+    "seed": 2,
+    "op": 18,
+    "li": 0,
+    "mode": 1,
+    "si": 2,
+    "vl": 0,
+    "vstart": 0,
+    "original_ordinal": 3870
+  },
+  "active_phase": {
+    "helper": "op_18",
+    "next_helper_index": 3,
+    "output_initializer_index": 0,
+    "mask_store_index": 0,
+    "seed_store_index": 4416,
+    "body_entered": true,
+    "source_exited": false
+  },
+  "source_counters": {
+    "checks": 3868,
+    "elements": 1980416,
+    "errors": 0
+  },
+  "last_counter_writes": {
+    "errors": {
+      "cycle": "173",
+      "event": "retire",
+      "order": "18",
+      "pc": "0000000080000046",
+      "insn": "0002b023",
+      "call_entered": 0,
+      "value": 0
+    },
+    "elements": {
+      "cycle": "20211459",
+      "event": "retire",
+      "order": "2399480",
+      "pc": "000000008000124a",
+      "insn": "00fd3023",
+      "call_entered": 3868,
+      "value": 1980416
+    },
+    "checks": {
+      "cycle": "20211463",
+      "event": "retire",
+      "order": "2399484",
+      "pc": "0000000080001258",
+      "insn": "0127b023",
+      "call_entered": 3868,
+      "value": 3868
+    }
+  },
+  "fresh_bytes": {
+    "a": 0,
+    "b": 0,
+    "mask": 0,
+    "out": 0
+  },
+  "helper_instruction_counts": [
+    3869,
+    3869,
+    3869,
+    3868,
+    3868,
+    3868,
+    3868,
+    3868,
+    3868,
+    3868,
+    3868,
+    3868,
+    3868
+  ],
+  "packed_reads": 498972,
+  "generic": {
+    "counts": {
+      "rows": 2570844,
+      "retire": 2399641,
+      "unmodified_delivered_rows": 2570844,
+      "arch_start": 42554,
+      "cvx_req": 42553,
+      "cvx_resp": 42553,
+      "uop_alloc": 21773,
+      "uop_done": 21770
+    },
+    "pending_cvx": {},
+    "pending_uop": {
+      "0": [
+        42551,
+        33903623
+      ],
+      "1": [
+        42552,
+        33937415
+      ],
+      "2": [
+        42553,
+        33971207
+      ]
+    },
+    "pending_cvx_progress": {},
+    "pending_uop_progress": {
+      "0": {
+        "cycle": "20211930",
+        "event": "uop_alloc",
+        "order": "42551",
+        "pc": "0000000000000000",
+        "insn": "02055407",
+        "call_entered": 3868
+      },
+      "1": {
+        "cycle": "20211966",
+        "event": "uop_alloc",
+        "order": "42552",
+        "pc": "0000000000000000",
+        "insn": "0205d807",
+        "call_entered": 3869
+      },
+      "2": {
+        "cycle": "20211971",
+        "event": "uop_alloc",
+        "order": "42553",
+        "pc": "0000000000000000",
+        "insn": "02065c07",
+        "call_entered": 3869
+      }
+    },
+    "unmatched_arch": {
+      "count": 1,
+      "first": [
+        33971207
+      ],
+      "last": []
+    },
+    "unmatched_arch_requests": {
+      "count": 0,
+      "first": [],
+      "last": []
+    },
+    "unretired_accepted_requests": {
+      "count": 0,
+      "first": [],
+      "last": []
+    },
+    "matched_retired_requests": 42553,
+    "matched_prefix_replays": 0,
+    "before_sha256": "622226bd30e123a57baf1074731a730f4957c1488774ed3a0a2eae1c929ab9ce",
+    "after_sha256": "622226bd30e123a57baf1074731a730f4957c1488774ed3a0a2eae1c929ab9ce",
+    "required_retired_owner_count": 21772
+  },
+  "max_event_gap": {
+    "cycles": 3280,
+    "from_event": {
+      "cycle": "7095375",
+      "event": "retire",
+      "order": "844170",
+      "pc": "0000000080001e4c",
+      "insn": "00881073",
+      "call_entered": 1357
+    },
+    "to_event": {
+      "cycle": "7098655",
+      "event": "cvx_req",
+      "order": "-1",
+      "pc": "0000000000000000",
+      "insn": "00055c07",
+      "call_entered": 1357
+    }
+  },
+  "max_retire_gap": {
+    "cycles": 3282,
+    "from_event": {
+      "cycle": "7095375",
+      "event": "retire",
+      "order": "844170",
+      "pc": "0000000080001e4c",
+      "insn": "00881073",
+      "call_entered": 1357
+    },
+    "to_event": {
+      "cycle": "7098657",
+      "event": "retire",
+      "order": "844171",
+      "pc": "0000000080001e50",
+      "insn": "00055c07",
+      "call_entered": 1357
+    }
+  },
+  "max_watchdog_progress_gap": {
+    "cycles": 3280,
+    "from_event": {
+      "cycle": "7095375",
+      "event": "retire",
+      "order": "844170",
+      "pc": "0000000080001e4c",
+      "insn": "00881073",
+      "call_entered": 1357
+    },
+    "to_event": {
+      "cycle": "7098655",
+      "event": "cvx_req",
+      "order": "-1",
+      "pc": "0000000000000000",
+      "insn": "00055c07",
+      "call_entered": 1357
+    }
+  },
+  "max_observed_completed_owner_lifetime": {
+    "cycles": 3306,
+    "alloc": {
+      "cycle": "7095375",
+      "event": "uop_alloc",
+      "order": "14925",
+      "pc": "0000000000000000",
+      "insn": "00055c07",
+      "call_entered": 1357
+    },
+    "done": {
+      "cycle": "7098681",
+      "event": "uop_done",
+      "order": "14925",
+      "pc": "0000000000000000",
+      "insn": "00055c07",
+      "call_entered": 1357
+    }
+  },
+  "million_cycle_bins": {
+    "0": {
+      "retire": 128779,
+      "arch_start": 2103,
+      "cvx_req": 2103,
+      "cvx_resp": 2103,
+      "uop_alloc": 1072,
+      "uop_done": 1072
+    },
+    "1": {
+      "retire": 118536,
+      "arch_start": 2145,
+      "cvx_req": 2145,
+      "cvx_resp": 2144,
+      "uop_alloc": 1092,
+      "uop_done": 1091
+    },
+    "2": {
+      "uop_done": 1091,
+      "cvx_resp": 2135,
+      "retire": 118441,
+      "arch_start": 2134,
+      "cvx_req": 2134,
+      "uop_alloc": 1090
+    },
+    "3": {
+      "retire": 118526,
+      "arch_start": 2145,
+      "cvx_req": 2145,
+      "cvx_resp": 2144,
+      "uop_alloc": 1096,
+      "uop_done": 1095
+    },
+    "4": {
+      "uop_done": 1062,
+      "cvx_resp": 2079,
+      "retire": 115242,
+      "arch_start": 2079,
+      "cvx_req": 2079,
+      "uop_alloc": 1062
+    },
+    "5": {
+      "uop_done": 1069,
+      "cvx_resp": 2091,
+      "retire": 116109,
+      "arch_start": 2090,
+      "cvx_req": 2090,
+      "uop_alloc": 1068
+    },
+    "6": {
+      "retire": 118378,
+      "arch_start": 2057,
+      "cvx_req": 2057,
+      "cvx_resp": 2056,
+      "uop_alloc": 1070,
+      "uop_done": 1069
+    },
+    "7": {
+      "uop_done": 1054,
+      "cvx_resp": 2064,
+      "retire": 123932,
+      "arch_start": 2064,
+      "cvx_req": 2063,
+      "uop_alloc": 1055
+    },
+    "8": {
+      "uop_done": 1093,
+      "cvx_req": 2139,
+      "cvx_resp": 2138,
+      "arch_start": 2138,
+      "uop_alloc": 1092,
+      "retire": 118320
+    },
+    "9": {
+      "uop_done": 1090,
+      "cvx_resp": 2134,
+      "retire": 118434,
+      "arch_start": 2134,
+      "cvx_req": 2134,
+      "uop_alloc": 1090
+    },
+    "10": {
+      "uop_done": 1092,
+      "cvx_resp": 2135,
+      "retire": 118826,
+      "arch_start": 2134,
+      "cvx_req": 2134,
+      "uop_alloc": 1091
+    },
+    "11": {
+      "retire": 116160,
+      "arch_start": 2099,
+      "cvx_req": 2098,
+      "cvx_resp": 2098,
+      "uop_alloc": 1072,
+      "uop_done": 1071
+    },
+    "12": {
+      "uop_done": 1063,
+      "cvx_req": 2082,
+      "cvx_resp": 2081,
+      "arch_start": 2081,
+      "retire": 115244,
+      "uop_alloc": 1063
+    },
+    "13": {
+      "uop_done": 1063,
+      "cvx_resp": 2047,
+      "retire": 118860,
+      "arch_start": 2046,
+      "cvx_req": 2046,
+      "uop_alloc": 1062
+    },
+    "14": {
+      "retire": 123549,
+      "arch_start": 2068,
+      "cvx_req": 2068,
+      "cvx_resp": 2067,
+      "uop_alloc": 1056,
+      "uop_done": 1055
+    },
+    "15": {
+      "uop_done": 1091,
+      "cvx_resp": 2134,
+      "retire": 118209,
+      "arch_start": 2134,
+      "cvx_req": 2134,
+      "uop_alloc": 1091
+    },
+    "16": {
+      "uop_done": 1096,
+      "cvx_resp": 2145,
+      "retire": 118767,
+      "arch_start": 2145,
+      "cvx_req": 2145,
+      "uop_alloc": 1096
+    },
+    "17": {
+      "uop_done": 1091,
+      "cvx_resp": 2135,
+      "retire": 118399,
+      "arch_start": 2134,
+      "cvx_req": 2134,
+      "uop_alloc": 1090
+    },
+    "18": {
+      "retire": 116893,
+      "arch_start": 2112,
+      "cvx_req": 2112,
+      "cvx_resp": 2112,
+      "uop_alloc": 1079,
+      "uop_done": 1079
+    },
+    "19": {
+      "retire": 114516,
+      "arch_start": 2068,
+      "cvx_req": 2068,
+      "cvx_resp": 2067,
+      "uop_alloc": 1056,
+      "uop_done": 1055
+    },
+    "20": {
+      "uop_done": 228,
+      "cvx_resp": 444,
+      "retire": 25521,
+      "arch_start": 444,
+      "cvx_req": 443,
+      "uop_alloc": 230
+    }
+  },
+  "final_simulator_cycle_known": false,
+  "diagnosis": "ONLY_RECORDED_PREFIX_OBSERVED_NOT_A_POST_TRACE_STALL_PROOF",
+  "scope": "POSTPROCESS_ONLY",
+  "budget_s": 1800,
+  "csv_before": {
+    "dev": 64770,
+    "inode": 3928258760,
+    "size": 296607084,
+    "mtime_ns": 1792034542628799835
+  },
+  "csv_after": {
+    "dev": 64770,
+    "inode": 3928258760,
+    "size": 296607084,
+    "mtime_ns": 1792034542628799835
+  },
+  "csv_bytes": 296607084,
+  "csv_sha256": "1c8b5505754fdddad8b133f328ee511ef23370b46c76611f42c5bca80096503a",
+  "raw_hash_computed_in_same_pass": true,
+  "semantic_passes": 1,
+  "EOF_reached": true,
+  "pins_unchanged": true,
+  "elapsed_s": 346.6951084039174,
+  "original_timeout_preserved": true,
+  "old_diagnostic_failure_preserved": true,
+  "compact_checked_state": {
+    "rows": 2570844,
+    "retired": 2399641,
+    "closed_calls": 3868,
+    "calls_entered": 3869,
+    "active_call": {
+      "ID_index": 0,
+      "gold_index": 0,
+      "ordinal": 3868,
+      "original_ordinal": 3869,
+      "op": 18,
+      "seed": 2,
+      "vl": 0,
+      "mode": 1,
+      "vstart": 0,
+      "returned_vstart": null,
+      "entry_retire": 2399639,
+      "oracle_reads_seen": 0
+    },
+    "last_cycle": 20211971,
+    "active_phase": {
+      "helper": "op_18",
+      "next_helper_index": 3,
+      "output_initializer_index": 0,
+      "mask_store_index": 0,
+      "seed_store_index": 4416,
+      "body_entered": true,
+      "source_exited": false
+    },
+    "fresh_bytes": {
+      "a": 0,
+      "b": 0,
+      "mask": 0,
+      "out": 0
+    },
+    "lastvalidrecord": {
+      "cycle": "20211971",
+      "event": "retire",
+      "order": "2399640",
+      "pc": "0000000080001d1a",
+      "insn": "0205d807",
+      "call_entered": 3869
+    },
+    "last_watchdog_progress": {
+      "cycle": "20211971",
+      "event": "retire",
+      "order": "2399640",
+      "pc": "0000000080001d1a",
+      "insn": "0205d807",
+      "call_entered": 3869
+    },
+    "pending_cvx": {},
+    "pending_uop": {
+      "0": [
+        42551,
+        33903623
+      ],
+      "1": [
+        42552,
+        33937415
+      ],
+      "2": [
+        42553,
+        33971207
+      ]
+    },
+    "generic_counts": {
+      "rows": 2570844,
+      "retire": 2399641,
+      "unmodified_delivered_rows": 2570844,
+      "arch_start": 42554,
+      "cvx_req": 42553,
+      "cvx_resp": 42553,
+      "uop_alloc": 21773,
+      "uop_done": 21770
+    },
+    "before_sha256": "622226bd30e123a57baf1074731a730f4957c1488774ed3a0a2eae1c929ab9ce",
+    "after_sha256": "622226bd30e123a57baf1074731a730f4957c1488774ed3a0a2eae1c929ab9ce",
+    "max_event_gap": {
+      "cycles": 3280,
+      "from_event": {
+        "cycle": "7095375",
+        "event": "retire",
+        "order": "844170",
+        "pc": "0000000080001e4c",
+        "insn": "00881073",
+        "call_entered": 1357
+      },
+      "to_event": {
+        "cycle": "7098655",
+        "event": "cvx_req",
+        "order": "-1",
+        "pc": "0000000000000000",
+        "insn": "00055c07",
+        "call_entered": 1357
+      }
+    },
+    "max_watchdog_progress_gap": {
+      "cycles": 3280,
+      "from_event": {
+        "cycle": "7095375",
+        "event": "retire",
+        "order": "844170",
+        "pc": "0000000080001e4c",
+        "insn": "00881073",
+        "call_entered": 1357
+      },
+      "to_event": {
+        "cycle": "7098655",
+        "event": "cvx_req",
+        "order": "-1",
+        "pc": "0000000000000000",
+        "insn": "00055c07",
+        "call_entered": 1357
+      }
+    },
+    "whole4095_accepted": false,
+    "architectural_acceptance": false,
+    "state_scope": "CHECKED_PROGRESS_ONLY_NOT_PREFIX_ACCEPTANCE"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "status": "HOLD_M8_FULL482_ENTRY_TERMINAL_PUBLICATION_RACE",
+  "plan_sha256": "2e4be5e555d14eac74877535733783ad0970eefdd376328678d3e5a837236897",
+  "source_ready_sha256": "06197d69f8e3767e358b0dacdb6020147f8b1dcf7c9961fd20f5929436a0941a",
+  "blocking_findings": [
+    {
+      "severity": "P1",
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/vcs_m8_plan01/replay.py",
+      "line": 314,
+      "message": "Final abort check and PASS publication are not atomic. SIGTERM/SIGINT or already-running timer callback can set abort after line314 and during save at315, leaving complete.json PASS and process return0. save writes final path directly. Timer.cancel does not join an already-running callback."
+    }
+  ],
+  "actual_process_waited": true,
+  "actual_review_process_exit": 0,
+  "review_kind": "STATIC_CODE_AND_EXISTING_HOST_METADATA_HASH_REVIEW",
+  "plan_pin_count": 832,
+  "plan_pin_mismatches": [],
+  "new_tests_executed": 0,
+  "Spike_or_DUT_invocations": 0,
+  "raw_trace_parses": 0,
+  "verified_input_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/vcs_m8_plan01/prepared01/plan.json": "2e4be5e555d14eac74877535733783ad0970eefdd376328678d3e5a837236897",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/vcs_m8_plan01/checker.py": "ad52594870b9cbae5e20eb29e11f7e8feb5e8b952d507af24941546b872d0cc6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/vcs_m8_plan01/replay.py": "806ffd79323272be404fbbb58b2b438d89ef16ced78ddf71c8efd77a859da47b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/vcs_m8_plan01/host02.json": "ceaea5a3e4ff41d5bafc7f2d607fc515d695b68dfc30027dc696da1bccc6ba4f"
+  },
+  "accepted_static_parts": [
+    "2592 necessary architectural owners mapped individually; not total uop cap.",
+    "182 active targets includes45 actual all-zero-mask mode3, selected by not any(maskbytes).",
+    "Complete pair deletion plus compensating surplus rejects; frozen harmless CSR replay excluded from necessary owners.",
+    "All unused helper PCs including scalar lb/ret rejected.",
+    "M8 ten RTL profile pins match reviewed M6 FFreset fact; unknown source/base rejected.",
+    "65 output reads check all512 results/two guards; final high6 bytes permitted.",
+    "Actual monitor tuple persisted before generic/postcheck, numeric0/17/timeout/failure Host cases.",
+    "Direct MainPID/cgroup/unit properties, private ELF/command gate, jobs1 cap24, fixed10800/12000/13200.",
+    "Host21 actual0/51.510347403s and dryrun bound to exact plan."
+  ]
+}

@@ -1,0 +1,175 @@
+{
+  "status": "HOST_SPIKE_DERIVED_CSV_CHECKER_PASS_NOT_DUT",
+  "positive": {
+    "status": "NF8_CSV_ORACLE_PASS",
+    "trials": [
+      12,
+      13,
+      14,
+      15
+    ],
+    "checks": 11882,
+    "checkpoints": [
+      {
+        "trial": 12,
+        "phase": 2,
+        "checks": 2969,
+        "cycle": 220881,
+        "checked_bytes": 33368
+      },
+      {
+        "trial": 13,
+        "phase": 2,
+        "checks": 5935,
+        "cycle": 388155,
+        "checked_bytes": 33368
+      },
+      {
+        "trial": 14,
+        "phase": 2,
+        "checks": 8901,
+        "cycle": 555429,
+        "checked_bytes": 33368
+      },
+      {
+        "trial": 15,
+        "phase": 2,
+        "checks": 11867,
+        "cycle": 722703,
+        "checked_bytes": 33368
+      }
+    ],
+    "traps": [
+      {
+        "trial": 12,
+        "cycle": 75749,
+        "values": {
+          "0": 9,
+          "1": 2147489088,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 13,
+        "cycle": 243023,
+        "values": {
+          "0": 9,
+          "1": 2147489088,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 14,
+        "cycle": 410297,
+        "values": {
+          "0": 9,
+          "1": 2147489088,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 15,
+        "cycle": 577571,
+        "values": {
+          "0": 9,
+          "1": 2147489088,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      }
+    ],
+    "actions": {
+      "12": [
+        "enter",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      "13": [
+        "enter",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      "14": [
+        "enter",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      "15": [
+        "enter",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ]
+    },
+    "last_cycle": 723145,
+    "observed_memory_bytes": 133472
+  },
+  "negatives_rejected": [
+    "fractional_upper_tail",
+    "output_guard",
+    "outside_data",
+    "PTE",
+    "wrong_vstart",
+    "invalid_tval",
+    "mask_byte",
+    "stride_argument",
+    "missing_magic",
+    "error",
+    "casecount",
+    "missing_target",
+    "missing_comparison",
+    "first_mismatch",
+    "equal_but_wrong_reference_want",
+    "equal_but_wrong_restoration"
+  ],
+  "allowed_partial_states": 0,
+  "reference": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39_full192/reference_campaign01/partition01/group03",
+  "reference_sha256": "075c6d65c9769960cabd0a8f79e858e57dd0dd3bc933f1b3f94ac13b346759b3",
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39_full192/host_csv.py": "db5a8b9d1b58ffde6435d5f524a83a14549174928d99e0f678a07a2bff06b5c3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39_full192/csv_oracle.py": "8ff9b8ef6c6c117d706fc28ce2f27c3dfb0dff74fe9993f42205a0f1ad2fa9e1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39_full192/reference.py": "bdc2f7d906342f88d258a2b5f42d8e4dcbaa282bd96740f4cf853fde71ee108e"
+  }
+}

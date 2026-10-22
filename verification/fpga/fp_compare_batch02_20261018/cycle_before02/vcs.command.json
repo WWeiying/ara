@@ -1,0 +1,13 @@
+[
+  "/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/image/_build/vcs/simv",
+  "-no_save",
+  "-l",
+  "run.vcs.log",
+  "+ntb_random_seed=1",
+  "+PRELOAD=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v8_e32_m4/t0_ctx1/soc.elf",
+  "+TESTCASE=unmasked_alias_v8_e32_m4_t0_ctx1",
+  "+NO_FSDB",
+  "-ucli",
+  "-do",
+  "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/cycle_before02/capture.tcl"
+]

@@ -1,0 +1,168 @@
+{
+  "stage": "remaining18",
+  "passed": true,
+  "results": [
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e8_m1",
+      "elapsed_s": 42.37368102930486,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e8_m1",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e8_mf2",
+      "elapsed_s": 36.84628318902105,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e8_mf2",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e8_mf4",
+      "elapsed_s": 34.51524750702083,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e8_mf4",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e8_mf8",
+      "elapsed_s": 33.52431270806119,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e8_mf8",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e16_m1",
+      "elapsed_s": 40.14561524009332,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e16_m1",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e16_m2",
+      "elapsed_s": 42.262775065843016,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e16_m2",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e16_m4",
+      "elapsed_s": 51.88889851095155,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e16_m4",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e16_mf2",
+      "elapsed_s": 38.928865913301706,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e16_mf2",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e16_mf4",
+      "elapsed_s": 35.770094715990126,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e16_mf4",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e32_m1",
+      "elapsed_s": 42.34290312882513,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e32_m1",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e32_m2",
+      "elapsed_s": 35.140444251708686,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e32_m2",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e32_m4",
+      "elapsed_s": 46.89460504986346,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e32_m4",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e32_m8",
+      "elapsed_s": 62.85301073594019,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e32_m8",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e32_mf2",
+      "elapsed_s": 44.01419568108395,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e32_mf2",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e64_m1",
+      "elapsed_s": 54.19892066484317,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e64_m1",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e64_m2",
+      "elapsed_s": 52.42084469413385,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e64_m2",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e64_m4",
+      "elapsed_s": 56.42066284501925,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e64_m4",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/remaining18/replay/tests/rvv_small_masks_scalar_restart_e64_m8",
+      "elapsed_s": 61.91390135185793,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e64_m8",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    }
+  ]
+}

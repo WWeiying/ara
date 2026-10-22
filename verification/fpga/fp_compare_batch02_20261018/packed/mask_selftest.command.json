@@ -1,0 +1,8 @@
+{
+  "argv": [
+    "/usr/bin/python3",
+    "-B",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/packed/test_masks.py"
+  ],
+  "timeout_s": 30
+}

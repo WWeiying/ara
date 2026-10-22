@@ -1,0 +1,29 @@
+READONLY V2 - EXACT SINGLE STDOUT FINAL JSON TAIL, NO EDA
+
+Working directory: /home/wangwy/openproject/ara_dsa_signoff_integration
+Helper: verification/coverage/verify_trusted_ip797_readonly_v2.py
+  SHA256 70f0177aeb8f812bad60b84cf5bb976e0aff1beeb7e78f7ee47312eeb8781ff8
+Tests: verification/coverage/test_verify_trusted_ip797_readonly_v2.py
+  SHA256 5f38420a6370e711b00c030cc4cc98ead099874e84e03ca71d0d273488e3a918
+Package: verification/out/trusted-ip797-readonly-v2-prepared-agent-20261008-01
+Manifest seal: f1562c63d29de47ec6f70c9ada54f9b40de55a5df261e9a8f91a1ec608ba6f65
+Bound report qualification: d7b929c065495868e6dc4656f8c575168e8b19530acda570b5a9bc1c691c91fc
+Original failure evidence SHA:
+  17e2eee12ff0024fc4343fb88b6ada1701f46ccb86486fe1a54001a70673a18d
+
+Prepare actually reproduces original ValueError for service-stdout.log.
+Only that file permits its original pinned prefix followed by exactly one
+known status/metrics JSON newline, reconstructed byte-for-byte from q.
+Every other24 native output pins remains exact, including stderr/launcher.
+Complete stdout is newly pinned; prefix length/hash and exact tail retained.
+Frozen original helper/native/report are untouched. Existing whole577,
+annotation/duplicate/complement/reset, terminal/execution/selection, markers,
+failure diagnostics, recursive GUI logs and read-end drift checks preserved.
+
+Actual frozen host tests: 20 PASS, 0.382s, exit0.
+Actual readonly verification result lives in native-readonly-v2-receipt.json;
+require verify-execution-receipt.json returncode0 before claiming its PASS.
+No launch/run API, no simulator/report invocation, no full source/VDB replay.
+
+Parent replay to stdout (does not overwrite any receipt):
+  PYTHONPATH=/tmp/vsmul797-host-deps python3 -B verification/coverage/verify_trusted_ip797_readonly_v2.py verify --manifest /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/trusted-ip797-readonly-v2-prepared-agent-20261008-01/manifest.json --seal f1562c63d29de47ec6f70c9ada54f9b40de55a5df261e9a8f91a1ec608ba6f65

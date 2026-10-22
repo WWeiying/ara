@@ -1,0 +1,217 @@
+[
+  {
+    "name": "gap80",
+    "directory": "gap80-old-image-20261006-01",
+    "service": "ara-coverage-gap80-old-image-20261006-01.service"
+  },
+  {
+    "name": "coverage-checkpoint-stopped",
+    "directory": "coverage-checkpoint-20260926-02",
+    "service": "ara-dsa-coverage-checkpoint-20260926-02.service"
+  },
+  {
+    "name": "seed509",
+    "directory": "seed509-fix-20260926-01",
+    "service": "ara-seed509-fix-20260926-01.service"
+  },
+  {
+    "name": "batch-preflight",
+    "directory": "batch-exploration-20260926-01",
+    "service": "ara-batch-exploration-20260926-01.service"
+  },
+  {
+    "name": "batch-stopped",
+    "directory": "batch-exploration-20260926-02",
+    "service": "ara-batch-exploration-20260926-02.service"
+  },
+  {
+    "name": "batch-stopped03",
+    "directory": "batch-exploration-20260926-03",
+    "service": "ara-batch-exploration-20260926-03.service"
+  },
+  {
+    "name": "batch",
+    "directory": "batch-exploration-20260926-04",
+    "service": "ara-batch-exploration-20260926-04.service"
+  },
+  {
+    "name": "vcs-coverage",
+    "directory": "vcs-dve-coverage-20260927-01",
+    "service": "ara-vcs-dve-checkpoint-20260927-01.service"
+  },
+  {
+    "name": "vcs-coverage-batch",
+    "directory": "vcs-dve-batch-20260927-01",
+    "service": "ara-vcs-dve-batch-20260927-01.service"
+  },
+  {
+    "name": "vcs-coverage-extension",
+    "directory": "vcs-dve-extension-20260927-01",
+    "service": "ara-vcs-dve-extension-20260927-01.service"
+  },
+  {
+    "name": "vcs-coverage-gap",
+    "directory": "vcs-dve-gap-20260927-01",
+    "service": "ara-vcs-dve-gap-20260927-01.service"
+  },
+  {
+    "name": "vcs-coverage-gap-specialized",
+    "directory": "vcs-dve-gap-20260927-02",
+    "service": "ara-vcs-dve-gap-20260927-02.service"
+  },
+  {
+    "name": "timeout-repair",
+    "directory": "vcs-dve-timeout-repair-20260927-03",
+    "service": "ara-vcs-timeout-repair-20260927-03.service"
+  },
+  {
+    "name": "timeout-repair-akv",
+    "directory": "vcs-dve-timeout-repair-20260927-05",
+    "service": "ara-vcs-timeout-repair-20260927-05.service"
+  },
+  {
+    "name": "current-coverage",
+    "directory": "vcs-current-coverage-20260927-01",
+    "service": "ara-vcs-current-coverage-20260927-01.service"
+  },
+  {
+    "name": "memory-gap",
+    "directory": "vcs-memory-gap-20260928-01",
+    "service": "ara-vcs-memory-gap-20260928-01.service"
+  },
+  {
+    "name": "original473-gap28",
+    "directory": "vcs-original473-gap28-20260928-01",
+    "service": "ara-original473-gap28-20260928-01.service"
+  },
+  {
+    "name": "gap35-630",
+    "directory": "gap35-vector-checked-preflight-20261004-03",
+    "service": "ara-coverage-gap35-vector-checked-preflight-20261004-03.service"
+  },
+  {
+    "name": "gap36-fence",
+    "directory": "gap36-fence-current-20261004-02",
+    "service": "ara-coverage-gap36-fence-current-20261004-02.service"
+  },
+  {
+    "name": "gap36-8",
+    "directory": "gap36-timeout-current-20261004-01",
+    "service": "ara-coverage-gap36-timeout-current-20261004-01.service"
+  },
+  {
+    "name": "gap37-control",
+    "directory": "gap37-control-current-20261004-01",
+    "service": "ara-coverage-gap37-control-current-20261004-01.service"
+  },
+  {
+    "name": "gap37-finalize",
+    "directory": "gap37-control-current-20261004-01",
+    "service": "ara-coverage-gap37-json-finalize-20261004-01.service"
+  },
+  {
+    "name": "gap38-prepare-stopped",
+    "directory": "gap38-queue-current-20261004-01",
+    "service": "ara-prepare-gap38-queue-current-20261004-01.service"
+  },
+  {
+    "name": "gap38-queue-stopped",
+    "directory": "gap38-queue-current-20261004-01",
+    "service": "ara-coverage-gap38-queue-current-20261004-01.service"
+  },
+  {
+    "name": "gap38-prepare",
+    "directory": "gap38-queue-current-20261004-02",
+    "service": "ara-prepare-gap38-queue-current-20261004-02.service"
+  },
+  {
+    "name": "gap38-queue",
+    "directory": "gap38-queue-current-20261004-02",
+    "service": "ara-coverage-gap38-queue-current-20261004-02.service"
+  },
+  {
+    "name": "gap48",
+    "directory": "gap48-current-20261004-01",
+    "service": "ara-coverage-gap48-current-20261004-01.service"
+  },
+  {
+    "name": "gap55-preflight-stopped",
+    "directory": "gap55-current-20261004-01",
+    "service": "ara-coverage-gap55-current-20261004-01.service"
+  },
+  {
+    "name": "gap55-seal-review-stopped",
+    "directory": "gap55-current-20261004-02",
+    "service": "ara-coverage-gap55-current-20261004-02.service"
+  },
+  {
+    "name": "gap55",
+    "directory": "gap55-current-20261004-03",
+    "service": "ara-coverage-gap55-current-20261004-03.service"
+  },
+  {
+    "name": "gap59",
+    "directory": "gap59-current-20261004-01",
+    "service": "ara-coverage-gap59-current-20261004-01.service"
+  },
+  {
+    "name": "gap67",
+    "directory": "gap67-current-20261004-01",
+    "service": "ara-coverage-gap67-current-20261004-01.service"
+  },
+  {
+    "name": "gap65",
+    "directory": "gap65-late-fault-runtime-20261004-02",
+    "service": "ara-gap65-coverage-20261004-02.service"
+  },
+  {
+    "name": "closure90",
+    "directory": "closure90-current-20261005-01",
+    "service": "ara-coverage-closure90-current-20261005-01.service"
+  },
+  {
+    "name": "closure91-timeout",
+    "directory": "closure91-current-20261005-01",
+    "service": "ara-coverage-closure91-current-20261005-01.service"
+  },
+  {
+    "name": "closure91",
+    "directory": "closure91-current-20261005-02",
+    "service": "ara-coverage-closure91-current-20261005-02.service"
+  },
+  {
+    "name": "closure92",
+    "directory": "closure92-current-20261005-01",
+    "service": "ara-coverage-closure92-current-20261005-01.service"
+  },
+  {
+    "name": "gap75",
+    "directory": "gap75-operand-20261005-04",
+    "service": "ara-coverage-gap75-20261005-04.service"
+  },
+  {
+    "name": "gap75-startup",
+    "directory": "gap75-startup-focused-20261005-01",
+    "service": "ara-gap75-startup-focused-20261005-01.service"
+  },
+  {
+    "name": "gap76",
+    "directory": "gap76-old-image-20261006-01",
+    "service": "ara-gap76-old-image-20261006-01.service"
+  },
+  {
+    "name": "gap77",
+    "directory": "gap77-old-image-20261006-01",
+    "service": "ara-gap77-old-image-20261006-01.service"
+  },
+  {
+    "name": "gap78",
+    "directory": "gap78-old-image-20261006-01",
+    "service": "ara-gap78-old-image-20261006-01.service"
+  },
+  {
+    "name": "gap79",
+    "directory": "gap79-old-image-20261006-01",
+    "service": "ara-gap79-old-image-20261006-01.service"
+  }
+]

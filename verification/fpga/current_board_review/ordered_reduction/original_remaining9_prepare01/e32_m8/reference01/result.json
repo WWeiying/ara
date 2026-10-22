@@ -1,0 +1,20 @@
+{
+  "status": "EXECUTOR_REFERENCE_PASS_PENDING_INDEPENDENT_REVIEW",
+  "shape": "e32_m8",
+  "target_calls": 1,
+  "helper_instructions": 21,
+  "original_oracle_bytes": 144,
+  "fixture_fields": 6720,
+  "flags": 16,
+  "vstart": 0,
+  "result": "0x7fc00000",
+  "firmware_retired": 1890347,
+  "retired_total": 1895000,
+  "parking_retired": 4648,
+  "elapsed_s": 3.0766505040228367,
+  "raw_bytes": 122976565,
+  "pins_unchanged": true,
+  "DUT_run": false,
+  "Linux_run": false,
+  "full6720_accepted": false
+}

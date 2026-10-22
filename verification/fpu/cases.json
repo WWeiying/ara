@@ -1,0 +1,10 @@
+[
+  {"name":"fp64_one_rup", "format":64, "rm":3, "a":"3ff0000000000000", "b":"3ff0000000000000", "expected_result":"3ff0000000000000", "expected_flags":"00", "predicted_result":"3ff0000000000001", "predicted_flags":"01", "hypothesis":"H1_raw_remainder"},
+  {"name":"fp64_one_rne", "format":64, "rm":0, "a":"3ff0000000000000", "b":"3ff0000000000000", "expected_result":"3ff0000000000000", "expected_flags":"00", "predicted_result":"3ff0000000000000", "predicted_flags":"01", "hypothesis":"H1_raw_remainder"},
+  {"name":"fp64_pos_overflow_rup", "format":64, "rm":3, "a":"7fefffffffffffff", "b":"3fe0000000000000", "expected_result":"7ff0000000000000", "expected_flags":"05", "predicted_result":"7ff0000000000001", "predicted_flags":"05", "hypothesis":"H2_overflow_rerounding"},
+  {"name":"fp64_neg_overflow_rdn", "format":64, "rm":2, "a":"ffefffffffffffff", "b":"3fe0000000000000", "expected_result":"fff0000000000000", "expected_flags":"05", "predicted_result":"fff0000000000001", "predicted_flags":"05", "hypothesis":"H2_overflow_rerounding"},
+  {"name":"fp32_pos_overflow_rne", "format":32, "rm":0, "a":"ffffffff7f7fffff", "b":"ffffffff3f000000", "expected_result":"ffffffff7f800000", "expected_flags":"05", "predicted_result":"ffffffff7f800000", "predicted_flags":"04", "hypothesis":"H3_legacy_missing_nx"},
+  {"name":"fp32_one_rne", "format":32, "rm":0, "a":"ffffffff3f800000", "b":"ffffffff3f800000", "expected_result":"ffffffff3f800000", "expected_flags":"00", "predicted_result":"ffffffff3f800000", "predicted_flags":"00", "hypothesis":"control_exact_fp32"},
+  {"name":"fp64_pos_overflow_rne", "format":64, "rm":0, "a":"7fefffffffffffff", "b":"3fe0000000000000", "expected_result":"7ff0000000000000", "expected_flags":"05", "predicted_result":"7ff0000000000000", "predicted_flags":"05", "hypothesis":"control_overflow_no_increment"},
+  {"name":"fp64_pos_overflow_rtz", "format":64, "rm":1, "a":"7fefffffffffffff", "b":"3fe0000000000000", "expected_result":"7fefffffffffffff", "expected_flags":"05", "predicted_result":"7fefffffffffffff", "predicted_flags":"05", "hypothesis":"control_overflow_saturation"}
+]

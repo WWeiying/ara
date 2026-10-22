@@ -1,0 +1,33 @@
+{
+  "scope": "Real AddrGen/VSTU/MASKU/sequencer; modeled MMU and lane predicate source; not Linux/SoC",
+  "pid": 1900115,
+  "cases": [
+    {
+      "name": "normal",
+      "kind": "normal",
+      "vl": 4,
+      "variant": "m6",
+      "returncode": 0,
+      "elapsed_s": 10.64993990631774,
+      "expected_marker": "NORMAL_PATH_W_B_COMPLETE_NOT_SOC_ACCEPTANCE",
+      "marker_count": 1,
+      "observations": [
+        "OBSERVATION normal_masked_vl4 accepted=1 AW=4 W=4 B=4 early=0 early_cycle=-1 good_pendingB0=0 premature_pops=0 premature_done=0 mask_pops=1 done_cycle=56 last_pop_cycle=44 global_idle=1",
+        "NORMAL_ACCEPTANCE AW=4 W=4 B=4 strb=ff/ff00/ff0000/ff000000 data=4x123456789abcdef0 W_cycle=41 B_cycle=55 last_pop=44 done=56 samecycle_pops=1 pendingB_cycles=10 local_spill_empty=1"
+      ],
+      "full_SOC_acceptance": false
+    }
+  ],
+  "state": "SUITE_ACCEPTED_NOT_SOC_ACCEPTANCE",
+  "compile_returncode": 0,
+  "compile_seconds": 32.3008597032167,
+  "pins_unchanged": true,
+  "variant": "m6",
+  "vstu_sha256": "139b27c0784c867b7a6032665c1634bb4b843ec2d9be5c4a3c6cb6d8fd2919f2",
+  "sole_override_vstu": false,
+  "RTL_edits": false,
+  "host_budget_per_compile_or_case_s": 60,
+  "rtl_watchdog_cycles": 200,
+  "measured_result_cycle": 100,
+  "no_internal_state_injection": true
+}

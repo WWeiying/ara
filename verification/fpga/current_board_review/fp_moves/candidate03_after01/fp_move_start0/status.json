@@ -1,0 +1,13 @@
+{
+  "name": "fp_move_start0",
+  "status": "PASS",
+  "returncode": 0,
+  "elapsed_s": 27.66430190531537,
+  "oracle_lines": [
+    "BOARD_CASE_BEGIN fp_move_start0",
+    "RVV_FP_MOVE_PASS sew=16 cases=1 errors=0",
+    "BOARD_CASE_PASS fp_move_start0"
+  ],
+  "input_sha256": "90835d0e69dcc8ad54ba90bbf54e89c0fb2ab8a45a002ead0268cf6fda83da03",
+  "console_sha256": "38f85de088cfe3f4ee0e8a80ebbf92e30baba425e75977110e0781a3ff00089e"
+}

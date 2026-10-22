@@ -1,0 +1,31 @@
+{
+  "status": "FULL2_REFERENCE_ACCEPTED_BY_RECOVERY01_NOT_DUT",
+  "results": [
+    {
+      "shape": "rvv_matrix_e8_mf8",
+      "status": "FULL_ORIGINAL_REFERENCE_PASS_NOT_DUT",
+      "calls": 4095,
+      "results": 65520,
+      "guards": 8190,
+      "firmware_through_htif": 4406446,
+      "retired_records": 4410000,
+      "report_sha256": "4b8dd56b8e0e2fd6c80e23b841cead3ef205dd51fd1dcdae3560bece4e585855"
+    },
+    {
+      "shape": "rvv_matrix_e32_mf2",
+      "status": "FULL_ORIGINAL_REFERENCE_PASS_NOT_DUT",
+      "calls": 5985,
+      "results": 95760,
+      "guards": 11970,
+      "firmware_through_htif": 5922051,
+      "retired_records": 5925000,
+      "report_sha256": "abe7523f49ab1f0ebb9ae15109bfa10e716cd0e30827b0a7eae927313f51744f"
+    }
+  ],
+  "pins_pre_post_unchanged": true,
+  "actual_Spike_invocations": 2,
+  "reference_retries": 0,
+  "original_postcheck_ERROR_preserved": true,
+  "prior_offline02_INTERRUPTED_notaccepted": true,
+  "independent_agent_review_pending": true
+}

@@ -1,0 +1,12 @@
+{
+  "name": "fp_move_start_eq_vl",
+  "status": "PASS",
+  "returncode": 0,
+  "elapsed_s": 25.51460006693378,
+  "oracle_lines": [
+    "BOARD_CASE_BEGIN fp_move_start_eq_vl",
+    "RVV_FP_MOVE_PASS sew=16 cases=1 errors=0",
+    "BOARD_CASE_PASS fp_move_start_eq_vl"
+  ],
+  "console_sha256": "a260fec72bf4c7768d86c50a52f6f88c18b3ce10e782208c8878a4504c39b179"
+}

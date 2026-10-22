@@ -1,0 +1,15 @@
+[
+  "/home/wangwy/openproject/ara/install/riscv-llvm/bin/clang",
+  "--target=riscv64-unknown-elf", "-march=rv64gcv_zfh_zvfh", "-mabi=lp64d",
+  "-mcmodel=medany", "-mno-relax", "-msmall-data-limit=0", "-O2",
+  "-fno-vectorize", "-fno-slp-vectorize", "-ffreestanding",
+  "-DG75_NO_PRINT", "-D__SPIKE__", "-DVLEN=1024", "-DNR_LANES=4",
+  "-I/home/wangwy/openproject/ara_dsa_signoff_integration/apps/riscv-tests/isa/macros/vector",
+  "-I/home/wangwy/openproject/ara_dsa_signoff_integration/apps/riscv-tests/env",
+  "-I/home/wangwy/openproject/ara_dsa_signoff_integration/apps/common",
+  "-fuse-ld=lld", "-nostdlib",
+  "-T/home/wangwy/openproject/ara_dsa_signoff_integration/verification/tests/gap75.ld",
+  "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/tests/vmacc_c_fifo_l2_start.S",
+  "/home/wangwy/openproject/ara_dsa_signoff_integration/apps/riscv-tests/isa/rv64uv/vgap99_csr_satp_mprv.c",
+  "-o", "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/gap99-csr-satp-mprv-preflight-707-20261006-01/input.elf"
+]

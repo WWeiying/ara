@@ -1,0 +1,83 @@
+/dts-v1/;
+
+/ {
+	#address-cells = <0x02>;
+	#size-cells = <0x02>;
+	compatible = "eth,cheshire-dev";
+	model = "Ara DSA VCU118";
+
+	chosen {
+		stdout-path = "/soc/serial@3002000";
+		bootargs = "earlycon=sbi console=ttyS0,115200 earlyprintk loglevel=7 rdinit=/init";
+		linux,initrd-start = <0x00 0x88000000>;
+		linux,initrd-end = <0x00 0x88251c00>;
+	};
+
+	memory@80000000 {
+		device_type = "memory";
+		reg = <0x00 0x80000000 0x00 0x80000000>;
+	};
+
+	cpus {
+		#address-cells = <0x01>;
+		#size-cells = <0x00>;
+		timebase-frequency = <0xf4240>;
+
+		cpu@0 {
+			device_type = "cpu";
+			status = "okay";
+			compatible = "eth,ariane\0riscv";
+			clock-frequency = <0x2faf080>;
+			riscv,isa = "rv64imafdcv";
+			mmu-type = "riscv,sv39";
+			tlb-split;
+			reg = <0x00>;
+
+			interrupt-controller {
+				#address-cells = <0x00>;
+				#interrupt-cells = <0x01>;
+				interrupt-controller;
+				compatible = "riscv,cpu-intc";
+				phandle = <0x02>;
+			};
+		};
+	};
+
+	soc {
+		#address-cells = <0x02>;
+		#size-cells = <0x02>;
+		compatible = "eth,cheshire-bare-soc\0simple-bus";
+		ranges;
+
+		serial@3002000 {
+			compatible = "ns16550a";
+			clock-frequency = <0x2faf080>;
+			current-speed = <0x1c200>;
+			interrupt-parent = <0x01>;
+			interrupts = <0x01>;
+			reg = <0x00 0x3002000 0x00 0x1000>;
+			reg-shift = <0x02>;
+			reg-io-width = <0x04>;
+			status = "okay";
+		};
+
+		clint@2040000 {
+			compatible = "riscv,clint0";
+			interrupts-extended = <0x02 0x03 0x02 0x07>;
+			reg-names = "control";
+			reg = <0x00 0x2040000 0x00 0x40000>;
+		};
+
+		interrupt-controller@4000000 {
+			compatible = "riscv,plic0";
+			#address-cells = <0x00>;
+			#interrupt-cells = <0x01>;
+			interrupt-controller;
+			interrupts-extended = <0x02 0x0b 0x02 0x09>;
+			riscv,max-priority = <0x07>;
+			riscv,ndev = <0x33>;
+			reg = <0x00 0x4000000 0x00 0x4000000>;
+			phandle = <0x01>;
+		};
+	};
+};

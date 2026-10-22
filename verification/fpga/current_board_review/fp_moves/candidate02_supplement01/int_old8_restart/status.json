@@ -1,0 +1,15 @@
+{
+  "name": "int_old8_restart",
+  "status": "FAIL",
+  "returncode": 0,
+  "elapsed_s": 33.25321663217619,
+  "oracle_lines": [
+    "BOARD_CASE_BEGIN int_old8_restart",
+    "RVV_FP_MOVE_DETAIL op=6 seed=0 scalar=0 invalid_box=0 vl=2 mask=0 sticky=0 vstart=1 actual_flags=0 errors=1",
+    "RVV_FP_MOVE_CLASSIFY returned_vstart=0 first_bad_element=0 expected_bits=0 actual_bits=31743 scalar_expected=1311768467463790320 scalar_actual=1311768467463790320 guard_before=91 guard_after=91",
+    "RVV_FP_MOVE_FAIL sew=16 cases=1 errors=1",
+    "BOARD_CASE_FAIL int_old8_restart"
+  ],
+  "input_sha256": "3826d876b6539a028537e235a7bc18e1f9bcd76bcad139e463ddcd1d7baddcf8",
+  "console_sha256": "ea236e11bbb0ec126eca78cab0cbd52d992bb50b64a41e42c07801bda3b12144"
+}

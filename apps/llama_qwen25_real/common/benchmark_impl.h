@@ -31,6 +31,15 @@ float q4km_vec_dot_q6_K_q8_K(const block_q6_K *x, const block_q8_K *y, int n)
     __attribute__((noinline));
 float q4km_vec_dot_q8_0_q8_0(const block_q8_0 *x, const block_q8_0 *y, int n)
     __attribute__((noinline));
+float q4km_vec_dot_q4_0_q8_0(const block_q4_0 *x, const block_q8_0 *y, int n)
+    __attribute__((noinline));
+float q4km_vec_dot_q5_0_q8_0(const block_q5_0 *x, const block_q8_0 *y, int n)
+    __attribute__((noinline));
+float q4km_vec_dot_iq4_nl_q8_0(const block_iq4_nl *x,
+                               const block_q8_0 *y, int n)
+    __attribute__((noinline));
+float q4km_vec_dot_q2_K_q8_K(const block_q2_K *x, const block_q8_K *y, int n)
+    __attribute__((noinline));
 #include "../../llama_q4k_repack_bench/repack_kernels.c"
 
 #ifndef BENCH_WEIGHT_Q3
@@ -48,19 +57,37 @@ float q4km_vec_dot_q8_0_q8_0(const block_q8_0 *x, const block_q8_0 *y, int n)
 #ifndef BENCH_WEIGHT_Q8_0
 #define BENCH_WEIGHT_Q8_0 0
 #endif
+#ifndef BENCH_WEIGHT_Q4_0
+#define BENCH_WEIGHT_Q4_0 0
+#endif
+#ifndef BENCH_WEIGHT_Q5_0
+#define BENCH_WEIGHT_Q5_0 0
+#endif
+#ifndef BENCH_WEIGHT_IQ4_NL
+#define BENCH_WEIGHT_IQ4_NL 0
+#endif
+#ifndef BENCH_WEIGHT_Q2
+#define BENCH_WEIGHT_Q2 0
+#endif
+#ifndef BENCH_RVV_ROW_MAJOR
+#define BENCH_RVV_ROW_MAJOR 0
+#endif
 
 #if !(BENCH_WEIGHT_Q3 || BENCH_WEIGHT_Q4 || BENCH_WEIGHT_Q5 || \
-      BENCH_WEIGHT_Q6 || BENCH_WEIGHT_Q8_0)
+      BENCH_WEIGHT_Q6 || BENCH_WEIGHT_Q8_0 || BENCH_WEIGHT_Q4_0 || \
+      BENCH_WEIGHT_Q5_0 || BENCH_WEIGHT_IQ4_NL || BENCH_WEIGHT_Q2)
 #undef BENCH_WEIGHT_Q6
 #define BENCH_WEIGHT_Q6 1
 #endif
 
 #if (BENCH_WEIGHT_Q3 + BENCH_WEIGHT_Q4 + BENCH_WEIGHT_Q5 + \
-     BENCH_WEIGHT_Q6 + BENCH_WEIGHT_Q8_0) != 1
+     BENCH_WEIGHT_Q6 + BENCH_WEIGHT_Q8_0 + BENCH_WEIGHT_Q4_0 + \
+     BENCH_WEIGHT_Q5_0 + BENCH_WEIGHT_IQ4_NL + BENCH_WEIGHT_Q2) != 1
 #error "select exactly one RVV weight format"
 #endif
 
-#if BENCH_WEIGHT_Q8_0
+#if BENCH_WEIGHT_Q8_0 || BENCH_WEIGHT_Q4_0 || BENCH_WEIGHT_Q5_0 || \
+    BENCH_WEIGHT_IQ4_NL
 #define BENCH_BLOCK_ELEMENTS QK8_0
 typedef block_q8_0 benchmark_activation_block_t;
 #else
@@ -92,7 +119,7 @@ static benchmark_activation_block_t quantized_activation[BENCH_Q8_BLOCKS]
 static float benchmark_output[BENCH_OUTPUTS]
     __attribute__((aligned(64), section(".bss")));
 
-#if BENCH_WEIGHT_Q4 && BENCH_GEMM_GROUPS > 0
+#if BENCH_WEIGHT_Q4 && BENCH_GEMM_GROUPS > 0 && !BENCH_RVV_ROW_MAJOR
 static block_q8_Kx4 packed_activation[BENCH_GEMM_GROUPS * BENCH_BLOCKS]
     __attribute__((aligned(64), section(".bss")));
 #endif
@@ -135,7 +162,7 @@ static void benchmark_spike_hex(const char *label, uint64_t value) {
 }
 #endif
 
-#if BENCH_WEIGHT_Q4 && BENCH_GEMM_GROUPS > 0
+#if BENCH_WEIGHT_Q4 && BENCH_GEMM_GROUPS > 0 && !BENCH_RVV_ROW_MAJOR
 static void benchmark_pack_q8_x4(const block_q8_K *source,
                                  block_q8_Kx4 *destination) {
   for (int block = 0; block < BENCH_BLOCKS; ++block) {
@@ -163,7 +190,8 @@ static void benchmark_pack_q8_x4(const block_q8_K *source,
 static __attribute__((noinline)) void benchmark_quantize(void) {
   const float *activation = (const float *)benchmark_activation_start;
   for (int input = 0; input < BENCH_INPUTS; ++input) {
-#if BENCH_WEIGHT_Q8_0
+#if BENCH_WEIGHT_Q8_0 || BENCH_WEIGHT_Q4_0 || BENCH_WEIGHT_Q5_0 || \
+    BENCH_WEIGHT_IQ4_NL
     q4km_quantize_row_q8_0(
         activation + input * BENCH_K,
         quantized_activation + input * BENCH_BLOCKS, BENCH_K);
@@ -175,7 +203,7 @@ static __attribute__((noinline)) void benchmark_quantize(void) {
   }
 }
 
-#if BENCH_WEIGHT_Q4 && BENCH_GEMM_GROUPS > 0
+#if BENCH_WEIGHT_Q4 && BENCH_GEMM_GROUPS > 0 && !BENCH_RVV_ROW_MAJOR
 static __attribute__((noinline)) void benchmark_pack(void) {
   for (int group = 0; group < BENCH_GEMM_GROUPS; ++group) {
     benchmark_pack_q8_x4(
@@ -187,6 +215,21 @@ static __attribute__((noinline)) void benchmark_pack(void) {
 
 #if BENCH_WEIGHT_Q4
 static __attribute__((noinline)) uint64_t benchmark_q4(void) {
+#if BENCH_RVV_ROW_MAJOR
+  const block_q4_K *weight = (const block_q4_K *)benchmark_weight_start;
+  for (int input = 0; input < BENCH_INPUTS; ++input) {
+    for (int row = 0; row < BENCH_ROWS; ++row) {
+      benchmark_output[input * BENCH_ROWS + row] = q4km_vec_dot_q4_K_q8_K(
+          weight + row * BENCH_BLOCKS,
+          quantized_activation + input * BENCH_BLOCKS, BENCH_K);
+    }
+  }
+  const uint64_t weight_bytes = benchmark_weight_end - benchmark_weight_start;
+  const uint64_t activation_bytes = BENCH_BLOCKS * sizeof(block_q8_K);
+  return (uint64_t)BENCH_INPUTS * BENCH_K * sizeof(float) +
+         (uint64_t)BENCH_INPUTS * weight_bytes +
+         (uint64_t)BENCH_INPUTS * BENCH_ROWS * activation_bytes;
+#else
   const block_q4_Kx32_ara *weight =
       (const block_q4_Kx32_ara *)benchmark_weight_start;
   for (int row_group = 0; row_group < BENCH_ROW_GROUPS; ++row_group) {
@@ -220,6 +263,7 @@ static __attribute__((noinline)) uint64_t benchmark_q4(void) {
       (uint64_t)BENCH_GEMM_GROUPS * 4 * BENCH_BLOCKS * sizeof(block_q8_K);
   return quantization_input_bytes + activation_pack_input_bytes +
          weight_passes * weight_bytes + BENCH_ROW_GROUPS * activation_bytes;
+#endif
 }
 #elif BENCH_WEIGHT_Q6
 static __attribute__((noinline)) uint64_t benchmark_q6(void) {
@@ -253,6 +297,71 @@ static __attribute__((noinline)) uint64_t benchmark_q6(void) {
       (uint64_t)BENCH_INPUTS * BENCH_K * sizeof(float);
   return quantization_input_bytes + weight_passes * weight_bytes +
          BENCH_ROW_GROUPS * activation_bytes;
+}
+#elif BENCH_WEIGHT_Q4_0
+static __attribute__((noinline)) uint64_t benchmark_q4_0(void) {
+  const block_q4_0 *weight = (const block_q4_0 *)benchmark_weight_start;
+  for (int input = 0; input < BENCH_INPUTS; ++input) {
+    for (int row = 0; row < BENCH_ROWS; ++row) {
+      benchmark_output[input * BENCH_ROWS + row] = q4km_vec_dot_q4_0_q8_0(
+          weight + row * BENCH_BLOCKS,
+          quantized_activation + input * BENCH_BLOCKS, BENCH_K);
+    }
+  }
+  const uint64_t weight_bytes = benchmark_weight_end - benchmark_weight_start;
+  const uint64_t activation_bytes = BENCH_BLOCKS * sizeof(block_q8_0);
+  return (uint64_t)BENCH_INPUTS * BENCH_K * sizeof(float) +
+         (uint64_t)BENCH_INPUTS * weight_bytes +
+         (uint64_t)BENCH_INPUTS * BENCH_ROWS * activation_bytes;
+}
+#elif BENCH_WEIGHT_Q5_0
+static __attribute__((noinline)) uint64_t benchmark_q5_0(void) {
+  const block_q5_0 *weight = (const block_q5_0 *)benchmark_weight_start;
+  for (int input = 0; input < BENCH_INPUTS; ++input) {
+    for (int row = 0; row < BENCH_ROWS; ++row) {
+      benchmark_output[input * BENCH_ROWS + row] = q4km_vec_dot_q5_0_q8_0(
+          weight + row * BENCH_BLOCKS,
+          quantized_activation + input * BENCH_BLOCKS, BENCH_K);
+    }
+  }
+  const uint64_t weight_bytes = benchmark_weight_end - benchmark_weight_start;
+  const uint64_t activation_bytes = BENCH_BLOCKS * sizeof(block_q8_0);
+  return (uint64_t)BENCH_INPUTS * BENCH_K * sizeof(float) +
+         (uint64_t)BENCH_INPUTS * weight_bytes +
+         (uint64_t)BENCH_INPUTS * BENCH_ROWS * activation_bytes;
+}
+#elif BENCH_WEIGHT_IQ4_NL
+static __attribute__((noinline)) uint64_t benchmark_iq4_nl(void) {
+  const block_iq4_nl *weight = (const block_iq4_nl *)benchmark_weight_start;
+  for (int input = 0; input < BENCH_INPUTS; ++input) {
+    for (int row = 0; row < BENCH_ROWS; ++row) {
+      benchmark_output[input * BENCH_ROWS + row] =
+          q4km_vec_dot_iq4_nl_q8_0(
+              weight + row * BENCH_BLOCKS,
+              quantized_activation + input * BENCH_BLOCKS, BENCH_K);
+    }
+  }
+  const uint64_t weight_bytes = benchmark_weight_end - benchmark_weight_start;
+  const uint64_t activation_bytes = BENCH_BLOCKS * sizeof(block_q8_0);
+  return (uint64_t)BENCH_INPUTS * BENCH_K * sizeof(float) +
+         (uint64_t)BENCH_INPUTS * weight_bytes +
+         (uint64_t)BENCH_INPUTS * BENCH_ROWS * activation_bytes;
+}
+#elif BENCH_WEIGHT_Q2
+static __attribute__((noinline)) uint64_t benchmark_q2(void) {
+  const block_q2_K *weight = (const block_q2_K *)benchmark_weight_start;
+  for (int input = 0; input < BENCH_INPUTS; ++input) {
+    for (int row = 0; row < BENCH_ROWS; ++row) {
+      benchmark_output[input * BENCH_ROWS + row] = q4km_vec_dot_q2_K_q8_K(
+          weight + row * BENCH_BLOCKS,
+          quantized_activation + input * BENCH_BLOCKS, BENCH_K);
+    }
+  }
+  const uint64_t weight_bytes = benchmark_weight_end - benchmark_weight_start;
+  const uint64_t activation_bytes = BENCH_BLOCKS * sizeof(block_q8_K);
+  return (uint64_t)BENCH_INPUTS * BENCH_K * sizeof(float) +
+         (uint64_t)BENCH_INPUTS * weight_bytes +
+         (uint64_t)BENCH_INPUTS * BENCH_ROWS * activation_bytes;
 }
 #else
 static __attribute__((noinline)) uint64_t benchmark_x32(void) {
@@ -298,7 +407,7 @@ static __attribute__((noinline)) uint64_t benchmark_x32(void) {
 #endif
 
 static float benchmark_actual(int input, int row) {
-#if BENCH_WEIGHT_Q4
+#if BENCH_WEIGHT_Q4 && !BENCH_RVV_ROW_MAJOR
   const int row_group = row / 32;
   const int lane = row % 32;
   return benchmark_output[(row_group * BENCH_INPUTS + input) * 32 + lane];
@@ -383,7 +492,7 @@ int main(void) {
   const uint64_t start = benchmark_cycle();
   benchmark_quantize();
   const uint64_t quantize_end = benchmark_cycle();
-#if BENCH_WEIGHT_Q4 && BENCH_GEMM_GROUPS > 0
+#if BENCH_WEIGHT_Q4 && BENCH_GEMM_GROUPS > 0 && !BENCH_RVV_ROW_MAJOR
   HW_CNT_PHASE(BENCH_PHASE_PACK);
   const uint64_t pack_start = benchmark_cycle();
   benchmark_pack();
@@ -398,6 +507,14 @@ int main(void) {
   const uint64_t logical_read_bytes = benchmark_q4();
 #elif BENCH_WEIGHT_Q6
   const uint64_t logical_read_bytes = benchmark_q6();
+#elif BENCH_WEIGHT_Q4_0
+  const uint64_t logical_read_bytes = benchmark_q4_0();
+#elif BENCH_WEIGHT_Q5_0
+  const uint64_t logical_read_bytes = benchmark_q5_0();
+#elif BENCH_WEIGHT_IQ4_NL
+  const uint64_t logical_read_bytes = benchmark_iq4_nl();
+#elif BENCH_WEIGHT_Q2
+  const uint64_t logical_read_bytes = benchmark_q2();
 #else
   const uint64_t logical_read_bytes = benchmark_x32();
 #endif

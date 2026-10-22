@@ -1,0 +1,102 @@
+{
+  "status": "ACCEPTED_M9_E32_M4_FULL5985_METADATA_REVIEW_NOT_LINUX",
+  "review_method": "Independent closed metadata/identity/complete call-and-owner ledger check; no CSV or reference raw read",
+  "plan_sha256": "7dcf6503906b5c50e09e9fa6d681f0664d3f69c3fae31095606621863ec2e5cc",
+  "input_pins": 1192,
+  "unique_input_evidence_approval_pins": 1205,
+  "independently_rehashed_nonraw_pins": 1203,
+  "inherited_raw_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_m4_block_prepare01/reference_entry02/reference01/commits.log": {
+      "sha256": "4c570d9e9a24d3b0dd2a50dd865c999ac017a8d918efd17b190c30acc941ceee",
+      "bytes": 305618403,
+      "basis": "Sealed producer/collector verification; not reread"
+    },
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_m4_block_vcs_m9_plan01/prepared01/replay/tests/arithmetic_original_e32_m4_full5985_packed/commit_trace.csv": {
+      "sha256": "e771b9394b64ede93d73bd027f458f71ee9fd92cd9dd16c872cdda9e2337e77f",
+      "bytes": 349043190,
+      "basis": "Sealed producer/collector verification; not reread"
+    }
+  },
+  "actual_simulator_returncode": 0,
+  "actual_simulator_elapsed_s": 9010.677922162227,
+  "actual_service": {
+    "SERVICE_RESULT": "success",
+    "EXIT_CODE": "exited",
+    "EXIT_STATUS": "0",
+    "observed_at": 1792028209.3335476,
+    "hook_pid": 3616897,
+    "kind": "SYSTEMD_EXEC_STOP_POST_ACTUAL_ENVIRONMENT"
+  },
+  "actual_collector": {
+    "actual_wait_returncode": 0,
+    "pid": 3616898,
+    "elapsed_s": 16.913076642900705,
+    "timed_out": false,
+    "retries": 0
+  },
+  "actual_event_wait": {
+    "exit_code": 0,
+    "pid": 3463740,
+    "finished": 1792028230.3351278
+  },
+  "scope": {
+    "calls": 5985,
+    "results": 766080,
+    "guards": 11970,
+    "returned_vstart_zero": 5985,
+    "helper_instructions": 77805,
+    "packed_output_reads": 389025,
+    "fresh_output_bytes_each_call": 520,
+    "FP_calls": 1890,
+    "FP_input_scalar_writes": 483840,
+    "FP_source_reads": 15120,
+    "expected_reads": 124041,
+    "ID_reads": 53865,
+    "cache_hits": 33123,
+    "cache_misses": 14757,
+    "actual_BEQ_comparisons": 389025,
+    "original_seed_scalar_writes": 1104,
+    "mask_clear_stores": 35280,
+    "mask_bit_stores": 154350
+  },
+  "rows": 3036242,
+  "retired_rows": 2771357,
+  "last_cycle": 12394429,
+  "helper_windows": 5985,
+  "owner_ledger_rows": 65837,
+  "complete_owner_counts": {
+    "alloc": 33687,
+    "memory": 29925,
+    "target": 3762,
+    "op24": 117
+  },
+  "baseline_vstart_noops": 2205,
+  "additional_exact_VI2_noops": 18,
+  "complete_sha256": "2c41b606366f94ad720066fc76f99a4e83d0959fe1d0fa4ec8ac48a5c4f49252",
+  "collector_result_sha256": "2f6c88905e349c718e4c1e15eab5a754af835bc6a3536a43e7c7fe798c32fcd0",
+  "strict_report_sha256": "67a41ba3cf370763793c237e89ad6c790e126ce8eb3c15cfd14a13513663e21d",
+  "csv_sha256": "e771b9394b64ede93d73bd027f458f71ee9fd92cd9dd16c872cdda9e2337e77f",
+  "report_source_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_m4_block_vcs_m9_plan01/prepared01/plan.json": "7dcf6503906b5c50e09e9fa6d681f0664d3f69c3fae31095606621863ec2e5cc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_m4_block_vcs_m9_plan01/prepared01/complete.json": "2c41b606366f94ad720066fc76f99a4e83d0959fe1d0fa4ec8ac48a5c4f49252",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_m4_block_vcs_m9_plan01/prepared01/collector_result.json": "2f6c88905e349c718e4c1e15eab5a754af835bc6a3536a43e7c7fe798c32fcd0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_m4_block_vcs_m9_plan01/prepared01/collector_exit.json": "4ed97990aaef41fbd45002b74fdfabffe97e3211e2eeb20b6d7d7c482797e4c1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_m4_block_vcs_m9_plan01/prepared01/service_exit.json": "3c2c9429ebd9b74b0d8ac08faf5c6a91554ae56c2467f4d03a6bd00c8860e64a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_m4_block_vcs_m9_plan01/terminal_event01/notification.json": "413f1e14dd855b02e0b01d2dfac73162083ef9e7978ebd132d7cf5287537b903",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_m4_block_vcs_m9_plan01/terminal_event01/wait_exit.json": "ad5178d2837a723d1ef354e25c42704ce0954768c31cb99d559252a848a3478b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_m4_block_vcs_m9_plan01/prepared01/replay/tests/arithmetic_original_e32_m4_full5985_packed/strict_original.json": "67a41ba3cf370763793c237e89ad6c790e126ce8eb3c15cfd14a13513663e21d",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_m4_terminal_review01/review_metadata.py": "a8d64fc0a0eaf8dbe4f7856afc5070788043fd449a8c97ff57ec4a945476eabf"
+  },
+  "new_csv_semantic_parses": 0,
+  "reference_reruns": 0,
+  "DUT_reruns": 0,
+  "fflags_scope": "Original has no dedicated fflags oracle; no added post-restore CSR readback claim",
+  "original_Linux_historical_stall_closed": false,
+  "arithmetic_union": {
+    "accepted_shapes": 18,
+    "total_shapes": 22,
+    "accepted_calls": 86940,
+    "remaining_shapes": 4,
+    "remaining_calls": 20160
+  }
+}

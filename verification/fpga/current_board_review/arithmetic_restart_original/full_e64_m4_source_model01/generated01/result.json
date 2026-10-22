@@ -1,0 +1,127 @@
+{
+  "status": "FULL5985_SOURCE_MATH_MODEL_AGREE_NOT_COMPILED_NOT_SPIKE_NOT_DUT",
+  "shape": {
+    "sew": 64,
+    "lmul": "m4",
+    "vtype": 26,
+    "cap": 64,
+    "physical_group": 4
+  },
+  "calls": 5985,
+  "integer_calls": 4095,
+  "fp_calls": 1890,
+  "results": 383040,
+  "guards": 11970,
+  "vstart_required": 5985,
+  "dynamic_helper_instructions": 77805,
+  "compared_words": 395010,
+  "output_bytes_per_call": 528,
+  "words_per_call": 66,
+  "dictionary_blocks": 1986,
+  "dictionary_bytes": 127104,
+  "index_count": 53865,
+  "index_bytes": 107730,
+  "last_block_valid_bytes": 16,
+  "rom_components_bytes": 240402,
+  "envelope_with_172200_reserved": 412602,
+  "one_mib_slack": 635974,
+  "fp_ordered_write_count": 241920,
+  "fp_ordered_write_bytes": 1935360,
+  "fp_ordered_writes_sha256": "ad147ff8086b7c5292f86479723b0ddf17bb954a6973ed1bb0a369f6e73849ba",
+  "mathematical_integer_corner_checks": 931,
+  "input_pins_unchanged": true,
+  "first_call": {
+    "ordinal": 1,
+    "seed": 0,
+    "op": 0,
+    "li": 0,
+    "vl": 0,
+    "mode": 0,
+    "trial": 0,
+    "start": 0,
+    "ids": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1
+    ],
+    "returned_vstart": 0,
+    "input_sha256": "6438eab0f5aa6476e099450720d8fe501efa702189de4708f2bed481f5d6889d",
+    "output_sha256": "0efc0c16db8f210ab7403be6b79d5d46be72e2bc388d9d4c94d13186697d9f2e",
+    "fp_ordered_writes": 0
+  },
+  "last_call": {
+    "ordinal": 5985,
+    "seed": 2,
+    "op": 34,
+    "li": 6,
+    "vl": 64,
+    "mode": 2,
+    "trial": 2,
+    "start": 63,
+    "ids": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1
+    ],
+    "returned_vstart": 0,
+    "input_sha256": "4a8926d6e079441a97ef5265f20c8f943e301922d898883d9435f7c53cc8c3eb",
+    "output_sha256": "0efc0c16db8f210ab7403be6b79d5d46be72e2bc388d9d4c94d13186697d9f2e",
+    "fp_ordered_writes": 128
+  },
+  "elapsed_model_seconds": 2.776706757955253,
+  "artifacts": {
+    "calls.json": {
+      "bytes": 1884475,
+      "sha256": "8e2874b43a6489aa0845c457672748e3756ecb930c5618049b5579637253cfc2"
+    },
+    "dictionary64.bin": {
+      "bytes": 127104,
+      "sha256": "86c1fbe7dac7157c3943f4a538f12868f220103173c39d123bb50ba97bfa41e6"
+    },
+    "fp_expected640_u64le.bin": {
+      "bytes": 5120,
+      "sha256": "ced4ecb4b7d1cfd206365c91712c955a4f4be5e8d6c73f54b7452c0e1491daa5"
+    },
+    "fp_inputs8_u64le.bin": {
+      "bytes": 64,
+      "sha256": "110aafde28745fa6d8c08812c7c405ba640080a963fb132c99594018fb53a87c"
+    },
+    "fp_ordered_periods3_u64le.bin": {
+      "bytes": 3072,
+      "sha256": "64784587b528d8a530bd3d22672bcf9eb2159b1971c2dc130ba11d97ed33efcb"
+    },
+    "gold_u64le.bin": {
+      "bytes": 3160080,
+      "sha256": "c3c9938a41a189115180b08e8e61c34220da268ee49102d3d17fcbc81be3cc31"
+    },
+    "indices_u16le.bin": {
+      "bytes": 107730,
+      "sha256": "2c066b751c4ec632cce78622bc567277257fe6ac9fb539bc1be65b4b9b9d01ea"
+    },
+    "input_pins.json": {
+      "bytes": 2187,
+      "sha256": "06cda105ceb6dfd7c3563c3d07a6602f7e2a525fcd63dd4c7975a5b8b12e4898"
+    },
+    "masks128.bin": {
+      "bytes": 384,
+      "sha256": "d9e0766db2ad6fd260fe7c5be43ad867aac7b23484ab52f7833405650f2b92fc"
+    },
+    "seed_inputs.json": {
+      "bytes": 8531,
+      "sha256": "78ebf807f9bcc01f8eb3e1214efa1223cc6bc6cdf244ca102f138b3be6c3e1fc"
+    }
+  },
+  "limitation": "Two Python source/math models, same archival FP table. Not compiled-C equivalence or independent agent acceptance. No measured firmware cost or returned CSR."
+}

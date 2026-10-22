@@ -1,0 +1,20 @@
+{
+  "audit_script_sha256": "bc92d1d2fb12f02fde729fc4d81b97d96b12d25602ad1ff6f0d94d6bc0f1528e",
+  "helper_functions": 20,
+  "instruction_pcs": 821,
+  "scope": "SUPPLEMENT_ONLY_NOT_WORKER_REPLACEMENT",
+  "source_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/install/riscv-gcc/bin/riscv64-unknown-elf-objdump": "736c0afe63f17e4eab376aa9f31d4f07f7ac113384119ec699af22afa1501ac2",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_original_review/e8_m8_ops2_prefix112_prepare01/prepared/gather_prefix_e8_m8_ops2/case.c": "1caee836dd7af3bc5f33d4ce73ab906940e6b0d600960fa2a706f04a6f50bf41",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_original_review/e8_m8_ops2_prefix112_prepare01/prepared/gather_prefix_e8_m8_ops2/original/operations.S": "6210a2d96c74a3d15b331b1aeff3d2a1eef01fc64d7becafbc53a042b3460824",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_original_review/e8_m8_ops2_prefix112_prepare01/prepared/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_original_review/e8_m8_ops2_prefix112_prepare01/prepared/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_original_review/e8_m8_ops2_prefix112_prepare01/soc01/gather_prefix_e8_m8_ops2.elf": "a0445bcb877799d488e40f37d7bcbc038d9f0e36a7a60e147ed8baf3c5ea5f74",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_original_review/e8_m8_ops2_prefix112_prepare01/soc01/gather_prefix_e8_m8_ops2_main.c": "36fe5c2f8db4a254db34dad7f2a188d781be64b70319035a8f9778456fedfea8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_original_review/e8_m8_ops2_prefix112_prepare01/source_elf_proof.json": "e84846e23d5320e6474a5e4876aebecb4c124067e593c7b51fff93bb459d80e1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_original_review/e8_m8_ops2_prefix112_vcs_m6_plan01/checker.py": "77683517a53ff02666068b6176eebe3df7eb2f74daaefa914d3ad1536e93cff7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_original_review/e8_m8_ops2_prefix112_vcs_m6_plan01/prepared01/plan.json": "bb3b5302ce2c65ec91874c22ed85705488aae4ba2043ad32b285ba60c6d81c11",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_original_review/e8_m8_ops2_prefix112_vcs_m6_plan01/replay.py": "0409776216fe0eae514ffe715540663b31414d68ef10e8ec7cc5983cd95631e5"
+  },
+  "status": "STATIC_INVENTORY_ONLY_NOT_DUT"
+}

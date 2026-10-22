@@ -1,0 +1,19 @@
+{
+  "status": "LINKED_AUDIT_COMPLETE",
+  "backends": {
+    "soc": {
+      "status": "COMPILED_CONDITIONAL_LT_3M",
+      "elf_sha256": "5242911cb3a64d2bab02be8babdad363d75796a5f25dd351b82706c6279aca7c",
+      "whole_positive_upper": 1138255,
+      "margin_to_3M": 1861745
+    },
+    "spike": {
+      "status": "COMPILED_CONDITIONAL_LT_3M",
+      "elf_sha256": "0326cc068509dd6a42a8840426de99fd251dcefe04e552bda5135c36040c7d1e",
+      "whole_positive_upper": 1142355,
+      "margin_to_3M": 1857645
+    }
+  },
+  "reference": false,
+  "DUT": false
+}

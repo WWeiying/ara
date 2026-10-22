@@ -1,0 +1,21 @@
+{
+  "status": "ERROR",
+  "pid": 2149556,
+  "versions": [
+    {
+      "version": "candidate",
+      "compile": {
+        "returncode": 0,
+        "elapsed_s": 29.08704105578363,
+        "timeout": false
+      },
+      "run": {
+        "returncode": 0,
+        "elapsed_s": 10.641611681785434,
+        "timeout": false
+      }
+    }
+  ],
+  "scope": "Local STORE, translation disabled; not SoC",
+  "error": "AssertionError()"
+}

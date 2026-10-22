@@ -1,0 +1,59 @@
+{
+  "status": "PASS_FULL4095_M9_METADATA_COLLECTED_NOT_LINUX",
+  "scope": "Full4095 cap32 source-port, not Linux/all22",
+  "started": 1791980686.1539192,
+  "pid": 2966628,
+  "csv_semantic_reparses": 0,
+  "plan_sha256": "57d3d71260ae7b06f2bd6498ab9246bf1e4cbc9146935a916bc6d39ca9139ca8",
+  "complete_sha256": "1d1a5288221e5d4310bea98c973688bfda1f8c09abfbb2214f80eda971fca471",
+  "service_exit_sha256": "391046d01f51c4e3185260dfd184f8b8e369cf4d2b6b6646373946893600188b",
+  "actual_service": {
+    "SERVICE_RESULT": "success",
+    "EXIT_CODE": "exited",
+    "EXIT_STATUS": "0",
+    "observed_at": 1791980685.9796538,
+    "hook_pid": 2966627,
+    "kind": "SYSTEMD_EXEC_STOP_POST_ACTUAL_ENVIRONMENT"
+  },
+  "actual_child": {
+    "schema": "UNVALIDATED_CHILD_OUTCOME_V2",
+    "architectural_acceptance": false,
+    "returncode": 0,
+    "elapsed_s": 7872.941444882192,
+    "timed_out": false,
+    "failure_seen": false,
+    "cancelled": false,
+    "command": [
+      "/home/wangwy/fpga_runs/current_board_memory_candidate09/campaign/image/_build/vcs/simv",
+      "-l",
+      "run.vcs.log",
+      "+ntb_random_seed=1",
+      "+PRELOAD=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/replay/tests/arithmetic_full_e8_mf4/input.elf",
+      "+TESTCASE=arithmetic_full_e8_mf4",
+      "+NO_FSDB",
+      "+COMMIT_TRACE=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/replay/tests/arithmetic_full_e8_mf4/commit_trace.csv"
+    ],
+    "cwd": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e8_mf4_o2_vcs_m9_successor02/prepared01/replay/tests/arithmetic_full_e8_mf4/work",
+    "command_sha256": "077605be92ee556f455e696071185bcf3da5ef48e1bb51876b1d491e736c47bf"
+  },
+  "strict_sha256": "48f971a4868be2ead3fcc97c7fedfe617ea38ad7aa5ff4e3d4314c7b3974d5d5",
+  "csv_sha256": "29efc7db8289f7821c4f03c3a42666c800617db4ae9266207cd2ff6657685cb1",
+  "calls": 4095,
+  "results": 131040,
+  "guards": 8190,
+  "vstart_checks": 4095,
+  "retired": 4446338,
+  "rows": 4627616,
+  "memory_owners": {
+    "memory_requests": 20664,
+    "required_nonempty_helpers": 20475,
+    "required_active_memory_targets": 117,
+    "all_uop_allocs": 23067,
+    "all_uop_dones": 23067,
+    "live_at_end": 0
+  },
+  "input_pins": 896,
+  "evidence_pins": 12,
+  "pins_unchanged": true,
+  "finished": 1791980711.8957195
+}

@@ -1,0 +1,50 @@
+{
+  "status": "HOST_SPIKE_PASS_NOT_DUT",
+  "checks": 966,
+  "raw_commit_records": 167828,
+  "retired_nonpartial": 167827,
+  "traps": [
+    [
+      "trap_store_address_misaligned",
+      2147487708
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147488064
+    ]
+  ],
+  "actions": [
+    "fault_partial",
+    "mt_trap_vstart_read",
+    "mt_prefix_checkpoint",
+    "mt_prefix_poison",
+    "mt_repair_index",
+    "mt_restart_vstart_write",
+    "mt_retry_mret",
+    "mt_target",
+    "mt_successor_indexed_store",
+    "mt_recovery_load",
+    "mt_successor_add",
+    "mt_younger_store",
+    "mt_trap_vstart_read"
+  ],
+  "fault_checkpoint_bytes": 32600,
+  "final_checkpoint_bytes": 32592,
+  "htif": [
+    1
+  ],
+  "target_attempts": 2,
+  "csr_restore_checked": true,
+  "prefix_poison": true,
+  "receipt": {
+    "returncode": 0,
+    "elapsed_s": 3.227113717701286,
+    "raw_bytes": 20501421
+  },
+  "isa": "rv64gcv_zfh_zvfh_zvl1024b",
+  "host_rows": 2320,
+  "host_negative_count": 20,
+  "raw_sha256": "21848f514e898613087a1e739383a98d21a82b184ff56d6e2de4b1c42976443d",
+  "soc_elf_sha256": "bab01b98f12ee9b9930995b8c73965c5db833772e3aac2a328b9d7002db686fb",
+  "spike_elf_sha256": "6d0c796b80f29238ace34015e1a3585c5ea7c4bfeb48fc533976e6c6183044fe"
+}

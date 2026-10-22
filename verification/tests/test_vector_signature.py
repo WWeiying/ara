@@ -1,9 +1,14 @@
 import tempfile
 import unittest
 from pathlib import Path
+import re
+from unittest.mock import patch
 
 from ara_verify.vector_signature import (
     VectorSignatureError,
+    _count_program_vector_scalar_reads,
+    _insert_defined_scalar_sources,
+    _proven_index_rotation_reads,
     _is_vector_store_instruction,
     rewrite_deterministic_vector_policies,
     rewrite_vector_signature,
@@ -11,6 +16,164 @@ from ara_verify.vector_signature import (
 
 
 class VectorSignatureTests(unittest.TestCase):
+    @staticmethod
+    def index_constructor(width=32, count=15, nf=1):
+        lmul = {16: "mf4", 32: "mf2", 64: "m1"}[width]
+        code = ("la x26, user_stack_end\n"
+                f"main: vsetvli t0, zero, e{width}, {lmul}, tu, mu "
+                "#start riscv_vector_load_store_instr_stream_0\n")
+        code += "".join(f"li t0, {2*i}\nvslide1down.vx v17, v17, t0\n" for i in range(count))
+        code += "vmv.x.s t0, v17\nvslide1down.vx v17, v17, t0\n" * (16 - count)
+        code += (f"li t0, {count}\nvsetvli a0, t0, e16, mf4, tu, mu\n"
+                 "la s5, region_0+0\nli s2, 1\ncsrrw s2, vstart, s2\n")
+        segment = f"seg{nf}" if nf > 1 else ""
+        code += (f"vlux{segment}ei{width}.v v8, (s5), v17, v0.t\n"
+                 "vmv.x.s a1, v19\ntest_done:\necall\nuser_stack_end:\n"
+                 ".section .region_0,\"aw\",@progbits;\nregion_0:\n"
+                 ".word " + ",".join(["0"] * 1024) + "\n")
+        return code
+
+    def test_index_rotations_preserved_but_other_scalar_reads_defined(self):
+        for width, count, nf in ((16, 10, 4), (32, 10, 1), (32, 15, 1), (64, 15, 3)):
+            with self.subTest(width=width, count=count, nf=nf), tempfile.TemporaryDirectory() as directory:
+                source = Path(directory) / "test.S"
+                source.write_text(self.index_constructor(width, count, nf))
+                result = rewrite_vector_signature(source, defined_scalar_sources=True)
+                self.assertEqual(result.preserved_index_rotation_reads, 16 - count)
+                self.assertEqual(result.defined_scalar_source_reads, 1)
+                self.assertNotIn("vl1re8.v v17", source.read_text())
+                self.assertIn("vl1re8.v v19", source.read_text())
+
+    def test_index_rotation_exemption_fails_closed(self):
+        baseline = self.index_constructor() + "__ara_region_0_end:\n"
+        self.assertEqual(len(_proven_index_rotation_reads(baseline.splitlines(True), 1024)), 1)
+        for old, new in (("li t0, 15\nvsetvli", "li t0, 14\nvsetvli"),
+                         ("e32, mf2", "e32, m1"),
+                         ("vslide1down.vx v17, v17, t0", "vslide1down.vx v17, v17, a0"),
+                         ("la s5, region_0+0", "la s5, region_0+4090"),
+                         ("li s2, 1", "vsub.vx v17, v1, a1"),
+                         ("li s2, 1", "vmv2r.v v16, v20"),
+                         ("li s2, 1", "li x21, 1"),
+                         ("li s2, 1", "label: li s2, 1"),
+                         ("csrrw s2, vstart, s2", "csrrw s2, vtype, s2"),
+                         ("vluxei32.v v8, (s5), v17", "vluxei32.v v8, (s5), v16")):
+            with self.subTest(old=old, new=new):
+                changed = baseline.replace(old, new, 1).splitlines(True)
+                self.assertFalse(_proven_index_rotation_reads(changed, 1024))
+                rewritten, count = _insert_defined_scalar_sources(changed, "x26", None)
+                self.assertEqual(count, 2)
+                self.assertIn("vl1re8.v v17", "".join(rewritten))
+
+    def test_defined_sources_cover_executed_subprograms(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "test.S"
+            source.write_text(
+                "la x26, user_stack_end\nvsetivli x5, 4, e8, m1, ta, ma\n"
+                "main: vcpop.m a0, v1\n"
+                "test_done:\n  ecall\n"
+                "sub_2: vfmv.f.s fa0, v3\n"
+                "  vfirst.m a1, v4\n"
+                "write_tohost: vmv.x.s a2, v5\n"
+                "user_stack_end:\n", encoding="utf-8")
+            result = rewrite_vector_signature(source, defined_scalar_sources=True)
+            rewritten = source.read_text(encoding="utf-8")
+            self.assertEqual(result.defined_scalar_source_reads, 3)
+            self.assertIn("sub_2:\n                  # ARA_DSA_DEFINED_SCALAR_SOURCE_001",
+                          rewritten)
+            self.assertEqual(rewritten.count("ARA_DSA_DEFINED_SCALAR_SOURCE_"), 3)
+            self.assertNotIn("vl1re8.v v5,", rewritten)
+
+    def test_missing_scalar_read_instrumentation_fails_before_simulation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "test.S"
+            source.write_text(
+                "la x26, user_stack_end\nvsetivli x5, 4, e8, m1, ta, ma\n"
+                "main: vfmv.f.s fa0, v3\n"
+                "test_done:\n  ecall\nuser_stack_end:\n", encoding="utf-8")
+            with patch("ara_verify.vector_signature._SCALAR_VECTOR_READ_RE",
+                       re.compile(r"^never$")):
+                with self.assertRaisesRegex(VectorSignatureError, "0/1"):
+                    rewrite_vector_signature(source, defined_scalar_sources=True)
+
+    def test_defined_scalar_sources_preserve_labels_and_control_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "test.S"
+            source.write_text(
+                "la x26, user_stack_end\n"
+                "vsetivli x5, 4, e8, m1, ta, ma\n"
+                "vmv.x.s a0, v1\n"
+                "main: vcpop.m a1, v22, v0.t # masked count\n"
+                "7: vmv.x.s a2, v16\n"
+                "vfmv.f.s fa0, v3\n"
+                "test_done:\n"
+                "  ecall\n"
+                "user_stack_end:\n",
+                encoding="utf-8",
+            )
+            result = rewrite_vector_signature(source, defined_scalar_sources=True)
+            rewritten = source.read_text(encoding="utf-8")
+            self.assertEqual(result.defined_scalar_source_reads, 3)
+            self.assertIn("main:\n                  # ARA_DSA_DEFINED_SCALAR_SOURCE_000", rewritten)
+            self.assertIn("7:\n                  # ARA_DSA_DEFINED_SCALAR_SOURCE_001", rewritten)
+            self.assertIn("vl1re8.v v22, (x5)", rewritten)
+            self.assertIn("vl1re8.v v0, (x5)", rewritten)
+            self.assertIn("vl1re8.v v16, (x5)", rewritten)
+            self.assertIn("vl1re8.v v3, (x5)", rewritten)
+            self.assertIn("sd x5, 0(x26)", rewritten)
+            self.assertIn("csrr x5, vstart", rewritten)
+            self.assertIn("csrw vstart, x5", rewritten)
+            self.assertEqual(rewritten.count(".byte "), 16)
+            self.assertEqual(rewritten.count("ARA_DSA_DEFINED_SCALAR_SOURCE_"), 3)
+            self.assertEqual(rewritten.count("vmv.x.s a0, v1"), 1)
+
+    def test_defined_scalar_sources_empty_is_noop(self):
+        text = (
+            "la x26, user_stack_end\nvsetivli x5, 4, e8, m1, ta, ma\n"
+            "main: vadd.vv v1, v2, v3\n"
+            "test_done:\n  ecall\nuser_stack_end:\n"
+        )
+        lines = text.splitlines(keepends=True)
+        self.assertEqual(_count_program_vector_scalar_reads(lines), 0)
+        rewritten, count = _insert_defined_scalar_sources(lines, "x26", None)
+        self.assertEqual(count, 0)
+        self.assertEqual(rewritten, lines)
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "defined.S"
+            baseline = Path(directory) / "baseline.S"
+            source.write_text(text)
+            baseline.write_text(text)
+            result = rewrite_vector_signature(source, defined_scalar_sources=True)
+            rewrite_vector_signature(baseline)
+            self.assertEqual(result.defined_scalar_source_reads, 0)
+            self.assertEqual(source.read_bytes(), baseline.read_bytes())
+            self.assertNotIn("__ara_defined_scalar_source", source.read_text())
+
+    def test_defined_scalar_sources_reject_malformed_or_unknown_operands(self):
+        for instruction in ("vmv.x.s a0, v32", "vcpop.m a0, unknown",
+                            "vfirst.m a0", "vfmv.f.s fa0, v3, bad_mask"):
+            with self.subTest(instruction=instruction), tempfile.TemporaryDirectory() as directory:
+                source = Path(directory) / "test.S"
+                text = ("la x26, user_stack_end\nvsetivli x5, 4, e8, m1, ta, ma\nmain: " + instruction +
+                        "\ntest_done:\n  ecall\nuser_stack_end:\n")
+                source.write_text(text)
+                with self.assertRaisesRegex(VectorSignatureError, "0/1"):
+                    rewrite_vector_signature(source, defined_scalar_sources=True)
+                self.assertEqual(source.read_text(), text)
+
+    def test_defined_scalar_sources_reject_checkpoint_combination(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "test.S"
+            source.write_text(
+                "la x26, user_stack_end\nvsetivli x5, 4, e8, m1, ta, ma\n"
+                "main: vadd.vv v1, v2, v3\n"
+                "test_done:\n  ecall\nuser_stack_end:\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(VectorSignatureError, "cannot be combined"):
+                rewrite_vector_signature(
+                    source, defined_scalar_sources=True, vector_checkpoints=True
+                )
+
     def test_policy_only_rewrite_does_not_add_signature(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "test.S"
@@ -108,6 +271,37 @@ class VectorSignatureTests(unittest.TestCase):
             self.assertEqual(result.dynamic_policy_rewrites, 1)
             self.assertIn("li s5, 0x17\nvsetvl x1, x2, s5\nli s5, 0xd7", rewritten)
 
+    def test_vsetvl_shared_avl_vtype_uses_distinct_destination(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "test.S"
+            source.write_text(
+                "li s3, 0x41\n"
+                "vsetvl t4, s3, s3 # AVL and vtype alias\n",
+                encoding="utf-8",
+            )
+            _, dynamic = rewrite_deterministic_vector_policies(source)
+            self.assertEqual(dynamic, 1)
+            self.assertEqual(
+                source.read_text(encoding="utf-8"),
+                "li s3, 0x41\nli t4, 0x1\n"
+                "vsetvl t4, s3, t4 # AVL and vtype alias\n",
+            )
+
+    def test_vsetvl_shared_avl_vtype_without_scratch_destination_spills_gpr(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "test.S"
+            source.write_text(
+                "la x26, user_stack_end\nli s3, 0x41\nvsetvl zero, s3, s3\n",
+                encoding="utf-8",
+            )
+            _, dynamic = rewrite_deterministic_vector_policies(source)
+            self.assertEqual(dynamic, 1)
+            self.assertIn(
+                "addi x26, x26, -16\nsd t6, 0(x26)\nli t6, 0x1\n"
+                "vsetvl zero, s3, t6\nld t6, 0(x26)\naddi x26, x26, 16",
+                source.read_text(encoding="utf-8"),
+            )
+
     def test_rewrites_dynamic_vsetvl_after_numeric_local_label(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "test.S"
@@ -156,29 +350,58 @@ class VectorSignatureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "test.S"
             source.write_text(
+                "la x26, user_stack_end\n"
                 "vsetvli x1, x2, e32, m1, ta, ma\n"
                 "add x3, x4, x5\n"
                 "vsetvl x1, x2, x3\n"
                 "test_done:\n"
-                "  ecall\n",
+                "  ecall\n"
+                "user_stack_end:\n",
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(VectorSignatureError, "not a constant li"):
                 rewrite_vector_signature(source)
 
-    def test_rejects_dynamic_vsetvl_with_shared_avl_and_vtype(self):
+    def test_dynamic_vsetvl_with_shared_avl_and_vtype_preserves_avl(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "test.S"
             source.write_text(
                 "vsetvli x1, x2, e32, m1, ta, ma\n"
                 "li x3, 0xd7\n"
-                "vsetvl x1, x3, x3\n"
+                "vsetvl x3, x3, x3\n"
+                "la x26, user_stack_end\n"
                 "test_done:\n"
-                "  ecall\n",
+                "  ecall\n"
+                "user_stack_end:\n",
                 encoding="utf-8",
             )
-            with self.assertRaisesRegex(VectorSignatureError, "both AVL and vtype"):
-                rewrite_vector_signature(source)
+            result = rewrite_vector_signature(source)
+            self.assertEqual(result.dynamic_policy_rewrites, 1)
+            self.assertIn(
+                "li t6, 0x17\nvsetvl x3, x3, t6\nld t6, 0(x26)",
+                source.read_text(encoding="utf-8"),
+            )
+
+    def test_shared_sp_vsetvl_uses_reserved_user_stack(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "test.S"
+            source.write_text(
+                "la x26, user_stack_end\nli sp, 0xc2\nvsetvl zero, sp, sp\n",
+                encoding="utf-8",
+            )
+            rewrite_deterministic_vector_policies(source)
+            self.assertIn(
+                "addi x26, x26, -16\nsd t6, 0(x26)\nli t6, 0x2\n"
+                "vsetvl zero, sp, t6\nld t6, 0(x26)\naddi x26, x26, 16",
+                source.read_text(encoding="utf-8"),
+            )
+
+    def test_shared_avl_vtype_rejects_missing_reserved_stack(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "test.S"
+            source.write_text("li sp, 0xc2\nvsetvl zero, sp, sp\n", encoding="utf-8")
+            with self.assertRaisesRegex(VectorSignatureError, "distinct reserved stack"):
+                rewrite_deterministic_vector_policies(source)
 
     def test_rejects_ambiguous_policy(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -241,6 +464,33 @@ class VectorSignatureTests(unittest.TestCase):
             self.assertNotIn("after initialization", rewritten)
             self.assertIn("sd x5, 0(x26)", rewritten)
             self.assertIn("ld x5, 0(x26)", rewritten)
+
+    def test_checkpoint_preserves_kernel_stack_and_enables_fcsr(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "test.S"
+            source.write_text(
+                ".section .text\n"
+                "kernel_sp:\n"
+                "  la x7, kernel_stack_end\n"
+                "  vsetvli x10, x11, e32, m1, ta, ma\n"
+                "  la x28, user_stack_end\n"
+                "main:\n"
+                "  vadd.vv v2, v0, v1\n"
+                "test_done:\n"
+                "  ecall\n"
+                "kernel_stack_end:\n"
+                "user_stack_end:\n",
+                encoding="utf-8",
+            )
+
+            result = rewrite_vector_signature(source, vector_checkpoints=True)
+            rewritten = source.read_text(encoding="utf-8")
+
+            self.assertEqual(result.checkpoints, 2)
+            self.assertIn("csrr x29, fcsr", rewritten)
+            self.assertNotIn("csrr x7, fcsr", rewritten)
+            self.assertIn("li x29, 0x6000\n                  csrs mstatus, x29", rewritten)
+            self.assertEqual(rewritten.count("csrs mstatus, x29"), 1)
 
     def test_selects_static_vector_checkpoint_indices(self):
         with tempfile.TemporaryDirectory() as directory:

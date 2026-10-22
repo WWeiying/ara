@@ -1,0 +1,55 @@
+READ-ONLY SOURCE AUDIT; NO EDA / NO RTL CHANGE / NO EL GENERATION OR APPLICATION
+
+Frozen helper:
+verification/coverage/audit_error_slave797_source.py
+SHA256 7e0e99e1dcbaad78aebd2f44923e9fb8e492a2cfdc20abfc8ed55f2189635645
+Frozen tests:
+verification/coverage/test_audit_error_slave797_source.py
+SHA256 ddea29c3668adb59bb1451d28cc83880aae5cd38c0c8e710b0e533b9a69d1435
+Packet:
+verification/out/error-slave797-constant-source-agent-20261008-01.json
+SHA256 70cddd9c0c41b6fcfdd6b96feefa7a16793aeb494c221f7d6bf11e33fe6e40b1
+
+ACTUAL TEST RECEIPT
+env PYTHONPATH=/tmp/vsmul797-host-deps:verification/coverage python3 -B -m unittest -v verification/coverage/test_audit_error_slave797_source.py
+Exit 0; Ran 13 tests in 10.021s; OK.
+Includes actual frozen source/compiled shape/full797 union/EL packet check,
+unsigned width/overflow negatives, protected one bits, MSB-first serialized
+coordinates, array identity, whole-scope/opaque/single-direction EL negatives.
+
+ACTUAL PACKET COMMAND RECEIPT
+env PYTHONPATH=/tmp/vsmul797-host-deps python3 -B verification/coverage/audit_error_slave797_source.py --output verification/out/error-slave797-constant-source-agent-20261008-01.json
+Exit 0; candidate_slots=1452; SHA256 as above. Command requires fresh output;
+do not overwrite the frozen packet when repeating. Use a new output filename.
+
+SOURCE CONCLUSION
+Direct core err_resp.r.data and filter mst_resp_i.r.data: all128 bits
+constant, including 34 low64 ones; 256 paired slots per instrumented field.
+Filtered slv_resp_o plus upsizer axi_err_resp and two demux input aliases:
+only high64 and 30 low64 zero bits are constants; 94 bits /188 paired slots
+per field. Low64 one bits MAY change on INJECT_R and MUST remain protected.
+7 instrumented fields: 2*256 +5*188 =1452 candidate slots, NOT official gain.
+All full797 candidate pairs zero; existing inherited796 EL overlaps none.
+ALL controls and every non-r.data field remain protected.
+Detailed exact bit lists, source paths/lines, checksums, compiled definitions,
+and unnamed serialized pair coordinates are in the packet.
+
+Compiled RespWidth=64 / ATOPs=1 are explicit. RespData value is NOT printed
+numerically in the compiled definition name: it is proved by the pinned
+unsigned64 default and pinned upsizer instantiation without override.
+Additional read-only textual scan of all456 currently present sourcebook paths
+found no defparam. Other RespData overrides belong to APB/axi_isolate, not this
+upsizer error slave. This scan is supplementary, not a full456 hash recheck.
+Frozen reviewed sources have exact SHA checks in the tool.
+
+NOT QUALIFIED NEW EL. No native selector/display check has been run. Both
+directions must eventually be addressed explicitly; serialized slot order is
+not native direction-ID evidence. No percent or serialized count is used to
+derive an official denominator or budget to80.
+
+REPORT797 CLOSEOUT
+Already-running independent report verify completed exit0 with qSHA
+1ebc05103bc71ee6ec26d97e51ed4867fed3d35a21ee38490956c3ccadf2c5c6.
+No additional EDA launch or repeated global hash audit.
+i_system Toggle raw65.39->65.49; applied73.01->73.14.
+These are displayed percentage-point increases +0.10/+0.13 only.

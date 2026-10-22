@@ -1,0 +1,15 @@
+{
+  "name": "int_plain_restart",
+  "status": "FAIL",
+  "returncode": 0,
+  "elapsed_s": 35.80597631819546,
+  "oracle_lines": [
+    "BOARD_CASE_BEGIN int_plain_restart",
+    "RVV_FP_MOVE_DETAIL op=6 seed=0 scalar=0 invalid_box=0 vl=2 mask=0 sticky=0 vstart=1 actual_flags=0 errors=1",
+    "RVV_FP_MOVE_CLASSIFY returned_vstart=0 first_bad_element=0 expected_bits=0 actual_bits=31743 scalar_expected=1311768467463790320 scalar_actual=1311768467463790320 guard_before=91 guard_after=91",
+    "RVV_FP_MOVE_FAIL sew=16 cases=1 errors=1",
+    "BOARD_CASE_FAIL int_plain_restart"
+  ],
+  "input_sha256": "d91f91d0e17097217da82551ce51772ca73f84efa79aae24285e95a347450097",
+  "console_sha256": "29402c51d8c6b6a57b358a608184e7146c7ca0254d3e529730fc3dd2470e224c"
+}

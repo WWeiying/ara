@@ -333,6 +333,25 @@ void TEST_CASE5(void) {
            0x4020000000000000);
 }
 
+// Regression for the reduction-neutral encoding collision with CVT_NARROW.
+// VFREDMAX uses cvt_resize=2'b10 for its -Inf neutral value. This must not
+// enter the FP narrowing issue/result packing path, where the same encoding
+// means CVT_NARROW. Include both signs and an explicit -Inf seed so the
+// reduction result distinguishes the two interpretations.
+void TEST_CASE6(void) {
+  VSET(4, e32, m1);
+  VLOAD_32(v2, 0xC1700000, 0x41700000, 0x3F800000, 0xC0000000);
+  VLOAD_32(v3, 0xFF800000);
+  asm volatile("vfredmax.vs v1, v2, v3");
+  VCMP_U32(18, v1, 0x41700000);
+
+  VSET(1, e32, m1);
+  VLOAD_32(v2, 0x41700000);
+  VLOAD_32(v3, 0xFF800000);
+  asm volatile("vfredmax.vs v1, v2, v3");
+  VCMP_U32(19, v1, 0x41700000);
+}
+
 int main(void) {
   INIT_CHECK();
   enable_vec();
@@ -343,6 +362,7 @@ int main(void) {
   TEST_CASE3();
   TEST_CASE4();
   TEST_CASE5();
+  TEST_CASE6();
 
   EXIT_CHECK();
 }

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "q2k_ffn_down",
+      "format": "q2_K",
+      "capture": "verification/out/qbs-format-closure-q2k-20260923-03"
+    },
+    {
+      "name": "q4_0_attn_q",
+      "format": "q4_0",
+      "capture": "verification/out/qbs-format-closure-q4-0-20260923-03"
+    },
+    {
+      "name": "q5_0_attn_q",
+      "format": "q5_0",
+      "capture": "verification/out/qbs-format-closure-q5-0-20260923-03"
+    },
+    {
+      "name": "iq4_nl_attn_q",
+      "format": "iq4_nl",
+      "capture": "verification/out/qbs-format-closure-iq4-nl-20260923-03"
+    }
+  ]
+}

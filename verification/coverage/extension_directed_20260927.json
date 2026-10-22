@@ -1,0 +1,25 @@
+{
+  "purpose": "New instruction-family stimuli, not a claim that every selected instruction is an uncovered RTL bin",
+  "groups": {
+    "integer_division": ["vdiv", "vdivu", "vrem", "vremu", "vdiv_vstart_edges"],
+    "fixed_point_rounding": ["vaadd", "vaaddu", "vasub", "vasubu", "vsadd", "vsaddu", "vsmul", "vssra", "vssrl", "vnclip", "vnclipu"],
+    "integer_width_and_carry": ["vwaddu", "vwsubu", "vwadd", "vwsub", "vsext", "vzext", "vadc", "vmadc", "vsbc", "vmsbc"],
+    "floating_point": ["vfdiv", "vfrdiv", "vfsqrt", "vfclass", "vfmin", "vfmax", "vfcvt", "vfrec7", "vfrsqrt7", "vfsgnj", "vfsgnjn", "vfsgnjx"],
+    "reductions": ["vredmaxu", "vredmax", "vredminu", "vredmin", "vredand", "vredor", "vredxor", "vwredsumu", "vwredsum", "vfredmin", "vfredmax", "vfwredusum"],
+    "mask_and_permutation": ["vmask_logical_matrix", "vmsbf", "vmsof", "vmsif", "viota", "vid", "vcpop", "vfirst", "vrgather_edges", "vslide_mask_edges", "vslide1up", "vslide1down", "vfslide1up", "vfslide1down"]
+  },
+  "tests": [
+    "rvv:vdiv", "rvv:vdivu", "rvv:vrem", "rvv:vremu", "rvv:vdiv_vstart_edges",
+    "rvv:vaadd", "rvv:vaaddu", "rvv:vasub", "rvv:vasubu", "rvv:vsadd", "rvv:vsaddu",
+    "rvv:vsmul", "rvv:vssra", "rvv:vssrl", "rvv:vnclip", "rvv:vnclipu",
+    "rvv:vwaddu", "rvv:vwsubu", "rvv:vwadd", "rvv:vwsub", "rvv:vsext", "rvv:vzext",
+    "rvv:vadc", "rvv:vmadc", "rvv:vsbc", "rvv:vmsbc",
+    "rvv:vfdiv", "rvv:vfrdiv", "rvv:vfsqrt", "rvv:vfclass", "rvv:vfmin", "rvv:vfmax",
+    "rvv:vfcvt", "rvv:vfrec7", "rvv:vfrsqrt7", "rvv:vfsgnj", "rvv:vfsgnjn", "rvv:vfsgnjx",
+    "rvv:vredmaxu", "rvv:vredmax", "rvv:vredminu", "rvv:vredmin", "rvv:vredand",
+    "rvv:vredor", "rvv:vredxor", "rvv:vwredsumu", "rvv:vwredsum", "rvv:vfredmin",
+    "rvv:vfredmax", "rvv:vfwredusum", "rvv:vmask_logical_matrix", "rvv:vmsbf", "rvv:vmsof",
+    "rvv:vmsif", "rvv:viota", "rvv:vid", "rvv:vcpop", "rvv:vfirst", "rvv:vrgather_edges",
+    "rvv:vslide_mask_edges", "rvv:vslide1up", "rvv:vslide1down", "rvv:vfslide1up", "rvv:vfslide1down"
+  ]
+}

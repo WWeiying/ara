@@ -1,0 +1,12 @@
+{
+  "case_id": "q5_0_decode_attn_q_qbs",
+  "capture_root": "/home/wangwy/openproject/ara_verification_archive/captures/qbs-format-closure-q5-0-20260923-03/capture",
+  "phase": "decode",
+  "operator": "blk_0_attn_q_weight",
+  "weight_type": "q5_0",
+  "k": 896,
+  "rows": 32,
+  "inputs": 1,
+  "capture_rows": 896,
+  "capture_inputs": 1
+}

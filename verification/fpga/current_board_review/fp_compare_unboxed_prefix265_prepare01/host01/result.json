@@ -1,0 +1,60 @@
+{
+  "status": "PASS_HOST_2_POSITIVE_7_NEGATIVE",
+  "full_fixture_entries": 1536,
+  "results": [
+    {
+      "mutation": 0,
+      "status": "PASS",
+      "returncode": 0,
+      "log_sha256": "2722487965bcc929389a6656e6efc61dc1b1c8372639f3fa06765d8c3a6cdb98"
+    },
+    {
+      "mutation": 1,
+      "status": "EXPECTED_REJECTION",
+      "returncode": 1,
+      "log_sha256": "4a2cad9531b1c306d0b8ae271bc2a4a0ceca27fcb870afc2d8833f7b7e106cc1"
+    },
+    {
+      "mutation": 2,
+      "status": "EXPECTED_REJECTION",
+      "returncode": 1,
+      "log_sha256": "e350edd2ac2560933be00497c0f72c93e2138572438344f87e38905d841a4e55"
+    },
+    {
+      "mutation": 3,
+      "status": "EXPECTED_REJECTION",
+      "returncode": 1,
+      "log_sha256": "4a2cad9531b1c306d0b8ae271bc2a4a0ceca27fcb870afc2d8833f7b7e106cc1"
+    },
+    {
+      "mutation": 4,
+      "status": "EXPECTED_REJECTION",
+      "returncode": 1,
+      "log_sha256": "4a2cad9531b1c306d0b8ae271bc2a4a0ceca27fcb870afc2d8833f7b7e106cc1"
+    },
+    {
+      "mutation": 5,
+      "status": "EXPECTED_REJECTION",
+      "returncode": 1,
+      "log_sha256": "4a2cad9531b1c306d0b8ae271bc2a4a0ceca27fcb870afc2d8833f7b7e106cc1"
+    },
+    {
+      "mutation": 6,
+      "status": "PASS",
+      "returncode": 0,
+      "log_sha256": "2722487965bcc929389a6656e6efc61dc1b1c8372639f3fa06765d8c3a6cdb98"
+    },
+    {
+      "mutation": 7,
+      "status": "EXPECTED_REJECTION",
+      "returncode": 1,
+      "log_sha256": "78e815db9fec8ea201f2f97ef5005387e8ca49ecd180e0f6e308bf28565443a7"
+    },
+    {
+      "mutation": 8,
+      "status": "EXPECTED_REJECTION",
+      "returncode": 1,
+      "log_sha256": "4a2cad9531b1c306d0b8ae271bc2a4a0ceca27fcb870afc2d8833f7b7e106cc1"
+    }
+  ]
+}

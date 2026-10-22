@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""One legal packed-scalar candidate. No reference dispatch in this program."""
+import difflib
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import re
+import shutil
+import sys
+sys.dont_write_bytecode=True
+from model import generate, headers, integer_model
+HERE=Path(__file__).resolve().parent
+PARENT=HERE.parent
+spec=importlib.util.spec_from_file_location('immutable_full_prepare',PARENT/'full_e16_mf4_prepare01/prepare.py')
+old=importlib.util.module_from_spec(spec)
+local_model=sys.modules['model'];sys.modules['model']=integer_model
+try:spec.loader.exec_module(old)
+finally:sys.modules['model']=local_model
+sha,save,run=old.sha,old.save,old.run
+
+def emit(path,text):
+    if path.exists():
+        old.require(path.read_text()==text,'Generated artifact drift '+str(path));return
+    with path.open('x') as f:f.write(text)
+
+def main():
+    require=old.require
+    prior=PARENT/'full_e8_m8_block_prepare01'
+    require(sha(prior/'HOLD.json')=='5810fde35a84bdccdc752797362160f70775a5ac34b11870280c02a09d48f5ae','Old HOLD preserved')
+    require(sha(HERE/'model.py')==sha(prior/'model.py') and sha(HERE/'host.c')==sha(prior/'host.c'),'Same model and Host')
+    require(not sys.argv[1:], 'No resume or alternate flags in this one-candidate preparation')
+    resume=False
+    require(not (HERE/'preflight.json').exists() or resume,'Existing preparation retained; no retry')
+    original=old.REC/'reconstructed_oracle.c'
+    require(sha(original)=='7483f9dfde7012f7b800314fe1765f8cee9836fbcfbdc16fc641554397884e91','Recovered source pin')
+    seeds,rows,dictionary,masks=generate()
+    bound=dict(calls=len(rows),dictionary_blocks=len(dictionary),max_index=max(max(r['indices']) for r in rows),
+        index_bytes=4095*17*2,dictionary_bytes=64*len(dictionary),mask_bytes=384,
+        ROM_bytes=4095*17*2+64*len(dictionary)+384,reserved_stack_bytes=65536,
+        RAM_bytes=1048576,results=4193280,guards=8190,physical_mask_bytes=128,
+        physical_mask_upper_zero_bytes=0,per_call_output_bytes=1026,seed_rng_final=[s['rng_final'] for s in seeds])
+    require(bound['max_index']<65536 and bound['ROM_bytes']+65536+65536<1048576,'Static ROM/index/stack bound')
+    if resume:require(json.loads((HERE/'preflight.json').read_text())==bound,'Preflight unchanged')
+    else:save(HERE/'preflight.json',bound)
+    table,fixture=headers(seeds,rows,dictionary,masks)
+    emit(HERE/'dictionary.h',table);emit(HERE/'host_fixture.h',fixture)
+    if resume:
+        require(json.loads((HERE/'sequence.json').read_text())==rows and
+            json.loads((HERE/'seed_inputs.json').read_text())==seeds,'Sequence/input unchanged')
+    else:save(HERE/'sequence.json',rows);save(HERE/'seed_inputs.json',seeds)
+    source=original.read_text();adapted=old.old.runtime_adapt(source)
+    emit(HERE/'original_case.c',adapted)
+    packed=adapted.replace('static word a[1024], b[1024], out[1026];',
+        'static word a[1024], b[1024];\nstatic word out[1026] __attribute__((aligned(8)));\n#include "dictionary.h"\n#include "packed.h"')
+    mask_start=packed.index('                for(unsigned i=0;i<128;++i)mask[i]=0;')
+    mask_end=packed.index('                unsigned trials=',mask_start)
+    packed=packed[:mask_start]+'                initialize_mask(mask,mode);\n'+packed[mask_end:]
+    require(packed.count('for(unsigned i=0;i<cap+2;++i)out[i]=sentinel;')==1,'Unique initialization')
+    packed=packed.replace('for(unsigned i=0;i<cap+2;++i)out[i]=sentinel;', 'initialize_output(out);')
+    start=packed.index('                    unsigned packed=0;')
+    end=packed.index('                    ++checks;',start)
+    original_fallback=packed[start:end]
+    packed=packed[:start]+'                    if(packed_mismatch(out,checks)) {\n'+original_fallback+'                    } else elements+=cap;\n'+packed[end:]
+    packed=packed.replace('if(!cap || cap>1024)', 'if(cap!=1024)')
+    require('prefix_complete' not in packed and packed.count('++checks;')==1 and original_fallback in packed,'Original full loops/fallback')
+    emit(HERE/'case.c',packed)
+    emit(HERE/'source.diff',''.join(difflib.unified_diff(adapted.splitlines(True),packed.splitlines(True),fromfile='runtime_original',tofile='packed_scalar')))
+    archive=HERE/'original';archive.mkdir(exist_ok=resume)
+    inputs=[original,old.REC/'report.json',old.ARCH/'manifest.json',
+        old.ARCH/'overlay/opt/ara-tests/rvv_matrix_e8_m8',old.ARCH/'rvv_matrix_e8_m8.S',old.ARCH/'e8/operations.h',
+        PARENT/'full_e16_mf4_prepare01/model.py',PARENT/'full_e16_mf4_prepare01/prepare.py',PARENT/'prepare.py']
+    require(sha(inputs[3])=='ee9874270f50735cb04da599bb477d3d9da2bbeba0e77cbec9e1eb1ea0f8310f','Original ELF')
+    recovery=json.loads((old.REC/'report.json').read_text())
+    identity=next(x for x in recovery['results'] if x['name']=='rvv_matrix_e8_m8')
+    require(identity['exact_elf_equal'] and identity['disassembly_equal'],'Binary-equivalent original C reconstruction')
+    shutil.copyfile(inputs[4],archive/'scenario.S');shutil.copyfile(inputs[5],archive/'operations.h')
+    host_results=[]
+    runtime=PARENT/'full_e16_mf4_prepare01/runtime'
+    inputs.extend(runtime/name for name in ('startup.S','runtime.c','replay.ld'))
+    original_code,_=old.disassemble(inputs[3],archive/'program.dis')
+    proof=dict(original_C_bytes_recovered=False,binary_equivalent_reconstruction=True,identity=identity,
+        full_order_calls=4095,helper_calls=4095,original_helper_instructions_per_call=13,
+        original_fallback_verbatim=True,backends={},host=host_results,reference_started=False,DUT_started=False)
+    for backend in ('soc','spike'):
+        directory=HERE/backend;directory.mkdir();elf=directory/'program.elf'
+        flags=['-O2','-march=rv64gcv','-mabi=lp64d','-mcmodel=medany','-ffreestanding','-fno-builtin',
+            '-fno-stack-protector','-fno-tree-vectorize','-fno-tree-slp-vectorize','-msmall-data-limit=0',
+            '-ffunction-sections','-fdata-sections','-Wall','-Wextra','-Werror','-nostdlib','-static',
+            '-Wl,--build-id=none','-Wl,--gc-sections','-T',runtime/'replay.ld','-DSEW=8','-I'+str(archive)]
+        if backend=='spike':flags.append('-DSPIKE_REFERENCE=1')
+        main_c=directory/'main.c'
+        emit(main_c,'extern int arithmetic_main(void);\nint main(void){return arithmetic_main();}\n')
+        run([old.CC,*flags,HERE/'case.c',archive/'scenario.S',main_c,runtime/'startup.S',runtime/'runtime.c','-lgcc','-o',elf],directory/'compile.log')
+        code,symbols=old.disassemble(elf,directory/'program.dis')
+        helpers={name:old.routine(code,symbols,name) for name in ['capacity']+[f'op_{i}' for i in range(25)]}
+        for name,window in helpers.items():
+            old.archived_window(original_code,window)
+            require(len(window)==(3 if name=='capacity' else 13),'Original helper length')
+        allowed={i['pc'] for window in helpers.values() for i in window}
+        extra_vector=[pc for pc,insn in code.items() if insn&3==3 and
+            ((insn&127)==0x57 or ((insn&127) in (0x07,0x27) and ((insn>>12)&7) in (0,5,6,7))) and pc not in allowed]
+        require(not extra_vector,'Compiler added RVV outside original helpers')
+        require(symbols['__bss_end']<symbols['__stack_top']-65536,'Actual image stack/link bound')
+        save(directory/'symbols.json',symbols)
+        proof['backends'][backend]=dict(elf=str(elf),sha256=sha(elf),helpers=helpers,
+            bss_end=symbols['__bss_end'],stack_top=symbols['__stack_top'],
+            stack_gap=symbols['__stack_top']-symbols['__bss_end'],extra_vector_instructions=extra_vector)
+    for variant in ('original','packed'):
+        directory=HERE/('host_'+variant+('03' if resume else ''));directory.mkdir()
+        shutil.copyfile(HERE/('original_case.c' if variant=='original' else 'case.c'),directory/'case.c')
+        flags=['-O2','-Wall','-Wextra','-Werror','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-DSEW=8',
+            '-I'+str(archive),'-I'+str(HERE),'-I'+str(directory)]
+        if variant=='packed':flags.append('-DPACKED_CASE=1')
+        # The include is resolved alongside this copy, not the top-level packed case.
+        shutil.copyfile(HERE/'host.c',directory/'host.c')
+        run(['/usr/bin/cc',*flags,directory/'host.c','-o',directory/'host'],directory/'compile.log')
+        for mutation in range(9):
+            log=directory/f'case{mutation}.log'
+            run([directory/'host',str(mutation)],log,expect=-4 if mutation==8 else 0 if mutation==0 else 1)
+            if mutation!=8:require('HOST_FULL4095 positions=4193280 guards=8190 masks=524160 calls=4095' in log.read_text(),'Full Host evidence')
+            host_results.append(dict(variant=variant,mutation=mutation,log=str(log),sha256=sha(log)))
+    for mutation in range(8):
+        require((HERE/('host_original'+('03' if resume else ''))/f'case{mutation}.log').read_bytes()==(HERE/('host_packed'+('03' if resume else ''))/f'case{mutation}.log').read_bytes(),
+            'Original vs packed exact diagnostics/counters differ')
+    proof['runtime_adaptation_only_original_C']=True
+    proof['bounded_reference']=dict(hard_instructions=4000000,timeout_s=120,max_raw_bytes=768*1024**2,cost_target=3000000,one_attempt=True,DUT_authorized=False)
+    identity_files=('case.c','original_case.c','model.py','host.c','dictionary.h','host_fixture.h','sequence.json','seed_inputs.json','original/scenario.S','original/operations.h')
+    proof['unchanged_from_previous']={name:sha(prior/name) for name in identity_files}
+    require(all(sha(HERE/name)==digest for name,digest in proof['unchanged_from_previous'].items()),'Unrolled-only source/data identity')
+    inputs.extend(prior/name for name in identity_files)
+    inputs.extend([prior/'HOLD.json',prior/'packed.h'])
+    save(HERE/'proof.json',proof)
+    pins={str(p):sha(p) for p in inputs+[old.CC,old.SPIKE]}
+    for p in HERE.rglob('*'):
+        if p.is_file() and p.suffix not in ('.pyc',):pins[str(p)]=sha(p)
+    save(HERE/'pins.json',pins)
+    save(HERE/'software_status.json',dict(status='HOST_COMPILED_PENDING_INDEPENDENT_REVIEW_NO_REFERENCE_NO_DUT',
+        bounds=bound,host_runs=18,host_UBSan_trap=True,reference_instruction_target=3000000,pins_sha256=sha(HERE/'pins.json')))
+    print(json.dumps(bound),flush=True)
+
+if __name__=='__main__':main()
+

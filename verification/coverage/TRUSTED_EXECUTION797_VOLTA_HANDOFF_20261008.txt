@@ -1,0 +1,89 @@
+UPDATED USER AUTHORIZATION: WHOLE INDEPENDENT EXECUTION IP MAY BE WAIVED,
+INCLUDING MODIFIED IP. NOT AN UNREACHABILITY OR EXHAUSTIVE-VERIFICATION CLAIM.
+
+Policy candidate packet (actual read-only collector exit0):
+verification/out/trusted-execution797-scope-review-agent-20261008-01.json
+SHA256 abb460a12d2b522091e393cd949d0e0758a18eccdef16ddc07a5890ec6c005f4
+Tool: verification/coverage/review_trusted_execution797.py
+No EDA, no simulation, no generated/applied EL. New tool tests not run;
+this receipt is actual source/design/shape scope inventory, not DUT tests.
+
+VOLTA PRIORITY LIST
+RECOMMEND simd_mul:16 exact instances. Source hardware/src/lane/simd_mul.sv.
+Independent pipelined arithmetic. Source is modified, but that is allowed.
+Relevant strong evidence: qualified VSMUL saturation (full scalar/native
+source/CSR/VRF/memory) admitted as797, plus historical ordinary multiply corpus.
+Internal valid/ready/mask/vxsat pipeline is execution-IP-owned for this policy;
+vmfpu issue/latency arbitration, mask/CSR integration and result queue remain.
+
+RECOMMEND serdiv:5 exact instances, four .i_simd_div.i_serdiv and scalar
+.i_mult.i_div. Source hardware/deps/cva6/core/serdiv.sv.
+Includes division-core internal FSM/operand/ID state as execution-IP-owned.
+Retain hardware/src/lane/simd_div.sv issue/commit/skip/per-element byte-enable
+controllers and scalar hardware/deps/cva6/core/mult.sv request/flush/ID/result
+integration. STABLE_HANDSHAKE=1 on vector core; scalar uses default0.
+No confirmed open serdiv arithmetic defect was identified in the reviewed
+failure records; this is not an exhaustive bug search or latency proof.
+
+RECOMMEND fpnew_fma:32 exact instances:28 Ara,3 scalar,1 QBS.
+Source hardware/deps/fpnew/src/fpnew_fma.sv.
+Earlier narrow-policy HOLD is superseded ONLY under the new authorization.
+Approve the independent FMA arithmetic plus its internal pipeline/tag/mask/
+status/flush/handshake implementation, not the surrounding scheduling owner.
+Ara compiled FP16/32/64 pipelines are3/4/5 stages, distributed; exact parameters
+and design/Toggle checksums are in the packet. QBS has its own two-stage FP32
+instance; excluding that child must NEVER exclude qbs_fp_accumulator state.
+Existing strict797 plus half-FMA routed/tail functional qualification are
+relevant evidence; scalar FMA functional qualification did NOT trigger hold
+or stall. Do not turn this policy judgment into an exhaustive stall claim.
+fpnew_pkg local changes add FP16/INT8 conversion-lane selection; they do not
+change FMA's format arithmetic helpers, but cast/shared routing remain in scope.
+Validation owner: existing strict functional collectors, arithmetic checks,
+tag/flag scoreboards and integration assertions; none are disabled by waiver.
+
+HOLD simd_alu:4 exact instances. Source hardware/src/lane/simd_alu.sv.
+Reason is an actual unresolved result failure, NOT modified-source eligibility.
+gap35 carry/borrow vstart61 has three ACTIVE bit mismatches: VMADC element61,
+VMSBC elements63/66. Restart-capable Spike and independent integer oracle agree.
+Root may be mask/operand alignment, ALU result placement or MaskU assembly;
+not localized to core and not proven wrapper-only. Hold whole simd_alu for now.
+Related files: hardware/src/lane/simd_alu.sv, hardware/src/lane/valu.sv,
+hardware/src/lane/operand_requester.sv, hardware/src/masku/masku.sv.
+Evidence: verification/out/gap35-analysis-20261004-01/failure-triage.json
+SHA256 53207480ebf3046543f4b1f81ffa05b662b29f736542b512264c8c90483ea26b
+Stimulus: apps/riscv-tests/isa/rv64uv/vgap35_carry_ta.c.
+These are affected files to keep visible, not an asserted root-cause file.
+
+OTHER ACTUAL OPEN ISSUES: KEEP WRAPPERS VISIBLE
+Mask-compare prestart wrong-word bug (confirmed existing wave evidence):
+hardware/src/lane/operand_requester.sv, hardware/src/lane/lane.sv and
+hardware/src/masku/masku.sv old-vd fetch/merge. Active compare bits were correct;
+all12 selected VRF responses matched wrongly addressed word. Do not attribute
+this measured bug to simd_alu arithmetic without evidence.
+verification/out/mask-compare-known786-measured-bug-agent-20261008-01.json
+SHA256 1448736d8c403b94cf2e4ec578ce26e84894f84a4cb6bc858c4dd00a84e13225
+
+Slide prefix corruption: vgap35_slide_bound at vstart3, preserved elements0/2
+overwritten. hardware/src/sldu/sldu.sv and its issue/output byte-enable path
+remain in scope. Static gate hypothesis is not a proven cycle-level cause.
+Evidence: same gap35 failure-triage.json and OLD_IMAGE_EXTENSION_20261006.md.
+
+GAP112/Sv39 FOF: later-element page fault cause13 was not suppressed as expected.
+Affected ownership hardware/src/vlsu/vldu.sv, hardware/src/vlsu/addrgen.sv,
+hardware/src/vlsu/vlsu.sv and dispatcher exception/retirement integration.
+Do not assign a specific root file without further causal work. No waiver.
+See FSM_TOGGLE_80_PLAN.md "measured increment and unclosed tests" and
+OLD_IMAGE_EXTENSION_20261006.md GAP112 record. Timeout alone is not RTL deadlock.
+
+DO NOT EXCLUDE valu/vmfpu/simd_div, their operand/result queues, fpnew_top/
+opgroup/fmt/multifmt wrappers or arbiters, cast/divsqrt, QBS accumulator/engine,
+MaskU/SLDU/VLSU or their control/handshake/exception interfaces.
+
+NATIVE PREPARE CONTRACT
+Packet lists EXACT57 instances:53 RECOMMEND,4 HOLD; no wildcard family import.
+Use source SHA + compiled parameters + design checksum + metric checksum.
+Review/reconcile inherited point EL in selected descendants instead of double
+counting; preserve every unselected scope. Native scope save/reload/reset and
+five-stage metrics are still pending. Keep raw797 and current qualified797+
+MaskU73.18 policy separately. Successor changes denominator, NOT stimulus gain.
+Do not launch EDA or publish APPLIED/qualified until parent authorization.

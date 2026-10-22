@@ -1,0 +1,90 @@
+{
+  "scope": "Real AddrGen/VSTU/MASKU/sequencer; modeled MMU and lane predicate source; not Linux/SoC",
+  "pid": 1889809,
+  "cases": [
+    {
+      "vl": 1,
+      "returncode": 0,
+      "elapsed_s": 10.639447979163378,
+      "expected_marker": "BOUNDARY_MASK_DRAIN_GLOBAL_IDLE",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=1 accepted=1 mmu=1 ack=1 descriptor=1 st_done=1 mask_done=1 response=1 mask_accepts=1 global_idle=1 mask_commit=0 stable_rows=21 aw=0 w=0 mask_pops=1 st_done_cycle=12 last_mask_cycle=6 last_pop_cycle=11 windows=1 local_idle=1 pending_b=0"
+      ]
+    },
+    {
+      "vl": 4,
+      "returncode": 0,
+      "elapsed_s": 10.64222675981,
+      "expected_marker": "BOUNDARY_MASK_DRAIN_GLOBAL_IDLE",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=4 accepted=1 mmu=1 ack=1 descriptor=1 st_done=1 mask_done=1 response=1 mask_accepts=1 global_idle=1 mask_commit=0 stable_rows=21 aw=0 w=0 mask_pops=1 st_done_cycle=12 last_mask_cycle=6 last_pop_cycle=11 windows=1 local_idle=1 pending_b=0"
+      ]
+    },
+    {
+      "vl": 5,
+      "returncode": 0,
+      "elapsed_s": 10.640463758260012,
+      "expected_marker": "BOUNDARY_MASK_DRAIN_GLOBAL_IDLE",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=5 accepted=1 mmu=1 ack=1 descriptor=1 st_done=1 mask_done=1 response=1 mask_accepts=2 global_idle=1 mask_commit=0 stable_rows=21 aw=0 w=0 mask_pops=2 st_done_cycle=13 last_mask_cycle=7 last_pop_cycle=12 windows=2 local_idle=1 pending_b=0"
+      ]
+    },
+    {
+      "vl": 8,
+      "returncode": 0,
+      "elapsed_s": 10.640491873025894,
+      "expected_marker": "BOUNDARY_MASK_DRAIN_GLOBAL_IDLE",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=8 accepted=1 mmu=1 ack=1 descriptor=1 st_done=1 mask_done=1 response=1 mask_accepts=2 global_idle=1 mask_commit=0 stable_rows=21 aw=0 w=0 mask_pops=2 st_done_cycle=13 last_mask_cycle=7 last_pop_cycle=12 windows=2 local_idle=1 pending_b=0"
+      ]
+    },
+    {
+      "vl": 9,
+      "returncode": 0,
+      "elapsed_s": 10.640583380125463,
+      "expected_marker": "BOUNDARY_MASK_DRAIN_GLOBAL_IDLE",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=9 accepted=1 mmu=1 ack=1 descriptor=1 st_done=1 mask_done=1 response=1 mask_accepts=3 global_idle=1 mask_commit=0 stable_rows=21 aw=0 w=0 mask_pops=3 st_done_cycle=14 last_mask_cycle=12 last_pop_cycle=13 windows=3 local_idle=1 pending_b=0"
+      ]
+    },
+    {
+      "vl": 12,
+      "returncode": 0,
+      "elapsed_s": 10.640186902601272,
+      "expected_marker": "BOUNDARY_MASK_DRAIN_GLOBAL_IDLE",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=12 accepted=1 mmu=1 ack=1 descriptor=1 st_done=1 mask_done=1 response=1 mask_accepts=3 global_idle=1 mask_commit=0 stable_rows=21 aw=0 w=0 mask_pops=3 st_done_cycle=14 last_mask_cycle=12 last_pop_cycle=13 windows=3 local_idle=1 pending_b=0"
+      ]
+    },
+    {
+      "vl": 16,
+      "returncode": 0,
+      "elapsed_s": 10.640640942845494,
+      "expected_marker": "BOUNDARY_MASK_DRAIN_GLOBAL_IDLE",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=16 accepted=1 mmu=1 ack=1 descriptor=1 st_done=1 mask_done=1 response=1 mask_accepts=4 global_idle=1 mask_commit=0 stable_rows=21 aw=0 w=0 mask_pops=4 st_done_cycle=15 last_mask_cycle=13 last_pop_cycle=14 windows=4 local_idle=1 pending_b=0"
+      ]
+    }
+  ],
+  "state": "SEVEN_BOUNDARIES_DRAINED_NOT_SOC_ACCEPTANCE",
+  "compile_returncode": 0,
+  "compile_seconds": 29.23350619804114,
+  "pins_unchanged": true,
+  "sole_override_vstu": true,
+  "vstu_sha256": "c63f227a8b25a102ae83c90c50766be989db92c07fdf43af135d07b3a35afb36",
+  "first_active_fault": true,
+  "AW_W_B_traffic": 0,
+  "pending_B_nonzero_coverage": false,
+  "RTL_edits": false,
+  "host_budget_per_compile_or_case_s": 60,
+  "rtl_watchdog_cycles": 200,
+  "measured_result_cycle": 100,
+  "no_internal_state_injection": true
+}

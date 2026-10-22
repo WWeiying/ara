@@ -1,0 +1,135 @@
+{
+  "state": "PROBES_COMPLETE",
+  "cases": [
+    {
+      "name": "descriptor_first",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/consumers/arrival_baseline05/simv",
+        "-no_save",
+        "+CASE=0"
+      ],
+      "returncode": 0,
+      "probe_completed": true,
+      "observation": {
+        "case": 0,
+        "accepts": 1,
+        "pops": 1,
+        "dones": 1,
+        "accept_cycle": 7,
+        "done_cycle": 13,
+        "idle": 0
+      },
+      "terminal_row": {
+        "cycle": "47",
+        "pe_valid": "0",
+        "pe_ready": "1",
+        "desc_valid": "0",
+        "desc_ready": "0",
+        "early_illegal": "0",
+        "done": "00000000",
+        "idle": "0",
+        "final_gnt": "0000",
+        "issue_bytes": "16"
+      },
+      "scope": "consumer unit only; no trap/CSR/MMU claim"
+    },
+    {
+      "name": "descriptor_same_cycle",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/consumers/arrival_baseline05/simv",
+        "-no_save",
+        "+CASE=1"
+      ],
+      "returncode": 0,
+      "probe_completed": true,
+      "observation": {
+        "case": 1,
+        "accepts": 1,
+        "pops": 1,
+        "dones": 1,
+        "accept_cycle": 4,
+        "done_cycle": 10,
+        "idle": 0
+      },
+      "terminal_row": {
+        "cycle": "44",
+        "pe_valid": "0",
+        "pe_ready": "1",
+        "desc_valid": "0",
+        "desc_ready": "0",
+        "early_illegal": "0",
+        "done": "00000000",
+        "idle": "0",
+        "final_gnt": "0000",
+        "issue_bytes": "16"
+      },
+      "scope": "consumer unit only; no trap/CSR/MMU claim"
+    },
+    {
+      "name": "sideband_first",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/consumers/arrival_baseline05/simv",
+        "-no_save",
+        "+CASE=2"
+      ],
+      "returncode": 0,
+      "probe_completed": true,
+      "observation": {
+        "case": 2,
+        "accepts": 1,
+        "pops": 0,
+        "dones": 1,
+        "accept_cycle": 7,
+        "done_cycle": 13,
+        "idle": 0
+      },
+      "terminal_row": {
+        "cycle": "47",
+        "pe_valid": "0",
+        "pe_ready": "1",
+        "desc_valid": "0",
+        "desc_ready": "0",
+        "early_illegal": "0",
+        "done": "00000000",
+        "idle": "0",
+        "final_gnt": "0000",
+        "issue_bytes": "16"
+      },
+      "scope": "consumer unit only; no trap/CSR/MMU claim"
+    },
+    {
+      "name": "sideband_same_cycle",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/consumers/arrival_baseline05/simv",
+        "-no_save",
+        "+CASE=3"
+      ],
+      "returncode": 0,
+      "probe_completed": true,
+      "observation": {
+        "case": 3,
+        "accepts": 1,
+        "pops": 0,
+        "dones": 1,
+        "accept_cycle": 4,
+        "done_cycle": 10,
+        "idle": 0
+      },
+      "terminal_row": {
+        "cycle": "44",
+        "pe_valid": "0",
+        "pe_ready": "1",
+        "desc_valid": "0",
+        "desc_ready": "0",
+        "early_illegal": "0",
+        "done": "00000000",
+        "idle": "0",
+        "final_gnt": "0000",
+        "issue_bytes": "16"
+      },
+      "scope": "consumer unit only; no trap/CSR/MMU claim"
+    }
+  ],
+  "compile_seconds": 25.321797335986048,
+  "frozen_verified": true
+}

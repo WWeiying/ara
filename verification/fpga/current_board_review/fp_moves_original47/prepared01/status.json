@@ -1,0 +1,15 @@
+{
+  "status": "HOST_SPIKE_47_PASS_READY_NOT_DUT",
+  "original_singles": 47,
+  "slide_singles": 32,
+  "insertion_singles": 15,
+  "instructions": {
+    "min": 10219,
+    "max": 24606,
+    "total": 714101
+  },
+  "soc_programs": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_moves_original47/prepared01/soc/programs.json",
+  "VCS_launched": false,
+  "RTL_modified": false,
+  "image_built": false
+}

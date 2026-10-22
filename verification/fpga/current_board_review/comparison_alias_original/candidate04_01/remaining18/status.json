@@ -1,0 +1,168 @@
+{
+  "stage": "remaining18",
+  "passed": true,
+  "results": [
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e16_m1",
+      "elapsed_s": 31.00142071535811,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e16_m1",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e8_m1",
+      "elapsed_s": 33.59005873091519,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e8_m1",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e8_mf2",
+      "elapsed_s": 36.1569243283011,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e8_mf2",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e8_mf4",
+      "elapsed_s": 33.929736150894314,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e8_mf4",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e8_mf8",
+      "elapsed_s": 37.221748820040375,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e8_mf8",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e16_m2",
+      "elapsed_s": 42.645288022235036,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e16_m2",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e16_m4",
+      "elapsed_s": 50.14003945142031,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e16_m4",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e16_mf2",
+      "elapsed_s": 36.319169636815786,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e16_mf2",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e16_mf4",
+      "elapsed_s": 39.15614857710898,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e16_mf4",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e32_m1",
+      "elapsed_s": 44.059370941948146,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e32_m1",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e32_m2",
+      "elapsed_s": 43.07003713119775,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e32_m2",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e32_m4",
+      "elapsed_s": 46.67904248461127,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e32_m4",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e32_m8",
+      "elapsed_s": 54.39643466565758,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e32_m8",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e32_mf2",
+      "elapsed_s": 40.0940496311523,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e32_mf2",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e64_m1",
+      "elapsed_s": 50.33366413973272,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e64_m1",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e64_m2",
+      "elapsed_s": 51.38744564726949,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e64_m2",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e64_m4",
+      "elapsed_s": 54.31879640324041,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e64_m4",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/remaining18/replay/tests/rvv_small_masks_cmp_alias_restart_e64_m8",
+      "elapsed_s": 58.51174545707181,
+      "kind": "app",
+      "name": "rvv_small_masks_cmp_alias_restart_e64_m8",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    }
+  ]
+}

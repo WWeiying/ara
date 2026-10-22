@@ -1,0 +1,9 @@
+# Source review correction
+
+结论：NO_BLOCKER_SOURCE_FOR_HOST_AND_COMPILE，绑定原source_entry SHA d21d918ed15eb5f9810ea7080df346b1106cfbee65ad537749e831dd389c93a6。
+
+撤回REVIEW01的P1。我遗漏了实际导入full_e16_mf4_prepare01/prepare.py中run的log.exists分支：已有日志时，核对完整command/timeout和numeric exit后立即return，不执行exclusive create。因此第二次disassemble读取已pin的program.dis，不会产生此前声称的FileExistsError。其nm为有界只读命令。此错误属于审查误判，不是producer缺陷；无需修改已绑定源码。旧报告保留作历史，本报告取代其结论。
+
+此前CAP32、mf2一个物理寄存器低64B、typed68B、mask128/实际vlm4、005b guards、完整4095 RNG/order/helper及memcpy合法性、4B尾界与原失败fallback的源审结论不变。38pins核验记录见REVIEW01；本轮只读复核真实导入函数，未运行Host/reference/compile/DUT。
+
+仅允许进入Host及软件编译阶段，不构成实际产物PASS或reference/DUT准入。之后审实际Host/ELF及finite reference入口，尤其HTIF不能提前return而漏EOF。

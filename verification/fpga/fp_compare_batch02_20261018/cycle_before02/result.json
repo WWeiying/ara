@@ -1,0 +1,13 @@
+{
+  "returncode": 0,
+  "elapsed_s": 55.10533905029297,
+  "image": "/home/wangwy/fpga_runs/indexed_fault_overlap_fix_20261018_02/image",
+  "elf_sha256": "23178038a32b9082d1d1cd78cfc7119e356a924f367541a6acf7f8b25a4beef4",
+  "signals": 77,
+  "window_ns": [
+    15700,
+    17000
+  ],
+  "architectural_pass": false,
+  "terminal": true
+}

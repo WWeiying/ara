@@ -91,6 +91,16 @@
 | R-80 | Ordered FP reduction | masked-off 元素仍以 neutral 值参与 ordered reduction 并可能置异常 | 已修、reduction 专项通过 | 95 |
 | R-81 | MASKU scalar lifecycle | `VFIRST` 提前命中后未排空剩余 operand stream 即返回结果 | 已修、scalar-mask 与随机回归通过 | 39.4 |
 | R-82 | Gather/compress handshake | 广播请求对各 lane 的接受历史不粘滞，可重复投递同一 FIFO 项 | 已修、gather/compress 回归覆盖 | 19.3 |
+| R-83 | FP reduction | `VFREDMAX` 的 `cvt_resize=2'b10` 同时被解释为 `-Inf` 中性值和 `CVT_NARROW`，误进入窄化 issue/result packing 路径 | 已修，边界与宽回归通过 | 97 |
+| R-84 | CVA6/accelerator ordering | fence 仍可在 accelerator vector load 尚未完成时进入 flush，导致旧 VLE 的事务 ID 被后继 scalar load 复用并产生重复写回 | 已修，宽 `vfredmax`、`vfredmin`、`vfadd`、`vle32` 与边界回归通过 | 98 |
+| R-85 | 备用 PULP DivSqrt | 原本地补丁直接用未校正部分余数生成 sticky，精确 FP64 除法错误置 NX，RUP 结果多 1 ULP | VCS 反例已复现；补丁隔离，默认 THMULTI 不受此路径影响 | 102.2 |
+| R-86 | 备用 PULP DivSqrt | 溢出 infinity 被 sticky 再次舍入，尾数被递增成 NaN 编码 | VCS 正/负溢出反例已复现；未修复备用后端 | 102.2 |
+| R-87 | 备用 PULP DivSqrt | FP32 overflow 设置 OF 但缺失 NX | VCS 反例已复现；源码比对属于原有残余问题 | 102.2 |
+| R-88 | CVA6 supervisor 状态 | `sstatus` 读写掩码遗漏 VS，不能正确访问 `mstatus.VS` 的别名 | 已修；原 87 项冻结 ELF、增强 165 项及三点回归通过 | 104 |
+| R-89 | 向量配置恢复 | `vsetvl` 丢弃 rs2 高位，且配置合法性不检查 VILL，无法恢复初始非法 vtype | 已修；原失败 ELF 与三种配置指令高位定向检查通过 | 104.4 |
+| R-90 | CVA6 异常 payload | ECALL 沿用 decoder 的默认指令编码，S-mode ECALL 将 `0x73` 写入 `mtval` | 已修；原 116 项 Sv39 ELF 及三点相邻回归通过 | 105 |
+| R-91 | CVA6 breakpoint payload | EBREAK/C.EBREAK 将指令编码而非零或 PC 写入 M/S trap value | 已修为 PC；原 448 项 ELF 及四点相邻回归通过 | 106 |
+| R-92 | CVA6 interrupt payload | SSIP 接管普通指令时保留其指令编码，错误写入 M/S trap value | 已修选中 IRQ 的载荷；同一矩阵与四点回归通过 | 106 |
 | E-01 | 检查点 | 整寄存器 store 后立即标量读回产生 `X` | 验证环境已修 | 3 |
 | E-02 | Knownness | non-bit-exact reduction 的不确定性未传播 | 比较器已修 | 26 |
 | E-03 | 结束条件 | 成功 `ecall` 在 trap handler 中重复执行 `test_done` | 监视器已修 | 28 |
@@ -3534,18 +3544,21 @@ RUP/RMM 的 conversion matrix。
 ### 83.2 DivSqrt HOLD 输出选择（R-66）
 
 `fpnew_divsqrt_multi.sv` 的输出在 `unit_done_q` 为 1 时选择 `held_result_q/status_q`，其他
-周期选择组合的 `adjusted_result/unit_status`。`unit_done_q` 是完成脉冲；若下游反压令
-状态机进入并停留于 `HOLD`，后续周期脉冲已经撤销，旧逻辑会重新选择可能变化的 live
+周期选择组合的 `adjusted_result/unit_status`。`unit_done_q` 是 SIMD 单元完成记账，
+不能简单视为完成脉冲；若下游反压令状态机进入并停留于 `HOLD`，完成记账清除后，
+旧逻辑会重新选择可能变化的 live
 结果。当前条件改为 `unit_done_q || state_q == HOLD`，整个保持期间数据和 status 都来自
 同一寄存器。该修复有 2 个原始 hunk，其中第二个只是文件尾格式变化；功能变化集中在
 输出 mux。最终 campaign 覆盖了向量和标量 div/sqrt，但没有专门控制下游 ready 复现
 多周期 HOLD，故仍需一项握手 directed test 才能形成独立闭环。
 
-第 29/58 节所述 THMULTI 选择不使这些覆盖层自动变成无关：R-65 属于共享 cast 单元；
-R-66 属于所选 DivSqrt wrapper 的 backpressure 契约。另有 15 个
+第 29/58 节所述 THMULTI 选择下，R-65 仍属于活动的共享 cast 单元；R-66 属于
+PULP wrapper，不是 THMULTI wrapper。默认配置的 div/sqrt PASS 不能证明 R-66。
+另有 15 个
 `fpu_div_sqrt_mvp` hunk 修正旧 PULP backend 的 RDN/RUP 编码、RMM、remainder sticky
 和 directed overflow，统一归入 R-25；当前 Ara/CVA6 已选择 THMULTI，因此这些 hunk
-不是当前默认执行路径的正确性前提，但仍是当前工作区真实存在的 RTL 修改。
+不是当前默认执行路径的正确性前提，但仍是原工作区真实存在的 RTL 修改。2026-09-22
+复审对其中 remainder sticky 的正确性提出反例，验证分支暂不应用该 PULP 补丁，见第 102 节。
 
 ## 84. CVA6 本地 RTL 覆盖层
 
@@ -3917,6 +3930,10 @@ R-01--R-82、N-01--N-07、纯 trace/格式，或跨模块接口连接。相邻 h
 
 ### 96.3 嵌套依赖本地覆盖层：26 hunk 对账
 
+此表保留当时的审计快照，不作为后续工作区补丁数量的动态清单。2026-09-22
+重新逐 hunk 审核时，原 CVA6 为 9 个 hunk（含 tracer），FPnew 为 5 个，PULP 为
+15 个；另外验证分支新增两个 fence/stall hunk。新基线和隔离项见第 102 节。
+
 | 工作区与文件 | 比较基线 | 原始 hunk | 完整分类 |
 |---|---|---:|---|
 | CVA6 `core/acc_dispatcher.sv` | `b29fd3cf` | 4 | R-67 |
@@ -3955,8 +3972,10 @@ hunk逐条改写成 Ara 缺陷会错误归因，因此本报告按 N-06 以 revi
 
 本轮逐 hunk 审计新增了原报告遗漏的 R-62--R-82，并补全 R-16、R-18、R-23、R-25、R-33、R-36、R-49
 所涉及的跨模块/嵌套依赖逻辑。父仓库 665 个 hunk和本地依赖覆盖层 26 个 hunk均已在
-表中对账，没有未分类 hunk。报告现在包含 82 个 RTL 缺陷、13 个验证/参考模型缺陷和
-1 个应用缺陷；N-01--N-07 是非缺陷变更，不混入这个数量。
+表中对账，没有未分类 hunk。报告现在包含 82 个历史 RTL 缺陷、13 个验证/参考模型缺陷和
+1 个应用缺陷；N-01--N-07 是非缺陷变更，不混入这个数量。R-83 和 R-84 是在该历史
+审计完成后新增的定向问题条目，不能回填到上述历史计数中；当前快照的有效条目数应在
+此基础上另计。
 
 反向遗漏检查分成三组：R-62--R-69 来自原报告没有展开的乘法、完整寄存器组 hazard
 和嵌套依赖覆盖；R-70--R-74 来自 dispatcher 中此前被“大类 decode/segment/slide”
@@ -3970,3 +3989,1056 @@ R-16 的 VLMAX 边界清零和 R-49 的 per-entry `vxsat` 已补入原条目，�
 或统一回归覆盖，但没有为每个子条件保留只撤销该单项修复的 pre-fix 二分 artifact；
 九个大型应用仍只有 timeout 证据。上述边界
 已在权威表和对应章节明确写出，避免用统一 campaign 的整体 PASS 覆盖单项证据缺口。
+
+## 97. VFREDMAX 中性值与窄化控制字段编码冲突
+
+### 97.1 现象与最小复现
+
+`VFREDMIN` 的定向回归通过，而 `VFREDMAX` 在包含 `-15.0` 和 `+15.0` 的 FP32 输入、
+`VL>1` 时返回 `0xc1700000`（`-15.0`），期望值为 `0x41700000`（`+15.0`）。同一
+操作在 `VL=1` 时通过，说明错误不是浮点比较规则本身，而是归约请求进入了错误的
+元素计数/结果打包路径。
+
+### 97.2 根因
+
+`hardware/include/ara_pkg.sv` 将 `resize_e` 定义为 2 位：`00=CVT_WIDE`、
+`01=CVT_SAME`、`10=CVT_NARROW`。为表达浮点归约的中性值，dispatcher 又复用这两个位：
+
+```systemverilog
+// hardware/src/ara_dispatcher.sv
+VFREDMIN: cvt_resize = resize_e'(2'b01);
+VFREDMAX: cvt_resize = resize_e'(2'b10); // -Inf neutral value
+```
+
+修复前 `hardware/src/lane/vmfpu.sv` 的 `narrowing()` 只检查 `resize`，因此 `VFREDMAX`
+被当作普通窄化指令。issue 阶段使用半宽元素计数、窄化 byte-enable 和 predicate 选择；
+result 阶段继续使用窄化 shuffle、两拍合并和窄化完成计数，最终丢失或错误解释了归约
+结果。`VFREDMIN` 没有触发，是因为其 `2'b01` 不等于 `CVT_NARROW`。
+
+### 97.3 最小修复
+
+修复将窄化判定从单字段判断改为“字段 + 操作类型”判断，并在 issue 与 result/packing
+的所有调用点统一使用该谓词：
+
+```systemverilog
+function automatic logic narrowing(resize_e resize, ara_op_e op);
+  narrowing = 1'b0;
+  if (resize == CVT_NARROW && !(op inside {[VFREDUSUM:VFWREDOSUM]}))
+    narrowing = 1'b1;
+endfunction
+```
+
+这没有改变 `resize_e` 接口宽度，也没有改变普通 FP conversion 的行为；它只阻止浮点
+归约使用共享编码进入窄化路径。FP 格式选择逻辑本来已经带有 `!is_reduction` 约束，
+本修复补齐了此前遗漏的 issue、mask、元素计数和 result packing 路径。
+
+### 97.4 回归证据
+
+`apps/riscv-tests/isa/rv64uv/vfredmax.c` 新增 `TEST_CASE6`，覆盖：
+
+- FP32 输入 `-15.0、+15.0、+1.0、-2.0`；
+- 显式 `-Inf` seed，检查 `VFREDMAX` 必须返回 `+15.0`；
+- `VL=4` 的多元素归约和 `VL=1` 边界；
+- `verification/tests/test_rtl_contracts.py` 静态检查所有功能调用点均传入 `ara_op_e`，
+  并禁止恢复单字段 `narrowing()` 调用。
+
+应用已成功重新编译，当时的 148 项 Python 验证测试全部通过。为隔离原有宽回归中的退休
+事务编号故障，新增了独立 ELF `rv64uv-ara-vfredmax_boundary`，仅执行 `VL=4` 的
+FP32 `VFREDMAX`（显式 `-Inf` seed，输入同时包含 `-15.0` 与 `+15.0`）和 `VL=1`
+边界。VCS 在
+`verification/out/vfredmax_boundary_fix_20260922_002206` 完成编译、展开和仿真；两个
+检查均打印 `PASSED`，testbench 打印 `Core Test *** SUCCESS *** (tohost = 0)`，直接
+复用已编译 `simv` 的无 Makefile 后处理重跑返回码为 0，证据文件为该目录的
+`sim/direct.stdout` 与 `sim/direct.exit`。
+
+原 `rv64uv-ara-vfredmax` 宽回归此前在到达新增 `TEST_CASE6` 前触发
+`scoreboard.sv:346` 的 duplicate transaction-id fatal。该错误与本编码冲突分离记录，
+并在 R-84 中完成了最小化的退休轨迹分诊；边界用例的通过不能替代这一独立问题的证据。
+
+## 98. Fence 与 accelerator load 完成顺序导致事务 ID 复用
+
+### 98.1 现象与可区分轨迹
+
+在 `rv64uv-ara-vfredmax` 宽回归中，向量 load `vle32.v v3,(a2)`（PC
+`0x80000d9a`）被 accelerator 接受并分配 ID4。随后执行 fence（PC `0x80000d9e`），
+但 fence 的 issue stall 为 0，并立即触发控制流 flush；尚未返回的 accelerator load
+仍在途。flush 后的 scalar `lwu`（PC `0x80000da6`）重新获得 ID4，旧的 VLE response
+随后也以 ID4 返回，最终在 `scoreboard.sv:346` 触发 duplicate transaction-id
+fatal。这个轨迹同时区分了三种可能性：不是 ID 位宽耗尽，不是 scoreboard 清除错误，
+而是 fence 在 accelerator memory transaction 完成前越过了顺序屏障。
+
+### 98.2 根因
+
+`hardware/deps/cva6/core/acc_dispatcher.sv` 原先只在按 `issue_instr_i.fu` 选择的
+accelerator functional-unit 分支中生成 memory back-pressure。RISC-V fence 的功能单元
+编码属于 `CTRL_FLOW` 或其他非 accelerator memory FU，因此不会进入该分支；原逻辑也
+没有单独按 `issue_instr_i.op` 检查 fence。即使在 dispatcher 中产生了有效的上游 stall，
+`issue_read_operands.sv` 的 CVXIF operand 处理还会直接覆盖 `stall_raw[0]`，使该 stall
+无法传到 issue 阶段。两个条件叠加后，fence 可以在 `acc_no_st_pending/acc_no_ld_pending`
+尚未成立时完成 issue，并允许后继 scalar load 复用事务 ID。
+
+### 98.3 最小修复与不变量
+
+修复保留原有 accelerator FU 逻辑，并在其后增加按操作码识别的 fence barrier：
+
+```systemverilog
+if (issue_instr_i.op inside {FENCE, FENCE_I, SFENCE_VMA,
+                             HFENCE_VVMA, HFENCE_GVMA}) begin
+  issue_stall_o |= ~acc_no_st_pending | ~acc_no_ld_pending;
+end
+```
+
+同时，CVXIF operand stall 改为与上游 `stall_i` 做 OR，而不是覆盖它：
+
+```systemverilog
+stall_raw[0] = stall_i |
+  (x_transaction_rejected ? 1'b0 :
+   stall_rs1[0] || stall_rs2[0] || stall_rs3[0]);
+```
+
+修复后的不变量是：任何会触发 CVA6 flush/顺序边界的 fence，只有在 accelerator 的
+store-pending 和 load-pending 均为空时才能推进；CVXIF 自身的操作数依赖逻辑可以增加
+stall，但不能清除上游 functional-unit back-pressure。该修复没有改变 scoreboard、
+flush 取消语义或事务 ID 宽度，只收紧了 fence 的 issue 条件。
+
+### 98.4 回归证据
+
+在同一无 probe 的 VCS `simv` 上完成以下五个独立运行，均返回码 0，且 testbench
+报告 `Core Test *** SUCCESS *** (tohost = 0)`：
+
+| 用例 | 覆盖重点 | 结果 |
+|---|---|---|
+| `rv64uv-ara-vfredmax_boundary` | `VFREDMAX` 的 `VL=4/VL=1` 边界与 `-Inf` seed | PASS |
+| `rv64uv-ara-vfredmax` | 原宽 `VFREDMAX` 回归、fence 后续路径与退休顺序 | PASS，19 项检查通过 |
+| `rv64uv-ara-vfredmin` | 同类 FP reduction 的共享 VMFPU 路径 | PASS，17 项检查通过 |
+| `rv64uv-ara-vfadd` | 普通 FP vector arithmetic，不应被 reduction 例外影响 | PASS，23 项检查通过 |
+| `rv64uv-ara-vle32` | accelerator vector load、返回与后继标量访存顺序 | PASS，16 项检查通过 |
+
+此外，应用重新编译成功，`PYTHONPATH=verification:verification/ara_verify
+python3 -m pytest -q verification/tests` 当时报告 `148 passed`，仅保留一个既有的
+`PytestCollectionWarning`。上述 VCS 结果证明该修复同时覆盖了直接触发轨迹、共享
+浮点路径和普通 load/算术回归；它不等同于所有随机回归已完成，长时间 campaign 仍需
+按验证计划独立运行。
+
+针对 R-84 还执行了一次由 `ARA_TRACE_ORDER` 守护的 bounded VCS 诊断运行。该 trace
+同时记录 accelerator request 的 valid/ready/fire、response ID、load/store completion、
+pending counters、fence issue/ stall、flush 以及 scoreboard 的 writeback/commit entry。
+在 trace 时间戳 `t=6450000` 接受 ID4 的 accelerator load 后，`ld_pending=1/0` 且
+`issue_stall_o=1` 且 `issue_instr_hs_i=0`，因此 fence 在事务未排空期间没有被接受。
+该周期的 controller flush 信号可以独立出现，不能把它当作 fence 已经握手；下一采样点
+`t=6560000` 的 pending 已变为 `0/0`、stall 解除。随后请求复用 ID0/ID1/ID2 时未
+出现 duplicate transaction-id fatal。该结果直接支持“fence 不能在 accelerator memory
+transaction 未排空时被接受”的修复假设。诊断 probe 已在回归后移除，不进入正常编译路径。
+
+## 99. 真实 Ara accelerator 边界 monitor 的集成 smoke
+
+### 99.1 验证对象与隔离方式
+
+新增的 `verification/uvm/ara_acc_contract_monitor.sv` 是 verification-only 的
+SystemVerilog monitor，通过 `bind ara_system` 直接观察当前工程实际使用的
+`cva6_to_acc_t/acc_to_cva6_t` 请求、响应和 MMU 字段。它不进入综合，也不改变普通
+`hardware/compile` 的 file list；只有显式传入 `verify_extra_sources` 的独立构建才会
+编译它。该 monitor 与原有的抽象 CVXIF UVM smoke 分开：后者验证 transaction
+scoreboard 的基本行为，但不实例化 Ara DUT。
+
+monitor 检查以下边界不变量：
+
+- `valid && ready` 才计入请求/响应握手；
+- valid 被 backpressure 时，请求或响应 payload 必须保持稳定；
+- 在途 transaction ID 不能重复，响应不能对应不存在的 ID；
+- 同周期完成与新请求可以安全复用 ID；
+- 记录异常、MMU 请求有效周期以及最终请求/响应计数，便于和提交/向量 trace 对齐。
+
+### 99.2 可复现命令与结果
+
+独立编译：
+
+```bash
+make -C verification real-ara-contract-compile
+```
+
+编译完成后，受限动态 smoke：
+
+```bash
+make -C verification real-ara-contract-smoke
+```
+
+初次集成 smoke 使用 `rv64uv-ara-vfredmax_boundary` ELF，VCS 返回码为 0，两个边界检查
+均打印 `PASSED`，testbench 打印 `Core Test *** SUCCESS *** (tohost = 0)`，真实
+边界 monitor 摘要为：
+
+```text
+[ARA_CONTRACT] requests=33 responses=33 exceptions=0 mmu_requests=0 protocol_errors=0
+```
+
+这条初次记录只证明 monitor 已绑定到 DUT 并观察到真实 traffic。后续静态审查发现
+该版监视器自身仍有下面三个缺口，不能仅凭上述零错误摘要认定检查器可靠。
+
+### 99.3 监视器自审与可证伪检查
+
+本次修改不涉及功能 RTL。先读 `acc_dispatcher.sv` 的 spill-register 字段和独立
+memory-status 赋值，再读 `ara_dispatcher.sv` 的响应/完成字段，得到以下检查方案：
+
+| 假设或风险 | 区分信号和测试 | 正确判据 |
+| --- | --- | --- |
+| 同 ID 完成与复用会误清 scoreboard | old pending bit、双方 fire/ID；先请求 ID3，再同拍完成旧 ID3 并接受新 ID3，最后独立响应 | 中间 pending 保持 1，最后清 0；不能误报 orphan |
+| 独立访存状态被误当成冻结 payload | 多拍 req/resp 背压，保持指令字段但改变 memory/fflags sideband | 合法场景不报错 |
+| payload 断言失败但摘要仍为零 | 保持 valid，在最终握手拍改变 `rs1` 或 `frm`，响应侧改变 result/异常字段 | 对应错误必须计数，日志检查必须拒绝 |
+| 模拟器返回成功但事务没结束 | 发请求，不发响应，正常 `$finish` | 非零 outstanding/不等量计数必须拒绝 |
+| 复位掩盖此前错误 | 注入 orphan，复位后跑合法事务 | 累计错误仍非零，不能变 PASS |
+
+修复为单一错误计数过程；不再让独立 SVA 报错路径绕开摘要。请求保持字段补齐
+`frm`，响应补齐 `tval2/tinst/gva`，仅在异常有效时比较异常内容。双方同 ID 同时
+fire 时，保留旧 pending bit：旧 bit=0 表示立即应答，旧 bit=1 表示旧请求完成并
+被新请求替换。MMU 字段更名 `mmu_request_cycles`，避免误称为事务数。
+
+在 `verification/out/contract-selftest/`，VCS 只编译一次小型 testbench，13 个场景
+全部符合预期，包括两组合法场景及 11 个必须拒绝的反例。每个反例同时检查
+monitor 的精确错误数和 Python 日志检查器是否拒绝，不以“打印了某个 PASS”代替
+实际判定。示例：`request_payload.log` 在最终接受拍报 payload 错误，摘要为
+`requests=1 responses=1 protocol_errors=1`；`legal.log` 的全部路径合计
+`requests=8 responses=8 exceptions=1 mmu_request_cycles=3 protocol_errors=0`。
+
+`make -C verification unit` 本轮报告 `188 passed`，保留一个既有的
+`PytestCollectionWarning`。完整 DUT 只需编译一次；其他短 ELF 使用
+`real-ara-contract-run` 复用 executable，日志检查使用 `real-ara-contract-check`，
+避免为日志脚本修改反复编译处理器。
+
+这个 monitor 是接口契约检查，不证明向量执行全部完成、访存顺序正确、MMU 翻译
+正确或全系统通过。完整 RVV 差分、随机覆盖、Linux 和 VCU118 验证仍需独立证据。
+
+### 99.4 修正后的真实 DUT 回归
+
+独立输出目录为 `verification/out/real-ara-contract-audit/`。只编译一次当前 Ara，
+从源码构建两个 ELF 后依次执行，未再次修改功能 RTL：
+
+| 用例 | 软件检查 | 请求/响应 | 协议错误 | 结束时在途/背压 | VCS CPU 时间 |
+| --- | --- | --- | --- | --- | --- |
+| `rv64uv-ara-vfredmax_boundary` | 2 项 PASS | 33/33 | 0 | 全部 0 | 9.560 s |
+| `rv64uv-ara-vfredmax` | 19 项 PASS | 355/355 | 0 | 全部 0 | 53.960 s |
+
+两者模拟器及严格日志检查均返回 0。日志保存在 `sim/<testcase>.log`；这是功能和
+协议 smoke 的数据，不是内核运行性能测量，也不是逐指令 Spike 差分的完成证明。
+
+第二位审阅者还发现并修正了两个环境陷阱：默认 ELF 现在由 testcase 名推导，防止
+`vadd.log` 实际运行 `vfredmax_boundary`；checker 自测试每次启动前清除自己对应的
+旧日志，防止负例启动失败却读取旧 PASS。此类 runner 修复通过 Python 测试验证，
+不为它们额外重编译或重跑 DUT。
+
+补齐 runner 的旧日志、缺失/畸形摘要、异常退出等反例后，最终 Python 检查为
+`202 passed, 1 warning`。修正后的解析器复查已有 13 份 VCS selftest 日志，仍全部
+符合预期，没有为这些解析器修复重复启动 VCS。
+
+## 100. Linux 用户态验证载荷与 initramfs 打包缺陷
+
+### 100.1 先确定正确的系统语义
+
+Linux 用户态测试不能直接照搬裸机检查。SDK Linux 6.19.6 的 RISC-V vector 文档
+允许普通系统调用破坏向量状态，`do_trap_ecall_u()` 中也有
+`riscv_v_vstate_discard()`。所以“跨 read/write 后向量寄存器变化”不是本轮的
+硬件错误判据。新的抢占测试使用同核父子进程和纯用户态共享内存握手，在向量状态
+存活期间不执行 ecall、不调用 C 函数，记录实际非自愿调度并比较完整状态。
+
+运行前审查又补齐三个可掩盖错误的条件：父子使用不同的寄存器图样和 CSR；每次
+快照输出预填与期望不同的值，避免上次结果残留造成假通过；页故障检查精确故障
+PC、地址、异常原因以及权限修复后重新执行 load 得到的值，不能只检查到过 handler。
+
+### 100.2 首次启动失败的证据与根因
+
+首轮 QEMU 中内核已经启动，但 `/init` 的 BusyBox 无法加载 `libresolv.so.2`，
+PID 1 退出导致 panic，尚未到达用户态测试。检查发现库已经放入 `/lib`，加载器
+搜索 `/lib64`；SDK 原始根文件系统含 `lib64 -> lib`，仓库的 initramfs 构造脚本
+遗漏该别名。问题属于验证部署环境，不是 RVV、VFREDMAX 或自定义指令错误。
+
+原构造流程的关键缺项与修复如下：
+
+```bash
+# 原流程：创建 /lib 并复制动态库，未创建 SDK 的 /lib64 别名。
+# 当前板卡构造流程：在新的 rootfs 中创建该别名。
+ln -s lib "$OUT/initramfs/lib64"
+```
+
+对应源码为 `hardware/fpga/ara_dsa_vcu118/linux/build_linux_bringup.sh`。新的
+`verification/linux/build_userspace.py` 还要支持已有 rootfs，因此只在别名缺失时
+补齐，并保留已有目录或链接。基础历史 cpio 未覆盖；首次失败的日志保留在
+`verification/out/linux-userspace-20260922/qemu-vlen1024/`。
+
+### 100.3 修复后的动态证据及范围
+
+从当前源码构建 `payload-checked/` 后，在同根目录 `qemu-checked-vlen1024/`
+完成一次实际 Linux/QEMU 运行：QEMU 10.2.0、Linux 6.19.6、OpenSBI 1.7，
+VLEN=1024、单核，主机耗时 8.185 秒，退出码 0。
+
+| 用例 | 结果 |
+| --- | --- |
+| VLA 整数加法/访存、输出 guard | 101 个元素通过 |
+| VFREDMAX 的 VL=4/1 | 通过 |
+| 两进程抢占恢复 | 各 4096 字节和 CSR 通过；父/子非自愿调度 34/33 次 |
+| 异步信号返回 | handler 改写向量状态后，原状态恢复通过 |
+| 标量页权限故障 | 精确故障位置、修复后 load 重试及向量状态恢复通过 |
+| 非法指令返回 | 精确故障位置、恢复标签及向量状态恢复通过 |
+| QBS/AKV 能力查询 | 各返回 SIGILL，按预期记录 UNAVAILABLE，不执行计算 |
+
+运行器保存命令、退出码、完整日志和 ELF/内核/固件/initramfs/模拟器的哈希；
+`linux-check/signoff.json` 复核该 QEMU 阶段通过。最终 Python 环境检查为
+`223 passed, 1 warning`，没有为这些脚本检查额外重复执行处理器仿真。
+
+本节不是新的功能 RTL 修复，也不等同于 RTL/板卡 Linux 或完整模型已通过。
+尤其 QBS/AKV 隐藏上下文不在普通 RVV 的操作系统保存恢复范围内，后续仍须明确
+任务所有权、异常与调度时的失效/重建或保存恢复规则，再进行 Linux 下的自定义
+计算验证。详细覆盖、命令和部署限制见 `verification/linux/README.md`。
+
+## 101. 非恒等地址翻译的读引擎验证与依赖基线差异
+
+### 101.1 先补可区分的激励与周期证据
+
+原 `qbs_read_engine_tb.sv` 的 MMU 模型始终返回同地址。虽然已有跨页、背压和
+MMU/PMA/AXI 异常测试，仍不能排除“地址翻译被绕过”或“把后一虚拟页误当成连续
+物理页”的实现错误。针对这个覆盖缺口，先制定期望地址表与异常时序，再补测试：
+
+- 未对齐的 106 字节访问跨两个虚拟页，映射至不连续物理页；独立检查两次 AR 的
+  地址、长度、属性，以及 61+45 字节的 payload、strobe、逻辑 offset 和 tag。
+- 三个已接受 range 中，两条 AR 尚未回数时让第二页翻译失败；确认第三个排队
+  range 被清理，错误页没有 AR，旧的 8 个 R beat 排空前不提前交付 fault。
+- 同一布局让更早的 AXI 读报错，检查更早异常覆盖后发现的 MMU 异常，归属与
+  fault VA 正确，不把正常的末拍误报为协议错误。
+- 每次故障后，不复位、不清计数器，使用原失败 tag 读取已恢复的页，核查无旧
+  状态污染、无重复完成，末尾 range/burst/slave 队列均为空。
+
+探针在 posedge 的 pre-NBA 阶段记录状态，包含所有 valid/ready/fire、FIFO 指针、
+队列占用、子请求序号、MMU/PMA/AR/R、payload 和异常选择；每个子场景限定 256
+周期，超限失败而非截掉关键记录。epoch/cycle 区分复用的 tag。
+
+`verification/out/qbs-reader-linux-contract-20260922/` 保存源码快照和实际证据。
+一次 VCS 编译后，延迟 MMU 与同周期 MMU 两种模式均通过；每种模式都执行原有
+测试、6 个 stalled-AR 故障点及新增的 5 个子场景。编译墙钟 24.076 秒，两次运行
+各约 10.693 秒。没有通过反复修改功能 RTL 来取得 PASS。
+
+这证明的是 QBS/AKV 共用读引擎的上述接口行为，不证明 CVA6 页表/PMP、Linux
+上下文隔离或完整模型。详细假设、期望值和命令见 `qbs/READ_ENGINE_VERIFICATION.md`。
+
+### 101.2 FPGA 导出完整性不等于当前验证基线一致
+
+新 `fpga/check_sources.py` 对比导出文件与确定来源，结果保存在
+`verification/out/fpga-source-audit-20260922/report.json`。导出包自身校验通过，
+但源码对应性不通过：427 项相同、14 项不同、5 项适配待审阅、226 项来源尚未
+准备。缺失来源不能被解释为缺失导出文件，也不能自动豁免。
+
+VMFPU 修复版已经在 FPGA 导出中；CVA6 则出现了双向差异。进一步比较原
+`ara_dsa` 工作区，确认原目录和验证目录的 CVA6 HEAD 都为 `b29fd3cf...`，但原
+目录仍有四个未提交依赖文件修改，其内容与导出包对应文件相同。隔离初始化仅取
+锁定 HEAD，再应用本轮的两文件 fence 补丁，没有带入全部原本地修复。
+
+涉及的逻辑包括 commit ID 匹配、第二提交口授权、queue-pop 记账、flush 清理、
+VS/SD 状态汇总和标量 FP 处理。原目录的 FPnew、除法/平方根依赖也有本地修改。
+因此先前验证只能归属于记录的验证源码组合，不能外推成“与当前原工程完全等价”。
+这是验证输入基线缺口，不应通过清理 dirty 状态或直接整文件覆盖来掩盖。
+
+后续优先顺序调整为：逐项审核并归档原工程依赖补丁，与新的 fence 修复做语义
+合并；冻结完整源码组合后补相关定向回归；最后重新导出 FPGA 工程。原工程及其
+历史报告未修改。本轮最终 Python 检查为 `281 passed, 1 warning`；该数量描述验证工具
+测试，不是处理器已通过 281 个程序。
+
+### 101.3 运行器审阅后的修正
+
+独立审阅指出两个边界风险：并发实例可能同时看到空输出目录；超时后仅等待父
+进程退出，仍可能留下忽略 SIGTERM 的子进程。新运行器使用独占创建的 owner
+文件阻止同目录并发，按自己创建的进程组执行 TERM、等待、KILL 和回收；取消时
+也记录失败。单元测试覆盖空目录检查竞争、父进程早退、父进程不退和中断。
+
+统一签核入口改用 pytest，避免 unittest discover 漏掉函数式测试。上述环境修正
+没有改变读引擎源码、测试刺激或 PASS 判据，因此保留已有两份 VCS 证据，没有
+重复运行 RTL 仿真。
+
+## 102. 依赖基线合并、补丁门禁与备用除法器审查
+
+### 102.1 输入基线修正
+
+本轮先比较原 `ara_dsa`、独立验证目录及 FPGA 导出中的实际文件，而不是直接复制
+整个依赖目录。确认原 CVA6 的四文件九 hunk 与验证分支两个 fence/stall hunk
+不冲突，按 hunk 合并得到五文件补丁；FPnew 的三文件五 hunk 单独登记。原项目
+的三个 dependency diff 在操作前后 SHA-256 相同，未修改原工作区。
+
+| 项目 | 固定基线 | 处理结果 |
+|---|---|---|
+| CVA6 | `b29fd3cf906e7f4c71da4c2f46451c4c60a4487f` | 原提交/flush/queue-pop/port1、CSR、标量浮点修改与 fence/stall 修复并存 |
+| FPnew | `e5aa6a01b5bbe1675c3aa8872e1203413ded83d1` | infinity cast、PULP HOLD、C910 等价加法器改写纳入登记 |
+| PULP DivSqrt | `86e1f558b3c95e91577c41b2fc452c86b04e85ac` | 保持干净依赖；原五文件十五 hunk 暂存 quarantine，不自动应用 |
+
+应用清单是 `verification/patches/dependencies.json`，不是所有 `.patch` 文件。
+详见 `verification/patches/README.md`。当前默认标量和向量均选 THMULTI，不能
+声称由默认回归验证了 PULP HOLD 或 PULP 数值算法。THMULTI 的 FP8/FP8ALT
+不支持问题也必须与当前 FP16/32/64 配置分开，不能外推为全参数覆盖。
+
+环境检查同时修正了两处相反的漏洞：旧 setup 重跑会拒绝已批准的 dirty patch，
+而旧 doctor 会接受缺少必要 patch 的干净依赖。现在仅接受“锁定提交 + 精确补丁”，
+比较包含暂存/未暂存内容；隐藏的暂存内容、未跟踪输入及部分补丁均不放行。
+必需嵌套仓库检查实际 HEAD、index gitlink 和工作区，不再以文件存在替代版本检查。
+setup 使用 Bender 锁定提交而非源仓库的当前 HEAD，也不导入源目录的新编辑。
+
+已经完成 setup 两次幂等实测、doctor、deps dry-run 和 Python 回归。
+初次整套工具检查为 333 PASS；新增隐藏暂存内容检查后，相关三组测试 61 PASS。
+纳入备用除法器审计工具测试后的统一检查为 `345 passed, 1 warning`；warning 是
+pytest 不收集带构造函数的 `TestResult` 数据类，不是 DUT 告警。
+这些数字是验证环境单元测试数量，不是处理器 ISA 测试数量。
+
+### 102.2 先分辨实际执行路径，再验证数值问题
+
+静态审核指出原 PULP 补丁不能直接登记为正确：非恢复除法的未校正部分余数
+可能在精确除法结束时为负，直接 `|Partial_remainder_DP` 不是可靠 exactness 判据。
+候选反例是 FP64 `1/1`，预期结果为 1、flags=0；若错误 sticky=1，RNE 可能
+错误置 NX，RUP 还可能得到 `1+1ULP`。另一候选反例是 FP64 正数溢出/RUP，
+先生成 infinity 后再由 sticky 递增可能得到非零尾数，而正确结果应为 +Inf、OF|NX。
+
+这两条首先由源码推导，再由独立实验冻结原副本，记录
+原始部分余数、除数、quotient、Done、规格化结果、sticky、roundUp、结果及 flags，
+并用 exact 和 overflow 控制作区分。该实验不修改默认依赖，不因预期出现错误就
+把 DUT 状态写成 PASS。原 PULP 干净基线也未获得完整签核。
+
+实测结果保存在 `verification/out/mvp-patch-audit-20260922/`，只编译一次、运行
+一次，共八个输入。五项复现预定错误，三项控制输入符合预期；汇总状态为
+`AUDIT_REPRODUCED_DUT_FAILURES`，DUT 状态明确为 `FAIL_ARCHITECTURAL_ORACLE`。
+
+| 输入 / 模式 | 正确结果 / flags | 实测结果 / flags | 判定 |
+|---|---|---|---|
+| FP64 `1/1`, RUP | `3ff0000000000000 / 00` | `3ff0000000000001 / 01` | R-85，值与 NX 都错 |
+| FP64 `1/1`, RNE | `3ff0000000000000 / 00` | `3ff0000000000000 / 01` | R-85，结果正确但 NX 错 |
+| FP64 `maxfinite/0.5`, RUP | `7ff0000000000000 / 05` | `7ff0000000000001 / 05` | R-86，+Inf 变成 NaN 编码 |
+| FP64 `-maxfinite/0.5`, RDN | `fff0000000000000 / 05` | `fff0000000000001 / 05` | R-86，负溢出同类错误 |
+| FP32 `maxfinite/0.5`, RNE | `ffffffff7f800000 / 05` | `ffffffff7f800000 / 04` | R-87，缺 NX |
+| FP32 `1/1`, RNE | `ffffffff3f800000 / 00` | 相同 | 控制输入匹配 |
+| FP64 正溢出, RNE | `7ff0000000000000 / 05` | 相同 | 控制输入匹配 |
+| FP64 正溢出, RTZ | `7fefffffffffffff / 05` | 相同 | 控制输入匹配 |
+
+在 FP64 精确除法的完成采样点，显式 rounding bits 为 0，raw remainder 为
+58 位 `0x300000000000000`，其有符号值等于 `-(denominator << 4)`；错误 sticky=1。
+正溢出/RUP 的同一记录显示 overflow=1、规格化 exponent=`7ff`、mantissa=0，
+之后 roundUp=1，最终 mantissa=1。因而这不是仅凭最终数值猜测，而是同一次实验
+的周期证据同时命中了两个根因的判别条件。独立单元边界没有架构 PC/tag，不能
+把该单元测试描述成处理器逐指令或 Linux 验证。
+
+### 102.3 新基线定向回归范围
+
+新 VCS 使用外部请求协议 monitor，并补内部事务生命周期探针；先确定捕获方案，
+再编译和执行。同一编译产物用于六个短程序：`vfredmax_boundary`、`vfwcvt`、
+`vfncvt`、`vfdiv`、`vfsqrt`、`vfp_vstart_edges`。其作用分别是保护归约修复、
+检查 infinity 转换和真正 narrowing、活动 THMULTI、以及 vstart/mask/flags。
+实测六点全部 PASS，保存于 `verification/out/dependency-baseline-vcs-20260922/`。
+`summary.csv` 记录程序结果，`contract_summary.json` 记录严格协议检查和探针捕获
+范围；`provenance/` 保存补丁、探针副本及 ELF/simv 指纹。
+
+| 程序 | 结果 | 仿真墙钟 / 秒 | 接口请求 / 响应 | 内部探针采样行 / 捕获状态 |
+|---|---|---:|---:|---|
+| `vfredmax_boundary` | PASS | 20.41 | 27 / 27 | 8492 / 完整 |
+| `vfwcvt` | PASS | 107.64 | 441 / 441 | 65536 / 达到捕获上限 |
+| `vfncvt` | PASS | 102.04 | 465 / 465 | 65536 / 达到捕获上限 |
+| `vfdiv` | PASS | 48.66 | 193 / 193 | 37251 / 完整 |
+| `vfsqrt` | PASS | 31.20 | 88 / 88 | 19347 / 完整 |
+| `vfp_vstart_edges` | PASS | 42.32 | 154 / 154 | 27342 / 完整 |
+
+六点累计 1368 次接口请求和响应，协议错误为零，结束时接口未应答事务为零。
+两条转换测试只有内部生命周期文本捕获达到上限，程序和外部协议监视器持续运行
+到正常结束；不能声称这两条已有全程内部周期证据。当前测试未观测到接口背压，
+也没有 MMU 请求，因此不构成背压、flush 或虚拟内存的覆盖证明。
+
+这些结果来自自检 ELF、commit trace 结构检查及接口协议检查，不是六条完整
+Spike 逐指令差分通过，更不代表全部随机回归、Linux 或 FPGA 已通过。后续优先
+补 CVA6 commit/flush/backpressure 及 CSR/标量浮点定向证据；不为补齐已通过程序
+的非必要长日志而重复仿真。
+
+## 103. 实际 CVA6 请求生命周期的定向验证
+
+### 103.1 验证对象和方法
+
+本轮没有再修改 DUT。新 `verification/cva6/` 测试台实例化实际 `acc_dispatcher`、
+FIFO、spill register 和计数器，冻结批准的 CVA6 补丁及源文件之后，只编译一次、
+仿真一次。外部向量执行端由受控响应源替代，因此结论限定于此模块的接口契约。
+
+先根据源码列出八类候选回归及判别信号，再记录完整的 132 个有效时钟沿。独立
+scoreboard 按唯一 token/PC 追踪接收、入队、授权、出队、对外握手、响应和取消，
+单独维护 load/store 完成队列，不把接口响应当成向量执行完成。每一行记录时钟沿
+前状态；下一行核对前一拍事件更新后的计数器和 ID 状态。
+
+### 103.2 实测结论
+
+`verification/out/cva6-contract-20260922/report.json` 为 PASS。编译墙钟 25.181 秒，
+仿真墙钟 10.694 秒，后者包括工具启动；仿真模型时间为 1.340 微秒。
+
+| 场景 | 实测证据 |
+|---|---|
+| commit ID 不能授权错误队首 | 周期 6 队首 ID=0、commit ID=1，不发生出队；各自授权后依次推进 |
+| 第二提交口不能越过未获确认的第一口 | 周期 14-16 不出队，周期 17 获旧指令 ack 后只出队一次 |
+| flush 取消未派发指令，但保留已发出的请求 | 两个队列 token 被取消；spill 中两个请求保持内容并于周期 67/68 各握手一次 |
+| ID 复用不能继承旧授权 | 被取消及已响应 ID 均重新等待本次 commit，未出现提前派发 |
+| memory pending 按 queue-pop 记账 | downstream 未 ready 时出队已进入 dispatched；当前执行类型与队首相反仍按队首分类 |
+| 响应不等同于访存完成 | response 后 pending 仍保留，直到独立 completion；completion 与下个 pop 同拍时总数正确 |
+| fence 与标量访存阻塞 | 五种 memory 状态、两种 consistency 模式：50/50 fence 组合和 20/20 标量访存组合通过 |
+
+总计接收 11 条、取消 2 条、出队/对外握手/响应各 9 次；load/store completion 分别
+4/3 次。FIFO 和 spill 最大占用均为 2，观测到 30 个对外背压周期，payload 保持正确。
+19 项工具单元测试通过；对已有 trace 作 12 类故意破坏均被拒绝，没有为检查这些
+错误再启动 RTL 仿真。详细周期表见 `cva6/MEASURED_20260922.md`。
+
+本结果不证明整核可以产生所有这些对抗顺序，也不证明向量执行、MMU 或 Linux。
+未覆盖非零异常、在途复位、单提交口、FPGA FIFO、单独 execute flush 及 store-barrier
+的 ctrl_halt 协议。HFENCE 仅验证枚举对应的 stall 条件，不代表支持 RVH。
+
+## 104. Linux 向量状态前置检查：SSTATUS 的 VS 别名
+
+### 104.1 为什么要单独验证
+
+大量用户态向量计算通过，不能证明操作系统能正确管理向量上下文。内核需要通过
+`sstatus.VS` 读写向量状态。根据 [RVV 的向量上下文定义](https://docs.riscv.org/reference/isa/unpriv/v-st-ext)，
+该字段映射到 `mstatus[10:9]`，不是一套独立的状态。只检查机器态 `mstatus` 会遗漏
+supervisor 视图的错误。本测试在真实 SoC 的 M-mode hook 中直接访问两个 CSR；
+它是 Linux 前置检查，不是 Linux 启动或完整 S-mode 权限验证。
+
+实验之前已联合检查 CSR 写合并、状态位更新、向量退休 dirty 通知、FPU 操作数保持
+和 NaN-box 路径，准备三类独立 bind 探针：外部请求协议、内部请求生命周期、CSR/
+标量 FPU 状态。所有周期数据在时钟沿前采样，记录当前状态和下一状态，以及 CSR
+原始写值、SET/CLEAR 合并值、读值、异常、退休 PC 和握手。
+
+### 104.2 一次失败实验给出的证据
+
+`verification/out/linux-state-prereq-vcs-20260922/` 保留原始输入 ELF、完整日志及
+旧 CVA6 补丁。一次编译后运行 `linux_state_prereq` 和 `vfredmax_boundary`：前者
+完成 87 项检查、报告 6 项不符，后者通过。不能把这六项直接记为六个独立 RTL bug。
+状态探针 CSR 449 行、FPU 590 行，均正常结束且未截断。接口监视器观察到前者
+17 次请求和响应，协议错误及结束未应答事务均为零。
+
+| 检查 ID | 捕获周期 | VS 状态 | `mstatus` 实际值 | `sstatus` 实际值 | 缺失字段 |
+|---|---:|---|---|---|---|
+| 4 | 600 | Initial | `0000000a00000200` | `0000000200000000` | VS=`01` |
+| 6 | 664 | Dirty，执行 vset 后 | `8000000a00000600` | `8000000200000000` | VS=`11` |
+| 9 | 797 | Clean | `0000000a00000400` | `0000000200000000` | VS=`10` |
+| 11 | 872 | Dirty，再次执行 vset 后 | `8000000a00000600` | `8000000200000000` | VS=`11` |
+| 16 | 1052 | 显式写 Dirty | `8000000a00000600` | `8000000200000000` | VS=`11` |
+
+这五项同时区分了“dirty 通知未到达”“SD 计算错误”和“CSR 读视图丢位”：VS 和
+SD 在 `mstatus_q` 已正确，只有 `sstatus` 中 VS 被清零。第六项随后由同一份提交
+轨迹定位为 #302 的 VILL 恢复错误，详见 104.4；不是 #305 的清理比较过严。
+
+### 104.3 原实现、最小修复和边界
+
+原实现的 `ariane_pkg::smode_status_read_mask` 不含 VS；写路径如下，同样漏位：
+
+```systemverilog
+// 原 CSR_SSTATUS 分支
+mask = ariane_pkg::SMODE_STATUS_WRITE_MASK[CVA6Cfg.XLEN-1:0];
+mstatus_d = (mstatus_q & ~{{64-CVA6Cfg.XLEN{1'b0}}, mask}) |
+            {{64-CVA6Cfg.XLEN{1'b0}}, (csr_wdata & mask)};
+```
+
+当前修复新增 `riscv::SSTATUS_VS = 'h00000600`，读掩码增加
+`Cfg.RVV ? riscv::SSTATUS_VS : 64'b0`，仅普通 SSTATUS 写分支改为：
+
+```systemverilog
+mask = ariane_pkg::SMODE_STATUS_WRITE_MASK[CVA6Cfg.XLEN-1:0] |
+       (CVA6Cfg.RVV ? CVA6Cfg.XLEN'(riscv::SSTATUS_VS) : '0);
+```
+
+读写必须一起修正：CSR_SET/CLEAR 根据读视图合成写值，只补写掩码会在修改其它
+状态位时意外清除原 VS。原有非 RVV 配置的 VS Off 硬连线、CSR 权限检查、flush
+以及基于 `mstatus_d` 的 SD 汇总保留，没有新增执行流水级。
+
+共享旧写掩码还用于 `CSR_VSSTATUS`，本次不扩大它，以免改变未验证的 RVH 向量
+状态行为。RVH 的 guest 状态管理仍是独立缺口。当前补丁指纹为
+`c11a2e6c33554d84d5b72e6dc97a62dccfc6c4f4195e9e117eb1b463e5b6e939`。
+新基线的验证必须使用重新编译的 simv；旧失败记录不改写成 PASS。
+
+### 104.4 同一捕获定位的第二个根因：VILL 恢复失败
+
+旧测试 #302 保存并恢复完整 `vtype`。初始读值为 `8000000000000000`，恢复后
+却为 0。`acc_lifecycle.log` 周期 4335 记录 `vsetvl zero,s3,s2` 的请求握手，
+rs1 数据为 0、rs2 数据为 `8000000000000000`；周期 4379 的 VTYPE CSR 请求
+响应为 0，4380 退休读回 0。高位确实到达向量端，不能归因于编译器漏传。
+
+原 `ara_dispatcher.sv` 有两个相关缺口：
+
+```systemverilog
+// 原 vsetvl 路径先丢弃高位；后续合法性仅检查 SEW/LMUL。
+csr_vtype_d = vtype_xlen(xlen_t'(acc_req_i.rs2[7:0]));
+```
+
+只把 `[7:0]` 去掉还不够：原 helper 虽提取 VILL，但 OPCFG 后续未将 VILL
+纳入不支持配置判断，仍会计算正常 VL。修复一起完成三个步骤：
+
+```systemverilog
+// vtype_xlen: 全宽检查；高保留位或 VILL 非零均不支持。
+vill : |xlen[CVA6Cfg.XLEN-1:8]
+// vsetvl: 不截断软件保存的配置。
+csr_vtype_d = vtype_xlen(xlen_t'(acc_req_i.rs2));
+// OPCFG: VILL 与原 SEW/LMUL 限制一起进入已有规范化分支。
+if (csr_vtype_d.vill || /* existing SEW/LMUL checks */) begin
+  csr_vtype_d = '{vill: 1'b1, vsew: EW8, vlmul: LMUL_1, default: '0};
+  csr_vl_d = '0;
+end
+```
+
+这个公共转换函数也接收 `vsetvli/vsetivli` 的零扩展立即数，因此相应保留位同样
+被检查。合法低 8 位配置及原有 VL 选择规则不变，没有新增状态或流水级。
+[RVV 1.0 配置及复位规则](https://docs.riscv.org/reference/isa/v20260120/unpriv/v-st-ext.html)
+要求检查完整 XLEN 配置值，并允许用一次 `vsetvl` 恢复读出的复位 VL/vtype；
+不能通过在测试中屏蔽 bit63 或修改期望值来“通过”。本例 rs1 是非零编号寄存器，
+只是寄存器内数值为零，不属于 `rs1=rd=x0` 的保留组合。
+
+同一捕获还核对了 27 个退休标量 H/S/D 除法、开方操作的原始操作数、NaN-box、
+结果和完整 FCSR，共 54 项均正确。原始 FPU 输入握手中另有被 flush 取消的尝试，
+不能重复计为退休用例。详细逐项周期表见 `cva6/linux_state_prereq.md`。
+
+### 104.5 修复后的同镜像复验
+
+两个根因在静态分析与已有周期证据一致后一起修复，只做一次新 SoC 编译。
+新编译产物没有改动普通执行流水级。`linux-state-prereq-fixed-20260922` 的
+四个程序并行执行，随后同一镜像复验冻结的旧 ELF：
+
+| 程序 | 检查范围 | 实测结果 | 仿真墙钟 / 秒 | 接口请求 / 响应 |
+|---|---|---|---:|---:|
+| `linux_state_prereq` 增强版 | 165 项：27 VS、32 SSTATUS、46 vtype、54 FP、6 状态恢复 | PASS | 23.00 | 86 / 86 |
+| `vfredmax_boundary` | 保护归约控制编码修复 | PASS | 21.39 | 27 / 27 |
+| `vle32` | 向量加载和依赖路径 | PASS | 65.01 | 186 / 186 |
+| `vsetvl` | 原有合法 SEW/LMUL/AVL 配置矩阵 | PASS | 63.16 | 85 / 85 |
+| 冻结旧 `linux_state_prereq` ELF | 原 87 项，原来六项失败的输入/期望完全不变 | PASS | 21.17 | 17 / 17 |
+
+最后一项在 `verification/out/linux-state-prereq-frozen87-fixed-20260922/`。
+其 ELF SHA-256 与修复前失败 ELF 同为
+`54eabf012c1c09beb60e3aa0922e106e08a7822e8c648523cd393736f32be3bd`，
+不是通过改变输入或屏蔽期望值获得通过。新镜像中该 ELF 的周期 4097 VTYPE CSR
+返回 `8000000000000000`，与原期望一致。
+
+增强版 SSTATUS 的实测周期 1485 写入 Initial，1614 SET 成 Dirty，1721 CLEAR
+成 Clean，1789 CLEAR 成 Off；MPP/MPIE 哨兵保留，SD 由实际状态重新汇总。
+27 次 FP 算术的字面量期望未改。所有五次程序都正常结束；累计接口请求/响应
+401/401，协议错误为零，各类周期记录均未截断。四点与冻结 ELF 两个结果目录的
+`verify.py audit --require-trace` 均通过输入哈希、记录完整性和接口协议核验。
+
+这不是完整 Spike 逐指令差分或 Linux/FPGA 启动签核。这里的墙钟包括模拟器启动，
+不是处理器性能周期；程序在 M-mode hook 中检查状态，性能 counter 的零值也不
+代表工作没有执行。现有日志未触发 MMU/外部背压，不能据此扩大相关覆盖结论。
+主目录和旧 FPGA 导出未改动；本轮 RTL 修复仅在 verification worktree。
+
+## 105. 一次跨模块捕获定位 ECALL tval 错误
+
+### 105.1 先设计刺激和证据，再运行
+
+此前 M-mode 状态测试不覆盖 S-mode 非恒等地址翻译、向量缺页及重启。
+新增 `sv39_state_prereq` 使用当前四 lane/VLEN=1024 实际 SoC，建立 Sv39 页表，
+先检查正常 scalar/vector 访问，再各制造一次跨页 load/store 缺页。M-mode handler
+保存异常现场，修复 PTE，执行 fence/SFENCE，保留 mepc/vstart 重启原向量指令。
+物理页之间放置哨兵隔离页，防止错误地连续使用 PA 也恰好得到正确结果。
+
+仿真前分别审查测试 oracle、异常恢复和探针采样。提前推导出 ECALL 可能保留
+`0x73` 的具体假设，保持测试 #68 的零预期不变。统一捕获 MMU/PTW/翻译路由、
+addrgen/VLSU、sequencer/dispatcher、CSR/FPU 九路活动日志，并保留 ACC lifecycle、
+接口协议和提交轨迹。所有周期信号均采用沿前 `#1step`，MMU 同时记录当前输入和
+寄存后的请求。捕获完整性由 runner/audit 独立检查，不能拿部分日志当作全程序通过。
+详见 [诊断计划](cva6/sv39_probe_plan.md) 和 [刺激说明](cva6/sv39_state_prereq.md)。
+
+### 105.2 首次诊断的实测结果
+
+`verification/out/sv39-prereq-vcs-20260922/`：一次编译、一次诊断运行，墙钟
+102.42 秒。116 项仅 #68 失败，实际 `0x73`、预期零；这是 DUT FAIL，不是通过。
+其余检查包括正常非恒等访问、load/store 两次缺页、正确 vstart、补页重启、全部
+数据和边界哨兵、CSR 恢复，均通过。该结论限本例，并非完整 Sv39/RVV 异常覆盖。
+
+| 阶段 | 周期 | 实测关键信号 |
+|---|---:|---|
+| 正常 S 向量 load | 38296 / 38313 | PE base=`0x40000040`；AR 握手 PA=`0x80007040` |
+| 跨页 load 第一段 | 38355 / 38371 | base=`0x40000ff0`、VL=8、vstart=0；AR PA=`0x80007ff0` |
+| load 缺页逐级上报 | 38384 / 38385 / 38386 | MMU cause=13/VA=`0x40001000`；addrgen vstart=4；CSR trap-PC=`0x800003f8` |
+| load 原指令重启 | 38817 / 38832 | 原 base/VL、vstart=4；第二段 AR PA=`0x80009000` |
+| store 缺页逐级上报 | 39000 / 39001 / 39002 | MMU cause=15/VA=`0x40003000`；vstart=4；CSR trap-PC=`0x80000438` |
+| store flush 完成 | 39003 / 39012 | `flush_start=1` 后 `flush_done=1`，dispatcher 返回正常状态 |
+| store 原指令重启 | 39353 / 39369 | 原 base=`0x40002ff0`、vstart=4；AW PA=`0x8000c000` |
+| ECALL 错误 payload | 39445 | CSR `pc=0x80000458`、priv=S、cause=9、tval=`0x73` |
+
+九路日志完整性均 PASS，累计 2378 行，均 `truncated=0,dropped=0`；共同结束于
+64057 个采样沿。ACC lifecycle 63541 行也未截断，覆盖完整目标事件；接口请求/
+响应 33/33、向量异常 2、MMU 请求电平 112 周期、协议错误 0。MMU 请求电平数
+不是握手事务数。END 和协议 PASS 不会覆盖软件发现的 ECALL 错误。
+
+### 105.3 根因与最小修改
+
+`decoder.sv` 在没有输入异常时，将指令字保存在 `instruction_o.ex.tval`，供非法
+指令及较晚发现的 CSR 访问错误使用。ECALL 分支只设置 valid/cause，没有覆盖
+tval。scoreboard/commit 保留该 payload；当前 `TvalEn=1`、`ZERO_TVAL=0` 的 CSR
+路径据此写 mtval。软件 handler 随后读出的 `0x73` 与周期捕获一致。
+[官方特权规范的 mtval 规则](https://docs.riscv.org/reference/isa/v20240411/_attachments/riscv-privileged.pdf)
+要求 ECALL 的 trap value 为零；不能用非法指令可携带编码的规则解释这个结果。
+
+原分支：
+
+```systemverilog
+end else if (ecall) begin
+  instruction_o.ex.valid = 1'b1;
+  // 只按 privilege 设置 ENV_CALL_* cause，沿用默认 tval。
+```
+
+修改后：
+
+```systemverilog
+end else if (ecall) begin
+  instruction_o.ex.valid = 1'b1;
+  // ECALL has no trap-value payload; do not retain the instruction bits.
+  instruction_o.ex.tval = '0;
+  // 原 privilege/cause 选择不变。
+```
+
+只增加 ECALL 的常量赋值，不新增状态或流水拍，不全局清零 tval，不修改传入的
+页故障地址或非法指令编码。CVA6 依赖补丁已重新生成并登记 SHA-256；旧失败镜像、
+补丁和探针快照均保留。修复前后复用 SHA-256 为
+`ee7fc5a54f68cf072a6b754df3467504b7fd2a6994e4b6f5e7a6de0327e17c0c`
+的原 ELF，不修改预期来获得 PASS。
+
+### 105.4 复验及剩余边界
+
+`verification/out/sv39-prereq-fixed-vcs-20260922/` 完成一次新编译、四点并行回归：
+
+| 程序 | 结果 | 墙钟 / 秒 | ACC 请求 / 响应 | 向量异常 |
+|---|---|---:|---:|---:|
+| `sv39_state_prereq` 原 116 项 ELF | PASS | 86.64 | 33 / 33 | 2，均为预期缺页 |
+| `linux_state_prereq` 165 项 | PASS | 21.51 | 86 / 86 | 0 |
+| `vle32` | PASS | 71.01 | 186 / 186 | 0 |
+| `vsetvl` | PASS | 67.46 | 85 / 85 | 0 |
+
+四点每次九路状态日志均完整，通过输入指纹、commit trace、协议检查及
+`verify.py audit --require-trace`；累计接口请求/响应 390/390、协议错误 0。
+ACC lifecycle 也全部未截断。Sv39 的两次缺页仍在周期 38386/39002 上报，ECALL
+仍在 39445 上报，但 tval 已为零；没有增加执行流水周期。整个测试少了失败信息
+的 printf，墙钟和最终结束周期变小不是硬件性能提升，不拿来报告加速比。
+宿主验证框架自测 453 项通过；这不是 453 项 RTL 仿真通过。
+
+这不是 Linux boot，也不覆盖 U/M/VS ECALL 或 delegated stval 的全部组合。
+静态审查另外标出 EBREAK 与 interrupt 的 tval 赋值风险，尚未用本次刺激验证，
+不能混写成已经修复/通过。下一轮应准备相应异常矩阵和精确 payload oracle，
+不能顺手扩大此次已测修复的范围。FPGA 导出和原 `ara_dsa` 未修改。
+上述 EBREAK/interrupt 待办的后续独立实测与修复见第 106 节。
+
+## 106. 一次异常矩阵捕获定位 breakpoint 与 interrupt tval
+
+### 106.1 运行前计划与测试自审
+
+沿 decoder、ID/issue 寄存器、scoreboard/commit、CSR trap 更新、软件 handler
+重建异常载荷路径后，冻结 [trap_probe_plan.md](cva6/trap_probe_plan.md)。
+新增 `trap_state_prereq.c` 的 24 个子用例，覆盖 M→M、S→M、U→M、S→S、U→S
+下的 ECALL、EBREAK、C.EBREAK、未知 CSR 和 SSIP；不构造当前硬件不支持的
+S-mode ECALL 委托。每例 18 项检查，加 16 项 CSR 恢复，共 448 项。
+
+S/M handler 各有独立栈与 64 字节对齐。SSIP 通过真实 `mip` 写入触发，清除后
+先读回再返回；等待循环有界。中断保持 EPC，同步异常跳到已知恢复标签。
+每例只委托对应 cause，primary/exit/桥接 trap 分开计数，保留第一次异常快照。
+独立审查在仿真前确认 49 次预期 trap：24 primary、24 M exit、1 S bridge。
+不 force 信号，不把 SoC 接零的外部中断输入称为 CLINT/PLIC 覆盖。
+
+新增 `trap_prereq_probe.sv` 的 decode/CSR 两路，与原九路探针统一使用 pre-edge
+`#1step`、cycle/epoch/edge_time 和完整性门禁。记录原始/展开指令、PC、入队握手、
+issue q/d、异常载荷、权限/委托/使能、M/S trap CSR q/d 及返回。
+只记录相关活动和尾拍，避免整段 UART 打印消耗诊断行数。
+纯标量用例的 ACC 请求为零是正常情况，不套用必须有向量流量的门禁；向量回归
+则继续要求非零请求/响应和协议通过。
+
+### 106.2 首轮测量与根因
+
+`verification/out/trap-prereq-vcs-20260922/` 实际执行 276.306 秒，正常完成，
+不是超时。448 项中只有 15 项 tval 检查失败：cases 4–13 的十个 breakpoint，
+cases 19–23 的五个 SSIP。失败 ID 均为 `1000+case*100+4`；日志中的
+`got=0 expected=1` 是布尔 oracle，实际载荷见每例快照和下表。
+
+| 事件 | PC | decode / CSR 周期 | 错误 tval | 静态与测量对应 |
+|---|---|---|---|---|
+| M-mode EBREAK 首例 | `0x80000358` | 4414 / 4416 | `0x00100073` | 原始指令位在 decode、issue n、提交 ex、mtval d/q 中一致 |
+| M-mode C.EBREAK 首例 | `0x80000360` | 7391 / 7393 | `0x9002` | 展开指令为 EBREAK，但默认载荷取原始压缩编码 |
+| M-mode SSIP 首例 | `0x80000370` | 12967 / 12969 | `0x20000293` | mip/mie.SSIP=1、global-enable=1，中断接管 `li t0,512` 后沿用其编码 |
+
+全部 49 次 trap 的顺序、PC、来源/目标权限、cause 与软件快照相符：39 次进 M、
+10 次进 S。11 路日志共 6796 行，233157 个采样沿，全部 `truncated=0,dropped=0`。
+旧失败日志、完整探针、原 ELF/反汇编、RTL archive 与依赖补丁都保留，不能将该
+FAIL 因为协议计数为零或捕获完整而改写为 PASS。
+
+两类错误与 R-90 有相同的默认载荷来源，但触发分支不同。decoder 为后续非法
+指令/CSR 异常保存指令字；EBREAK 分支及最终中断选择只改 valid/cause，未更新
+tval。commit 和 CSR 原样传递，不是 handler 读错、CSR 后续损坏或重复 trap。
+因此无需追加另一轮探针试验即可定位首次错误赋值。
+
+### 106.3 对根因的最小修改
+
+原 EBREAK 分支只有 valid/cause 及可选 GVA 赋值。当前增加：
+
+```systemverilog
+if (CVA6Cfg.TvalEn)
+  instruction_o.ex.tval =
+      {{CVA6Cfg.XLEN-CVA6Cfg.VLEN{pc_i[CVA6Cfg.VLEN-1]}}, pc_i};
+```
+
+规范允许 breakpoint 返回零或自身指令地址；这里选 PC，C.EBREAK 不加 2，
+EBREAK 不加 4。测试在运行前已接受这两种合法值，没有临时放宽期望。
+这一选择也保留当前有信息载荷下 `gva=v_i` 的 guest VA 意义；RVH 的其他配置
+仍未因此获得验证。
+
+在所有中断门控结束后、仍处于 `~ex_i.valid` 范围内增加：
+
+```systemverilog
+if (instruction_o.ex.valid && instruction_o.ex.cause[CVA6Cfg.XLEN-1])
+  instruction_o.ex.tval = '0;
+```
+
+条件使用最终选中的异常，不使用单独 pending 电平。被屏蔽的中断不能清除
+普通指令为潜在 CSR 异常保留的编码；输入已有页故障也不进入该分支。
+获准 IRQ 覆盖本地同步异常以及 debug 最后优先的既有仲裁顺序不变。
+不新增寄存器、队列或流水拍，不开启全局 `ZERO_TVAL`。
+
+修复前后复用原 ELF，SHA-256：
+`5776c9851a28848b8e579148565b6a0f1e041e50f60bc399af32eaacbe5a229f`。
+新 CVA6 补丁 SHA-256 为
+`68074dab617acfecb9bdf9412e459507afa3d5ba8bfa18f903a674bb9bf9823c`，
+decoder 文件 SHA-256 为
+`8384dd1daf87749ff993eaf169953f07720e7963da483350cdc4f7b819d7970d`。
+镜像与编译日志在 `verification/out/trap-prereq-fixed-build-20260922/`，旧镜像不覆盖。
+
+### 106.4 复验与适用边界
+
+原 448 项 ELF 在 `trap-prereq-fixed-vcs-20260922/` 复验 PASS，墙钟 234.90 秒。
+24 个快照均为 `count=1,fatal=0`：十个 breakpoint 的 tval 等于各自 PC，
+五个 SSIP 的 tval 为零，五个非法 CSR 仍保留 `0xfff022f3`；ECALL 仍为零。
+独立复核用 CSR/trap_ctrl 两路逐项确认 49 次 trap（39 M、10 S），并核对了
+decode 到 CSR 更新再到下一拍读回的载荷；两次运行各 66 个仿真镜像文件均与
+各自 manifest 的哈希吻合，修复前后的 ELF 则逐字节相同。
+11 路日志完整，共 6676 行、194405 个采样沿，没有截断或丢失；输入指纹、
+commit trace 结构和 `audit --require-trace` 通过。这里的结构检查不是 Spike 差分。
+纯标量测试没有 ACC 请求，不拿零协议错误冒充向量执行覆盖。
+同一新镜像的 `trap-prereq-regress-vcs-20260922/` 已完成四点回归：
+
+| 程序 | 结果 | 墙钟 / 秒 |
+|---|---|---:|
+| `linux_state_prereq`，165 checks | PASS | 20.47 |
+| `vsetvl` | PASS | 61.38 |
+| `vle32` | PASS | 62.60 |
+| `sv39_state_prereq`，116 checks | PASS | 71.82 |
+
+四点的输入哈希、提交轨迹、11 路捕获、接口协议以及 `audit --require-trace`
+均通过。Sv39 load/store 缺页仍在 38386/39002 周期，tval 分别为
+`0x40001000/0x40003000`；39445 周期 ECALL 的 tval 仍为零。
+宿主框架 466 项自测通过，不等价于 466 次 RTL 仿真。
+
+实测配置为 RVH=0、TvalEn=1、ZERO_TVAL=0、XLEN=64、GPLEN=41。
+尚未覆盖 RVH GVA/tinst、ZERO_TVAL=1、TvalEn=0、CLIC/debug 仲裁、负 VA 的
+符号扩展。CSR 的 M-mode ZERO_TVAL 条件使用 `GPLEN-1` 而非 `XLEN-1` 是独立
+静态待办，默认 ZERO_TVAL=0 根本不执行该条件，不能把这轮 PASS 当成它已修复。
+RVH interrupt 的额外 tinst/GVA 残留也需单独配置测试，未顺带更改。
+原 `ara_dsa` 和 FPGA 导出仍未修改；这不是 Linux boot 或板卡签核。
+
+## 107. Linux MMU 重定位实测与 STVEC 读回一致性修复
+
+### 107.1 独立对比和来源
+
+2026-09-22 在 `ara_dsa_verification` 中增加 `linux_mmu_relocate.c`，抽取
+Linux 6.19.6 `arch/riscv/kernel/head.S:relocate_enable_mmu` 的 RV64/Sv39、
+非 XIP、非 shadow-call-stack 路径。保留指令顺序，包括两次 SATP 和 SFENCE。
+跳板页表刻意不提供低 PA 恒等映射，必须实际经过 S 态 instruction page fault
+进入高 VA，再切正式页表并返回。随后增加页 A→B 的同 VA 重映射和写后检查。
+详细来源、包装差异及假设/探针矩阵见
+[linux_mmu_relocate.md](cva6/linux_mmu_relocate.md)。
+
+采用程序内 26 项比较、宿主机独立 oracle 和真实 RTL 路径三层证据。
+`check_linux_relocate.py` 从冻结反汇编获得链接地址，从 AUIPC/ADDI 编码计算
+GP，并将 .text 编码与本轮冻结 ELF 校验。独立重算 13 个观察值，检查最终
+trap、A/B 物理页，以及实际 SATP 写入和 S→S 页故障。关键 PC 必须各出现
+一次且顺序正确，高 VA 指令须与 ELF 对应，探针缺失/截断不接受。
+这不是 Spike/QEMU 全指令差分，不将源码抽取测试称为完整 Linux 启动。
+
+### 107.2 首错与根因证据
+
+首次 `linux-mmu-relocate-vcs-20260922` 运行 88.67 秒，26 项中的第 19 项失败：
+STVEC 期望 `ffffffff8000017c`，读回却是 `ffffffff80000140`。
+原始失败、ELF、反汇编和探针保留，不覆盖。pre-edge 周期证据：
+
+| 周期 | 事实 |
+|---:|---|
+| 26376 | S 态写 STVEC=`ffffffff8000015c` |
+| 26465 | PA=`8000015c` 取指页故障，cause12，委托 S→S，目标为高 VA=`ffffffff8000015c` |
+| 26525 | 高 VA 执行中改写 STVEC=`ffffffff8000017c` |
+| 26859 | CSR 读出错误的 `ffffffff80000140` |
+| 26895 | 最终 ECALL 时内部 `stvec_q` 仍等于 `ffffffff8000017c` |
+
+测量排除页表翻译和软件地址计算：内部值及实际跳转正确，只有 CSR 读出错误。
+`csr_regfile.sv` 的原读出清除 BASE[5:2]，但写入和 Direct trap 路径保留这些位。
+因此不需要追加试探性实验即可定位。
+
+### 107.3 原代码与修复
+
+非 CLIC 原读出及写入等价逻辑：
+
+```systemverilog
+csr_rdata = {stvec_q[CVA6Cfg.XLEN-1:6], 5'b0, stvec_q[0]};
+stvec_d = {csr_wdata[CVA6Cfg.XLEN-1:2], 1'b0, csr_wdata[0]};
+```
+
+修复后的非 CLIC 分支：
+
+```systemverilog
+csr_rdata = stvec_q;
+if (csr_wdata[0])
+  stvec_d = {csr_wdata[CVA6Cfg.XLEN-1:8], 7'b0, 1'b1};
+else
+  stvec_d = {csr_wdata[CVA6Cfg.XLEN-1:2], 2'b0};
+```
+
+Direct 保留四字节对齐基址。Vectored 的现有跳转逻辑以 cause[5:0] 替换
+BASE[7:2]，要求 256 字节对齐；现在写入按 WARL 反映这个限制，避免读回基址
+与实际使用基址不同。沿用 MTVEC 策略，不增加新地址加法器或流水级。
+CLIC、VSTVEC/RVH 和普通 RVV 数据通路不变。该修复只应用于验证工作树的私有
+CVA6，已更新可复现依赖补丁及注册指纹，不直接修改主工作树或 FPGA 导出。
+
+### 107.4 复验结果与边界
+
+新镜像 `linux-mmu-relocate-fixed-vcs-20260922/_build/vcs/simv` 三路并发执行：
+
+| 测试 | 检查项 | 结果 | 墙钟秒 |
+|---|---:|---|---:|
+| `linux_mmu_relocate` | 26 | PASS | 80.52 |
+| `stvec_readback` | 514 | PASS | 21.77 |
+| `linux_vector_context` | 6415 | PASS | 154.50 |
+| `sv39_state_prereq` | 116 | PASS | 83.15 |
+| `trap_state_prereq` | 448 | PASS | 226.36 |
+
+五点 `audit --require-trace` 通过；MMU 独立 `host_audit.json` 也为 PASS。
+修复前后 MMU ELF 的 SHA256 均为
+`b03778cd2a2e7d2f35ec96409260b34a331dd25e38424928aad0b6bb7ca9a98d`。
+CVA6 补丁 SHA256：
+`73cacd04bec7c3afa5f397913b7bc9e1b7c14bae57d5152b7ad5b563a1d75309`。
+checker、依赖补丁、计划和探针框架共 70 项宿主自测通过，包括故意污染结果和
+轨迹的负例，以及与冻结 Linux 源码的指令次序比较。宿主自测不计作 RTL 用例。
+
+`stvec_readback` 覆盖高/低基址、Direct/Vectored 各 64 个偏移、CSRRW 旧值、
+读回及保留 mode 位处理；没有实际注入全部 Vectored IRQ。轨迹中 `event=retire`
+包含带 trap 标记的 ECALL，host audit 的记录数仅供路径检查，不作为严格退休
+性能计数。仍未完成完整 Linux boot、外部中断、SMP、DDR、QBS/AKV 上下文及
+板级签核；不能由这五个 PASS 推导整机已无错误。
+
+## 108. SLDU 非 2 的幂 slide 启动时误弹出上一条结果
+
+### 108.1 首错与周期证据
+
+`ara_dsa_rvv1_load_store` seed 51 在 QBS+AKV 启用的真实 DUT 镜像上触发
+`RTL_STALL`：watchdog 于周期 17531 报告连续 10000 周期无架构或后端进展。
+首错前 Spike/Ara 匹配 479 条提交，向量写回比较没有数据 mismatch，
+但 194–198 号向量请求没有完成。独立结果位于
+`verification/out/rvv-load-store-qbs-image-20260923-01/`。
+
+用原 ELF、原镜像和 `+ARA_DEBUG_SLIDE_MASK` 在独立目录
+`verification/out/rvv-load-store-slide-probe-20260923-01/` 重放，
+按输出队列的 issue/commit 身份、计数器和最终 VRF grant 定位：
+
+| 周期 | 观察 | 含义 |
+| --- | --- | --- |
+| 7514 | 接受新 `vslidedown.vi v0,v8,3`，VL=146、SEW=16；前一条 slide 仍在提交 | 新指令进入非 2 的幂 slide 设置路径，前一条结果尚未排空 |
+| 7517 | `state=SLIDE_NP2_SETUP`，前一条结果收到四 lane 的最终 grant，结果队列计数 2；读指针仍为 1 | 结果已弹出，但原 RTL 的状态门控禁止读指针前进 |
+| 7518–7519 | 读指针仍指向被清空的槽，队列计数从 1 再降至 0，该槽的逻辑字节数为 0 | 同一槽被误认为第二个已完成结果，真正的下一槽未提交 |
+| 7527–7528 | 新 slide 的首个 32 字节结果发出时，提交队头仍是旧 slide；旧 slide 随后报告完成 | 新指令的结果被错误地计入旧指令的完成计数 |
+| 7596 后 | 新 slide 已耗尽 issue 字节，结果队列为空，但其提交计数仍余 32 字节 | 已没有可消除这 32 字节的结果，后续请求积压直至 watchdog |
+
+这不是存储延迟或 watchdog 太小：结果授权已经到达，缺失的是 SLDU
+提交指针对结果队列的正确推进。
+
+### 108.2 原因与修复
+
+`sldu.sv` 原实现只在当前 issue FSM **不是** `SLIDE_NP2_SETUP` 时，
+才推进结果队列读指针；但结果队列属于独立的 commit 流，当前 issue
+状态可能已是下一条指令。修复为每次真正弹出非空结果队列项都推进读指针。
+`SLIDE_NP2_SETUP` 自身只在队列已经为空时把指针设到 NP2 专用槽，
+因此修复不改变该状态的预定入口行为，也不修改指令调度或执行延迟。
+
+新独立镜像 `verification/out/sldu-fix-20260923-01/sim/simv` 编译成功。
+同一 seed 51 ELF 严格重放为 PASS：524 条提交前缀匹配，向量写回无
+mismatch，未完成请求列表为空；原始 watchdog 仍设为 10000 周期。
+
+另以包含真实 DUT UVM bind 源的新镜像
+`verification/out/sldu-fix-uvm-20260923-02/sim/simv` 运行代表回归：
+`linux_vector_context` 的程序自检与 UVM 均为 PASS，350 次 CVXIF
+请求/响应、240 次 VID 分配/完成配平；QBS DIRECT/CONTEXT 的数值
+和 UVM 均为 PASS，两路径 checksum 同为 `0x71b5ea8a1468eb92`，
+各有 742 次 CVXIF 请求/响应；原先通过的 load/store seed 52 在同一
+修复镜像上再次严格重放为 PASS。三条真实 DUT UVM 用例按同一镜像
+重新审计，命中 8/14 个功能 bin，剩余 6 个背压/复位/ID 复用 bin
+尚未覆盖；见 `verification/out/uvm-coverage-sldu-fixed-20260923-02.json`。
+同一修复镜像进一步运行 load/store seed 53–55，三个 run status 均为
+PASS，均无未完成向量请求；提交比较分别匹配 2667、317、540 条前缀。
+向量写回比较分别为 PASS、PREFIX、PREFIX，后两者含不可观测字节，
+因此不能解读为逐字节全量相等。生成侧覆盖文件记录三个 seed 共 4369
+条向量指令，其中访存族 137 条，包含 unit-stride、strided、indexed、
+segment、mask、whole-register 与 fault-first；结果在
+`verification/out/sldu-fix-load-store-seeds53-55-20260923-01/`。
+这些定向和有限随机 PASS 不代替完整随机矩阵、代码覆盖率闭合或
+Linux 签收。
+
+## 109. VSTU 满队列时丢失 AXI B 完成响应
+
+### 109.1 首错与周期证据
+
+当前镜像的 `rvv:vssseg` 在首条 `vssseg2e8.v` 后停住，300 秒墙钟限制内
+无法完成。冻结 ELF 的 SHA256 为
+`1262eada7f3c4d841a6269a7c993f63ed82b2646bfb679363e31adb7141d3d5b`。
+独立、仅由 `+VSSSEG_PROBE` 开启的 512 周期探针记录在
+`verification/out/vssseg-probe-20260924-01/run/vssseg_progress.log`。
+探针只观察 segment sequencer、AddrGen 和 VSTU 的握手与队列状态，
+不驱动 DUT。
+
+旧 RTL 在探针周期 24 的状态为 `issue_cnt=1, commit_cnt=4`，
+`W` 与 `B` 均完成握手；周期 25 `issue_cnt=0`，但 `commit_cnt` 仍为 4。
+周期 29、35、41 的 `B` 也完成握手，却都没有减少 `commit_cnt`；
+后续数百周期没有新的 AW/W/B，segment FSM 无法完成。
+因此这不是 AXI 响应未到、操作数未就绪或看门狗过短。
+
+### 109.2 根因与修复
+
+`hardware/src/vlsu/vstu.sv` 原先用
+`issue_pnt != commit_pnt` 判断 B 是否对应待完成 store。队列深度为 4；
+恰好四条 store 已发出且未提交时，环形指针回绕后相等，
+与空队列无法区分。VSTU 仍拉高 `axi_b_ready_o`，于是 B 被消费，
+却没有产生 `vinsn_done` 或递减 `commit_cnt`。
+
+修复将门控改为 `vinsn_queue_q.commit_cnt > vinsn_queue_q.issue_cnt`。
+`commit_cnt` 是已接收但未完成的指令数，`issue_cnt` 是已接收但未发完的
+指令数，两者之差才是已发出、正等待 B 完成的指令数。使用寄存器态
+计数器判断已到达的 B，也避免把同周期新接收指令错误算作在途响应。
+未改变 AXI 通道、队列容量或正常 RVV 指令路径。
+
+修复版同一探针在周期 24 接收 B 后，周期 25 `commit_cnt` 从 4 降至 3；
+周期 29、35、41 的 B 均继续释放队列，segment FSM 推进到下一字段。
+修复版探针位于 `verification/out/vssseg-probe-fixed-20260924-01/`。
+
+### 109.3 复验范围
+
+同一修复版 VCS 镜像上，`rvv:vssseg` 完整程序自检 PASS（52.78 秒），
+`rvv:vstore_signature`、`rvv:vstore_mask_tail_edges` 和
+`rvv:vsegment_emul_edges` 也均 PASS。四个结果分别位于
+`verification/out/rvv-vssseg-fixed-20260924-01/`、
+`verification/out/rvv-store-fixed-20260924-01/` 和
+`verification/out/rvv-segment-fixed-20260924-01/`，各目录中的
+`verification_audit_directed.json` 均为独立 `--require-trace` PASS。
+这些是自检程序与有效提交轨迹的证据，不等同于 Spike 全架构状态逐条匹配；
+另以同一修复版镜像运行真实模型数据的 QBS+AKV 联合代表点，
+`verification/out/qbs-akv-vstu-fixed-20260924-01/combined_result.json`
+及 `uvm_result.json` 均为 PASS：QBS 发出 1 条命令，AKV 发出 292 条，
+两段数值检查均无 mismatch。该点不代替全部格式/形状矩阵；
+完整 Linux 启动及覆盖率签收仍需另行确认。
+
+访存随机 profile 的 seed 72 也用修复版镜像重新生成并严格运行，
+新旧程序二进制 SHA256 相同：
+`b491e4916b796d72888674bca0125c719ea5a4938ee1f0d89305fed2d2d20568`。
+`verification/out/rvv-load-store-seed72-fixed-20260924-01/` 的运行状态为
+PASS，4,655 条提交与 Spike 匹配；独立的
+`verification/out/rvv-load-store-seed72-fixed-audit-20260924-01.json`
+在 `--require-trace --require-vector --require-full-match` 策略下为 PASS。
+向量写回比较未发现已观测字节的 mismatch，但 1,419 条向量目的请求中
+有 1,161 条存在不可观测字节，共跳过 122,584 字节；不能将其解释为
+所有向量寄存器字节均已逐条比对。
+
+同一修复版镜像随后完整重跑 `rvv-failure-regression` 历史失败套件，
+`verification/out/rvv-failure-fixed-20260924-01/summary.json` 记录
+14/14 PASS；`vssseg` 用时 49.66 秒，`vlsseg` 用时 483.39 秒。
+该目录中的 `verification_audit_directed.json` 在
+`--require-trace` 策略下对 14 项重新审计，均为 PASS。
+这消除了原先将 `vlsseg` 误判为功能失败的 300 秒墙钟限制，
+也证明修复版的 `vssseg` 可在整个套件中通过；该套件仍是程序自检，
+不等同于 14 项全架构状态 Spike 差分。

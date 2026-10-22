@@ -1,0 +1,83 @@
+{
+  "scope": "Real AddrGen/VLDU/MASKU/sequencer; modeled MMU and lane predicate source; not Linux/SoC",
+  "pid": 1880760,
+  "cases": [
+    {
+      "vl": 8,
+      "returncode": 0,
+      "elapsed_s": 10.690884499810636,
+      "expected_marker": "PREDICATE_DRAIN_IDLE_PASS",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=8 accepted=1 mmu=1 ack=1 descriptor=1 ld_done=1 mask_done=1 response=1 mask_accepts=2 global_idle=1 mask_commit=0 stable_rows=21"
+      ]
+    },
+    {
+      "vl": 9,
+      "returncode": 0,
+      "elapsed_s": 10.640525531955063,
+      "expected_marker": "PREDICATE_DRAIN_IDLE_PASS",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=9 accepted=1 mmu=1 ack=1 descriptor=1 ld_done=1 mask_done=1 response=1 mask_accepts=3 global_idle=1 mask_commit=0 stable_rows=21"
+      ]
+    },
+    {
+      "vl": 1,
+      "returncode": 0,
+      "elapsed_s": 10.591232938691974,
+      "expected_marker": "PREDICATE_DRAIN_IDLE_PASS",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=1 accepted=1 mmu=1 ack=1 descriptor=1 ld_done=1 mask_done=1 response=1 mask_accepts=1 global_idle=1 mask_commit=0 stable_rows=21"
+      ]
+    },
+    {
+      "vl": 4,
+      "returncode": 0,
+      "elapsed_s": 10.590713752899319,
+      "expected_marker": "PREDICATE_DRAIN_IDLE_PASS",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=4 accepted=1 mmu=1 ack=1 descriptor=1 ld_done=1 mask_done=1 response=1 mask_accepts=1 global_idle=1 mask_commit=0 stable_rows=21"
+      ]
+    },
+    {
+      "vl": 5,
+      "returncode": 0,
+      "elapsed_s": 10.641119855921715,
+      "expected_marker": "PREDICATE_DRAIN_IDLE_PASS",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=5 accepted=1 mmu=1 ack=1 descriptor=1 ld_done=1 mask_done=1 response=1 mask_accepts=2 global_idle=1 mask_commit=0 stable_rows=21"
+      ]
+    },
+    {
+      "vl": 12,
+      "returncode": 0,
+      "elapsed_s": 10.641177551820874,
+      "expected_marker": "PREDICATE_DRAIN_IDLE_PASS",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=12 accepted=1 mmu=1 ack=1 descriptor=1 ld_done=1 mask_done=1 response=1 mask_accepts=3 global_idle=1 mask_commit=0 stable_rows=21"
+      ]
+    },
+    {
+      "vl": 16,
+      "returncode": 0,
+      "elapsed_s": 10.641616806387901,
+      "expected_marker": "PREDICATE_DRAIN_IDLE_PASS",
+      "observed": true,
+      "observations": [
+        "OBSERVATION vl=16 accepted=1 mmu=1 ack=1 descriptor=1 ld_done=1 mask_done=1 response=1 mask_accepts=4 global_idle=1 mask_commit=0 stable_rows=21"
+      ]
+    }
+  ],
+  "state": "SEVEN_MASKED_FIRST_FAULT_BOUNDARIES_PASS_NOT_SOC",
+  "case_scope": "e64m4 vm0 start0 stride0 cause13 first-element fault; VL1/4/5/8/9/12/16",
+  "host_run_timeout_s": 60,
+  "rtl_watchdog_ns": 2000,
+  "compile_returncode": 0,
+  "compile_seconds": 28.932561915833503,
+  "pins_unchanged": true
+}

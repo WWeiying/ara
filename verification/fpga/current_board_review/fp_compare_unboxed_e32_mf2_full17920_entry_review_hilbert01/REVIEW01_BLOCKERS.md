@@ -1,0 +1,11 @@
+# Frozen FP32 Entry: Blocked
+
+Plan58f09c9dfd266b480487d6a26bb79bd62532236410e74630865272b0ccc304da is NOT admitted. No launch. Existing frozen inputs/failed Host receipts remain unchanged.
+
+1. Actual monitor installation bypasses the new complete-line matcher. `replay_successor.py:217` invokes `worker.engine_hooks`, while local `engine_hooks` at177 installs detail_monitor.combined. Bottom bindings assign worker.monitored/checker but do not assign worker.engine_hooks. The pinned template `nan_min_soc_vcs_m6_plan01/replay.py:313-317` installs base FAIL_RE OR checker.VETO. This candidate VETO matches bare RVV_FP_COMPARE_DETAIL. Therefore an actual split output can stop at the prefix before errors>0/newline, losing the original tuple. Tests of detail_monitor or direct monitor do not establish correct actual run wiring. Narrow successor must connect the reviewed local hook and test that exact execution binding with incomplete/zero-error line refusal, complete positive-error detection and retained base failures.
+
+2. `replay_successor.py:161-169` reads the failure console and writes detail_firstfailure.json before durable child_outcome.unvalidated.json. Diagnostic I/O failure can discard the already available actual numeric wait result. Persist numeric outcome and latch failure first, then capture optional detail; inject detail capture failure in a small successor test to establish numeric receipt survives. No shared helper change needed.
+
+Other evidence examined:835 of836 plan pins freshly match (large Spike executable inherited from accepted reference); exact ready argv uses Type=exec/RemainAfterExit=no/RuntimeMaxSec13200/KillMode=control-group/Restart=no/ExecStopPost. Full17920 FP32 geometry/FPR writeback and individual89600+15360 owner contracts are retained. Host composite explicitly preserves old34 pass+one assertion-text failure and six-subcase supplement; prepare/dryrun actual0. These do not override the actual monitor wiring blocker.
+
+No Host/reference/DUT run, large trace read or producer modification by reviewer. Await only a narrow successor and its targeted evidence, not another broad audit or full Host run. Do not produce a NO_BLOCKER ENTRY_REVIEW.json for this frozen plan.

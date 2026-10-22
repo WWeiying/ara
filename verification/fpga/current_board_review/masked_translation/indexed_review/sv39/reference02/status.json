@@ -1,0 +1,31 @@
+{
+  "status": "HOST_SPIKE_SELECTED_GROUPS_PASS_NOT_DUT",
+  "groups": [
+    1,
+    6,
+    18,
+    23
+  ],
+  "trials": [
+    4,
+    5,
+    6,
+    7,
+    24,
+    25,
+    26,
+    27,
+    72,
+    73,
+    74,
+    75,
+    92,
+    93,
+    94,
+    95
+  ],
+  "host_rows": 467040,
+  "all96_spike": false,
+  "VCS_launched": false,
+  "Linux_replay": false
+}

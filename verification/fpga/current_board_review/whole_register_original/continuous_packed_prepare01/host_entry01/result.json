@@ -1,0 +1,37 @@
+{
+  "status": "HOST_ACTUAL_MAIN_AND_GATES_PASS_NOT_REFERENCE",
+  "actual_main": {
+    "command": [
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/whole_register_original/continuous_packed_prepare01/host_entry01/entry"
+    ],
+    "pid": 2888996,
+    "returncode": 0,
+    "timeout": false,
+    "elapsed_s": 0.019422855228185654,
+    "attempts": 1
+  },
+  "fresh_gate": {
+    "command": [
+      "/usr/bin/python3",
+      "-B",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/whole_register_original/continuous_packed_prepare01/test_gate.py"
+    ],
+    "pid": 2889008,
+    "returncode": 0,
+    "timeout": false,
+    "elapsed_s": 0.16869189124554396,
+    "attempts": 1
+  },
+  "ub_trap": {
+    "command": [
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/whole_register_original/continuous_packed_prepare01/host_entry01/ub_probe"
+    ],
+    "pid": 2889002,
+    "returncode": -4,
+    "elapsed_s": 0.21960310777649283,
+    "output": "",
+    "expected_nonzero": true
+  },
+  "mock_helpers": true,
+  "capacity_replaced_for_Host_only": 128
+}

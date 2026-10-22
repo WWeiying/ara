@@ -1,0 +1,11 @@
+{
+  "simulator_exit": 0,
+  "measurement": [
+    "CMP_RESULT case=active_snan expected_flags=16 actual_flags=16 vstart=0 data_errors=0 setup_errors=0 oracle_disagreements=0 fixture_errors=0"
+  ],
+  "architectural_status": "PASS",
+  "fsdb_bytes": 2721251,
+  "signal_count": 50,
+  "no_rtl_edits": true,
+  "no_build": true
+}

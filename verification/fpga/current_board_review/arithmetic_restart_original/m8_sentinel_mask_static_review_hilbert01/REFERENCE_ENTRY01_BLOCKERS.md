@@ -1,0 +1,10 @@
+# Exact Entry01 Boundary Findings
+
+Status: HOLD_NOT_AUTHORIZED_TO_EXECUTE, entry SHA608298a3bd8550e131b7a7e8f3f2a1d28b6eb16a470c93adb311d390e0f75205. Static review only; no reference started by reviewer.
+
+1. reference_check.py silently continues on every nonmatching raw line (`if not match:continue`). Nonempty malformed records, including after HTIF, can therefore disappear from the evidence while EOF_checked becomes true. Reject unknown nonempty lines; permit only explicit legitimate formatting/diagnostics. Add short parser boundary negatives for malformed records and post-completion garbage. No full stream rerun is needed to validate this correction.
+2. reference.py gates3M and publishes firmware using firmware_to_exit (count before replay_exit), not firmware_to_HTIF. The completion instructions are therefore excluded from the stated complete firmware limit. Use the already computed firmware_to_HTIF for admission/publication and retain the older count separately if useful. This is a boundary inconsistency, not evidence that the candidate actually exceeds budget.
+
+Sent Zeno these narrow issues before execution. Preserve original entry, Host and preparation failures; create a separately identified successor. No compile/Spike/DUT retry or budget change requested.
+
+Separate normalization review: lifecycle.source_store verifies exact decoded PC/width, known base+offset address and actual payload against known full source GPR masked to the actual store width. It does not replace the dynamic GPR value with profile gold. Seed/mask/output match still includes PC, instruction, bank-relative address, width, payload and sequential cursor/phase. Only exact listed ABI callee-save PCs may store an unknown callee-saved register into the actual stack frame; ordinary unknown source/base registers reject. Narrow low16 SH normalization is legitimate and does not authorize missing/duplicate/other-seed events. HOST01 failures must remain historical; this conclusion does not clear the two raw/budget findings above.

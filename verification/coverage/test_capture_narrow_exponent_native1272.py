@@ -1,0 +1,183 @@
+import copy
+import csv
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+import unittest
+from unittest.mock import patch
+
+import capture_narrow_exponent_native1272 as c
+
+
+class NativeExponentTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        sealed = json.loads((c.SEALED / 'capture-plan.json').read_bytes())
+        cls.config = dict(targets=1272, plan=c.capture_plan(sealed, {}))
+
+    def native(self, config=None):
+        config = config or self.config
+        lines = []
+        for scope, metrics in config['plan']['scopes'].items():
+            targets = [r for r in metrics['branch'] if r['target']]
+            if not targets:
+                continue
+            lines += ['CHECKSUM: "%s %s"' % (targets[0]['module_checksum'], targets[0]['metric_checksum']), 'INSTANCE: ' + scope]
+            for r in targets:
+                p = r['point']
+                lines += ['ANNOTATION: "' + c.ANNOTATION + '"',
+                    'Branch %s "%s" "%s" (%s) "%s %s"' % (p['native_id'], p['attributes']['chksum'], p['expression'],
+                        p['vector'], p['expression'], r['case_item']['name'])]
+        return ('\n'.join(lines) + '\n').encode()
+
+    def test_exact1272_complete_signatures(self):
+        self.assertEqual(len(c.bind_native(self.native(), self.config)), 1272)
+
+    def test_signature_checksum_annotation_and_expression_drift(self):
+        raw = self.native()
+        for old, new in ((b"13'h1c02 ", b"13'h0000 "), (b'3997555589', b'0'),
+                         (b'3023380777', b'0'), (b'vfdsu_ex2_expnt_rst[12:0]', b'wrong'),
+                         (c.ANNOTATION.encode(), b'other note')):
+            self.assertIn(old, raw)
+            with self.subTest(old=old), self.assertRaises(ValueError):
+                c.bind_native(raw.replace(old, new, 1), self.config)
+
+    def test_missing_duplicate_and_extra_records(self):
+        raw = self.native().decode()
+        lines = raw.splitlines()
+        for changed in ('\n'.join(lines[:-2])+'\n', raw+lines[-2]+'\n'+lines[-1]+'\n', raw+'INSTANCE: ara_tb\n'):
+            with self.subTest(), self.assertRaises(ValueError):
+                c.bind_native(changed.encode(), self.config)
+
+    def test_default_and_hit_targets_rejected(self):
+        for field, value in (('hit', True), ('case_item', dict(name='default'))):
+            bad = copy.deepcopy(self.config)
+            row = next(r for metrics in bad['plan']['scopes'].values() for r in metrics['branch'] if r['target'])
+            row[field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                c.bind_native(self.native(), bad)
+
+    def test_pack_scope_not_allowed(self):
+        bad = copy.deepcopy(self.config)
+        scope = next(iter(bad['plan']['scopes']))
+        bad['plan']['scopes'][scope.rsplit('.', 1)[0]+'.x_ct_vfdsu_pack'] = bad['plan']['scopes'].pop(scope)
+        with self.assertRaises(ValueError):
+            c.bind_native(self.native(), bad)
+
+    def test_historical_document_binding_exact_and_fail_closed(self):
+        binding = c.document_binding()
+        self.assertEqual(binding['original_path'], str(c.DOC))
+        self.assertEqual(binding['expected_sha256'], c.DOC_SHA)
+        with patch.object(c, 'DOC_SHA', '0'*64), self.assertRaises(ValueError):
+            c.document_binding()
+
+    def context(self, mutation=None):
+        literal = c.lifecycle.literal
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            (root/'sample.vdb/snps/coverage/db/testdata/one').mkdir(parents=True)
+            (root/'live-ready').touch()
+            plan = dict(self.config['plan'], design_vdb='/not-loaded/design.vdb', selected_test_vdb=str(root/'sample.vdb'))
+            (root/'selection.tcl').write_text(c.common.selection(plan) +
+                'set exp_python {/usr/bin/python3}\nset exp_driver {/not-run/driver.py}\n' +
+                'set exp_test_identity {' + str(root/'sample/one') + '}\n')
+            tree = []
+            victim = None
+            for scope, metrics in plan['scopes'].items():
+                parents = {}
+                for row in metrics['branch']:
+                    sid, vid = row['coordinate'].split(',')
+                    parents.setdefault(sid, []).append((vid, row))
+                handles = ['P'+sid for sid in sorted(parents, key=int)]
+                entries = [('ROOT,firstChild', handles[0])]
+                for i, parent in enumerate(handles):
+                    sid = parent[1:]
+                    children = ['L'+sid+'_'+vid for vid, _ in parents[sid]]
+                    entries += [(parent+',path', 'Item'+sid), (parent+',firstChild', children[0]),
+                                (parent+',nextSibling', handles[i+1] if i+1<len(handles) else '0')]
+                    for j, (vid, row) in enumerate(parents[sid]):
+                        meta = 'Branch'+sid+'.'+vid
+                        if row['case_item'] is not None and row['case_item']['name']=='default':
+                            meta = 'MISSING_DEFAULT'+sid+'.'+vid
+                            victim = victim or (scope, meta)
+                        entries += [(children[j]+',meta', meta), (children[j]+',path', 'Item'+sid+'.'+meta),
+                                    (children[j]+',childCount', '0'),
+                                    (children[j]+',nextSibling', children[j+1] if j+1<len(children) else '0')]
+                for key, value in entries:
+                    tree.append('set ' + literal('node(' + scope+'|'+key + ')') + ' ' + literal(value))
+            script = '''set exp1272_library_only 1
+source {%s}
+set env(DVE_COVERAGE_OUTPUT) {%s}
+proc help args {return OK}
+proc gui_open_cov args {error GATE_REACHED_NOT_EDA}
+proc gui_list_action args {
+    global current_scope
+    set current_scope [lindex $args end]
+}
+proc gui_covdetail_query args {return Branch}
+proc gui_list_expand args {}
+proc gui_list_get args {
+    global node current_scope
+    set option [string range [lindex $args 2] 1 end]
+    set item [lindex $args 3]
+    if {$item eq ""} {set item ROOT}
+    return $node($current_scope|$item,$option)
+}
+proc gui_list_get_selected args {global selected; return $selected}
+proc gui_list_select args {
+    global selected
+    if {[lindex $args 4] eq "-unselect"} {set selected {}; return}
+    set selected [lindex $args 5]
+}
+proc gui_exclusion args {
+    global current_scope selected dbg_targets wrong_default
+    if {[lindex $args end] ne "-selected"} {error COUNT_QUERY_FORBIDDEN}
+    if {$current_scope eq [lindex $wrong_default 0] && $selected eq [lindex $wrong_default 1]} {return 1}
+    if {![regexp {^(Branch|MISSING_DEFAULT|MISSING_ELSE)([0-9]+)\.([0-9]+)$} $selected unused kind sid vid]} {error NOT_SINGLETON}
+    return [expr {[lsearch -exact $dbg_targets($current_scope|branch) "$sid,$vid"] >= 0}]
+}
+set selected {}
+set wrong_default {}
+%s
+set failed [catch {exp1272_session} message]
+if {!$failed || $message ne "GATE_REACHED_NOT_EDA"} {error "SESSION_CONTEXT $message"}
+%s
+exp1272_audit selected 1
+puts CONTEXT_5616_PASS
+''' % (c.HOOK, root, '\n'.join(tree),
+                'set dbg_keys([lindex $dbg_scopes 0]|branch) {0,0}' if mutation=='inventory' else
+                ('set wrong_default {'+literal(victim[0])+' '+literal(victim[1])+'}' if mutation=='default' else ''))
+            script = 'if {[catch {\n'+script+'\n} detail]} {puts stderr $detail; exit 1}\n'
+            fixture = root/'fixture.tcl'
+            fixture.write_text(script)
+            result = subprocess.run([shutil.which('tclsh'), str(fixture)], text=True, cwd=root, capture_output=True, timeout=30)
+            rows = []
+            if (root/'states_selected.tsv').exists():
+                with (root/'states_selected.tsv').open() as stream:
+                    rows = list(csv.DictReader(stream, delimiter='\t'))
+                if result.returncode == 0:
+                    c.audit_states(root/'states_selected.tsv', self.config, 'selected')
+            return result, rows
+
+    def test_real_Tcl_context_and_singleton5616_audit(self):
+        result, rows = self.context()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('CONTEXT_5616_PASS', result.stdout)
+        self.assertEqual(len(rows), 5616)
+        self.assertEqual(sum(r['excluded']=='1' for r in rows), 1272)
+        self.assertEqual(sum(r['excluded']=='0' for r in rows), 4344)
+
+    def test_real_Tcl_inventory_and_default_mutations_rejected(self):
+        for mutation, message in (('inventory', 'complete native/compiled selector inventory differs'),
+                                  ('default', 'singleton differs')):
+            result, _ = self.context(mutation)
+            with self.subTest(mutation=mutation):
+                self.assertEqual(result.returncode, 1)
+                self.assertNotIn('CONTEXT_5616_PASS', result.stdout)
+                self.assertIn(message, result.stderr)
+
+
+if __name__ == '__main__':
+    unittest.main()

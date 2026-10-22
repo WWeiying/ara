@@ -1,0 +1,24 @@
+{
+  "argv": [
+    "gcc",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-fno-tree-vectorize",
+    "-fno-tree-slp-vectorize",
+    "-DSEW=32",
+    "-DUNMASKED_COMPARISONS=1",
+    "-DRESTART_COMPARISONS=0",
+    "-DDESTINATION_KIND=1",
+    "-DUNBOXED_COMPARISONS=0",
+    "-I/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/prepared02/rvv_fp_compare_unmasked_alias_v8_e32_m4/original",
+    "-I/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/packed/out319_04",
+    "-DENTRY=original_main",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/packed/out319_04/original.c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/packed/host.c",
+    "-o",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/packed/out319_04/original"
+  ],
+  "timeout_s": 60
+}

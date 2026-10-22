@@ -1,0 +1,18 @@
+{
+  "returncode": 0,
+  "elapsed_s": 42.9919798374176,
+  "name": "unmasked_alias_v8_e32_m4_t0_ctx1",
+  "status": "NOT_PASS",
+  "diagnostics": [
+    "FP_BIT index=4 expected=1 actual=0",
+    "FP_BIT index=5 expected=1 actual=0",
+    "FP_BIT index=20 expected=1 actual=0",
+    "FP_BIT index=21 expected=1 actual=0",
+    "FP_BIT index=36 expected=1 actual=0",
+    "FP_BIT index=37 expected=1 actual=0",
+    "FP_BIT index=52 expected=1 actual=0",
+    "FP_BIT index=53 expected=1 actual=0",
+    "RVV_FP_COMPARE_DETAIL op=5 seed=0 vl=64 mask=3 sticky=0 expected_flags=16 actual_flags=0 errors=9",
+    "RVV_FP_COMPARE_FAIL sew=32 cases=1 errors=9"
+  ]
+}

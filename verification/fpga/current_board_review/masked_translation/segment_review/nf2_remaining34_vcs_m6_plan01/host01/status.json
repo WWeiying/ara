@@ -1,0 +1,15 @@
+{
+  "status": "PASS_HOST_ONLY_NOT_DUT",
+  "tests": 29,
+  "failures": 0,
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/segment_review/nf2_remaining34_vcs_m6_plan01/checker.py": "eb609c834d716a917ad635b4182ff3a7a4f40a6a647ac7835b78fdd51834311f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/segment_review/nf2_remaining34_vcs_m6_plan01/gates.py": "332078e34d872de5f5d29db793b0afd70b5b89d32aac29f39e1f4804b9aba4b7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/segment_review/nf2_remaining34_vcs_m6_plan01/replay.py": "1c9e98f595c691da52f5d814148b46e444356fa9e7b075f2d444dc435d406661",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/segment_review/nf2_remaining34_vcs_m6_plan01/test_host.py": "9b446e43cf4b8da6f07ad1efa3a0d09445e329cd8995ddf35a5324437ca77148"
+  },
+  "reference_runs": 0,
+  "DUT_runs": 0,
+  "live_queries": 0,
+  "full_oracle_host_reused": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/segment_review/nf2_remaining34_prepare01/host01/status.json"
+}

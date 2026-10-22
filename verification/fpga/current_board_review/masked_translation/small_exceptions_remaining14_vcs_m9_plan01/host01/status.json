@@ -1,0 +1,154 @@
+{
+  "status": "PASS_HOST_ONLY_NOT_DUT",
+  "failures": 0,
+  "tests": 34,
+  "cases": [
+    {
+      "name": "exact14_identity_runtime_labels",
+      "positive": true
+    },
+    {
+      "name": "missing_oracle",
+      "rejected": true
+    },
+    {
+      "name": "duplicate_oracle",
+      "rejected": true
+    },
+    {
+      "name": "PASS_plus_SMALL_EXCEPTIONS_14_FAIL",
+      "rejected": true
+    },
+    {
+      "name": "PASS_plus_BOARD_REPLAY_MISMATCH",
+      "rejected": true
+    },
+    {
+      "name": "PASS_plus_BOARD_REPLAY_TRAP",
+      "rejected": true
+    },
+    {
+      "name": "PASS_plus_RVV_EXCEPTION_FAIL",
+      "rejected": true
+    },
+    {
+      "name": "PASS_plus_Fatal: failure",
+      "rejected": true
+    },
+    {
+      "name": "jobs_drift",
+      "rejected": true
+    },
+    {
+      "name": "timeout_s_drift",
+      "rejected": true
+    },
+    {
+      "name": "service_timeout_s_drift",
+      "rejected": true
+    },
+    {
+      "name": "worker_timeout_s_drift",
+      "rejected": true
+    },
+    {
+      "name": "image_sha256_drift",
+      "rejected": true
+    },
+    {
+      "name": "cases_drift",
+      "rejected": true
+    },
+    {
+      "name": "no_retry_drift",
+      "rejected": true
+    },
+    {
+      "name": "reference_ready_sha256_drift",
+      "rejected": true
+    },
+    {
+      "name": "ELF_drift",
+      "rejected": true
+    },
+    {
+      "name": "runtime_id_drift",
+      "rejected": true
+    },
+    {
+      "name": "not_direct_service",
+      "rejected": true
+    },
+    {
+      "name": "wrong_service_bound",
+      "rejected": true
+    },
+    {
+      "name": "resource_cap",
+      "rejected": true
+    },
+    {
+      "name": "memory_floor",
+      "rejected": true
+    },
+    {
+      "name": "numeric_first_child0_firstcause",
+      "positive": true
+    },
+    {
+      "name": "numeric_first_child17_firstcause",
+      "positive": true
+    },
+    {
+      "name": "monitor_IO_failure",
+      "rejected": true
+    },
+    {
+      "name": "fresh_disk_plan",
+      "rejected": true
+    },
+    {
+      "name": "late_abort",
+      "positive": true
+    },
+    {
+      "name": "hook_missing_EXIT_CODE",
+      "rejected": true
+    },
+    {
+      "name": "hook_missing_EXIT_STATUS",
+      "rejected": true
+    },
+    {
+      "name": "hook_missing_SERVICE_RESULT",
+      "rejected": true
+    },
+    {
+      "name": "hook_invalid_exit",
+      "rejected": true
+    },
+    {
+      "name": "exclusive_hook_output",
+      "rejected": true
+    },
+    {
+      "name": "strict_first_row_context",
+      "positive": true
+    },
+    {
+      "name": "actual_host_partial_FAIL_monitor",
+      "positive": true,
+      "actual_rc": -15,
+      "elapsed_s": 0.1064488417468965
+    }
+  ],
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/small_exceptions_remaining14_vcs_m9_plan01/test_worker.py": "f44562fa9bf77fdcddaa705d07cb428200dc9c0a98d709c03b8f385355656634",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/small_exceptions_remaining14_vcs_m9_plan01/checker.py": "f72c1069cd219e4062668a5e6b554a95ff948a97cc9a3a2a2522b946d477aa34",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/small_exceptions_remaining14_vcs_m9_plan01/replay.py": "f0346ed8de1b471b3cdb75829a674802ed102d66d9d77929f98851a9c69ef71b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/small_exceptions_remaining14_vcs_m9_plan01/pinned_service_exit.py": "05ed8d7d400d9940d30f77bdbd287f40d9a5623e43bdf8c05bf3b4ed0718a517",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/small_exceptions_remaining14_prepare01/READY.json": "3e3b774785788916e41031ef652c63c8b6e0b9cc507dc9a0dc67e9746006824a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/small_exceptions_remaining14_prepare01/abi_check.py": "a9cab3c61435d91843992ae36d13d593c009ac86f8fb86b638bdd552d665a64a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/vcs_m8_plan03/terminal_publish.py": "495a2f91dde233c040eea231531d414b734184100b7c33a88dda98b6070ec718"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "status": "SOURCE_CANDIDATE_NO_BLOCKER_STATIC_ONLY",
+  "blocking_findings": [],
+  "date": "2026-10-14",
+  "evidence_root": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review",
+  "pins": {
+    "fp_compare_unboxed_full17920_static01.md": "4de4b7b69f4d2f8c4e3241ed9df160a5c2bb1df77bc7d3bd0a83749d28169a76",
+    "fp_compare_unboxed_prefix265_prepare01/source_elf_proof.json": "9a4884cfe73038649252ed5beb56d4d345e697271382c9c69d58ad38e8062e18",
+    "fp_compare_unboxed_prefix265_prepare01/software/original/parent.c": "03cc50313dee7cda6476658bbe025409617242c06cd06cdaff8d83d2812e9bad",
+    "fp_compare_unboxed_prefix265_prepare01/software/original/scenario.S": "33abaa5c662a3780ac82ea631fec6909a035ccbb6b9d656896ce0cb356808bbe",
+    "fp_compare_unboxed_prefix265_prepare01/software/original/fixtures.h": "5664c1a4546bb402fe64ef190ca8e4910efa21fc35daea5229a187377eba7cb1",
+    "fp_compare_unboxed_prefix265_prepare01/software/original/operations.h": "cd0e50739a57ccd54ead1092113528d6535ec62468e8fe4863dbb64fbf2fee64",
+    "fp_compare_unboxed_prefix265_prepare01/software/original_rebuild.log.command.json": "80e578e9ff06c17b8b944ad4444ac4499c964e22204437cec6972825b996aa60",
+    "fp_compare_unboxed_prefix265_prepare01/software/original_rebuilt.elf": "404b2c0bb8f9224dc5e281ad1ef83faee238dec1989b26b36d7dbc12e4c3b152",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_additions46/binaries/rvv_fp_compare_unboxed_unmasked_e16_mf4": "404b2c0bb8f9224dc5e281ad1ef83faee238dec1989b26b36d7dbc12e4c3b152",
+    "fp_compare_unboxed_prefix265_reference_audit01/REVIEW.md": "5f1866cd42b40f0a1832c96d14054872ad7b515383019f594f51c63c46c43338",
+    "fp_compare_unboxed_prefix265_reference_audit01/audit.json": "ae6159a4edb0d0dc2e534f341c40f3467fae2d13b43a7e6ac25895539c934339"
+  },
+  "source_geometry": {"SEW":16,"LMUL":"mf4","VLEN":1024,"CAP":16,"vtype":14,"UNBOXED":1,"UNMASKED":1,"DESTINATION_KIND":0,"RESTART":0},
+  "derived_scope_not_executed": {
+    "calls":17920,"predecessors":17919,"VL0_calls":2560,"vv_calls":7168,"vf_calls":10752,
+    "helper_static_including_capacity":185,"op_helper_dynamic":326144,"capacity_dynamic":3,
+    "result_bits":286720,"guard_values":35840,"returned_flags":17920,"returned_vstart":17920,
+    "proposed_fresh_stores_per_call":41,"proposed_fresh_stores_total":734720,
+    "source_bytes_each":32,"mask_init_bytes":128,"mask_logical_bytes":2,"output_init_bytes":130,"output_checked_bytes":4,
+    "raw_scalar_zero_seeds":[0,16],"fixed_old_bits_hex":"5b5b","max_errors_per_call":19,"max_errors_total":340480
+  },
+  "cost": {"status":"UNPROVEN_PLANNING_NOT_UPPER_BOUND","incomplete_floor":1240067,"planning":2967200,"planning_margin_to_3M":32800,"actual_compiled_cost":null,"actual_reference_cost":null,"runtime_guaranteed":false},
+  "next_stage_conditions": [
+    "Parent-authorized single source implementation; full17920 original oracle and history equivalence",
+    "All32 rawscalar paths, fixed old, permitted tail sets, active NV and sticky, exact errors and first20 DETAIL records",
+    "Actual fresh byte coverage, defined aliasing/alignment, actual helper bytes, no extra RVV, ABI and linked map/stack",
+    "Complete actual compiled CFG cost gate before separately admitted bounded reference"
+  ],
+  "activity": {"static_source_and_small_metadata_only":true,"identity_hashes_only":true,"model_runs":0,"Host_runs":0,"builds":0,"reference_runs":0,"DUT_runs":0,"raw_reads":0,"live_queries":0,"existing_e32_observer_modified":false},
+  "reference_admitted":false,"DUT_admitted":false,"full17920_accepted":false,"Linux_closed":false
+}

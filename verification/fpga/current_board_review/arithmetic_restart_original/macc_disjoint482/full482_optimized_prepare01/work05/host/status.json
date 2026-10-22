@@ -1,0 +1,351 @@
+{
+  "status": "PASS_HOST_FULL482_BYTE_EQUIVALENT_AND_MUTATIONS_NOT_DUT",
+  "positives": [
+    {
+      "label": "original",
+      "execution": {
+        "command": [
+          "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original",
+          "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original.bin",
+          "0"
+        ],
+        "actual_returncode": 0,
+        "elapsed_s": 0.012458500918000937,
+        "timeout_s": 30,
+        "retries": 0
+      },
+      "capture_sha256": "89f6f8a1eee5ca8d8dc5a8bd549df94024b612954b42faa41ebfd2f20ab20044"
+    },
+    {
+      "label": "optimized",
+      "execution": {
+        "command": [
+          "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized",
+          "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized.bin",
+          "0"
+        ],
+        "actual_returncode": 0,
+        "elapsed_s": 0.011798657942563295,
+        "timeout_s": 30,
+        "retries": 0
+      },
+      "capture_sha256": "89f6f8a1eee5ca8d8dc5a8bd549df94024b612954b42faa41ebfd2f20ab20044"
+    }
+  ],
+  "all_calls": 482,
+  "complete_byte_capture_size": 1077752,
+  "original_vs_optimized_byte_identical": true,
+  "independent_byte_oracle": true,
+  "mutations": [
+    {
+      "name": "active",
+      "actual_result": 1,
+      "executions": [
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original.active.bin",
+            "1"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.01203273655846715,
+          "timeout_s": 30,
+          "retries": 0
+        },
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized.active.bin",
+            "1"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.01179527211934328,
+          "timeout_s": 30,
+          "retries": 0
+        }
+      ]
+    },
+    {
+      "name": "prestart",
+      "actual_result": 1,
+      "executions": [
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original.prestart.bin",
+            "2"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.011747723910957575,
+          "timeout_s": 30,
+          "retries": 0
+        },
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized.prestart.bin",
+            "2"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.011820548679679632,
+          "timeout_s": 30,
+          "retries": 0
+        }
+      ]
+    },
+    {
+      "name": "maskedoff",
+      "actual_result": 1,
+      "executions": [
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original.maskedoff.bin",
+            "3"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.01173792826011777,
+          "timeout_s": 30,
+          "retries": 0
+        },
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized.maskedoff.bin",
+            "3"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.01336664892733097,
+          "timeout_s": 30,
+          "retries": 0
+        }
+      ]
+    },
+    {
+      "name": "tail",
+      "actual_result": 1,
+      "executions": [
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original.tail.bin",
+            "4"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.011842781212180853,
+          "timeout_s": 30,
+          "retries": 0
+        },
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized.tail.bin",
+            "4"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.011600270867347717,
+          "timeout_s": 30,
+          "retries": 0
+        }
+      ]
+    },
+    {
+      "name": "left_guard",
+      "actual_result": 1,
+      "executions": [
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original.left_guard.bin",
+            "5"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.011841714847832918,
+          "timeout_s": 30,
+          "retries": 0
+        },
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized.left_guard.bin",
+            "5"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.011294009163975716,
+          "timeout_s": 30,
+          "retries": 0
+        }
+      ]
+    },
+    {
+      "name": "right_guard",
+      "actual_result": 1,
+      "executions": [
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original.right_guard.bin",
+            "6"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.012017250061035156,
+          "timeout_s": 30,
+          "retries": 0
+        },
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized.right_guard.bin",
+            "6"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.012363594956696033,
+          "timeout_s": 30,
+          "retries": 0
+        }
+      ]
+    },
+    {
+      "name": "vstart_low",
+      "actual_result": 1,
+      "executions": [
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original.vstart_low.bin",
+            "7"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.012132185976952314,
+          "timeout_s": 30,
+          "retries": 0
+        },
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized.vstart_low.bin",
+            "7"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.012287444900721312,
+          "timeout_s": 30,
+          "retries": 0
+        }
+      ]
+    },
+    {
+      "name": "return_high",
+      "actual_result": 1,
+      "executions": [
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original.return_high.bin",
+            "8"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.012231830973178148,
+          "timeout_s": 30,
+          "retries": 0
+        },
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized.return_high.bin",
+            "8"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.012332656886428595,
+          "timeout_s": 30,
+          "retries": 0
+        }
+      ]
+    },
+    {
+      "name": "dropped_accumulator",
+      "actual_result": 1,
+      "executions": [
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original.dropped_accumulator.bin",
+            "9"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.012134741991758347,
+          "timeout_s": 30,
+          "retries": 0
+        },
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized.dropped_accumulator.bin",
+            "9"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.01997013110667467,
+          "timeout_s": 30,
+          "retries": 0
+        }
+      ]
+    },
+    {
+      "name": "last_result_byte",
+      "actual_result": 1,
+      "executions": [
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original.last_result_byte.bin",
+            "10"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.011569744907319546,
+          "timeout_s": 30,
+          "retries": 0
+        },
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized.last_result_byte.bin",
+            "10"
+          ],
+          "actual_returncode": 1,
+          "elapsed_s": 0.011609111912548542,
+          "timeout_s": 30,
+          "retries": 0
+        }
+      ]
+    },
+    {
+      "name": "unused_after_guard_permission",
+      "actual_result": 0,
+      "executions": [
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/original.unused_after_guard_permission.bin",
+            "11"
+          ],
+          "actual_returncode": 0,
+          "elapsed_s": 0.011601315345615149,
+          "timeout_s": 30,
+          "retries": 0
+        },
+        {
+          "command": [
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized",
+            "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/work05/host/optimized.unused_after_guard_permission.bin",
+            "11"
+          ],
+          "actual_returncode": 0,
+          "elapsed_s": 0.011902352329343557,
+          "timeout_s": 30,
+          "retries": 0
+        }
+      ]
+    }
+  ],
+  "expected_failures": 10,
+  "original_extra_bytes_permission_preserved": true
+}

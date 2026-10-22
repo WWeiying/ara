@@ -1,0 +1,39 @@
+{
+  "status": "FULL1134_O2_OFFLINE_SUCCESSOR_PASS_NOT_DUT",
+  "actual_audit": {
+    "command": [
+      "/usr/bin/python3",
+      "-B",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/whole_register_original/continuous_o2_prepare01/audit_successor02/audit.py",
+      "--bound-sha256",
+      "bfc5d224fb820f354ee11bc04c779f21093dbdece6baf22ef20a2d6da96bc0b6"
+    ],
+    "pid": 2875019,
+    "returncode": 0,
+    "timeout": false,
+    "elapsed_s": 359.90219393139705,
+    "attempts": 1
+  },
+  "bound_sha256": "d719cd9431a831e4fb6648425259c6dccef0f28ddb4ceaf0b2e0118e95ba5573",
+  "reference_sha256": "5bc6dc2086f23c0ab74a6ca26a74ffd79c151ced8eaded037a46198db4c82caf",
+  "firmware_through_htif": 23215118,
+  "original_spike_receipt": {
+    "command": [
+      "/home/wangwy/openproject/riscv-isa-sim-ara-dsa-vstart/build/spike",
+      "--isa=rv64gcv_zvl1024b",
+      "-m2",
+      "--instructions=40000000",
+      "--log-commits",
+      "--log=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/whole_register_original/continuous_o2_prepare01/reference01/commits.log",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/whole_register_original/continuous_o2_prepare01/spike/whole_all.elf"
+    ],
+    "pid": 2866664,
+    "returncode": 0,
+    "timeout": false,
+    "elapsed_s": 36.55840876419097,
+    "attempts": 1
+  },
+  "old_timeout_retained": true,
+  "spike_reruns": 0,
+  "DUT_started": false
+}
