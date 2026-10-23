@@ -439,6 +439,54 @@ These results establish functional GGML integration, not a whole-model
 speedup or RTL throughput measurement. The full-projection native result
 above remains the performance decision for the low-wait configuration.
 
+### Preparation optimization candidate
+
+`verification/qbs/activation_pack_rvv_candidate.h` is an isolated experiment,
+not the selected production packer. It changes only byte movement: vector
+loads with strided byte stores for quantized elements, and aligned halfword
+or unaligned byte operations for Q8_K block sums. It preserves scale bits,
+quantized bytes, auxiliary sums, M8 padding, and short row-major tails. It
+strip-mines by the actual returned VL instead of assuming VLEN=1024.
+
+Host validation covers 33264 layouts/input patterns and 14 rejected argument
+cases, including M4/M5..24, short and long K, odd strides, misalignment,
+canaries and unchanged input buffers. Native QEMU checks use VLEN128 and
+VLEN1024, plus an artificial AVL ceiling of seven to exercise repeated tails;
+their result must be inspected before claiming native acceptance.
+
+`build_pack_projection_candidate.py` reuses all ten frozen object files of
+the passing real M4/N896/K896 DIRECT application. It adds only a private
+link-time wrapper around `qbs_pack_activation_m4`; baseline files, production
+runtime and RTL remain unchanged. The ELF is not a different or smaller
+workload. GNU disassembly checks the wrapper and strided vector stores.
+The next performance gate uses the same manifest-gated VCS image and requires
+the existing independent oracle, checksum and logical-read accounting.
+
+Strided stores may issue many small VLSU transactions, so fewer scalar
+instructions alone do not establish a speedup. Do not enable this candidate
+globally without native cycle evidence and production-path validation. GGML
+M4's fused quantization also has its own rounding/tie semantics; replacing it
+with row quantization plus packing requires separate numerical checks.
+
+In the audited GGML sources, Q8_0 M4 uses `roundf` (halfway away from zero),
+whereas the RVV row quantizer uses a conversion affected by `frm` (normally
+RNE). A block with maximum 127 and an element 0.5 therefore produces 1 versus
+0. Q8_K M4 retains the first signed maximum-absolute input; the row RVV
+implementation selects the negative extremum when positive/negative magnitudes
+tie. A first +127 followed by -127 yields opposite scale and quant signs.
+These are production software differences, not proven RTL bugs. Current
+192-graph inputs avoid these ties, so that gate cannot certify substituting
+one quantizer for the other. Any future fused preparation optimization must
+test these boundaries against the selected production M4 contract, preserve
+its scale arithmetic order, and retain an explicit fallback.
+
+The private full-projection timing worker is launched by
+`run_pack_projection.py`. It waits for all three native packing configurations
+to pass, rechecks source/ELF/log hashes, then invokes the existing SoC runner.
+Five host tests reject incomplete suites, input drift, ELF drift and a forged
+PASS with a failure marker. The worker is owned directly by systemd; it does
+not rebuild RTL or modify the archived DIRECT baseline.
+
 ## Distinct-input DIRECT isolation gate
 
 `verification/qbs/run_context_isolation.py` creates a private successor of the
