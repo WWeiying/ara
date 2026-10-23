@@ -69,6 +69,8 @@ LLAMA_QWEN25_COMMON := $(shell find llama_qwen25_real/common -type f 2>/dev/null
 LLAMA_QWEN25_COMMON += llama_q4km_micro/micro_kernels.c llama_q4km_micro/micro_kernels.h \
 	llama_q4k_repack_bench/repack_kernels.c llama_q4k_repack_bench/repack_kernels.h
 llama_qwen25_q8_0_segmented_qbs/main.c.o \
+llama_qwen25_q8_0_prefill_m4_direct_qbs/main.c.o \
+llama_qwen25_q8_0_prefill_m4_context_qbs/main.c.o \
 llama_qwen25_q8_0_prefill_tile_qbs/main.c.o: RISCV_CCFLAGS += -fno-fast-math -ffp-contract=off
 LLAMA_QBS_APPS := $(foreach app,$(LLAMA_QWEN25_APPS),\
 	$(if $(findstring _qbs,$(app)),$(app)))

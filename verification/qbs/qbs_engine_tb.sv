@@ -731,7 +731,15 @@ module qbs_engine_tb;
     if ($isunknown({result_fflags, command_cycles, commit_aggregate_words,
                     read_payload_bytes, read_range_count, context_read_bytes,
                     context_reuse_count, context_reuse_block_count,
-                    activation_axi_bytes_saved, activation_ar_count}))
+                    activation_axi_bytes_saved, activation_ar_count,
+                    commit_word_count, unexpected_write_count, tiles_computed,
+                    weight_bytes, activation_bytes, useful_pairs, pair_capacity,
+                    dot_active_cycles, fp_uop_issue, accumulator_updates,
+                    activation_access, context_fill_count, context_validation_fault_count,
+                    phase_setup_cycles, phase_activation_cycles, phase_weight_cycles,
+                    phase_compute_cycles, phase_overlap_cycles, phase_drain_cycles,
+                    phase_scheduler_cycles, phase_commit_cycles, phase_fault_cycles,
+                    phase_terminal_cycles}))
       $fatal(1, "case %0d has unknown completion metadata/counters", case_id);
   endtask
 
@@ -776,6 +784,12 @@ module qbs_engine_tb;
     integer rc;
     integer case_count;
     integer total_errors;
+    bit projection_suite;
+    integer projection_m, projection_n, projection_k, projection_profile;
+    integer projection_layout;
+    longint unsigned projection_direct_cycles, projection_context_cycles;
+    longint unsigned projection_direct_payload, projection_context_payload;
+    longint unsigned projection_saved_bytes;
 
     clk = 1'b0;
     rst_n = 1'b0;
@@ -808,6 +822,14 @@ module qbs_engine_tb;
     monitored_activation_end = '0;
     functional_only = $test$plusargs("QBS_FUNCTIONAL_ONLY");
     context_suite = $test$plusargs("QBS_CONTEXT_SUITE");
+    projection_suite = $test$plusargs("QBS_PROJECTION_SUITE");
+    if (projection_suite && (!functional_only || context_suite))
+      $fatal(1, "projection requires functional-only and a separate context suite");
+    projection_direct_cycles = 0;
+    projection_context_cycles = 0;
+    projection_direct_payload = 0;
+    projection_context_payload = 0;
+    projection_saved_bytes = 0;
     response_gap = 0;
     void'($value$plusargs("QBS_RESPONSE_GAP=%d", response_gap));
     if (response_gap < 0 || response_gap > 8)
@@ -821,6 +843,8 @@ module qbs_engine_tb;
                         vector_file);
     rc = $fscanf(fd, "%s %d", token, case_count);
     if (rc != 2 || token != "QBSCMD1") $fatal(1, "bad command header");
+    if (projection_suite && case_count < 2)
+      $fatal(1, "projection requires at least two output tiles");
 
     repeat (4) @(posedge clk);
     rst_n = 1'b1;
@@ -955,7 +979,7 @@ module qbs_engine_tb;
       score_n = n;
       score_vd = m == 1 ? 3 : (m == 2 ? 4 : 8);
       score_id = case_id + 1;
-      if (context_suite) begin
+      if (context_suite || projection_suite) begin
         if (k_blocks < 2 || k_blocks > QbsActivationContextMaxKBlocks ||
             expected_activation_bytes > QbsActivationContextCapacityBytes ||
             (activation_layout == QBS_ACTIVATION_LAYOUT_ROW_MAJOR && m != 1))
@@ -1065,8 +1089,108 @@ module qbs_engine_tb;
       end
       total_errors += case_errors;
       direct_activation_ar_count = activation_ar_count;
+      if (projection_suite) begin
+        if (case_errors != 0) $fatal(1, "projection direct command failed");
+        projection_direct_cycles += command_cycles;
+        projection_direct_payload += read_payload_bytes;
+      end
       acknowledge_terminal();
       activation_ar_monitor = 1'b0;
+
+      if (projection_suite) begin
+        qbs_activation_access_e access_mode;
+        integer context_commit_words;
+        integer expected_weight_ranges;
+        integer external_activation_bytes;
+        if (ordinal == 0) begin
+          projection_m = m;
+          projection_n = n;
+          projection_k = k_blocks;
+          projection_profile = profile;
+          projection_layout = activation_layout;
+          if (dut.i_activation_context.context_valid_q)
+            $fatal(1, "projection started with an existing context");
+        end else if (m != projection_m || n != projection_n ||
+                     k_blocks != projection_k || profile != projection_profile ||
+                     activation_layout != projection_layout ||
+                     !dut.i_activation_context.context_valid_q) begin
+          $fatal(1, "projection geometry/lifetime changed between output tiles");
+        end
+        access_mode = ordinal == 0 ? QBS_ACTIVATION_ACCESS_FILL :
+            ordinal == case_count - 1 ? QBS_ACTIVATION_ACCESS_RELEASE :
+                                       QBS_ACTIVATION_ACCESS_REUSE;
+        external_activation_bytes = ordinal == 0 ? expected_activation_bytes : 0;
+        expected_weight_ranges = weight_layout == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR
+            ? ((n + 3) / 4) * k_blocks : n * k_blocks;
+        context_commit_words = m * (m > 4 ? ((n + 7) / 8) : WordsPerRegister);
+        install_context_descriptor(descriptor_base, weight_base, profile,
+            weight_layout, activation_layout, n, k_blocks, access_mode, 0, 8'h51);
+        if (ordinal != 0) begin
+          for (int byte_index = 0; byte_index < expected_activation_bytes; byte_index++)
+            memory[longint'(activation_base + byte_index)] = 8'ha5;
+          memory_epoch++;
+        end
+        // The AR monitor clears synchronously while disabled. Let that edge
+        // occur before starting the next command's independent observation.
+        @(negedge clk);
+        activation_ar_monitor = 1'b1;
+        reset_scoreboard();
+        send_command(score_id, score_vd, m, descriptor_base, activation_base);
+        if (ordinal == 0 && $test$plusargs("QBS_PROJECTION_INJECT_COUNTER_X"))
+          force fp_uop_issue = 32'bx;
+        wait_success(case_id);
+        if (activation_access !== access_mode ||
+            result_fflags !== expected_flags[4:0] ||
+            commit_aggregate_words != context_commit_words ||
+            commit_word_count != context_commit_words || unexpected_write_count != 0 ||
+            tiles_computed != expected_tiles || weight_bytes != expected_weight_bytes ||
+            activation_bytes != expected_activation_bytes ||
+            useful_pairs != expected_useful_pairs || pair_capacity != expected_pair_capacity ||
+            dot_active_cycles != expected_dot_cycles || fp_uop_issue != expected_fp_uops ||
+            accumulator_updates != expected_updates || context_validation_fault_count != 0 ||
+            context_fill_count != (ordinal == 0 ? 1 : 0) ||
+            context_reuse_count != (ordinal == 0 ? 0 : 1) ||
+            context_reuse_block_count != (ordinal == 0 ? 0 : k_blocks) ||
+            context_read_bytes != expected_activation_bytes - external_activation_bytes ||
+            activation_axi_bytes_saved != expected_activation_bytes - external_activation_bytes ||
+            activation_ar_count != (ordinal == 0 ? direct_activation_ar_count : 0) ||
+            read_payload_bytes != QbsDescriptorBytes + expected_weight_bytes + external_activation_bytes ||
+            read_range_count != (ordinal == 0 ? expected_ranges : 1 + expected_weight_ranges) ||
+            dut.i_activation_context.context_valid_q !== (ordinal != case_count - 1) ||
+            phase_setup_cycles + phase_activation_cycles + phase_weight_cycles +
+                phase_compute_cycles + phase_overlap_cycles + phase_drain_cycles +
+                phase_scheduler_cycles + phase_commit_cycles + phase_fault_cycles +
+                phase_terminal_cycles != command_cycles + 1) begin
+          $display("QBS projection mismatch access=%0d/%0d flags=%h/%h commit=%0d/%0d tiles=%0d/%0d W=%0d/%0d A=%0d/%0d",
+                   activation_access, access_mode, result_fflags, expected_flags,
+                   commit_aggregate_words, context_commit_words, tiles_computed, expected_tiles,
+                   weight_bytes, expected_weight_bytes, activation_bytes, expected_activation_bytes);
+          $display("QBS projection mismatch AR=%0d/%0d ranges=%0d/%0d payload=%0d/%0d fill=%0d reuse=%0d blocks=%0d read=%0d saved=%0d valid=%b busy=%b",
+                   activation_ar_count, ordinal == 0 ? direct_activation_ar_count : 0,
+                   read_range_count, ordinal == 0 ? expected_ranges : 1 + expected_weight_ranges,
+                   read_payload_bytes, QbsDescriptorBytes + expected_weight_bytes + external_activation_bytes,
+                   context_fill_count, context_reuse_count, context_reuse_block_count,
+                   context_read_bytes, activation_axi_bytes_saved,
+                   dut.i_activation_context.context_valid_q, dut.context_replay_busy);
+          $display("QBS projection mismatch pairs=%0d/%0d capacity=%0d/%0d dot=%0d/%0d fp=%0d/%0d updates=%0d/%0d phases=%0d/%0d",
+                   useful_pairs, expected_useful_pairs, pair_capacity, expected_pair_capacity,
+                   dot_active_cycles, expected_dot_cycles, fp_uop_issue, expected_fp_uops,
+                   accumulator_updates, expected_updates,
+                   phase_setup_cycles + phase_activation_cycles + phase_weight_cycles +
+                     phase_compute_cycles + phase_overlap_cycles + phase_drain_cycles +
+                     phase_scheduler_cycles + phase_commit_cycles + phase_fault_cycles + phase_terminal_cycles,
+                   command_cycles + 1);
+          $fatal(1, "projection context command/counters mismatch tile=%0d access=%0d", ordinal, access_mode);
+        end
+        projection_context_cycles += command_cycles;
+        projection_context_payload += read_payload_bytes;
+        projection_saved_bytes += activation_axi_bytes_saved;
+        $display("QBS projection tile PASS tile=%0d access=%0d M=%0d N=%0d Kb=%0d cycles=%0d payload=%0d saved=%0d",
+                 ordinal, access_mode, m, n, k_blocks, command_cycles,
+                 read_payload_bytes, activation_axi_bytes_saved);
+        acknowledge_terminal();
+        activation_ar_monitor = 1'b0;
+      end
 
       if ((ordinal == 0 && !functional_only) || context_suite) begin
         const integer context_generation = 8'h35;
@@ -1397,6 +1521,16 @@ module qbs_engine_tb;
       if (total_errors != 0)
         $fatal(1, "QBS functional-only run failed with %0d errors",
                total_errors);
+      if (projection_suite) begin
+        if (projection_direct_payload - projection_context_payload != projection_saved_bytes ||
+            dut.i_activation_context.context_valid_q !== 1'b0 ||
+            dut.context_replay_busy !== 1'b0 || dut.context_replay_data_valid !== 1'b0)
+          $fatal(1, "projection totals/release mismatch");
+        $display("QBS projection PASS tiles=%0d M=%0d N=%0d Kb=%0d direct_cycles=%0d context_cycles=%0d direct_payload=%0d context_payload=%0d saved=%0d",
+                 case_count, projection_m, projection_n * case_count, projection_k,
+                 projection_direct_cycles, projection_context_cycles,
+                 projection_direct_payload, projection_context_payload, projection_saved_bytes);
+      end
       $display("QBS engine PASS: %0d functional cases", case_count);
       $finish;
     end

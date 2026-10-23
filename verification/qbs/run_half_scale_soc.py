@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -26,6 +27,10 @@ CASES = (
     'llama_qwen25_q8_0_decode_attn_q_qbs',
     'llama_qwen25_q8_0_prefill_tile_qbs',
     'llama_qwen25_q8_0_segmented_qbs',
+)
+PROJECTION_CASES = (
+    'llama_qwen25_q8_0_prefill_m4_direct_qbs',
+    'llama_qwen25_q8_0_prefill_m4_context_qbs',
 )
 
 
@@ -81,9 +86,9 @@ def image_files(simv):
     return files
 
 
-def build_command(tools_root, build):
+def build_command(tools_root, build, l2_mb=1):
     return ['make', '-C', str(ROOT / 'verification'), 'real-ara-uvm-compile',
-            f'REAL_UVM_OUT={build}', 'REAL_UVM_SIM_L2_MB=1',
+            f'REAL_UVM_OUT={build}', f'REAL_UVM_SIM_L2_MB={l2_mb}',
             'REAL_UVM_QBS=1', 'REAL_UVM_AKV_V2=1', 'REAL_UVM_AXI_DELAY=0',
             'config=default', 'nr_lanes=4', 'vlen=1024',
             f'BENDER={tools_root}/hardware/bender',
@@ -127,6 +132,40 @@ def check_result(record, elf_hash, image):
         raise RuntimeError('Independent DUT check failed or input identity mismatched')
 
 
+def check_projection_app(text, case):
+    short = case.removeprefix('llama_qwen25_')
+    def record(prefix):
+        rows = re.findall(r'^' + prefix + r' case=' + re.escape(short) + r' (.*)$', text, re.M)
+        if len(rows) != 1:
+            raise RuntimeError('Missing or duplicate app record: ' + prefix)
+        return dict(re.findall(r'(\w+)=([^\s]+)', rows[0]))
+    preflight = record('QBS_REAL_PREFLIGHT')
+    oracle = record('QBS_REAL_ORACLE')
+    result = record('QBS_REAL_BENCH')
+    expected = dict(k='896', rows='896', inputs='4', outputs='3584', tiles='28',
+                    operations='1', quantizations='1', cross_op_reuse='0', mismatches='0',
+                    result='PASS', qbs_status='0', setup_included='1',
+                    activation_context='1' if 'context' in case else '0')
+    if any(result.get(k) != v for k, v in expected.items()):
+        raise RuntimeError('Wrong projection geometry/result/timing scope')
+    if (oracle.get('outputs') != '3584' or oracle.get('quant_byte_mismatches') != '0'
+            or oracle.get('mismatches') != '0' or oracle.get('kind') != 'scalar_fp64_offline'
+            or preflight.get('layout') != '2' or preflight.get('packed_bytes') != '3808'
+            or preflight.get('context_capacity') != '4672' or preflight.get('tiles') != '28'):
+        raise RuntimeError('Projection oracle/preflight failed')
+    timings = {key: int(result[key]) for key in
+               ('compute_cycles', 'quantize_cycles', 'pack_cycles', 'matmul_cycles')}
+    if (any(value <= 0 for value in timings.values()) or
+            timings['compute_cycles'] != timings['quantize_cycles'] +
+            timings['pack_cycles'] + timings['matmul_cycles'] or
+            int(result['timed_cycles']) != timings['compute_cycles']):
+        raise RuntimeError('Inconsistent projection cycle accounting')
+    expected_reads = 852992 + 3808 * (1 if 'context' in case else 28)
+    if int(result['logical_read_bytes']) != expected_reads:
+        raise RuntimeError('Projection activation traffic differs from contract')
+    return dict(preflight=preflight, oracle=oracle, result=result)
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True, help='New output directory')
@@ -136,7 +175,9 @@ def parse_args(argv=None):
                         help='Current signoff apps/bin, or frozen ELFs for paired replay')
     parser.add_argument('--simv', type=Path,
                         help='Reuse complete manifest-gated VCS image; do not build')
-    parser.add_argument('--cases', nargs='+', choices=CASES, default=list(CASES))
+    parser.add_argument('--cases', nargs='+', choices=CASES + PROJECTION_CASES, default=list(CASES))
+    parser.add_argument('--l2-mb', type=int, choices=(1, 16), default=1,
+                        help='Simulation-only L2 size; must match the application link bound')
     parser.add_argument('--timeout', type=int, default=1800, help='Seconds per case')
     parser.add_argument('--build-timeout', type=int, default=7200)
     args = parser.parse_args(argv)
@@ -154,7 +195,7 @@ def main(argv=None):
     state = dict(schema_version=1, state='preparing', pid=os.getpid(),
                  started=now(), source_root=str(ROOT), mode='reuse' if args.simv else 'build',
                  tools_root=str(args.tools_root.resolve()), elf_dir=str(args.elf_dir.resolve()),
-                 selected_cases=args.cases,
+                 selected_cases=args.cases, simulation_l2_mb=args.l2_mb,
                  cases={case: {'state': 'pending'} for case in args.cases})
 
     def save():
@@ -222,7 +263,7 @@ def main(argv=None):
         if args.simv:
             simv = args.simv.resolve(strict=True)
         else:
-            command = build_command(tools_root, out / 'build')
+            command = build_command(tools_root, out / 'build', args.l2_mb)
             state['build_command'] = command
             code = run(command, out / 'build.log', args.build_timeout, 'building')
             if code:
@@ -230,6 +271,11 @@ def main(argv=None):
             simv = out / 'build/sim/simv'
         check_inputs()
         image = hashes(image_files(simv))
+        configuration = dict(line.split('=', 1) for line in
+                             (simv.parent / 'simulator.conf').read_text().splitlines()
+                             if '=' in line)
+        if configuration.get('sim_l2_mb') != str(args.l2_mb):
+            raise RuntimeError('Simulator L2 configuration differs from requested size')
         image_pin = out / 'image-pins.json'
         image_hash = seal_json(image_pin, dict(simv=str(simv), files=image))
         state.update(simv=str(simv), image_pins_sha256=image_hash)
@@ -272,6 +318,9 @@ def main(argv=None):
                 raise RuntimeError(f'{case}: host flow exited {code}')
             record = out / case / 'uvm_result.json'
             check_result(record, entry['elf_sha256'], image)
+            if case in PROJECTION_CASES:
+                entry['projection'] = check_projection_app(
+                    (out / case / 'work/run.vcs.log').read_text(), case)
             if digest(out / case / 'work/input.elf') != entry['elf_sha256']:
                 raise RuntimeError(f'{case}: executed ELF differs from frozen ELF')
             entry.update(state='passed', finished=now(), result=str(record),

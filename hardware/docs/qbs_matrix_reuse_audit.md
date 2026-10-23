@@ -69,7 +69,8 @@ Q8_0，M4/N1536/K8960：
 优先比较两个候选，而不是立即增加乘法器：
 
 1. **扩大激活驻留适用范围**：多 token 激活在多个 N tile 之间重用，消除上表
-   wide-M 增加的激活流量。当前 context 只有一个，最多 M1、16 个 Q8_K block。
+   wide-M 增加的激活流量。本轮初始基线 context 只有一个，最多 M1、16 个 Q8_K block；
+   后续容量受限扩展见 `qbs_activation_tile_context.md`，不能将该基线限制当作扩展后的限制。
    例如 M8/K1536 的整份 Q8_K 需要 14,016 B，不能声称现有 4,672 B 容量足够。
    可考虑按 K 分段驻留，但需要计入部分和读写及命令开销。
 2. **权重小块跨 token 块驻留**：同一权重块服务更多 M 分组。若把 K 循环放到
@@ -244,3 +245,73 @@ weight phase 减少 90,414 周期，同时 activation phase 增加 50,506 周期
 
 原始证据：`verification/out/qbs-matrix-reuse-bandwidth-20261023-01/`。
 归档摘要：`verification/qbs/results/matrix-reuse-bandwidth-20261023.json`。
+
+## 8. 实施顺序与研究依据
+
+### 8.1 不是在点积和 GEMM 之间二选一
+
+QBS 已将同一量化权重微块用于多行激活，并保存命令内部的输出部分和。因此它不是
+逐输出调用一次 scalar dot 的实现，也不是完整的通用矩阵处理器。现阶段的限制是
+复用范围、命令边界和供给方式，而不是软件是否将算子命名为 GEMM。
+
+令 X 为 M×K 激活、W 为 N×K 权重，Y=XWᵀ。单请求 Decode 通常 M=1；增加
+输出 N 不能制造不同 token 之间的权重复用。Prefill 或批量 Decode 才能沿 M 重用
+同一份权重。无填充时，32 个乘积槽给出 MNK/32 个整数发射周期的下界；有限阵列
+的矩阵数据流主要减少供给等待，不会自动越过这个算术下界。
+
+| 对照工作 | 值得吸收的具体组织方式 | 本项目不能直接照搬的部分 |
+| --- | --- | --- |
+| SpacemiT GGML IME 路径 | 激活量化、权重 repack 与多行矩阵 kernel 成套选择 | 不同 IME 算术资源和 ISA 的吞吐不能当作当前 QBS 的能力 |
+| MARLIN | 压缩权重布局、异步搬运与计算流水共同优化，覆盖小到中等 batch | GPU Tensor Core、缓存与并发线程资源不同，不能移植其加速倍数 |
+| Gemmini | 分开管理输入 scratchpad 与输出 accumulator，定义数据流和依赖 | 不能只加一个矩阵阵列而忽略存储、翻译和精确异常代价 |
+| FlashAttention | 按 tile 消费 K/V，保留 online softmax 和输出状态，减少中间矩阵外存往返 | 当前 AKV 已有分块与 online 路径，不能将其重复描述为未实现功能 |
+| KIVI | K/V 的统计性质与量化轴不同，压缩 KV 能减少长上下文流量 | 其量化格式不等于 GGML 的 Q8_0/Q4_0，数值质量和布局必须独立验证 |
+
+参考原始资料：
+
+- [SpacemiT GGML IME 源码](https://github.com/ggml-org/llama.cpp/blob/master/ggml/src/ggml-cpu/spacemit/ime.cpp)。
+- [MARLIN](https://arxiv.org/abs/2408.11743)。
+- [Gemmini](https://arxiv.org/abs/1911.09925)。
+- [FlashAttention](https://arxiv.org/abs/2205.14135)。
+- [KIVI](https://arxiv.org/abs/2402.02750)。
+
+### 8.2 四项优先级与验收边界
+
+| 顺序 | 工作 | 当前已具备 | 仍须完成的关键验收 |
+| --- | --- | --- | --- |
+| 1 | QBS 矩阵级双输入复用 | M4/M8、权重双缓冲、容量受限的多行 activation context | 完整 N 输出区域总成本；长 K 的条带驻留与部分和生命周期；正式 GGML 选择 |
+| 2 | 激活准备复用与流水 | 部分跨算子量化复用及显式 context 所有权 | 量化、打包、首次 FILL、后续 REUSE 的完整摊销；可安全重叠的边界 |
+| 3 | AKV fill/replay 与 RVV 计算协同 | token-axis view、GQA 分组、Prefill 分块 | 区分 SRAM replay、VRF 写入、QK/PV 算术、softmax 与 idle 屏障；缩短已证明的关键等待 |
+| 4 | 量化 KV 的正式快速路径 | 独立探索路径不等于正式 backend 已闭环 | 先接 GGML 常用格式，再核对增量写入、尾块、数值质量与真实模型 dispatch |
+
+第 1 项当前先测 Q8_0 的完整 N896/K896、M4 投影，因为 3808 B 激活能装入
+现有 4672 B context，不需要先增加 SRAM。选择两组不同的真实输入，每组的
+28 个 N32 tile 使用不同的捕获权重和对应 golden。首次命令必须 FILL，最后一次
+必须 RELEASE；不能把所有命令都按稳态 REUSE 的周期计算。
+
+`verification/qbs/run_context_projection.py` 新建 VCS 镜像并配对每个输出 tile。
+它核对结果/fflags、计算工作、读流量和生命周期，读取前后核验源码与输入哈希。
+DIRECT 和 context 命令交错用于数值和状态对照，周期采用各命令 busy 周期之和；
+这不是模拟 CPU 连续派发的墙钟时间，也不包含激活量化和打包。独立 native app
+需另测准备开销和整体区间。gap0/4 是受控供给条件，不是 DDR 的校准模型。
+
+### 8.3 长 K 条带不能省略的状态
+
+若后续将 K 分为多条带，在每条带内复用激活于多个 N tile，原来的 128 个
+accumulator 无法同时保存任意多个 tile 的部分和。必须明确以下两种方法之一：
+
+1. 显式保存、恢复有限数量的 FP32 部分和，并逐项保持原 K block 顺序；
+2. 一次命令拥有有限的更大结果 tile，直到全部 K block 完成才提交。
+
+当前 `qbs_compute_engine` 启动命令会清空 accumulator；`qbs_fp_accumulator`
+的 first-block 标志决定新输出初始化，fflags 也按命令清除。因此不能只阻止
+数据清零便宣称支持跨命令续算。还需要绑定输出 tile、权重/激活版本、K 游标、
+累积异常标志和提交状态。中途访存错误应使未提交部分和失效，或支持有定义的精确
+恢复，不能把已累加条带在重试时再加一次。
+
+仅为说明容量代价：M8/N64 的一份 FP32 部分和是 2048 B。其是否需要额外备份、
+读写端口及标签由异常方案决定，不能将 2048 B 当作最终新增资源。用软件把两个
+完整 dot 结果相加通常会改变舍入顺序，不可冒充位级等价的部分和保存/恢复。
+
+实现门槛仍是完整输出区域、同一输入、相同数值契约下的实际收益。减少流量但
+计算已饱和的形状可以保留 DIRECT/M4；不能为了让新机制普遍启用而让既有路径变慢。

@@ -224,6 +224,106 @@ a full projection gain: these runs repeat the same output tile rather than
 walking distinct N tiles. The next acceptance must use the complete output
 region and amortize the first FILL explicitly.
 
+## Full-projection acceptance campaign
+
+The next gate uses the real Qwen2.5-0.5B Q8_0 Prefill attention-Q capture,
+K896/N896, with four input tokens per projection. The engine campaign takes
+input rows 0..3 and 4..7 independently, not repetitions of one input row. Each
+projection contains all 28 distinct N32 weight tiles and checks 3584 outputs.
+The DIRECT control and FILL/26 REUSE/RELEASE sequence use identical arithmetic
+and output regions. The engine test poisons external activation bytes before
+each reuse and checks exact result bits, fflags, work counts and payload.
+
+The generator's `--real-projection` mode advances output offsets through the
+complete captured matrix. Its existing `--real` single-tile interface remains
+unchanged. The checker verifies tile identities, common resident activations,
+traffic conservation and exact lifecycle order, then reports performance
+separately from functional PASS. A regression is retained as a valid negative
+measurement, not discarded or marked as deployment approval.
+
+Current engine campaign:
+
+```sh
+systemctl --user status qbs-context-projection-20261023-09.service
+```
+
+Evidence directory: `verification/out/qbs-context-projection-20261023-09/`.
+Its `status.json` contains source/image/input hashes, per-case state and paired
+cycle sums. Compilation succeeded; the deliberate unknown-counter injection
+was rejected by VCS as required before normal tests were dispatched. Earlier
+06/07/08 directories are compile/checker-development or interrupted runs, not
+accepted projection results. The successor includes the synchronous AR-monitor
+clear boundary and complete unknown-counter checks. No RTL changed in this
+test-infrastructure stage.
+
+Two native applications close the preparation-cost gap:
+
+| Application | Command sequence | Runtime-timed work |
+| --- | --- | --- |
+| `llama_qwen25_q8_0_prefill_m4_direct_qbs` | 28 DIRECT | quantization, M4 packing, descriptors, command/fence overhead and result stores |
+| `llama_qwen25_q8_0_prefill_m4_context_qbs` | FILL, 26 REUSE, RELEASE | the same work, including the first FILL and final RELEASE |
+
+Both use the same shared benchmark helper and compact M4 interleaved layout.
+Existing benchmark defaults are unchanged. Capability preflight verifies the
+new byte budget and compares command geometry with the public runtime planner;
+the application's explicit access/generation sequence is checked separately.
+Preflight and validation are outside the timed region. Weight repacking is
+offline for both paths and is not counted as activation preparation.
+
+The offline generator also produces an independent scalar FP64 dot oracle
+from original row-major weights and independently quantized activations. Its
+maximum difference from this capture is 4.76837e-7. At execution, the apps must
+check every quantized byte, every finite output against this oracle, and every
+output against captured golden values. These are pending runtime gates, not
+claims that a generated expected-output file proves hardware correctness.
+
+Rebuild only these two applications, with GNU and private build artifacts:
+
+```sh
+python3 apps/llama_qwen25_q8_0_prefill_m4_direct_qbs/script/build_pair.py \
+  --l2-mb 16 --build-name NEW_BUILD_NAME
+```
+
+The sealed `build-gnu-m4-pair-20261023-02` ELFs use 935034/935186 allocated
+bytes and a 16 MiB simulation-only link bound. The SoC image must independently
+use the same memory size; the runner checks `simulator.conf`. ELF hashes:
+
+- DIRECT: `93a2f4fbe8f8d8c2351b7eb41e78f22e737cc43ba5387d14b77164442f82881d`.
+- Context: `ab8891f1477705d88cfef4d28c4e95847d71c7e74649f55c2e1543f5d6fb0f9b`.
+
+SoC VCS worker: `qbs-context-projection-soc-20261023-01.service`.
+Output: `verification/out/qbs-context-projection-soc-20261023-01/`.
+It builds a fresh source-manifest-gated image, freezes both ELFs, and runs the
+DIRECT and context applications with the existing independent UVM interface
+checks plus strict application oracle/geometry/timing checks. The fresh build
+has completed and the DIRECT application is executing. No completed SoC result
+or preparation-inclusive speedup is claimed.
+Do not edit sealed helpers, RTL or inputs until their workers terminate.
+
+The first input group (capture rows 0..3) has completed both engine runs:
+
+| Response gap | DIRECT command cycles | Context command cycles | Cycle reduction | DIRECT/context payload B |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 158536 | 158536 | 0.00% | 960064 / 857248 |
+| 4 | 359100 | 328104 | 8.63% | 960064 / 857248 |
+
+These totals cover all 28 tiles, including FILL and RELEASE. The 102816 B
+reduction is 27 avoided 3808 B activation reads; descriptors are included in
+the engine payload totals. At gap0 the first FILL costs 243 extra cycles,
+exactly offset by 27 reuses saving nine cycles each. Thus zero total speedup
+is an observed result, not rounding of a positive gain. Gap4 is a controlled
+response stall, not measured DDR behavior. Input rows 4..7 and native SoC
+execution are still pending at this checkpoint; deployment remains unapproved.
+Checked log SHA256 values for the completed input group:
+
+- gap0: `5f1605450e87b7fe3a8863d4d8eba51f0e3e846b572d079fa8b559d67d2ee193`.
+- gap4: `4093408fb81cac4e8e5a29940bb27c500e17d9e9c1681552aec3c4feb50aba0b`.
+
+Host validation at this checkpoint: seven context/projection checker tests,
+eight SoC-runner tests, and `make -C verification/qbs check` pass. Long-K
+partial sums, distinct-data DIRECT during a live context, production GGML
+admission and new-capability QEMU/Spike integration remain separate gates.
+
 This closes the admitted engine/storage/runtime unit gates, not native SoC or
 GGML deployment. Remaining checks include a distinct-data DIRECT preservation
 case, full-N real projection execution with preparation, a freshly built SoC

@@ -24,7 +24,7 @@ class HalfScaleSocTests(unittest.TestCase):
         libraries = Path(str(self.simv) + '.daidir')
         libraries.mkdir()
         (libraries / 'design.so').write_bytes(b'RTL')
-        (self.simv.parent / 'simulator.conf').write_text('qbs=1\n')
+        (self.simv.parent / 'simulator.conf').write_text('qbs=1\nsim_l2_mb=1\n')
         (self.simv.parent / 'vcs_source_manifest.json').write_text('{}\n')
         self.script = self.root / 'helper.py'
         self.script.write_text('# frozen helper\n')
@@ -137,6 +137,34 @@ class HalfScaleSocTests(unittest.TestCase):
         self.assertIn(f'INSTALL_DIR={self.root}/tools/install', command)
         self.assertFalse(any('apps/bin' in value for value in command))
         self.assertNotIn('verilate', command)
+        large = runner.build_command(self.root / 'tools', self.root / 'large', 16)
+        self.assertIn('REAL_UVM_SIM_L2_MB=16', large)
+
+    def test_wrong_memory_prevents_dispatch(self):
+        (self.simv.parent / 'simulator.conf').write_text('qbs=1\nsim_l2_mb=16\n')
+        code, state = self.invoke()
+        self.assertEqual(code, 1)
+        self.assertIn('L2 configuration', state['error'])
+        self.assertFalse(any(command[0] == 'bash' for command in self.commands))
+
+    def test_projection_oracle_geometry_and_timing(self):
+        case = runner.PROJECTION_CASES[1]
+        short = case.removeprefix('llama_qwen25_')
+        log = (
+            f'QBS_REAL_PREFLIGHT case={short} PASS layout=2 packed_bytes=3808 context_capacity=4672 tiles=28\n'
+            f'QBS_REAL_ORACLE case={short} outputs=3584 quant_byte_mismatches=0 mismatches=0 kind=scalar_fp64_offline\n'
+            f'QBS_REAL_BENCH case={short} k=896 rows=896 inputs=4 outputs=3584 tiles=28 '
+            'operations=1 quantizations=1 cross_op_reuse=0 mismatches=0 result=PASS qbs_status=0 '
+            'setup_included=1 activation_context=1 compute_cycles=123 quantize_cycles=10 pack_cycles=13 '
+            'matmul_cycles=100 timed_cycles=123 logical_read_bytes=856800\n')
+        runner.check_projection_app(log, case)
+        for broken in (log + log, log.replace('quant_byte_mismatches=0', 'quant_byte_mismatches=1'),
+                       log.replace('timed_cycles=123', 'timed_cycles=122'),
+                       log.replace('outputs=3584', 'outputs=128'),
+                       log.replace('logical_read_bytes=856800', 'logical_read_bytes=0'),
+                       log.replace('result=PASS', 'result=FAIL')):
+            with self.subTest(broken=broken[-120:]), self.assertRaises(RuntimeError):
+                runner.check_projection_app(broken, case)
 
     def test_invalid_arguments(self):
         base = ['--output', 'out', '--tools-root', 'tools', '--elf-dir', 'elfs']
