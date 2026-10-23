@@ -300,7 +300,8 @@ has completed and the DIRECT application is executing. No completed SoC result
 or preparation-inclusive speedup is claimed.
 Do not edit sealed helpers, RTL or inputs until their workers terminate.
 
-The first input group (capture rows 0..3) has completed both engine runs:
+Both input groups (capture rows 0..3 and 4..7) have completed both engine runs.
+Each independently produces the following totals:
 
 | Response gap | DIRECT command cycles | Context command cycles | Cycle reduction | DIRECT/context payload B |
 | --- | ---: | ---: | ---: | ---: |
@@ -312,21 +313,124 @@ reduction is 27 avoided 3808 B activation reads; descriptors are included in
 the engine payload totals. At gap0 the first FILL costs 243 extra cycles,
 exactly offset by 27 reuses saving nine cycles each. Thus zero total speedup
 is an observed result, not rounding of a positive gain. Gap4 is a controlled
-response stall, not measured DDR behavior. Input rows 4..7 and native SoC
-execution are still pending at this checkpoint; deployment remains unapproved.
-Checked log SHA256 values for the completed input group:
+response stall, not measured DDR behavior. All four groups and their source,
+image and input hashes were independently rechecked after the worker finished.
+This covers 224 command executions (112 DIRECT and 112 context commands),
+with 7168 distinct captured scalar outputs tested under both supply conditions
+and execution modes. Native SoC execution is pending; deployment remains
+unapproved. Checked log SHA256 values:
 
 - gap0: `5f1605450e87b7fe3a8863d4d8eba51f0e3e846b572d079fa8b559d67d2ee193`.
 - gap4: `4093408fb81cac4e8e5a29940bb27c500e17d9e9c1681552aec3c4feb50aba0b`.
+- input rows 4..7, gap0: `c295a5f5b164c6f0449e4fc5e7bcc2d8ad322df9f5f7f8d552300d6562243787`.
+- input rows 4..7, gap4: `f64de2d186873b4977191a1e87a7befe07edc350570bcf89f5fe86664e3468bf`.
 
 Host validation at this checkpoint: seven context/projection checker tests,
-eight SoC-runner tests, and `make -C verification/qbs check` pass. Long-K
-partial sums, distinct-data DIRECT during a live context, production GGML
+eight SoC-runner tests, five isolation tests, and the earlier
+`make -C verification/qbs check` pass. Long-K partial sums, production GGML
 admission and new-capability QEMU/Spike integration remain separate gates.
 
 This closes the admitted engine/storage/runtime unit gates, not native SoC or
-GGML deployment. Remaining checks include a distinct-data DIRECT preservation
-case, full-N real projection execution with preparation, a freshly built SoC
+GGML deployment. Remaining checks include full-N real projection execution
+with preparation, a freshly built SoC
 regression, and matching QEMU/GGML integration. Long-K striped residency and
 partial-output lifetime remain separate design work. No FPGA, synthesis or
 physical result is claimed for this stage.
+
+## Distinct-input DIRECT isolation gate
+
+`verification/qbs/run_context_isolation.py` creates a private successor of the
+sealed engine bench instead of editing the source used by running campaigns.
+It requires the original projection manifest to contain both vector hashes and
+checks them before deriving any test. Its own five host tests include rejection
+of changed or unsealed vectors; current hashes cannot replace historical pins.
+
+The resident command uses capture input rows 0..3 and the intervening DIRECT
+uses rows 4..7, with identical first-N32 weights and M4/K896 geometry. The two
+inputs differ in 3733 activation bytes and all 128 expected output words.
+DIRECT must produce the second input's outputs/flags and external read traffic
+without filling, reusing or invalidating the saved context. The original
+scoreboard is then restored, external activation bytes are poisoned, and the
+existing REUSE, fault/retry and RELEASE checks must still produce the first
+input's outputs. This closes a stronger condition than checking a valid bit or
+inserting DIRECT with byte-identical inputs.
+
+Worker: `qbs-context-isolation-20261023-01.service`.
+Evidence: `verification/out/qbs-context-isolation-20261023-01/`.
+The private VCS run passed and the worker exited with status zero. It also
+passed all three next-block read fault classes, active reset recovery, six
+REUSE/RELEASE weight-fault retries, and the final context lifecycle checks.
+The log SHA256 is
+`4d3f34c04e730b1ca04e7df748c6266a0ff87e4018603e6447e8d25c80cf5404`.
+This establishes this real M4/Q8_0 isolation case, not all possible profile and
+shape combinations. No RTL or source pinned by the projection workers changed.
+
+## Long-K continuation design decision (not implemented)
+
+The existing 4672-byte context cannot retain all multirow activations of long
+FFN projections. The next candidate is a bounded panel of output tiles, with
+one K stripe resident and independent FP32 checkpoints for each output tile.
+A single retained M4/N32 accumulator is not sufficient for cross-N reuse: at
+least two output tiles must consume the same resident activation stripe.
+
+The proposed minimum panel is two M4/N32 tiles. Each tile needs 128 raw FP32
+checkpoint words (512 B); two tiles need 1024 B backing storage, in addition
+to the existing 512 B working accumulator. This is a storage requirement, not
+a macro/area result. Full M4/N896 checkpoints would need 14336 B, so full-N
+residency is not the default proposal. Metadata, validity, ownership and flags
+are additional to these payload capacities.
+
+The maximum full M4 stripe in the current context is four Q8_K blocks
+(1024 elements, 4672 B) or 32 Q8_0 blocks (1024 elements, 4352 B). A shorter
+tail stripe uses its actual block count. Global R4 packing currently derives
+row-group stride from command K; simply shrinking descriptor K misaddresses
+subsequent row groups. Striped execution therefore needs matching segment-major
+packing, or explicitly validated full-storage stride semantics.
+
+### Numerical and fault contract
+
+Current `QBS_INIT` clears working accumulator validity and flags; the integer
+engine marks local K=0 as the first block. A continuation must instead restore
+raw FP32 values, retain accumulated flags, and initialize from zero only at
+global K=0. Preserve the existing scale multiplication and ordered FMADD
+updates, including the second affine correction. Drain both integer and FP
+pipelines before taking a checkpoint, not merely `integer_done`.
+
+Software split-K is not an exact substitute: it computes each stripe from zero
+and adds stripe totals afterward. For example, sequential FP32 contributions
+`2^25, -2^25, 1` yield 1, whereas grouping the last two before adding the first
+can yield 0. Current `qbs_runtime.c` explicitly uses `*element += value` for
+split-K. A raw-bit checkpoint continuation must not introduce that extra sum.
+
+Use a separate BEGIN/UPDATE/FINALIZE lifecycle for partial outputs; activation
+FILL/REUSE/RELEASE alone cannot represent it. Record owner/generation, output
+tile identity, geometry/profile/layout, expected next global K and flags.
+Reject reordered, duplicated or mismatched updates before side effects.
+
+During a stripe, the last successful checkpoint remains unchanged while the
+working accumulator advances. A fault discards working state, drains outstanding
+transactions and retains the checkpoint/K cursor for retry. Publish a new
+checkpoint only after all data and arithmetic complete; no partially copied
+checkpoint may become visible. Reset invalidates the entire hidden lifecycle.
+DIRECT can use working storage but must not replace checkpoints. Only FINALIZE
+publishes that tile's architectural result and accumulated flags. This promises
+per-tile atomicity, not all-or-nothing commit of an entire projection. OS/context
+ownership and the new intermediate-completion ABI must be specified before
+this becomes a production command path.
+
+### Cost gate before RTL extension
+
+For a two-tile N64 panel, ideal external activation reads fall from twice to
+once per K stripe; weights and arithmetic do not decrease. With S stripes,
+checkpoint payload transfers are `2 tiles * (S-1) * 512 B * 2` for saves and
+restores, excluding metadata. These are local transfers, not external AXI
+payload, and must be timed independently. Stripe boundaries also increase
+command count from two to `2*S`. Additional overlap may hide some costs, but
+the fixed 32-product arithmetic floor is unchanged.
+
+The implementation gate is a real long-K, equal-output projection comparison
+including preparation, local checkpoint traffic, command costs and numerical
+order. If these costs erase the avoided activation transfers, do not deploy
+the panel merely because a reuse counter improves. Expansion to more tiles
+requires a new capacity/benefit evaluation; this decision does not claim the
+long-K requirement has been completed.

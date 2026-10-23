@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "state": "ENGINE_PASS_NATIVE_PENDING",
+  "source_commit": "c3ff1a54",
+  "scope": "Real Qwen2.5-0.5B Q8_0 attention-Q, M4/N896/K896, input rows 0..3 and 4..7; command-busy cycles, not model or CPU preparation cycles",
+  "projection_directory": "verification/out/qbs-context-projection-20261023-09",
+  "projection_status_sha256": "723fed9d6081ea45e9a5d800993649db17ccbc921f1fd06ac2cbd4e11f732d00",
+  "command_executions": 224,
+  "distinct_output_values": 7168,
+  "unknown_counter_negative_test": "EXPECTED_REJECTION",
+  "per_projection": {
+    "tiles": 28,
+    "direct_payload_bytes": 960064,
+    "context_payload_bytes": 857248,
+    "activation_bytes_avoided": 102816,
+    "gap0": {"direct_cycles": 158536, "context_cycles": 158536},
+    "gap4": {"direct_cycles": 359100, "context_cycles": 328104}
+  },
+  "log_sha256": {
+    "inputs0_gap0": "5f1605450e87b7fe3a8863d4d8eba51f0e3e846b572d079fa8b559d67d2ee193",
+    "inputs0_gap4": "4093408fb81cac4e8e5a29940bb27c500e17d9e9c1681552aec3c4feb50aba0b",
+    "inputs4_gap0": "c295a5f5b164c6f0449e4fc5e7bcc2d8ad322df9f5f7f8d552300d6562243787",
+    "inputs4_gap4": "f64de2d186873b4977191a1e87a7befe07edc350570bcf89f5fe86664e3468bf"
+  },
+  "distinct_direct_isolation": {
+    "state": "PASS",
+    "directory": "verification/out/qbs-context-isolation-20261023-01",
+    "status_sha256": "cb3387d9b74178e5614576bbc6b97ed6c7b07bbfcca1fa08ed37b49b383dc48f",
+    "successor_bench_sha256": "01a91e02ac8c9dc4ede6fb143388febab8c49390777c3f6eb7777c3f09c251ad",
+    "log_sha256": "4d3f34c04e730b1ca04e7df748c6266a0ff87e4018603e6447e8d25c80cf5404",
+    "changed_activation_bytes": 3733,
+    "changed_output_words": 128,
+    "weight_fault_retries": 6
+  },
+  "deployment_approved": false,
+  "limitations": [
+    "Response gaps are controlled testbench supply conditions, not calibrated DDR latency",
+    "Native preparation-inclusive paired SoC results are pending",
+    "Long-K striped partial-sum continuation is a design candidate, not implemented",
+    "New-capability production GGML and QEMU/Spike integration is not closed"
+  ]
+}
