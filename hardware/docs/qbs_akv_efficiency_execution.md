@@ -182,10 +182,21 @@ remain open parts of the full objective.
 The restricted AKV admission candidate is now connected in the verification
 RTL. The actual-sequencer fixture passes 38 checks covering six success/fault
 terminal orders and delayed nonzero-lane completion. An independently built
-SoC image is executing the unchanged sealed REFILL probe, with new start/first
-payload AR/terminal cycle records. The production PV schedule has a shared,
+SoC image passed the unchanged sealed REFILL probe. Independently joined
+start/first-payload-AR/terminal records prove 41 cycles of accepted-read/older-FMA
+overlap; the joint window decreases from 756 to 707 cycles, while the serial
+control stays at 756. This is not a full Attention speedup. The receipt is
+`verification/akv/results/refill-integration-20261023.json`.
+The production PV schedule has a shared,
 default-disabled candidate that moves next-tile REFILL before accumulator
 stores only for disjoint D128/GQA6 Decode. Host tests and original-entry opcode
 equivalence pass; real Attention numerical/performance acceptance and recovery
 remain open. Current read faults invalidate AKV context, so transparent
 instruction-only REFILL retry must not be inferred from precise response order.
+The paired real-capture Attention worker is running under
+`akv-refill-attention-pair-20261023-01.service`, using D128, twelve Query heads,
+two KV heads and an active KV prefix of 128. Its output is
+`verification/out/akv-refill-attention-pair-20261023-01/`. Baseline and candidate
+share the accepted new RTL image; only software scheduling differs. The worker
+checks the complete 1536-output call, exact paired hash/CSR status and 774
+successful AKV commands, with each simulation bounded to three hours.
