@@ -1,4 +1,5 @@
 #include "qbs/qbs.h"
+#include "qbs/qbs_pack_rvv_internal.h"
 
 #include <limits.h>
 #include <stdbool.h>
@@ -431,20 +432,27 @@ static void pack_activation_group(
           (context * k_blocks + block) * profile->block_bytes;
       memcpy(destination + context * profile->scale_bytes, source,
              profile->scale_bytes);
-      for (size_t byte = 0; byte < profile->quant_bytes; ++byte) {
-        destination[storage_rows * profile->scale_bytes +
-                    byte * storage_rows + context] =
-            source[profile->scale_bytes + byte];
-      }
-      for (size_t item = 0; item < profile->aux_count; ++item) {
-        const size_t source_offset = profile->scale_bytes +
-            profile->quant_bytes + item * profile->aux_element_bytes;
-        const size_t destination_offset =
-            storage_rows * profile->scale_bytes +
-            storage_rows * profile->quant_bytes +
-            (item * storage_rows + context) * profile->aux_element_bytes;
-        memcpy(destination + destination_offset, source + source_offset,
-               profile->aux_element_bytes);
+      qbs_pack_interleave_bytes_internal(
+          source + profile->scale_bytes,
+          destination + storage_rows * profile->scale_bytes + context,
+          profile->quant_bytes, storage_rows);
+      if (profile->aux_element_bytes == 2) {
+        qbs_pack_interleave_aux16_internal(
+            source + profile->scale_bytes + profile->quant_bytes,
+            destination + storage_rows *
+                (profile->scale_bytes + profile->quant_bytes) + 2 * context,
+            profile->aux_count, storage_rows);
+      } else {
+        for (size_t item = 0; item < profile->aux_count; ++item) {
+          const size_t source_offset = profile->scale_bytes +
+              profile->quant_bytes + item * profile->aux_element_bytes;
+          const size_t destination_offset =
+              storage_rows * profile->scale_bytes +
+              storage_rows * profile->quant_bytes +
+              (item * storage_rows + context) * profile->aux_element_bytes;
+          memcpy(destination + destination_offset, source + source_offset,
+                 profile->aux_element_bytes);
+        }
       }
     }
   }
@@ -462,7 +470,8 @@ qbs_status_t qbs_pack_activation_m4(unsigned activation_profile,
                                                     &profile);
   if (status != QBS_STATUS_OK) return status;
   size_t required;
-  if (!size_mul(4u * k_blocks, profile.block_bytes, &required))
+  if (!size_mul(4u, k_blocks, &required) ||
+      !size_mul(required, profile.block_bytes, &required))
     return QBS_STATUS_SIZE_OVERFLOW;
   if (row_major_bytes < required || interleaved_bytes < required)
     return QBS_STATUS_BUFFER_TOO_SMALL;
@@ -493,7 +502,6 @@ qbs_status_t qbs_pack_activation_m8_grouped(
       grouped_bytes < destination_required)
     return QBS_STATUS_BUFFER_TOO_SMALL;
 
-  memset(grouped, 0, destination_required);
   size_t destination_offset = 0;
   for (size_t first = 0; first < m;) {
     const size_t remaining = m - first;
@@ -506,6 +514,8 @@ qbs_status_t qbs_pack_activation_m8_grouped(
     const uint8_t *source = (const uint8_t *)row_major +
         first * k_blocks * profile.block_bytes;
     uint8_t *destination = (uint8_t *)grouped + destination_offset;
+    // Only padded groups have bytes that the active rows will not overwrite.
+    if (active_rows != storage_rows) memset(destination, 0, group_bytes);
     if (active_rows >= QBS_WIDE_M_MIN)
       pack_activation_group(&profile, source, active_rows, storage_rows,
                             k_blocks, destination);

@@ -1,0 +1,51 @@
+{
+  "elf_sha256": "92c20c574b0c3de8ff5c7be9ff55feba03242babd22c0f06e4910a40e3940f58",
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-m4-prepare-soc-20261023-01/manifest.json": "691f76ba0370d68b3ebb76cac048c0f1cb9870a5f0b3afa42546caa475d73194",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-m4-prepare-soc-20261023-01/result.json": "b2a5f9eef910c2ecb26ddb4d723d49bf8f7032125ea8a511148aeffee8b1cfaf",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-m4-prepare-soc-20261023-01/soc/uvm_result.json": "6054d5c9049b68b93ba96d5fa9972c8a21c783006c4dbd7a1e4632785186b0a4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-m4-prepare-soc-20261023-01/soc/work/run.vcs.log": "08681f70af2f91ea03498f691d4000c5fd1f6b80082f2cc23d690fdfb7fed909",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-m4-prepare-soc-20261023-01/status.json": "ba9f6507cbdb046c0bba30a87f717cf0ed0ca05924b96deef79bb04b67e1afeb"
+  },
+  "generic_sum_cycles": 416467,
+  "limitations": [
+    "Two ABBA observations per path, one real capture",
+    "Production GGML selection is not changed by this test",
+    "No Q8_K fused-preparation or whole-model timing claim"
+  ],
+  "oracle": "Independent Linux GGML generic packed bytes and FP state",
+  "preparation_cycle_reduction_percent": 33.19278598304307,
+  "preparation_speedup": 1.4968443374186824,
+  "schema_version": 1,
+  "scope": "Real Qwen Q8_0 M4/K896 preparation only, not whole projection/model",
+  "simv_sha256": "adef2cd6fa24673e84cdd35d873176683d752244bc0949258553d64e6bda6ce8",
+  "state": "PASS",
+  "trials": [
+    {
+      "cycles": 208442,
+      "fcsr": 1,
+      "path": "generic",
+      "trial": 0
+    },
+    {
+      "cycles": 139216,
+      "fcsr": 1,
+      "path": "vector",
+      "trial": 1
+    },
+    {
+      "cycles": 139014,
+      "fcsr": 1,
+      "path": "vector",
+      "trial": 2
+    },
+    {
+      "cycles": 208025,
+      "fcsr": 1,
+      "path": "generic",
+      "trial": 3
+    }
+  ],
+  "vector_sum_cycles": 278230,
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-m4-prepare-soc-20261023-01"
+}

@@ -237,7 +237,11 @@ qbs_status_t qbs_repack_weight_r4_segmented(
     size_t n, size_t k_blocks, unsigned segment_k_blocks,
     void *r4, size_t r4_bytes);
 /* Packs exactly four complete row-major activation rows. A runtime appends a
-   final 1--3-row tail unchanged, as specified by M4_GROUPED storage. */
+   final 1--3-row tail unchanged, as specified by M4_GROUPED storage.
+   Both activation packers require nonoverlapping buffers. RVV builds require
+   enabled vector state and vstart=0; vl/vtype are clobbered, fcsr/vcsr preserved.
+   Define QBS_PACK_FORCE_SCALAR when compiling the runtime to disable explicit
+   RVV packing. Byte-unaligned buffers are supported. */
 qbs_status_t qbs_pack_activation_m4(unsigned activation_profile,
                                     const void *row_major,
                                     size_t row_major_bytes, size_t k_blocks,

@@ -705,4 +705,51 @@ independently exported golden, with exact FP/vcsr agreement. Quantization,
 preflight, interleaving and FP/write completion are inside timing; checking
 and printing are outside. This is a preparation-only ABBA comparison, not a
 whole-projection or model speedup. Worker `qbs-m4-prepare-soc-20261023-01`
-has been dispatched on the existing SoC image; no result is claimed here.
+completed with checked application results, zero protocol issues, and unchanged
+source/image/input hashes. `audit_m4_prepare_soc.py` independently rechecks the
+log, UVM result and pinned inputs before archiving the result.
+
+| ABBA trial | Path | Preparation cycles | fcsr |
+| --- | --- | ---: | ---: |
+| 0 | Generic | 208442 | 1 |
+| 1 | Vector | 139216 | 1 |
+| 2 | Vector | 139014 | 1 |
+| 3 | Generic | 208025 | 1 |
+
+Generic and vector cycle sums are 416467 and 278230 respectively: preparation
+speedup is 1.49684x and cycle reduction is 33.1928%. All 3808 packed bytes,
+input preservation, guards and the checked FP/vector environment pass against
+the independent Linux golden. This is one real M4/K896 capture, not a complete
+projection or model speedup. The numerical matrix above supplies neighboring
+functional cases, but it does not replace native RTL timing at other shapes.
+Archived evidence: `verification/qbs/results/ggml-m4-prepare-soc-20261023.json`.
+
+## Shared runtime packing integration
+
+The production `qbs_pack_activation_m4()` and
+`qbs_pack_activation_m8_grouped()` now use shared VLA byte movers from
+`software/qbs/include/qbs/qbs_pack_rvv_internal.h`. This is separate from the
+fused floating-point quantizer above: the public packers only rearrange existing
+Q8_0/Q8_K bytes, copy scales and interleave auxiliary sums. They do not change
+rounding, scale values, arithmetic or the hardware layout contract.
+
+Aligned auxiliary sums use 16-bit strided stores. Byte-unaligned sums use two
+byte streams, avoiding an unaligned halfword requirement. Complete groups are
+fully overwritten; only padded M5--M7 groups are zeroed before packing. Final
+M1--M4 tails of wide storage remain row-major. Both callers validate capacities
+before touching output, and M4 now checks the row-times-block multiplication
+before multiplying by block size. Explicit RVV can be disabled when building
+the runtime with `QBS_PACK_FORCE_SCALAR=1`.
+
+`test_runtime_activation_pack.c` checks the public API against a destination-
+coordinate oracle, not a copy of the pack loops. The 10752 configurations cover
+two profiles, M4--M24, eight K-block counts, four source and four destination
+alignments, two data/environment patterns, unchanged source, exact padding,
+guards and short buffers. Eight invalid/overflow cases check rejection without
+writes. Host execution, Clang ASan/UBSan execution and the existing runtime
+suite pass. The ordinary runtime suite also retains both M4 multiplication-
+overflow boundaries as fast regressions. The separately
+sealed `run_runtime_activation_pack.py` runs scalar and vector builds under
+Linux QEMU, with VLEN128/1024 and forced AVL7; its result is a functional gate,
+not a timing claim. Production-runtime projection timing and real GGML
+selection remain separate acceptance steps.

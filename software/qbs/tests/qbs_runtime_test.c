@@ -331,6 +331,12 @@ static int test_activation_pack_profile(unsigned profile) {
     }
   }
   memset(destination, 0, bytes);
+  CHECK(qbs_pack_activation_m4(profile, source, SIZE_MAX, SIZE_MAX / 4u + 1u,
+                               destination, SIZE_MAX) == QBS_STATUS_SIZE_OVERFLOW);
+  CHECK(qbs_pack_activation_m4(profile, source, SIZE_MAX,
+                               SIZE_MAX / (4u * info.block_bytes) + 1u,
+                               destination, SIZE_MAX) == QBS_STATUS_SIZE_OVERFLOW);
+  for (size_t i = 0; i < bytes; ++i) CHECK(destination[i] == 0);
   CHECK(qbs_pack_activation_m4(profile, source, bytes, k_blocks,
                                destination, bytes) == QBS_STATUS_OK);
   for (size_t block = 0; block < k_blocks; ++block) {

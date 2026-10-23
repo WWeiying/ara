@@ -82,11 +82,30 @@ conflicts and command completion must be proved before introducing concurrency.
 Activation preparation and quantized-KV work remain part of the objective;
 the short-block improvement does not replace these later milestones.
 
-The next cross-N reuse storage stage is recorded in
-`qbs_activation_tile_context.md`: an opt-in multirow/Q8_0 primitive retains the
-4672-byte budget and passes legacy plus 198-case extended VCS suites with both
-generic and macro-functional SRAM. It is not enabled in the production engine
-or advertised in capability words yet. Descriptor/runtime/reference integration
-and real-model paired performance remain required. Oversized long-K matrices
-still need the separate bounded-residency/partial-output design described in
-`qbs_matrix_reuse_audit.md`; passing the primitive does not close that objective.
+The cross-N reuse stage is recorded in `qbs_activation_tile_context.md`.
+The 4672-byte multirow/Q8_0 extension has progressed beyond its initial
+198-case SRAM primitive gate: descriptor/runtime/reference integration,
+engine fault/replay checks, capability-aware native QEMU and actual GGML graph
+tests have passed. The complete real M4/N896/K896 projection saves 102816
+logical read bytes but changes cycles from 256975 to 257184 under the current
+low-wait SoC model; it is not a measured latency gain. Oversized long-K matrices
+still need bounded residency and partial-output lifetime. New-capability Spike
+and production/model performance gates must not be inferred from QEMU results.
+
+Preparation is therefore the current first execution priority. A private VLA
+packer reduces the same complete projection from 256975 to 210923 cycles
+without changing its output. The separate fused GGML Q8_0 M4 candidate passes
+6840 native numerical/environment checks and the real RTL ABBA preparation
+gate: 416467 generic versus 278230 vector cycles (two calls per path).
+Neither result is a whole-model speedup. Shared public runtime packing is now
+being validated independently before production-path performance acceptance;
+the fused GGML quantizer still needs production selection and graph tests.
+
+The independent AKV refill-overlap probe is owned by
+`akv-refill-overlap-probe-20261023-01.service`. It reuses the existing image,
+checks exact work/traffic and associates architectural trace order with uop
+completion. Its remaining-old-arithmetic window is an overlap opportunity,
+not command acceptance time or an achieved speedup. No dispatcher safety
+condition is relaxed before this evidence is reviewed. Matrix partial sums,
+Attention intermediate reuse, quantized KV and justified resource sharing
+remain open parts of the full objective.
