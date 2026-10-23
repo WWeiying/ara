@@ -166,8 +166,11 @@ original scalar rule using 134 datasets, all five rounding modes, three initial
 FCSR/VCSR pairs and all six caps at VLEN128/1024 (12060 checks per VLEN).
 The datasets include invalid values at early, chunk-boundary and late positions,
 all-zero blocks, numerical-domain boundaries and six real capture slices.
-Execution is scheduled under `qbs-q8k-domain-native-20261023-01.service`.
-It is not yet a full quantizer or RTL performance result. The sealed candidate
+Execution completed PASS: 24120 comparisons, unchanged FCSR/VCSR and input,
+with matching cross-VLEN digest `a7f5327813608389`. Raw logs were independently
+rechecked; the receipt is
+`verification/qbs/results/q8k-domain-native-20261023.json`.
+This is not yet a full quantizer or RTL performance result. The sealed candidate
 and both running VCS tests are unchanged; integrate only after this gate passes
 and the current consumers have finished.
 

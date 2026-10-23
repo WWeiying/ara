@@ -1,0 +1,21 @@
+{
+  "state": "PASS",
+  "scope": "Integer VLA preflight classification and CSR equivalence only; not full quantizer integration or RTL performance",
+  "run": "verification/out/qbs-q8k-domain-native-20261023-01",
+  "checks": 24120,
+  "datasets_per_vlen": 134,
+  "vlens": [128, 1024],
+  "avl_caps": [1, 7, 16, 32, 64, 256],
+  "rounding_modes": [0, 1, 2, 3, 4],
+  "digest": "a7f5327813608389",
+  "cross_vlen_digests_equal": true,
+  "manifest_unchanged": true,
+  "independent_raw_log_recheck": "PASS",
+  "status_sha256": "0a5390cd9e1a2eac9c8686f202155c9c3ef0d318d9ee781e92b04b0740930557",
+  "manifest_sha256": "814ed9bd864deb7eef92c6908e44b4017f393d4bc9ffb4eb8a6a593730a75a32",
+  "logs": {
+    "qemu-128.log": "0c25f75adf2381bc69e9bcd7e7ccc90d3497cf2e24e1b3ca1ee9ca5a1a412f20",
+    "qemu-1024.log": "912677a5fb523d0394933d41a598242b6a312015eb521ea379f44e77d1a059f1"
+  },
+  "remaining": ["Full quantizer integration and byte/FCSR/VCSR gate", "Same-image VCS preparation and full projection performance"]
+}
