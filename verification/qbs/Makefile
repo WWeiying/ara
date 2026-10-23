@@ -19,6 +19,7 @@ RTL_RUN_TIMEOUT ?= 10800
 RTL_EXTRA_SOURCES ?=
 RTL_ENGINE_DEFINES ?=
 RTL_MACRO_VCS_FLAGS ?=
+RTL_FP_BUILD ?= rtl_fp_build
 RTL_BLOCK_ADAPTER_SOURCE ?= $(ROOT)/hardware/src/vlsu/qbs/qbs_block_adapter.sv
 RTL_VECTOR_FILE := $(abspath qbs_rtl_vectors.txt)
 RTL_COMMAND_VECTOR_FILE := $(abspath qbs_command_vectors.txt)
@@ -194,6 +195,18 @@ rtl-engine-check: rtl-engine-compile
 		+QBS_COMMAND_VECTOR_FILE=$(RTL_COMMAND_VECTOR_FILE)
 	grep -q "QBS engine PASS:" $(RTL_ENGINE_BUILD)/run.log
 	! grep -Eq "Fatal:|Error:" $(RTL_ENGINE_BUILD)/run.log
+
+.PHONY: rtl-fp-split-compile rtl-fp-split-check
+rtl-fp-split-compile: $(RTL_SOURCES) qbs_fp_split_tb.sv
+	mkdir -p $(RTL_FP_BUILD)
+	cd $(RTL_FP_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
+		+lint=TFIPC-L -l compile.log $(RTL_INCLUDES) $(RTL_SOURCES) \
+		$(abspath qbs_fp_split_tb.sv) -top qbs_fp_split_tb -o simv
+
+rtl-fp-split-check: rtl-fp-split-compile
+	cd $(RTL_FP_BUILD) && timeout --foreground 120 ./simv -l run.log
+	grep -q "QBS FP split PASS:" $(RTL_FP_BUILD)/run.log
+	! grep -Eq "Fatal:|Error:" $(RTL_FP_BUILD)/run.log
 
 rtl-context-compile: $(RTL_CONTEXT_SOURCES)
 	mkdir -p $(RTL_CONTEXT_BUILD)

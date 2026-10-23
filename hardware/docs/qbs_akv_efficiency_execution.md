@@ -16,7 +16,7 @@ mechanism in a separate commit; integrate only reviewed, tested changes.
 
 | Priority | Work | Evidence required | State |
 |---|---|---|---|
-| 1 | Short-block QBS conversion/scale/accumulation throughput | Current-image cycle probes; real Q8_0 and neighboring format inputs; bit/fflags checks; paired cycles and traffic; multi-profile fault regression | Investigating |
+| 1 | Short-block QBS conversion/scale/accumulation throughput | Current-image cycle probes; real Q8_0 and neighboring format inputs; bit/fflags checks; paired cycles and traffic; multi-profile fault regression | Command-level validated; integration pending |
 | 2 | QBS activation overlap and Prefill scheduling | Existing M1/M4 overlap plus M5..8 comparison; include activation preparation and traffic; shared runtime selection if software changes | Direct M1..4 overlap validated; remaining scope open |
 | 3 | AKV fill/replay/RVV compute overlap | Lifecycle and single-port conflict analysis; real Attention tile; matched QK/PV/numerical checks; shape and fault regression | Pending |
 | Parallel resource work | Shared QBS/AKV reader; unified legacy/v2 AKV storage | Ownership/drain invariants; unchanged outstanding capacity and context lifetime; matched latency/fault tests | Pending |
@@ -59,3 +59,22 @@ The previously completed activation-overlap work is recorded in
 `final_replay/status.json` is passed, with eight exact result/counter replay
 groups and source hashes verified on 2026-10-22. It does not close stages 1,
 3, resource sharing, quantized KV, or full-SoC/model integration.
+
+Stage 1 command-level results and invariants are recorded in
+`qbs_fp_split_issue.md`. Evidence under `qbs-shortblock-20261022/` contains
+81 passing paired command cases without cycle regression and a separate
+live-reset/intermediate-result/per-cycle-flags equivalence test. Q8_0 M4 and
+M8 command cycles decrease by about 34.4%; this is not a model-level claim.
+
+## Next design gates
+
+Do not infer Prefill efficiency from reduced bytes alone. Analyze shape-aware
+tiling alongside the runtime split-K limit: current R4 split-K commands reduce
+N to four, introducing a distinct large-K overhead. A layout/address-step
+proposal must preserve per-output numerical order and fault boundaries.
+
+For AKV, distinguish overlapped RVV computation on already replayed data from
+true concurrent next-tile fill/current-tile replay. Bank ownership, single-port
+conflicts and command completion must be proved before introducing concurrency.
+Activation preparation and quantized-KV work remain part of the objective;
+the short-block improvement does not replace these later milestones.

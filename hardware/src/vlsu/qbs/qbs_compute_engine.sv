@@ -869,11 +869,12 @@ module qbs_compute_engine
         end
       end
 
-      if (i_fp_accumulator.fp_in_valid && !i_fp_accumulator.fp_in_ready)
+      if ((i_fp_accumulator.fp_in_valid && !i_fp_accumulator.fp_in_ready) ||
+          (i_fp_accumulator.cast_found && !i_fp_accumulator.cast_ready))
         probe_fp_input_blocked_cycles_q <=
             probe_fp_input_blocked_cycles_q + 1'b1;
       if (i_fp_accumulator.entry_occupancy != 0 &&
-          !i_fp_accumulator.fp_in_valid)
+          !i_fp_accumulator.fp_in_valid && !i_fp_accumulator.cast_found)
         probe_fp_no_schedulable_uop_cycles_q <=
             probe_fp_no_schedulable_uop_cycles_q + 1'b1;
       if (fp_busy)

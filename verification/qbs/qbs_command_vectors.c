@@ -425,6 +425,7 @@ static int parse_unsigned(const char *text, unsigned *value) {
 }
 
 static unsigned parse_profile(const char *text) {
+  if (strcmp(text, "q8_0") == 0) return QBS_WEIGHT_PROFILE_Q8_0_WEIGHT;
   if (strcmp(text, "q4_K") == 0) return QBS_WEIGHT_PROFILE_Q4_K;
   if (strcmp(text, "q6_K") == 0) return QBS_WEIGHT_PROFILE_Q6_K;
   if (strcmp(text, "q2_K") == 0) return QBS_WEIGHT_PROFILE_Q2_K;
@@ -436,6 +437,7 @@ static unsigned parse_profile(const char *text) {
 
 static const char *real_weight_filename(unsigned profile) {
   switch (profile) {
+    case QBS_WEIGHT_PROFILE_Q8_0_WEIGHT: return "weight_q8_0.bin";
     case QBS_WEIGHT_PROFILE_Q4_K: return "weight_q4_K.bin";
     case QBS_WEIGHT_PROFILE_Q6_K: return "weight_q6_K.bin";
     case QBS_WEIGHT_PROFILE_Q2_K: return "weight_q2_K.bin";
@@ -534,7 +536,7 @@ int main(int argc, char **argv) {
   if (argc != 2 && argc != 11) {
     fprintf(stderr,
             "usage: %s OUTPUT\n"
-            "       %s OUTPUT --real q4_K|q6_K|q2_K|q4_0|q5_0|iq4_nl "
+            "       %s OUTPUT --real q4_K|q6_K|q8_0|q2_K|q4_0|q5_0|iq4_nl "
             "DIRECTORY FULL_N K "
             "INPUT_START M OUTPUT_START N\n",
             argv[0], argv[0]);

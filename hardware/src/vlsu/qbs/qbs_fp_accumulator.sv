@@ -6,7 +6,8 @@ module qbs_fp_accumulator
   import fpnew_pkg::*;
 #(
   parameter int unsigned NumAccumulators = QbsMaxResults,
-  parameter int unsigned AccIndexWidth = $clog2(NumAccumulators)
+  parameter int unsigned AccIndexWidth = $clog2(NumAccumulators),
+  parameter bit SplitIssue = 1'b1
 ) (
   input  logic                 clk_i,
   input  logic                 rst_ni,
@@ -93,8 +94,22 @@ module qbs_fp_accumulator
       '{default: PARALLEL},
       '{default: DISABLED},
       '{default: DISABLED},
-      '{default: MERGED},
+      '{default: SplitIssue ? DISABLED : MERGED},
       '{default: DISABLED}
+    },
+    PipeConfig: DISTRIBUTED
+  };
+
+  // Move, rather than duplicate, the existing conversion unit. Arithmetic
+  // and I2F have independent issue/return ports but share the entry table.
+  localparam fpu_implementation_t CastImplementation = '{
+    PipeRegs: '{
+      '{default: 0}, '{default: 0}, '{default: 0},
+      '{default: 1}, '{default: 0}
+    },
+    UnitTypes: '{
+      '{default: DISABLED}, '{default: DISABLED}, '{default: DISABLED},
+      '{default: MERGED}, '{default: DISABLED}
     },
     PipeConfig: DISTRIBUTED
   };
@@ -139,11 +154,25 @@ module qbs_fp_accumulator
   logic [NumEntries-1:0] schedule_upper, schedule_lower;
   logic [3:0] schedule_upper_index, schedule_lower_index, schedule_index;
   logic schedule_upper_empty, schedule_lower_empty, schedule_found;
+  logic [3:0] cast_rr_q, cast_index, cast_upper_index, cast_lower_index;
+  logic [NumEntries-1:0] cast_upper, cast_lower;
+  logic cast_upper_empty, cast_lower_empty, cast_found;
+  logic cast_ready, cast_fire, cast_out_valid, cast_busy;
+  logic [2:0][31:0] cast_operands;
+  logic [31:0] cast_result;
+  status_t cast_status;
+  fp_tag_t cast_tag_out;
 
   for (genvar entry = 0; entry < NumEntries; entry++) begin : gen_schedule_mask
-    wire eligible = entry_valid_q[entry] && !entry_inflight_q[entry];
+    wire is_cast = entry_state_q[entry] inside {FP_DOT_CONVERT, FP_AUX_CONVERT};
+    wire ready_entry = entry_valid_q[entry] && !entry_inflight_q[entry];
+    wire eligible = ready_entry && (!SplitIssue || !is_cast);
     assign schedule_upper[entry] = eligible && 4'(entry) >= schedule_rr_q;
     assign schedule_lower[entry] = eligible && 4'(entry) < schedule_rr_q;
+    assign cast_upper[entry] = SplitIssue && ready_entry && is_cast &&
+                               4'(entry) >= cast_rr_q;
+    assign cast_lower[entry] = SplitIssue && ready_entry && is_cast &&
+                               4'(entry) < cast_rr_q;
   end
   lzc #(.WIDTH(NumEntries), .MODE(1'b0)) i_schedule_upper (
     .in_i(schedule_upper), .cnt_o(schedule_upper_index), .empty_o(schedule_upper_empty));
@@ -151,6 +180,19 @@ module qbs_fp_accumulator
     .in_i(schedule_lower), .cnt_o(schedule_lower_index), .empty_o(schedule_lower_empty));
   assign schedule_found = !schedule_upper_empty || !schedule_lower_empty;
   assign schedule_index = !schedule_upper_empty ? schedule_upper_index : schedule_lower_index;
+  lzc #(.WIDTH(NumEntries), .MODE(1'b0)) i_cast_upper (
+    .in_i(cast_upper), .cnt_o(cast_upper_index), .empty_o(cast_upper_empty));
+  lzc #(.WIDTH(NumEntries), .MODE(1'b0)) i_cast_lower (
+    .in_i(cast_lower), .cnt_o(cast_lower_index), .empty_o(cast_lower_empty));
+  assign cast_found = !cast_upper_empty || !cast_lower_empty;
+  assign cast_index = !cast_upper_empty ? cast_upper_index : cast_lower_index;
+  assign cast_fire = cast_found && cast_ready;
+  always_comb begin
+    cast_operands = '0;
+    if (cast_found)
+      cast_operands[0] = entry_state_q[cast_index] == FP_AUX_CONVERT
+          ? entry_aux_value_q[cast_index] : entry_dot_value_q[cast_index];
+  end
 
   function automatic logic [31:0] fp16_to_fp32(input logic [15:0] value);
     logic sign;
@@ -216,7 +258,7 @@ module qbs_fp_accumulator
     end
   end
   assign fflags_o = fflags_q;
-  assign busy_o = (|entry_valid_q) || fp_busy;
+  assign busy_o = (|entry_valid_q) || fp_busy || cast_busy;
   assign fp_fire = fp_in_valid && fp_in_ready;
 
   always_comb begin
@@ -316,12 +358,36 @@ module qbs_fp_accumulator
     .busy_o         (fp_busy)
   );
 
+  if (SplitIssue) begin : gen_cast_port
+    fpnew_top #(
+      .Features(FpuFeatures), .Implementation(CastImplementation),
+      .DivSqrtSel(THMULTI), .TagType(fp_tag_t)
+    ) i_cast (
+      .clk_i, .rst_ni, .hart_id_i('0), .operands_i(cast_operands),
+      .rnd_mode_i(roundmode_e'(QbsNumericalRoundingMode)),
+      .op_i(I2F), .op_mod_i(1'b0), .src_fmt_i(FP32), .dst_fmt_i(FP32),
+      .int_fmt_i(INT32), .vectorial_op_i(1'b0), .tag_i(cast_index),
+      .simd_mask_i(1'b1), .in_valid_i(cast_found), .in_ready_o(cast_ready),
+      .flush_i(1'b0), .result_o(cast_result), .status_o(cast_status),
+      .tag_o(cast_tag_out), .out_valid_o(cast_out_valid),
+      .out_ready_i(1'b1), .busy_o(cast_busy)
+    );
+  end else begin : gen_single_port
+    assign cast_ready = 1'b0;
+    assign cast_result = '0;
+    assign cast_status = '0;
+    assign cast_tag_out = '0;
+    assign cast_out_valid = 1'b0;
+    assign cast_busy = 1'b0;
+  end
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       accumulator_valid_q <= '0;
       entry_valid_q <= '0;
       entry_inflight_q <= '0;
       schedule_rr_q <= '0;
+      cast_rr_q <= '0;
       fflags_q <= '0;
       update_valid_o <= 1'b0;
       update_index_o <= '0;
@@ -339,6 +405,7 @@ module qbs_fp_accumulator
         entry_valid_q <= '0;
         entry_inflight_q <= '0;
         schedule_rr_q <= '0;
+        cast_rr_q <= '0;
         fflags_q <= '0;
         fp_uop_issue_o <= '0;
         table_occupancy_sum_o <= '0;
@@ -380,12 +447,32 @@ module qbs_fp_accumulator
         if (fp_fire) begin
           entry_inflight_q[fp_tag_in] <= 1'b1;
           schedule_rr_q <= fp_tag_in + 1'b1;
-          fp_uop_issue_o <= fp_uop_issue_o + 1'b1;
+        end
+        if (cast_fire) begin
+          entry_inflight_q[cast_index] <= 1'b1;
+          cast_rr_q <= cast_index + 1'b1;
+        end
+        if (fp_fire || cast_fire)
+          fp_uop_issue_o <= fp_uop_issue_o + 32'(fp_fire) + 32'(cast_fire);
+        if (fp_out_valid || cast_out_valid)
+          fflags_q <= fflags_q |
+              (fp_out_valid ? fflags_t'(fp_status) : 5'b0) |
+              (cast_out_valid ? fflags_t'(cast_status) : 5'b0);
+
+        if (cast_out_valid) begin
+          entry_inflight_q[cast_tag_out] <= 1'b0;
+          if (entry_state_q[cast_tag_out] == FP_DOT_CONVERT) begin
+            entry_dot_value_q[cast_tag_out] <= cast_result;
+            entry_state_q[cast_tag_out] <= entry_affine_q[cast_tag_out]
+                ? FP_AUX_CONVERT : FP_SCALE_MULTIPLY;
+          end else begin
+            entry_aux_value_q[cast_tag_out] <= cast_result;
+            entry_state_q[cast_tag_out] <= FP_SCALE_MULTIPLY;
+          end
         end
 
         if (fp_out_valid) begin
           entry_inflight_q[fp_tag_out] <= 1'b0;
-          fflags_q <= fflags_q | fflags_t'(fp_status);
           unique case (entry_state_q[fp_tag_out])
             FP_DOT_CONVERT: begin
               entry_dot_value_q[fp_tag_out] <= fp_result;
@@ -444,6 +531,21 @@ module qbs_fp_accumulator
 `ifndef SYNTHESIS
       if (fp_fire)
         issued_state_q[fp_tag_in] <= entry_state_q[fp_tag_in];
+      if (cast_fire)
+        issued_state_q[cast_index] <= entry_state_q[cast_index];
+      if (cast_fire && fp_fire)
+        assert (cast_index != fp_tag_in)
+          else $fatal(1, "QBS dual issue targets the same entry");
+      if (cast_out_valid && fp_out_valid)
+        assert (cast_tag_out != fp_tag_out)
+          else $fatal(1, "QBS dual completion targets the same entry");
+      if (cast_out_valid) begin
+        assert (entry_valid_q[cast_tag_out] && entry_inflight_q[cast_tag_out]);
+        assert (entry_state_q[cast_tag_out] == issued_state_q[cast_tag_out]);
+        assert (entry_state_q[cast_tag_out] inside {FP_DOT_CONVERT, FP_AUX_CONVERT});
+      end
+      if (SplitIssue && fp_fire)
+        assert (!(entry_state_q[fp_tag_in] inside {FP_DOT_CONVERT, FP_AUX_CONVERT}));
       if (clear_i)
         assert (!busy_o)
           else $fatal(1, "QBS accumulator cleared while FP work is active");
