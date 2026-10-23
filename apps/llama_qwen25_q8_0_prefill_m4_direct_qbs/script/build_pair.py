@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import struct
 import subprocess
 import sys
@@ -15,6 +16,21 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[3]
 APPS = ("llama_qwen25_q8_0_prefill_m4_direct_qbs", "llama_qwen25_q8_0_prefill_m4_context_qbs")
+
+
+def check_libc_calls(disassembly):
+    function = None
+    seen = set()
+    for line in disassembly.splitlines():
+        label = re.match(r"^\s*[0-9a-fA-F]+ <([^>]+)>:$", line)
+        if label:
+            function = label[1]
+            seen.add(function)
+        call = re.search(r"\bR_RISCV_(?:CALL_PLT|CALL|JAL)\s+(\w+)(?:\s|$|[+-])", line)
+        if function in ("memcpy", "memset") and call and call[1] == function:
+            raise ValueError("Compiler emitted recursive bare-metal " + function)
+    if not {"memcpy", "memset"} <= seen:
+        raise ValueError("Missing libc function bodies in disassembly")
 
 
 def allocated_sections(elf):
@@ -49,6 +65,7 @@ def main():
     if "gcc" not in gcc.name or "zcc" in gcc.name:
         raise ValueError("Only the explicitly supplied GNU compiler is supported")
     version = subprocess.check_output([str(gcc), "--version"], text=True)
+    objdump = gcc.with_name(gcc.name.removesuffix("gcc") + "objdump").resolve(strict=True)
     flags = ["-march=rv64gcv_zfh_zvfh", "-mabi=lp64d", "-mcmodel=medany", "-mno-relax",
              "-O2", "-std=gnu11", "-fno-fast-math", "-ffp-contract=off", "-fno-tree-vectorize",
              "-fno-common", "-fno-builtin-printf", "-ffunction-sections", "-fdata-sections",
@@ -87,7 +104,14 @@ def main():
         objects = []
         for index, source in enumerate(sources):
             obj = out / f"{index}-{source.name}.o"
-            run([gcc, *flags, "-c", source, "-o", obj], f"compile-{index}")
+            # A hosted loop idiom can become a self-call inside our libc.
+            libc_flags = (["-ffreestanding", "-fno-builtin",
+                           "-fno-tree-loop-distribute-patterns"]
+                          if source == ROOT / "apps/common/string.c" else [])
+            run([gcc, *flags, *libc_flags, "-c", source, "-o", obj], f"compile-{index}")
+            if libc_flags:
+                run([objdump, "-dr", obj], "libc-disassembly")
+                check_libc_calls((out / "libc-disassembly.log").read_text())
             objects.append(obj)
         elf = out / (name + ".elf")
         run([gcc, *flags, "-static", "-nostartfiles", "-nostdlib", *objects,

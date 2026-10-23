@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "state": "PASS",
+  "scope": "Native QBS instruction functional contract in rebuilt QEMU; not RTL performance or whole-model accuracy",
+  "source": "verification/qbs/qemu/qbs_contract_test.c",
+  "source_sha256": "cd7611f8050c9947e9b87a355427721e3176b0e08b7a1dab9a179a62de1e0308",
+  "elf": "verification/out/qemu-context-contract-20261023-01/qbs_contract_test.elf",
+  "elf_sha256": "402a395df2d13ddf5bce54cb183e5b9edb5ab279f50cee30a0e7cf230955dbc2",
+  "qemu": "verification/out/qemu-context-20261023-01/qemu-10.2.0-build/qemu-system-riscv64",
+  "qemu_sha256": "37e3b4c100c3e8fbb7a248f3a0ab328797285dfe59e285fcf8540a14bd5b8e4c",
+  "build_manifest_sha256": "6c4dad29c87d518a59adbe3ba92a24be7e3e1203157f519324b91f2337a7e9f9",
+  "command": "QBS_QEMU=$ROOT/verification/out/qemu-context-20261023-01/qemu-10.2.0-build/qemu-system-riscv64 QBS_CONTRACT_BUILD_DIR=$ROOT/verification/out/qemu-context-contract-20261023-01 QBS_RISCV_CC=/home/wangwy/openproject/ara/install/riscv-gcc/bin/riscv64-unknown-elf-gcc bash verification/qbs/qemu/run_qbs_contract_test.sh",
+  "host_exit_code": 0,
+  "observed_stdout": "QBS v3 capability, M5/M8, shape, tail, fault, fixed-RNE, and fflags contract: PASS",
+  "new_shapes": [
+    {"activation": "Q8_0", "m": 4, "n": 3, "k_blocks": 1},
+    {"activation": "Q8_0", "m": 4, "n": 32, "k_blocks": 28},
+    {"activation": "Q8_0", "m": 4, "n": 31, "k_blocks": 32},
+    {"activation": "Q8_0", "m": 5, "n": 15, "k_blocks": 1},
+    {"activation": "Q8_0", "m": 5, "n": 15, "k_blocks": 17},
+    {"activation": "Q8_0", "m": 8, "n": 16, "k_blocks": 17},
+    {"activation": "Q8_K", "m": 4, "n": 7, "k_blocks": 4}
+  ],
+  "new_commands": 155,
+  "checks": [
+    "Literal capability words including reserved bits and 4672-byte limit",
+    "Independent closed-form outputs, fflags and inactive destination tails",
+    "FILL(A), DIRECT(B), REUSE(A) with distinct input bytes",
+    "Capacity/max-K, stale generation, K, M/layout and profile rejection",
+    "REUSE/RELEASE weight access fault with destination preservation and retry",
+    "Successful release invalidation and refill with new data",
+    "Rejected row-major M2/M3 resident contexts",
+    "Existing rounding, MMIO, page boundary and wide-command checks retained"
+  ],
+  "remaining": [
+    "GGML graph admission and per-input-tile lifecycle on the new capability",
+    "Native SoC full-projection performance including preparation",
+    "Long-K partial-sum lifecycle and matrix-level residency"
+  ]
+}

@@ -284,21 +284,41 @@ python3 apps/llama_qwen25_q8_0_prefill_m4_direct_qbs/script/build_pair.py \
   --l2-mb 16 --build-name NEW_BUILD_NAME
 ```
 
-The sealed `build-gnu-m4-pair-20261023-02` ELFs use 935034/935186 allocated
+The corrected `build-gnu-m4-pair-20261023-03` ELFs use 935014/935166 allocated
 bytes and a 16 MiB simulation-only link bound. The SoC image must independently
 use the same memory size; the runner checks `simulator.conf`. ELF hashes:
 
-- DIRECT: `93a2f4fbe8f8d8c2351b7eb41e78f22e737cc43ba5387d14b77164442f82881d`.
-- Context: `ab8891f1477705d88cfef4d28c4e95847d71c7e74649f55c2e1543f5d6fb0f9b`.
+- DIRECT: `ebc3363158f73c181bd5644c74b25a23cc28a3e6548747fd972927b6c53471da`.
+- Context: `bffc27137a9ff6ca952247f10b44a0130d350dedc488d7c4ca035abf4a3bd62f`.
 
-SoC VCS worker: `qbs-context-projection-soc-20261023-01.service`.
-Output: `verification/out/qbs-context-projection-soc-20261023-01/`.
-It builds a fresh source-manifest-gated image, freezes both ELFs, and runs the
-DIRECT and context applications with the existing independent UVM interface
-checks plus strict application oracle/geometry/timing checks. The fresh build
-has completed and the DIRECT application is executing. No completed SoC result
-or preparation-inclusive speedup is claimed.
+SoC VCS worker: `qbs-context-projection-soc-20261023-02.service`.
+Output: `verification/out/qbs-context-projection-soc-20261023-02/`.
+It reuses the fresh source-manifest-gated image from worker 01, freezes both
+corrected ELFs, and applies the existing independent UVM interface checks plus
+strict application oracle/geometry/timing checks. Its scalar retirement trace
+has reached the QBS command at `0x8000044a` and subsequent result stores. This
+proves progress beyond initialization, not completion or a performance gain.
+No completed SoC result or preparation-inclusive speedup is claimed.
 Do not edit sealed helpers, RTL or inputs until their workers terminate.
+
+### Native build failure and bounded repair
+
+Worker 01 was stopped after its retirement trace proved a software build
+failure, not a hardware stall. In its `build-gnu-m4-pair-20261023-02` ELF,
+GNU loop recognition compiled the byte loop in bare-metal `memset` into a
+call to `memset` itself. PC `0x80001954` called entry `0x80001934` repeatedly,
+decrementing the stack by 16 bytes each iteration before reaching measured QBS
+work. Keep that run as invalid software evidence; do not count it as an RTL
+timeout or as a slow DIRECT baseline.
+
+The private paired builder now compiles only `apps/common/string.c` with
+`-ffreestanding -fno-builtin -fno-tree-loop-distribute-patterns`. It disassembles
+that object before linking and rejects direct self-call relocations in
+`memcpy` or `memset`. This guard is specific to the observed compiler failure,
+not a proof of arbitrary libc control-flow correctness. All non-libc objects
+in builds 02 and 03 are byte-identical. Neither the QBS algorithm, floating
+point options nor RTL changed. Three host tests cover safe bodies, recursive
+CALL/CALL_PLT/JAL relocations, and missing disassembly bodies.
 
 Both input groups (capture rows 0..3 and 4..7) have completed both engine runs.
 Each independently produces the following totals:
@@ -328,7 +348,8 @@ unapproved. Checked log SHA256 values:
 Host validation at this checkpoint: seven context/projection checker tests,
 eight SoC-runner tests, five isolation tests, and the earlier
 `make -C verification/qbs check` pass. Long-K partial sums, production GGML
-admission and new-capability QEMU/Spike integration remain separate gates.
+admission and new-capability Spike integration remain separate gates. The
+new-capability QEMU instruction contract has since passed as described below.
 
 This closes the admitted engine/storage/runtime unit gates, not native SoC or
 GGML deployment. Remaining checks include full-N real projection execution
@@ -434,3 +455,32 @@ order. If these costs erase the avoided activation transfers, do not deploy
 the panel merely because a reuse counter improves. Expansion to more tiles
 requires a new capacity/benefit evaluation; this decision does not claim the
 long-K requirement has been completed.
+
+## New-capability QEMU acceptance
+
+The private QEMU 10.2.0 build in
+`verification/out/qemu-context-20261023-01/` uses this worktree's current ABI
+and reference model. Its build attestation hashes the executable, model sources,
+configuration and successful build log. The original shared QEMU installation
+is unchanged. `verification/qbs/results/tile-context-qemu-20261023.json` records
+the test/source/executable identities and observed zero exit status.
+
+The extended bare-metal instruction test passes all previous checks plus 155
+commands covering seven shapes. Q8_0 covers M4 with 1/28/32 K blocks, M5 with
+1/17 blocks, and M8 with 17 blocks. Q8_K covers M4 with four blocks, exactly
+the 4672-byte payload limit. N tails, padded M5 source rows and inactive
+destination registers are checked. Expected outputs are closed-form integers
+converted exactly to FP32, independent of the QBS execution reference; the
+Q4_K weights exercise nonzero affine correction.
+
+Every shape checks distinct-input `FILL(A), DIRECT(B), REUSE(A)`, stale token
+and metadata rejection, capacity rejection without loss of the old context,
+REUSE/RELEASE weight access faults with unchanged destinations/flags, successful
+retry, release invalidation and refill. Capability words are additionally
+checked against literal expected bits, including reserved bits. M2/M3
+row-major resident contexts must reject rather than silently change layout.
+
+This is instruction-model functional evidence. It does not establish native
+RTL performance, GGML admission, OS save/restore of resident state, or complete
+model numerical accuracy. The separate native SoC projection and new-capability
+GGML graph gates remain necessary.
