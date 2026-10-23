@@ -81,9 +81,17 @@ the interval. Both paths use the same output buffer and input capture.
 The existing SoC image is executing this ELF under the direct systemd worker
 `qbs-q8k-prepare-soc-20261023-01.service`, with a 7200-second simulation bound.
 Results belong to `verification/out/qbs-q8k-prepare-soc-20261023-01/`.
-Starting the simulator is not performance acceptance. A passing preparation
-measurement must still be followed by a complete projection test and actual
-GGML dispatch validation; no full-projection speedup is inferred from it.
+This first preparation run completed PASS. Its generic observations are
+267361/267230 cycles and candidate observations are 248034/247885 cycles.
+ABBA sums are 534591/495919, a 1.07798x preparation speedup (7.234% fewer
+cycles). All prepared bytes and status checks pass; UVM reports 10764 matched
+requests/responses, zero exceptions/protocol errors and 12288 matched backend
+allocations/completions. The independent auditor also binds the executed ELF,
+image libraries, raw log and trace to the saved evidence. Its receipt is
+`verification/qbs/results/q8k-prepare-soc-20261023.json`.
+A passing preparation measurement must still be followed by a complete
+projection test and actual GGML dispatch validation; no full-projection speedup
+is inferred from it.
 
 The full-projection data gate is prepared separately by
 `prepare_q8k_projection_data.py`: real M4/N1536/K1536 attention-Q weights,

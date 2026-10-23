@@ -153,6 +153,17 @@ rechecking accepts the case records and matching per-case digests. Evidence is
 archived in `verification/qbs/results/q8k-m4-native-20261023.json`. This is an
 isolated-candidate numerical gate, not production selection or RTL performance.
 
+The original scalar-preflight Q8_K candidate subsequently passed its first
+independently audited RTL preparation measurement: generic 534591 versus
+candidate 495919 cycles across the ABBA observations, 1.07798x (7.234% fewer
+preparation cycles). The receipt is `q8k-prepare-soc-20261023.json` in the same
+results directory. The full projection measurement remains separate. Existing
+retirement traces locate about 34% of the first candidate interval in scalar
+domain checking. An integer VLA successor now passes both its isolated
+classification gate (24120 comparisons) and the unchanged full quantizer gate
+(12000 comparisons), including FP/vector status. Its new RTL preparation
+measurement is running independently; no measured successor speedup is claimed.
+
 The independent AKV refill-overlap probe completed PASS under
 `akv-refill-overlap-probe-20261023-01.service`. Its exact work/traffic and
 architectural-order-to-uop joins were reaudited in

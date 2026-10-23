@@ -1,0 +1,66 @@
+{
+  "backend_counts": {
+    "aborted": 0,
+    "allocations": 12288,
+    "completions": 12288,
+    "max_live": 3
+  },
+  "contract_counts": {
+    "exceptions": 0,
+    "mmu_request_cycles": 0,
+    "outstanding": 0,
+    "protocol_errors": 0,
+    "req_stalled": 0,
+    "requests": 10764,
+    "resp_stalled": 0,
+    "responses": 10764
+  },
+  "elf_sha256": "e4282572da019664d848e3856cfc7d913cd50ce998f783a572734a8c194cb77b",
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-prepare-soc-20261023-01/manifest.json": "25f6e6d9e7b350c6d20a6c6936a79fb1d54f82ac22e2d75f4ea91942a56c1537",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-prepare-soc-20261023-01/result.json": "6fddb78356b72c5142e74fa992dc8c5b92c49619322df16c002c7b5a4f2234c9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-prepare-soc-20261023-01/soc/uvm_result.json": "4d4ecfba284b8c9853a328533223379ac7307ffab07e7af412198d8b30474c1d",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-prepare-soc-20261023-01/soc/work/run.vcs.log": "c4590d29f076fe2cf84802277d9f6509ae303d9422ef4e80461a5825e3b9f447",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-prepare-soc-20261023-01/soc/work/vector_trace.csv": "2161efa232a836ddf52387210ad7b60d8a3e1dbe64c7548c201850e796bb713a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-prepare-soc-20261023-01/status.json": "d4859906a947702d99977459b5cd3ad20fb16ffa54ef5a7a277089eee0f9c090"
+  },
+  "generic_sum_cycles": 534591,
+  "limitations": [
+    "One real capture, two ABBA observations per path",
+    "No production GGML enablement from this gate alone"
+  ],
+  "preparation_cycle_reduction_percent": 7.233941461790415,
+  "preparation_speedup": 1.0779804766504206,
+  "scope": "Real M4/K1536 preparation only; not full projection or model speedup",
+  "simv_sha256": "adef2cd6fa24673e84cdd35d873176683d752244bc0949258553d64e6bda6ce8",
+  "state": "PASS",
+  "trials": [
+    {
+      "cycles": 267361,
+      "fcsr": 1,
+      "path": "generic",
+      "trial": 0
+    },
+    {
+      "cycles": 248034,
+      "fcsr": 1,
+      "path": "vector",
+      "trial": 1
+    },
+    {
+      "cycles": 247885,
+      "fcsr": 1,
+      "path": "vector",
+      "trial": 2
+    },
+    {
+      "cycles": 267230,
+      "fcsr": 1,
+      "path": "generic",
+      "trial": 3
+    }
+  ],
+  "variant": "scalar_preflight",
+  "vector_sum_cycles": 495919,
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-prepare-soc-20261023-01"
+}
