@@ -97,15 +97,23 @@ packer reduces the same complete projection from 256975 to 210923 cycles
 without changing its output. The separate fused GGML Q8_0 M4 candidate passes
 6840 native numerical/environment checks and the real RTL ABBA preparation
 gate: 416467 generic versus 278230 vector cycles (two calls per path).
-Neither result is a whole-model speedup. Shared public runtime packing is now
-being validated independently before production-path performance acceptance;
-the fused GGML quantizer still needs production selection and graph tests.
+Neither result is a whole-model speedup. Shared public runtime packing passed
+43008 layout and 32 invalid-input native checks. Current-runtime forced-scalar
+and RVV full-projection twins now run independently on the unchanged image;
+their results are not yet accepted. The canonical fused GGML Q8_0 M4 helper
+is being integrated behind an explicit opt-in, with production path tracing
+and separate byte/CSR and graph gates. Q8_K fused preparation remains open:
+the Q8_0 preparation result must not be generalized to K-quant model weights.
 
-The independent AKV refill-overlap probe is owned by
-`akv-refill-overlap-probe-20261023-01.service`. It reuses the existing image,
-checks exact work/traffic and associates architectural trace order with uop
-completion. Its remaining-old-arithmetic window is an overlap opportunity,
-not command acceptance time or an achieved speedup. No dispatcher safety
-condition is relaxed before this evidence is reviewed. Matrix partial sums,
+The independent AKV refill-overlap probe completed PASS under
+`akv-refill-overlap-probe-20261023-01.service`. Its exact work/traffic and
+architectural-order-to-uop joins were reaudited in
+`verification/akv/results/refill-overlap-baseline-20261023.json`. The immediate
+case exposes 78 cycles of remaining old arithmetic; the nominal serial case
+still exposes 47 because WAIT_IDLE blocks backend issue, not frontend
+presentation. Both take 756 joint cycles on the unchanged image. This is an
+admission opportunity, not an implemented speedup. Pending older instructions,
+all-PE completion and deferred precise fault response must be covered before
+relaxing the dispatcher barrier. Matrix partial sums,
 Attention intermediate reuse, quantized KV and justified resource sharing
 remain open parts of the full objective.
