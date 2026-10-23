@@ -45,6 +45,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     input  ara_resp_t                            ara_resp_i,
     input  logic                                 ara_resp_valid_i,
     input  logic                                 ara_idle_i,
+    input  logic                                 akv_refill_overlap_safe_i = 1'b0,
     input  logic                                 sldu_idle_i,
     output logic                                 sldu_drain_o,
     // Interface with the lanes
@@ -5150,7 +5151,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                   csr_vstart_q != '0 || !acc_req_i.acc_cons_en)
                 illegal_insn = 1'b1;
 
-              if (!ara_idle_i) begin
+              // Only REFILL may start alongside older independent arithmetic.
+              // The sequencer still delays its terminal response until that
+              // older work retires. Unknown/unconnected safety is conservative.
+              if (!ara_idle_i &&
+                  !(akv_fill_is_refill && (akv_refill_overlap_safe_i === 1'b1))) begin
                 ara_req_valid = 1'b0;
                 acc_resp_o.req_ready = 1'b0;
                 state_d = WAIT_IDLE;

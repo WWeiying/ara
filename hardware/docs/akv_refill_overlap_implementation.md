@@ -1,8 +1,11 @@
 # AKV REFILL overlap: implementation contract
 
-Status: implementation design, not an enabled RTL feature. Baseline: signoff
-commit `514b798a`. Do not change the sealed RTL/runtime while the production
-packing projection twins are consuming their source manifests.
+Status: restricted candidate wired in the verification worktree; real sequencer
+unit checks pass, full-SoC probe and production scheduling remain pending.
+Baseline: signoff commit `514b798a`; the pre-integration state is retained at
+`5ed0f7e6`. Do not modify helpers, ELFs, images or software sources pinned by
+active consumers. Existing Q8_K runs use the previously compiled image and
+do not consume the modified dispatcher/sequencer source at runtime.
 
 ## Evidence and the actual software boundary
 
@@ -83,7 +86,7 @@ existing acknowledgement/exception registers; older arithmetic finishing first
 is represented by the cleared all-PE running bits. Do not use lane 0 completion
 or the numerical ordering of VIDs as a substitute.
 
-This extension is pending implementation and tests. Admission must separately
+The candidate connection is implemented but not yet accepted end to end. Admission must separately
 check the dispatcher register's pending older instruction: its contents may
 not yet have a running VID. Allocation is ordered, so after REFILL has entered
 WAIT, that older request must already have been allocated or completed. Test
@@ -92,8 +95,8 @@ the high-level software sequence.
 
 ### Audited connection points
 
-The isolated `akv_refill_order_guard.sv` is not in the active Bender source
-list and is not connected to the current SoC. Its VCS unit gate passes 4104
+`akv_refill_order_guard.sv` is now in the Bender source list and connected to
+the real sequencer and dispatcher through `ara.sv`. Its isolated VCS gate passes 4104
 checks (4096 classification/live/pending/current-ID combinations plus eight
 temporal boundary checks). Reproduce with:
 
@@ -124,6 +127,41 @@ hazards remain authoritative for these older operations; eligibility is not
 permission to ignore their register dependencies. Actual late-lane fflags
 timing must still be joined with retirement before closing the precise-response
 gate.
+
+### Candidate integration evidence
+
+`refill_sequencer_tb.sv` instantiates the actual sequencer with independent
+PE/AddrGen fixtures, not a copy of the control algorithm. The focused VCS run
+`verification/out/akv-refill-sequencer-20261023-02/` passes 38 checks and six
+terminal-order scenarios: older arithmetic first, same-cycle completion, or
+REFILL first, each with success and a latched load-page-fault outcome. It
+checks pending-request classification, current-VID retirement, delayed nonzero
+lane completion and exactly one scalar response. The first attempt lacked
+common-cell counter dependencies and did not run; it is retained as a build
+failure, not counted as an RTL test.
+
+The Dispatcher exception to global idle is confined to v2 REFILL and requires
+an explicitly true safety input. Unconnected legacy unit fixtures default to
+serialized behavior. FULL, legacy REFILL, RELEASE, QBS, masked/unsupported
+arithmetic and ordinary memory admission are unchanged. The sequencer records
+classification on actual allocation, uses registered all-PE membership and
+holds the existing memory response until older work drains. The original VLSU
+ownership checks are not relaxed.
+
+`run_refill_integration.py` owns a separate SoC build and then runs the existing
+sealed 54-command FMA/REFILL probe. Its service is
+`akv-refill-integration-20261023-01.service`; outputs are under
+`verification/out/akv-refill-integration-run-20261023-01/`. The old Q8_K image
+and outputs are not overwritten. The new image includes verification-only
+`AKV_REFILL_ORDER` start/first-payload-AR/terminal records, using the same
+cycle counter and architectural-order metadata as the commit monitor. These
+records allow actual memory progress to be compared with old FMA completion,
+rather than inferring overlap from first presentation or VID allocation.
+
+The short control test is not numerical FMA execution, real Attention latency
+or precise fflags validation. The full probe, subsequent representative
+regression and shared production PV scheduling are still required. No new
+performance benefit is claimed from the candidate connection alone.
 
 After a fault, report the original cause/tval once, with no younger execution
 and no outstanding AXI response left behind. Preserve the existing AKV context

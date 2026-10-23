@@ -262,6 +262,37 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
     .wb_wdata_i        (verify_wb_wdata),
     .wb_be_i           (verify_wb_be)
   );
+
+  if (akv_pkg::AkvEnable) begin : gen_verify_refill_order
+    longint unsigned ordinal_q, arch_q;
+    logic first_ar_q;
+    always @(posedge clk_i) begin
+      if (!rst_ni) begin
+        ordinal_q <= 0;
+        arch_q <= 0;
+        first_ar_q <= 0;
+      end else if ($test$plusargs("AKV_REFILL_ORDER_TRACE") || $test$plusargs("AKV_PERF")) begin
+        if (i_ara.i_vlsu.akv_command_fire &&
+            i_ara.i_vlsu.akv_command == akv_pkg::AKV_COMMAND_V2_REFILL) begin
+          ordinal_q <= ordinal_q + 1;
+          arch_q <= i_ara_commit_monitor.uop_arch_seq_q[i_ara.pe_req.id];
+          first_ar_q <= 1;
+          $display("[AKV_REFILL_ORDER] event=start cycle=%0d ordinal=%0d arch=%0d vid=%0d",
+            i_ara_commit_monitor.cycle_q, ordinal_q+1,
+            i_ara_commit_monitor.uop_arch_seq_q[i_ara.pe_req.id], i_ara.pe_req.id);
+        end
+        if (first_ar_q && i_ara.i_vlsu.akv_axi_ar_valid && i_ara.i_vlsu.akv_axi_ar_ready) begin
+          first_ar_q <= 0;
+          $display("[AKV_REFILL_ORDER] event=first_ar cycle=%0d ordinal=%0d arch=%0d vid=%0d",
+            i_ara_commit_monitor.cycle_q, ordinal_q, arch_q, i_ara.i_vlsu.akv_command_id_q);
+        end
+        if (i_ara.i_vlsu.akv_terminal &&
+            i_ara.i_vlsu.akv_command_q == akv_pkg::AKV_COMMAND_V2_REFILL)
+          $display("[AKV_REFILL_ORDER] event=terminal cycle=%0d ordinal=%0d arch=%0d vid=%0d",
+            i_ara_commit_monitor.cycle_q, ordinal_q, arch_q, i_ara.i_vlsu.akv_command_id_q);
+      end
+    end
+  end
 `endif
 `endif
 

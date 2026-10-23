@@ -42,6 +42,7 @@ sources:
     - hardware/src/ctrl_registers.sv
     - hardware/src/cva6_accel_first_pass_decoder.sv
     - hardware/src/ara_dispatcher.sv
+    - hardware/src/vlsu/akv/akv_refill_order_guard.sv
     - hardware/src/ara_sequencer.sv
     - hardware/src/axi_inval_filter.sv
     - hardware/src/lane/lane_sequencer.sv
