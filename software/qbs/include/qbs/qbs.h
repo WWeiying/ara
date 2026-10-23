@@ -135,6 +135,8 @@ typedef struct {
   uint8_t activation_context_count;
   uint8_t activation_context_generation_bits;
   size_t workspace_bytes;
+  /* Software storage metadata only; zero means the original global R4 layout. */
+  uint16_t weight_segment_k_blocks;
 } qbs_plan_t;
 
 typedef struct {
@@ -222,6 +224,13 @@ qbs_status_t qbs_repack_weight_r4(unsigned weight_profile,
                                   size_t row_major_bytes, size_t n,
                                   size_t k_blocks, void *r4,
                                   size_t r4_bytes);
+/* Each K segment contains all padded output rows in ordinary R4 order.
+   Use the same segment_k_blocks in qbs_plan_create_segmented_r4. This is
+   software tiling, not a new hardware profile or descriptor layout. */
+qbs_status_t qbs_repack_weight_r4_segmented(
+    unsigned weight_profile, const void *row_major, size_t row_major_bytes,
+    size_t n, size_t k_blocks, unsigned segment_k_blocks,
+    void *r4, size_t r4_bytes);
 /* Packs exactly four complete row-major activation rows. A runtime appends a
    final 1--3-row tail unchanged, as specified by M4_GROUPED storage. */
 qbs_status_t qbs_pack_activation_m4(unsigned activation_profile,
@@ -244,10 +253,16 @@ qbs_activation_storage_t qbs_recommend_activation_storage(
     size_t k_elements);
 
 /* A successful plan is immutable and may be reused for the same device
-   contract and logical problem. Only qbs_plan_create may initialize it. */
+   contract and logical problem. Initialize it through a plan constructor. */
 qbs_status_t qbs_plan_create(const qbs_device_t *device,
                              const qbs_problem_t *problem,
                              qbs_plan_t *plan);
+/* Opt-in segment-major R4 storage, packed with the matching helper above.
+   Segment size is fixed by storage and must fit this device; it is never
+   silently changed. Ordinary qbs_plan_create retains the original layout. */
+qbs_status_t qbs_plan_create_segmented_r4(
+    const qbs_device_t *device, const qbs_problem_t *problem,
+    unsigned segment_k_blocks, qbs_plan_t *plan);
 void qbs_plan_cursor_reset(qbs_plan_cursor_t *cursor);
 qbs_status_t qbs_plan_next(const qbs_plan_t *plan,
                            qbs_plan_cursor_t *cursor,

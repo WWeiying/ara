@@ -350,12 +350,13 @@ size_t qbs_activation_storage_bytes(unsigned activation_profile,
              : 0;
 }
 
-qbs_status_t qbs_repack_weight_r4(unsigned weight_profile,
+static qbs_status_t repack_weight_r4(unsigned weight_profile,
                                   const void *row_major,
                                   size_t row_major_bytes, size_t n,
-                                  size_t k_blocks, void *r4,
+                                  size_t k_blocks, size_t segment_k_blocks, void *r4,
                                   size_t r4_bytes) {
-  if (row_major == NULL || r4 == NULL || n == 0 || k_blocks == 0)
+  if (row_major == NULL || r4 == NULL || n == 0 || k_blocks == 0 ||
+      segment_k_blocks == 0)
     return QBS_STATUS_BAD_ARGUMENT;
   const size_t block_bytes = qbs_weight_block_bytes(weight_profile);
   const size_t source_bytes = qbs_weight_storage_bytes(
@@ -369,17 +370,38 @@ qbs_status_t qbs_repack_weight_r4(unsigned weight_profile,
     return QBS_STATUS_BUFFER_TOO_SMALL;
 
   memset(r4, 0, destination_bytes);
+  const size_t padded_n = (n + 3u) & ~(size_t)3u;
   for (size_t row = 0; row < n; ++row) {
     for (size_t block = 0; block < k_blocks; ++block) {
       const size_t source_index = row * k_blocks + block;
+      const size_t start = block / segment_k_blocks * segment_k_blocks;
+      const size_t remaining = k_blocks - start;
+      const size_t local_k = remaining < segment_k_blocks
+          ? remaining : segment_k_blocks;
       const size_t destination_index =
-          ((row / 4u) * k_blocks + block) * 4u + row % 4u;
+          start * padded_n + ((row / 4u) * local_k + block - start) * 4u + row % 4u;
       memcpy((uint8_t *)r4 + destination_index * block_bytes,
              (const uint8_t *)row_major + source_index * block_bytes,
              block_bytes);
     }
   }
   return QBS_STATUS_OK;
+}
+
+qbs_status_t qbs_repack_weight_r4(unsigned weight_profile,
+    const void *row_major, size_t row_major_bytes, size_t n, size_t k_blocks,
+    void *r4, size_t r4_bytes) {
+  return repack_weight_r4(weight_profile, row_major, row_major_bytes, n,
+                         k_blocks, k_blocks, r4, r4_bytes);
+}
+
+qbs_status_t qbs_repack_weight_r4_segmented(unsigned weight_profile,
+    const void *row_major, size_t row_major_bytes, size_t n, size_t k_blocks,
+    unsigned segment_k_blocks, void *r4, size_t r4_bytes) {
+  if (segment_k_blocks == 0 || segment_k_blocks > QBS_MAX_K_BLOCKS)
+    return QBS_STATUS_SHAPE;
+  return repack_weight_r4(weight_profile, row_major, row_major_bytes, n,
+                         k_blocks, segment_k_blocks, r4, r4_bytes);
 }
 
 static void pack_activation_group(
@@ -649,8 +671,9 @@ qbs_activation_storage_t qbs_recommend_activation_storage(
   return saved >= required ? QBS_ACTIVATION_STORAGE_M8_GROUPED : fallback;
 }
 
-qbs_status_t qbs_plan_create(const qbs_device_t *device,
+static qbs_status_t plan_create(const qbs_device_t *device,
                              const qbs_problem_t *problem,
+                             unsigned weight_segment_k_blocks,
                              qbs_plan_t *plan) {
   if (device == NULL || problem == NULL || plan == NULL)
     return QBS_STATUS_BAD_ARGUMENT;
@@ -682,6 +705,11 @@ qbs_status_t qbs_plan_create(const qbs_device_t *device,
     return QBS_STATUS_LAYOUT;
   if ((device->capabilities.weight_layouts &
        (UINT16_C(1) << problem->weight_layout)) == 0)
+    return QBS_STATUS_LAYOUT;
+  if (weight_segment_k_blocks != 0 &&
+      (problem->weight_layout != QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR ||
+       weight_segment_k_blocks > device->capabilities.max_k_blocks ||
+       weight_segment_k_blocks > QBS_MAX_K_BLOCKS))
     return QBS_STATUS_LAYOUT;
   if (problem->activation_storage != QBS_ACTIVATION_STORAGE_ROW_MAJOR &&
       problem->activation_storage != QBS_ACTIVATION_STORAGE_M4_GROUPED &&
@@ -726,9 +754,12 @@ qbs_status_t qbs_plan_create(const qbs_device_t *device,
       .wide_command_n = QBS_WIDE_M_MAX_N,
       .uses_wide_m = problem->activation_storage ==
           QBS_ACTIVATION_STORAGE_M8_GROUPED,
+      .weight_segment_k_blocks = (uint16_t)weight_segment_k_blocks,
   };
   if (plan->command_k_blocks > QBS_MAX_K_BLOCKS)
     plan->command_k_blocks = QBS_MAX_K_BLOCKS;
+  if (weight_segment_k_blocks != 0)
+    plan->command_k_blocks = (uint16_t)weight_segment_k_blocks;
   if (plan->command_m > QBS_MAX_M) plan->command_m = QBS_MAX_M;
   plan->split_k = k_blocks > plan->command_k_blocks;
   if (plan->uses_wide_m && plan->split_k)
@@ -736,7 +767,7 @@ qbs_status_t qbs_plan_create(const qbs_device_t *device,
 
   if (problem->weight_layout == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR) {
     if (device->capabilities.max_n < 4) return QBS_STATUS_CAPABILITY;
-    plan->command_n = plan->split_k
+    plan->command_n = plan->split_k && weight_segment_k_blocks == 0
         ? 4u : (uint8_t)(device->capabilities.max_n & ~3u);
   } else {
     plan->command_n = plan->split_k ? 1u : device->capabilities.max_n;
@@ -799,6 +830,17 @@ qbs_status_t qbs_plan_create(const qbs_device_t *device,
   return QBS_STATUS_OK;
 }
 
+qbs_status_t qbs_plan_create(const qbs_device_t *device,
+    const qbs_problem_t *problem, qbs_plan_t *plan) {
+  return plan_create(device, problem, 0, plan);
+}
+
+qbs_status_t qbs_plan_create_segmented_r4(const qbs_device_t *device,
+    const qbs_problem_t *problem, unsigned segment_k_blocks, qbs_plan_t *plan) {
+  if (segment_k_blocks == 0) return QBS_STATUS_SHAPE;
+  return plan_create(device, problem, segment_k_blocks, plan);
+}
+
 int qbs_plan_supports_activation_context(const qbs_plan_t *plan) {
   return plan != NULL && plan->activation_context_eligible != 0u;
 }
@@ -844,7 +886,11 @@ qbs_status_t qbs_plan_next(const qbs_plan_t *plan,
   const size_t activation_block_bytes =
       qbs_activation_block_bytes(plan->problem.activation_profile);
   size_t weight_block_index;
-  if (plan->problem.weight_layout == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR) {
+  if (plan->weight_segment_k_blocks != 0) {
+    const size_t padded_n = ((size_t)plan->problem.n + 3u) & ~(size_t)3u;
+    weight_block_index = (size_t)cursor->k_block_start * padded_n +
+        (size_t)cursor->output_start * k_blocks;
+  } else if (plan->problem.weight_layout == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR) {
     weight_block_index = (size_t)cursor->output_start * plan->k_blocks +
         (size_t)cursor->k_block_start * 4u;
   } else {

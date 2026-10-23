@@ -10,10 +10,11 @@ OBJECTS := $(SOURCES:%.c=$(BUILD)/%.o)
 
 all: $(BUILD)/libqbs_runtime.a
 
-check: $(BUILD)/qbs_runtime_test $(BUILD)/qbs_runtime_adapter_example $(BUILD)/qbs_format_test
+check: $(BUILD)/qbs_runtime_test $(BUILD)/qbs_runtime_adapter_example $(BUILD)/qbs_format_test $(BUILD)/qbs_segmented_test
 	$(BUILD)/qbs_runtime_test
 	$(BUILD)/qbs_runtime_adapter_example
 	$(BUILD)/qbs_format_test
+	$(BUILD)/qbs_segmented_test
 
 example: $(BUILD)/qbs_runtime_adapter_example
 
@@ -24,6 +25,9 @@ $(BUILD)/qbs_runtime_test: tests/qbs_runtime_test.c $(OBJECTS)
 	$(CC) $(CFLAGS) $^ -o $@
 
 $(BUILD)/qbs_format_test: tests/qbs_format_test.c $(OBJECTS)
+	$(CC) $(CFLAGS) $^ -o $@
+
+$(BUILD)/qbs_segmented_test: tests/qbs_segmented_test.c $(OBJECTS)
 	$(CC) $(CFLAGS) $^ -o $@
 
 $(BUILD)/qbs_runtime_adapter_example: examples/runtime_adapter.c $(OBJECTS)
