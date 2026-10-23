@@ -122,21 +122,36 @@ helper byte/CSR checks and 384 actual GGML graphs at the recorded VLENs and
 configuration matrix. The archived receipt is
 `verification/qbs/results/m4-production-native-20261023.json`.
 The production marker checker requires exact markers, not prefix matching.
-Native helper CSR checks use a separate translation unit; actual production
-repack translation-unit CSR equivalence and canonical-helper RTL performance
-remain separate open gates. Q8_K fused preparation remains open:
+Native helper CSR checks use a separate translation unit. A subsequent direct
+production repack translation-unit test passed 9120 comparisons across VLEN128
+and VLEN1024 (4560 each), covering packed bytes, FCSR and VCSR with matching
+result digests. Its pinned logs and status are in
+`verification/out/qbs-m4-production-csr-20261023-01/`. This closes that
+production-TU functional gate for the pinned build, not arbitrary compiler
+options or model-level performance. Q8_K fused preparation remains open:
 the Q8_0 preparation result must not be generalized to K-quant model weights.
 
-The canonical Q8_0 helper RTL preparation gate is now scheduled as
-`qbs-m4-canonical-soc-20261023-01.service`, with a private build and output
+The canonical Q8_0 helper RTL preparation gate completed with private build and output
 under matching `verification/out/qbs-m4-canonical-soc-*` directories. It
 reuses the same real input, Linux-generated golden and ABBA harness, replacing
 only the candidate include/namespace with the production helper. The builder
 rejects unrelated source drift and requires the current generic function body
-to equal the archived oracle exactly. Its three unit checks pass. Execution
-and performance acceptance remain pending; starting this service is not a PASS.
+to equal the archived oracle exactly. Its three unit checks pass. Independent
+audit accepts 416387 generic versus 277825 vector cycles across the two calls
+per path: 1.4987x preparation speedup. All 3808 output bytes match; requests and
+responses both total 2248, with zero exceptions and protocol errors. The
+receipt is `verification/qbs/results/ggml-m4-canonical-soc-20261023.json`.
+This measures preparation only, not full projection or model execution.
 The Q8_K isolated candidate and its distinct numerical contract are documented
-in `qbs_q8k_preparation.md`; native and production gates remain open.
+in `qbs_q8k_preparation.md`; its production and RTL performance gates remain open.
+Its sealed native build includes six real activation captures, 50 datasets,
+five rounding modes, eight initial status settings and AVL caps 1/7/16.
+The independent worker `run_q8k_m4_native.py` requires 6000 comparisons per
+VLEN and identical cross-VLEN result digests. Both boots completed PASS, for
+12000 comparisons (1872 candidate and 10128 fallback). Independent raw-log
+rechecking accepts the case records and matching per-case digests. Evidence is
+archived in `verification/qbs/results/q8k-m4-native-20261023.json`. This is an
+isolated-candidate numerical gate, not production selection or RTL performance.
 
 The independent AKV refill-overlap probe completed PASS under
 `akv-refill-overlap-probe-20261023-01.service`. Its exact work/traffic and

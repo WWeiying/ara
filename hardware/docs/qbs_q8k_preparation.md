@@ -54,6 +54,15 @@ non-aliasing and four complete rows remain the production preconditions.
 
 ## Acceptance
 
+On 2026-10-23, the native numerical gate passed 12000 comparisons across
+VLEN128/1024: 50 datasets per VLEN, including six real activation captures,
+five rounding modes, eight initial status settings and three AVL caps.
+Each VLEN includes 936 candidate-path and 5064 fallback comparisons. Packed
+bytes, scales, bsums, FCSR/VCSR, guards and input immutability match the linked
+production generic; per-case digests match across VLENs. See
+`verification/qbs/results/q8k-m4-native-20261023.json`. Production integration
+and same-image RTL preparation/projection performance remain unproven.
+
 - Compile all AVL caps with the target RV64GCV compiler and strict FP options.
   This gate passed on 2026-10-23; it is not an execution result.
 - Compare all packed bytes, scales and bsums against the linked production
