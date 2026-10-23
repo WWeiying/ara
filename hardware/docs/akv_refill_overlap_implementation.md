@@ -90,6 +90,41 @@ WAIT, that older request must already have been allocated or completed. Test
 same-cycle completion/allocation and VID reuse rather than assuming this from
 the high-level software sequence.
 
+### Audited connection points
+
+The isolated `akv_refill_order_guard.sv` is not in the active Bender source
+list and is not connected to the current SoC. Its VCS unit gate passes 4104
+checks (4096 classification/live/pending/current-ID combinations plus eight
+temporal boundary checks). Reproduce with:
+
+```sh
+python3 verification/akv/run_refill_order_guard.py --output /absolute/new/output
+```
+
+The retained receipt is
+`verification/akv/results/refill-order-guard-20261023.json`. It proves the guard
+equations, reset and tested VID reuse behavior, not the all-PE aggregation,
+actual FMA classifier, precise fault retirement or a speedup in the processor.
+
+| Actual RTL point | Integration obligation |
+| --- | --- |
+| `ara_sequencer.p_vinsn_running` | It already ORs every lane, load, store, slide and mask PE into the registered `vinsn_running_q`; use that full vector, not `pe_resp_i[0]` or lane 0 membership. |
+| `ara_sequencer.p_sequencer`, successful allocation | Record eligibility where the VID is allocated and its PE memberships are set. The verification-only `verify_vinsn_alloc` is not an architectural control signal. |
+| `ara_dispatcher` registered `ara_req_o/ara_req_valid_o` | This is the older pending request. Include it even when no VID has been allocated. Keep request/token behavior unchanged. |
+| `ara_dispatcher` `decode_blocked` cleanup | A stalled backend suppresses speculative decoder results and restores normal state. Do not derive new admission state from speculative requests that this cleanup discards. |
+| `ara_sequencer` memory WAIT response condition | Add the older-drained condition to response release, not to retirement of the REFILL's own load VID. Preserve latched ack/exception and one-response behavior. |
+| `vlsu.normal_vlsu_idle` and command handoff | Preserve all address generator, VLDU/VSTU, prepare-inflight, AXI-cut and response checks, plus QBS/AKV exclusive ownership and request-consumed tracking. |
+| `vlsu.akv_command_early_ack` | Existing early acknowledgment applies only to local LOAD/COLUMN_LOAD. It is not authorization to acknowledge REFILL before faults and older arithmetic are resolved. |
+
+The proposed initial classifier accepts only unmasked ordinary
+`VFMACC/VFNMACC/VFMSAC/VFNMSAC/VFMADD/VFNMADD/VFMSUB/VFNMSUB`, with no
+conversion, overlap-capture or source-snapshot repair metadata. Selecting
+`VFU_MFpu` alone would incorrectly include other instruction families. Existing
+hazards remain authoritative for these older operations; eligibility is not
+permission to ignore their register dependencies. Actual late-lane fflags
+timing must still be joined with retirement before closing the precise-response
+gate.
+
 After a fault, report the original cause/tval once, with no younger execution
 and no outstanding AXI response left behind. Preserve the existing AKV context
 invalidation/recovery contract; do not replay arithmetic or add an already

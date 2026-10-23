@@ -1,0 +1,14 @@
+{
+  "state": "PASS",
+  "scope": "Isolated admission/drain guard; not integrated processor overlap",
+  "run": "verification/out/akv-refill-guard-20261023-02",
+  "checks": 4104,
+  "combinational_checks": 4096,
+  "temporal_checks": 8,
+  "manifest_sha256": "247bced9f9bc8dd6413d9a43a68b7c61e1052372b708b13e3a45714c30b8305a",
+  "module_sha256": "77bc7fcf4c03d50f3216cf39a65dddae96148d57499f84fc0b0d3c0dd6f9be77",
+  "testbench_sha256": "7f7ee0659ccdf3649fb7b8165ed6d84491a86ccc0d17c338d4074ef4668e3870",
+  "log_sha256": "de934abedca19d4dfbb090e13b507afd9a2609ae65afcbb67b4ad40977b7eb2b",
+  "simv_sha256": "16697d16ea679f9f311b000ec138a61cc9492d19deb78e2c6c289c7794d03bcd",
+  "remaining": ["Processor classifier and all-PE wiring", "Deferred success/fault response and fflags", "Production software scheduling", "Real workload correctness and performance"]
+}
