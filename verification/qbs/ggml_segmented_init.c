@@ -26,7 +26,9 @@ int main(void) {
         const pid_t child = fork();
         if (child == 0) {
 #ifdef QBS_CONTEXT
-#ifdef QBS_BARRIER
+#if defined(QBS_ALIAS)
+            setenv("GGML_QBS_GRAPH_SUITE", "alias", 1);
+#elif defined(QBS_BARRIER)
             setenv("GGML_QBS_GRAPH_SUITE", "barrier", 1);
 #else
             setenv("GGML_QBS_GRAPH_SUITE", "context", 1);

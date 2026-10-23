@@ -255,5 +255,66 @@ class BarrierDispatchEvidence(unittest.TestCase):
             MODULE.check_barrier_dispatch(barrier_fixture().replace("emulated=0", "emulated=1"))
 
 
+def alias_fixture():
+    output = []
+    for segment, enabled in ((0, 1), (3, 1), (256, 1), (256, 0)):
+        output.append(f"QBS_GRAPH_RUN_BEGIN segment={segment} wide=0\nQBS_CONTEXT_POLICY enabled={enabled}\n")
+        for kind in range(1, 5):
+            for epoch in (0, 1):
+                reuse = enabled and kind >= 3
+                output.append(f"QBS_CONTEXT_BEGIN blocks=2 m=1 n=37 shared=1 threads=1 epoch={epoch} segment={segment}\n")
+                output.append(f"QBS_CONTEXT_MUTATION kind={kind} writes_source={int(kind <= 2)}\n")
+                if enabled and kind <= 2:
+                    output.append("GGML_RISCV_QBS_CONTEXT_BARRIER graph_epoch=1 op=SCALE reason=may_modify_activation\n")
+                for projection in (0, 1):
+                    if reuse:
+                        action = "reuse_release" if projection else "fill_keep"
+                        output.append(f"GGML_RISCV_QBS_CROSS_OP graph_epoch=1 action={action} source_id=0x123 activation_profile=1 m=1 k=512 generation=1 activation_seq=1 quantization_skipped={projection} next_same=0\n")
+                    output.append("GGML_RISCV_QBS_CALL type=q4_K mode=gemv k=512 input_rows=1 output_rows=37 split_k=0\n")
+                    for n in (32, 5):
+                        access = (1 if projection == 0 and n == 32 else 3 if projection == 1 and n == 5 else 2) if reuse else (1 if n == 32 else 3)
+                        output.append(f"GGML_RISCV_QBS_COMMAND seq=1 weight_type=q4_K weight_profile=1 activation_profile=1 m=1 n={n} k_blocks=2 access={access} context_id=0 emulated=0\n")
+                output.append("QBS_CONTEXT_MUTATION_INPUT_PASS words=512\nQBS_CONTEXT_PASS outputs=111\n")
+        output.append(f"QBS_GRAPH_RUN_END segment={segment} wide=0 exit=0\n")
+    return "".join(output)
+
+
+class AliasDispatchEvidence(unittest.TestCase):
+    def test_valid(self):
+        MODULE.check_alias_dispatch(alias_fixture())
+
+    def test_missing_input_check(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_alias_dispatch(alias_fixture().replace("MUTATION_INPUT_PASS", "MISSING"))
+
+    def test_missing_write_barrier(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_alias_dispatch(alias_fixture().replace("reason=may_modify_activation", "reason=unknown"))
+
+    def test_wrong_mutation(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_alias_dispatch(alias_fixture().replace("kind=2 writes_source=1", "kind=2 writes_source=0"))
+
+    def test_lost_reuse(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_alias_dispatch(alias_fixture().replace("quantization_skipped=1", "quantization_skipped=0"))
+
+    def test_wrong_context_identity(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_alias_dispatch(alias_fixture().replace("action=reuse_release source_id=0x123", "action=reuse_release source_id=0x456"))
+
+    def test_not_native(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_alias_dispatch(alias_fixture().replace("emulated=0", "emulated=1"))
+
+    def test_wrong_work(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_alias_dispatch(alias_fixture().replace("n=5 k_blocks", "n=4 k_blocks"))
+
+    def test_duplicate_scenario(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_alias_dispatch(alias_fixture().replace("kind=4", "kind=3"))
+
+
 if __name__ == "__main__":
     unittest.main()

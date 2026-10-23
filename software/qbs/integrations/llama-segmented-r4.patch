@@ -1,5 +1,5 @@
 diff --git a/ggml/src/ggml-cpu/arch/riscv/qbs.cpp b/ggml/src/ggml-cpu/arch/riscv/qbs.cpp
-index 854a69c1b..bfeb52f54 100644
+index 854a69c1b..16c46004e 100644
 --- a/ggml/src/ggml-cpu/arch/riscv/qbs.cpp
 +++ b/ggml/src/ggml-cpu/arch/riscv/qbs.cpp
 @@ -855,7 +855,11 @@ static bool context_plan_supported(ggml_type weight_type, int64_t k_elements, in
@@ -15,11 +15,59 @@ index 854a69c1b..bfeb52f54 100644
             qbs_plan_supports_activation_context(&plan);
  }
 
-@@ -895,8 +899,17 @@ static bool next_context_consumer_matches(const ggml_compute_params * params,
+@@ -888,6 +892,40 @@ static bool context_identity_for_node(const ggml_tensor * node,
+     return true;
+ }
+
++static bool node_may_modify_activation(const ggml_tensor * node, const qbs_cross_op_identity & current) {
++    switch (node->op) {
++        case GGML_OP_NONE:
++        case GGML_OP_RESHAPE:
++        case GGML_OP_VIEW:
++        case GGML_OP_PERMUTE:
++        case GGML_OP_TRANSPOSE:
++            return false;
++        case GGML_OP_MAP_CUSTOM1:
++        case GGML_OP_MAP_CUSTOM2:
++        case GGML_OP_MAP_CUSTOM3:
++        case GGML_OP_CUSTOM:
++        case GGML_OP_OPT_STEP_ADAMW:
++        case GGML_OP_OPT_STEP_SGD:
++            // These operations can write outside the result tensor.
++            return true;
++        default:
++            break;
++    }
++    if (node->data == nullptr || current.source_data == nullptr || current.source_tensor == nullptr) {
++        return true;
++    }
++    const size_t write_bytes = ggml_nbytes(node);
++    const size_t source_bytes = ggml_nbytes(current.source_tensor);
++    if (write_bytes == 0 || source_bytes == 0) {
++        return false;
++    }
++    const uintptr_t write_begin = reinterpret_cast<uintptr_t>(node->data);
++    const uintptr_t source_begin = reinterpret_cast<uintptr_t>(current.source_data);
++    // Compare distances so an end-address addition cannot wrap.
++    return write_begin >= source_begin ? write_begin - source_begin < source_bytes :
++                                        source_begin - write_begin < write_bytes;
++}
++
+ static bool next_context_consumer_matches(const ggml_compute_params * params,
+                                           const qbs_cross_op_identity & current) {
+     if (params->cgraph == nullptr || params->node_index < 0) {
+@@ -895,8 +933,24 @@ static bool next_context_consumer_matches(const ggml_compute_params * params,
      }
      const int node_count = ggml_graph_n_nodes(params->cgraph);
      for (int node_index = params->node_index + 1; node_index < node_count; ++node_index) {
 +        const ggml_tensor * next_node = ggml_graph_node(params->cgraph, node_index);
++        if (node_may_modify_activation(next_node, current)) {
++            if (ggml_riscv_qbs_trace_activation_lifetime_enabled()) {
++                std::fprintf(stderr, "GGML_RISCV_QBS_CONTEXT_BARRIER graph_epoch=%llu op=%s reason=may_modify_activation\n",
++                             static_cast<unsigned long long>(current.graph_epoch), ggml_op_name(next_node->op));
++            }
++            return false;
++        }
 +        // Expert kernels may acquire the same context without cross-op reuse.
 +        if (next_node->op == GGML_OP_MUL_MAT_ID) {
 +            return false;
@@ -34,7 +82,7 @@ index 854a69c1b..bfeb52f54 100644
              continue;
          }
          return same_cross_op_identity(current, next);
-@@ -1001,6 +1014,12 @@ static qbs_status_t execute_plan(const qbs_plan_t &          plan,
+@@ -1001,6 +1055,12 @@ static qbs_status_t execute_plan(const qbs_plan_t &          plan,
              return QBS_STATUS_CONTEXT_TOKEN;
          }
      } else {
@@ -47,7 +95,7 @@ index 854a69c1b..bfeb52f54 100644
          state.available.wait(lock, [&] { return !state.reserved; });
      }
 
-@@ -1264,6 +1283,28 @@ bool ggml_riscv_qbs_supports_tensor(ggml_type type, int64_t k_elements, int64_t
+@@ -1264,6 +1324,28 @@ bool ggml_riscv_qbs_supports_tensor(ggml_type type, int64_t k_elements, int64_t
      return tensor_support_reason(type, k_elements, output_rows) == qbs_support_reason::supported;
  }
 
@@ -76,7 +124,7 @@ index 854a69c1b..bfeb52f54 100644
  void ggml_riscv_qbs_trace_tensor_decision(const void * tensor_identity,
                                            const char * tensor_name,
                                            ggml_type    type,
-@@ -1482,11 +1523,19 @@ int ggml_riscv_qbs_repack_r4(ggml_type    type,
+@@ -1482,11 +1564,19 @@ int ggml_riscv_qbs_repack_r4(ggml_type    type,
                               const void * src,
                               size_t       src_size,
                               int64_t      output_rows,
@@ -97,7 +145,7 @@ index 854a69c1b..bfeb52f54 100644
      return qbs_repack_weight_r4(profile.weight, src, src_size, static_cast<size_t>(output_rows),
                                  static_cast<size_t>(k_blocks), dst, dst_size) == QBS_STATUS_OK ?
                 0 :
-@@ -1541,7 +1590,10 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
+@@ -1541,7 +1631,10 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
                                               const void * activations,
                                               int          input_rows,
                                               int          output_rows,
@@ -109,7 +157,7 @@ index 854a69c1b..bfeb52f54 100644
      const qbs_profile profile        = profile_for_type(weight_type);
      const unsigned    block_elements = qbs_weight_block_elements(profile.weight);
      GGML_ASSERT(input_rows > 0 && n > 0 && block_elements != 0 && n % static_cast<int>(block_elements) == 0);
-@@ -1555,16 +1607,18 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
+@@ -1555,16 +1648,18 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
          static_cast<uint32_t>(n),
      };
      qbs_plan_t         plan{};
@@ -131,7 +179,7 @@ index 854a69c1b..bfeb52f54 100644
      const size_t activation_bytes = qbs_activation_storage_bytes(
          profile.activation, activation_storage, static_cast<size_t>(input_rows), plan.k_blocks);
      const size_t output_capacity  = static_cast<size_t>(input_rows - 1) * dst_stride + static_cast<size_t>(output_rows);
-@@ -1574,6 +1628,18 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
+@@ -1574,6 +1669,18 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
      GGML_ASSERT(status == QBS_STATUS_OK);
  }
 
@@ -323,7 +371,7 @@ index 4f6b4870f..75f376db9 100644
              if (op->src[1]->buffer && !ggml_backend_buft_is_host(op->src[1]->buffer->buft)) {
                  return false;
 diff --git a/tests/test-ara-q4k-repack.cpp b/tests/test-ara-q4k-repack.cpp
-index 821c0e934..88cdc6a23 100644
+index 821c0e934..16453ffb7 100644
 --- a/tests/test-ara-q4k-repack.cpp
 +++ b/tests/test-ara-q4k-repack.cpp
 @@ -1,6 +1,7 @@
@@ -353,7 +401,7 @@ index 821c0e934..88cdc6a23 100644
      ggml_backend_buffer_t graph_buffer =
          ggml_backend_alloc_ctx_tensors(graph_context, backend);
      assert(graph_buffer != nullptr);
-@@ -848,7 +850,354 @@ static void test_qbs_moe_graph() {
+@@ -848,7 +850,396 @@ static void test_qbs_moe_graph() {
      ggml_backend_buffer_free(weights_buffer);
      ggml_free(weights_context);
      std::printf("QBS MUL_MAT_ID Q2_K 3-expert graph: PASS "
@@ -559,7 +607,7 @@ index 821c0e934..88cdc6a23 100644
 +    std::printf("QBS matrix graph suite: PASS cases=%u\n", cases);
 +}
 +
-+static void test_qbs_context_graphs(bool moe_barrier = false) {
++static void test_qbs_context_graphs(bool moe_barrier = false, int mutation = 0) {
 +    struct scenario { int blocks; int rows; bool shared; int threads; };
 +    const scenario scenarios[] = {{2, 1, true, 1}, {7, 1, true, 1}, {7, 1, false, 1},
 +                                  {7, 1, true, 3}, {7, 3, true, 1}, {7, 4, true, 1}};
@@ -567,7 +615,7 @@ index 821c0e934..88cdc6a23 100644
 +    constexpr int expert_rows = 36;
 +    unsigned cases = 0;
 +    for (const auto & test : scenarios) {
-+        if (moe_barrier && test.blocks != 2) {
++        if ((moe_barrier || mutation != 0) && test.blocks != 2) {
 +            continue;
 +        }
 +        const int k = test.blocks * QK_K;
@@ -617,6 +665,15 @@ index 821c0e934..88cdc6a23 100644
 +        ggml_tensor * sum = ggml_add(ctx, y[0], y[1]);
 +        ggml_tensor * ids = moe_barrier ? ggml_new_tensor_2d(ctx, GGML_TYPE_I32, 1, 1) : nullptr;
 +        ggml_tensor * moe = moe_barrier ? ggml_mul_mat_id(ctx, experts, x[0], ids) : nullptr;
++        ggml_tensor * mutation_target = nullptr;
++        ggml_tensor * mutation_node = nullptr;
++        if (mutation != 0) {
++            mutation_target = mutation == 3 ? ggml_new_tensor_1d(ctx, GGML_TYPE_F32, k) : x[0];
++            if (mutation == 2 || mutation == 4) {
++                mutation_target = ggml_view_1d(ctx, x[0], k / 2, (k / 4) * sizeof(float));
++            }
++            mutation_node = mutation == 4 ? mutation_target : ggml_scale_inplace(ctx, mutation_target, 0.5f);
++        }
 +        ggml_backend_t backend = ggml_backend_cpu_init();
 +        assert(backend != nullptr);
 +        ggml_backend_cpu_set_n_threads(backend, test.threads);
@@ -628,6 +685,10 @@ index 821c0e934..88cdc6a23 100644
 +            ggml_backend_tensor_set(ids, &selected, 0, sizeof(selected));
 +            ggml_build_forward_expand(graph, y[0]);
 +            ggml_build_forward_expand(graph, moe);
++        }
++        if (mutation != 0) {
++            ggml_build_forward_expand(graph, y[0]);
++            ggml_build_forward_expand(graph, mutation_node);
 +        }
 +        ggml_build_forward_expand(graph, sum);
 +        for (int epoch = 0; epoch < 2; ++epoch) {
@@ -645,6 +706,19 @@ index 821c0e934..88cdc6a23 100644
 +                dequantize_row_q8_K(quantized.data(), dequantized.data() + row * k, k);
 +            }
 +            ggml_backend_tensor_set(x[0], input.data(), 0, input.size() * sizeof(float));
++            std::vector<float> input_after = input;
++            std::vector<float> dequantized_after = dequantized;
++            if (mutation == 1 || mutation == 2) {
++                const int begin = mutation == 1 ? 0 : k / 4;
++                const int end = mutation == 1 ? k : 3 * k / 4;
++                for (int i = begin; i < end; ++i) {
++                    input_after[i] *= 0.5f;
++                }
++                ggml_get_type_traits_cpu(GGML_TYPE_Q8_K)->from_float(input_after.data(), quantized.data(), k);
++                dequantize_row_q8_K(quantized.data(), dequantized_after.data(), k);
++            } else if (mutation == 3) {
++                ggml_backend_tensor_set(mutation_target, input.data(), 0, input.size() * sizeof(float));
++            }
 +            if (!test.shared) {
 +                // Equal bytes at a different tensor identity must not enable reuse.
 +                ggml_backend_tensor_set(x[1], input.data(), 0, input.size() * sizeof(float));
@@ -654,8 +728,23 @@ index 821c0e934..88cdc6a23 100644
 +            if (moe_barrier) {
 +                std::printf("QBS_CONTEXT_MOE_BARRIER expert=1 rows=%d\n", expert_rows);
 +            }
++            if (mutation != 0) {
++                std::printf("QBS_CONTEXT_MUTATION kind=%d writes_source=%d\n", mutation, mutation <= 2);
++            }
 +            std::fflush(stdout);
 +            assert(ggml_backend_graph_compute(backend, graph) == GGML_STATUS_SUCCESS);
++            if (mutation != 0) {
++                std::vector<float> actual_input(k);
++                ggml_backend_tensor_get(x[0], actual_input.data(), 0, k * sizeof(float));
++                assert(actual_input == input_after);
++                if (mutation == 3) {
++                    ggml_backend_tensor_get(mutation_target, actual_input.data(), 0, k * sizeof(float));
++                    for (int i = 0; i < k; ++i) {
++                        assert(actual_input[i] == input[i] * 0.5f);
++                    }
++                }
++                std::printf("QBS_CONTEXT_MUTATION_INPUT_PASS words=%d\n", k);
++            }
 +            std::vector<float> actual[3];
 +            for (int output = 0; output < 3; ++output) {
 +                actual[output].resize(test.rows * n);
@@ -667,7 +756,8 @@ index 821c0e934..88cdc6a23 100644
 +                    double expected[3] = {};
 +                    for (int projection = 0; projection < 2; ++projection) {
 +                        for (int i = 0; i < k; ++i) {
-+                            expected[projection] += double(weights[projection][column * k + i]) * double(dequantized[row * k + i]);
++                            const auto & values = projection == 1 ? dequantized_after : dequantized;
++                            expected[projection] += double(weights[projection][column * k + i]) * double(values[row * k + i]);
 +                        }
 +                    }
 +                    expected[2] = expected[0] + expected[1];
@@ -704,18 +794,22 @@ index 821c0e934..88cdc6a23 100644
 +        ggml_backend_buffer_free(wb);
 +        ggml_free(wc);
 +    }
-+    assert(cases == (moe_barrier ? 2 : 12));
++    assert(cases == (moe_barrier || mutation != 0 ? 2 : 12));
 +    std::printf("QBS context graph suite: PASS cases=%u\n", cases);
  }
 
  static void test_qbs_segmented_k() {
-@@ -954,6 +1303,17 @@ static void test_qbs_segmented_k() {
+@@ -954,6 +1345,21 @@ static void test_qbs_segmented_k() {
  #endif
 
  int main() {
 +#if defined(GGML_TEST_RISCV_QBS)
 +    if (const char * suite = std::getenv("GGML_QBS_GRAPH_SUITE")) {
-+        if (std::strcmp(suite, "context") == 0 || std::strcmp(suite, "barrier") == 0) {
++        if (std::strcmp(suite, "alias") == 0) {
++            for (int mutation = 1; mutation <= 4; ++mutation) {
++                test_qbs_context_graphs(false, mutation);
++            }
++        } else if (std::strcmp(suite, "context") == 0 || std::strcmp(suite, "barrier") == 0) {
 +            test_qbs_context_graphs(std::strcmp(suite, "barrier") == 0);
 +        } else {
 +            assert(std::strcmp(suite, "natural") == 0);
@@ -727,7 +821,7 @@ index 821c0e934..88cdc6a23 100644
      test_qbs_r4_layout();
      test_qbs_activation_layouts();
      constexpr int64_t nrows = 64;
-@@ -1003,7 +1363,9 @@ int main() {
+@@ -1003,7 +1409,9 @@ int main() {
      test_qbs_repack_buffer_tail();
      test_qbs_moe_repack();
      test_qbs_moe_repack_fallback();

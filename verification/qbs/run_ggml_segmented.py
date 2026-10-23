@@ -211,6 +211,51 @@ def check_barrier_dispatch(output):
                 raise RuntimeError("Barrier operation-local context lifetimes differ")
 
 
+def check_alias_dispatch(output):
+    runs = re.findall(r"QBS_GRAPH_RUN_BEGIN segment=(\d+) wide=(\d+)\s+(.*?)QBS_GRAPH_RUN_END", output, re.S)
+    if [(s, w) for s, w, _ in runs] != [("0", "0"), ("3", "0"), ("256", "0"), ("256", "0")]:
+        raise RuntimeError("Missing alias policy runs")
+    for index, (segment, _, trace) in enumerate(runs):
+        enabled = index != 3
+        if re.findall(r"QBS_CONTEXT_POLICY enabled=(\d+)", trace) != [str(int(enabled))]:
+            raise RuntimeError("Wrong alias context policy")
+        graphs = re.findall(r"QBS_CONTEXT_BEGIN blocks=2 m=1 n=37 shared=1 threads=1 epoch=(\d+) segment=(\d+)\s+(.*?)QBS_CONTEXT_PASS outputs=(\d+)", trace, re.S)
+        observed = []
+        for epoch, effective, body, outputs in graphs:
+            markers = re.findall(r"QBS_CONTEXT_MUTATION kind=(\d+) writes_source=(\d+)", body)
+            if len(markers) != 1:
+                raise RuntimeError("Missing alias mutation scenario")
+            kind, writes = map(int, markers[0])
+            observed.append((kind, int(epoch)))
+            if effective != segment or outputs != "111" or writes != int(kind <= 2):
+                raise RuntimeError("Wrong alias graph geometry or mutation type")
+            if body.count("QBS_CONTEXT_MUTATION_INPUT_PASS words=512") != 1:
+                raise RuntimeError("Missing independent input-mutation check")
+            if "GGML_RISCV_QBS_CONTEXT_WAIT" in body:
+                raise RuntimeError("Alias graph waited on a reserved context")
+            reuse = enabled and kind in (3, 4)
+            actions = re.findall(r"GGML_RISCV_QBS_CROSS_OP graph_epoch=(\d+) action=(\w+) source_id=(\S+)[^\n]+ generation=(\d+)[^\n]+ quantization_skipped=(\d+)", body)
+            if reuse:
+                if len(actions) != 2 or [(a, skip) for _, a, _, _, skip in actions] != [("fill_keep", "0"), ("reuse_release", "1")]:
+                    raise RuntimeError("Disjoint/metadata graph lost reuse")
+                if actions[0][0] != actions[1][0] or actions[0][2:4] != actions[1][2:4]:
+                    raise RuntimeError("Alias control context identity differs")
+            elif actions:
+                raise RuntimeError("Mutated activation reused stale context")
+            barriers = re.findall(r"GGML_RISCV_QBS_CONTEXT_BARRIER[^\n]+reason=may_modify_activation", body)
+            if len(barriers) != int(enabled and writes):
+                raise RuntimeError("Wrong activation-write barrier decision")
+            calls = re.findall(r"GGML_RISCV_QBS_CALL type=(\S+) mode=\S+ k=(\d+) input_rows=(\d+) output_rows=(\d+) split_k=(\d+)", body)
+            if calls != [("q4_K", "512", "1", "37", "0")] * 2:
+                raise RuntimeError("Missing alias projection work")
+            commands = re.findall(r"GGML_RISCV_QBS_COMMAND[^\n]+ weight_type=(\S+)[^\n]+ m=(\d+) n=(\d+) k_blocks=(\d+) access=(\d+)[^\n]+ emulated=(\d+)", body)
+            accesses = (1, 2, 2, 3) if reuse else (1, 3, 1, 3)
+            if commands != [("q4_K", "1", str(n), "2", str(a), "0") for n, a in zip((32, 5, 32, 5), accesses)]:
+                raise RuntimeError("Alias native command lifetime differs")
+        if observed != [(kind, epoch) for kind in range(1, 5) for epoch in (0, 1)]:
+            raise RuntimeError("Incomplete alias case/epoch coverage")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
@@ -218,7 +263,7 @@ def main():
     parser.add_argument("--llama", type=Path, default=Path("/home/wangwy/llama/llama.cpp"))
     parser.add_argument("--platform", type=Path, default=Path("/home/wangwy/llama/platforms/cva6-qemu"))
     parser.add_argument("--timeout", type=int, default=600)
-    parser.add_argument("--suite", choices=("full", "natural", "context", "barrier"), default="full")
+    parser.add_argument("--suite", choices=("full", "natural", "context", "barrier", "alias"), default="full")
     parser.add_argument("--native-qemu", type=Path)
     args = parser.parse_args()
     args.out = args.out.resolve()
@@ -227,7 +272,7 @@ def main():
     init_source = Path(__file__).with_name("ggml_segmented_init.c")
     cpio_tool = platform / "sdk/buildroot/output/build/linux-6.19.6/usr/gen_init_cpio"
     tools = platform / "tools/bin"
-    native = args.suite in {"context", "barrier"}
+    native = args.suite in {"context", "barrier", "alias"}
     if native != (args.native_qemu is not None):
         raise RuntimeError("Context suite requires an explicit native QBS QEMU; other suites use software emulation")
     qemu = args.native_qemu.resolve() if args.native_qemu else tools / "qemu-system-riscv64"
@@ -281,7 +326,8 @@ def main():
     save()
     try:
         with (args.out / "build.log").open("wb") as log:
-            defines = (["-DQBS_CONTEXT", "-DQBS_BARRIER"] if args.suite == "barrier" else ["-DQBS_CONTEXT"]
+            defines = (["-DQBS_CONTEXT", "-DQBS_ALIAS"] if args.suite == "alias" else
+                       ["-DQBS_CONTEXT", "-DQBS_BARRIER"] if args.suite == "barrier" else ["-DQBS_CONTEXT"]
                        if native else ["-DQBS_NATURAL_K"] if args.suite == "natural" else [])
             subprocess.run([str(tools / "riscv64-linux-gcc"), *defines, "-march=rv64gc", "-mabi=lp64d",
                             "-O2", "-static", str(init_source), "-o", str(args.out / "init")],
@@ -315,7 +361,11 @@ def main():
                     if args.suite == "natural" else [("0", "0", "0"), ("3", "0", "0"), ("256", "1", "0"), ("3", "1", "0")])
         if rc != 0 or ends != expected or "GUEST_TEST_EXIT=0" not in output:
             raise RuntimeError(f"QEMU/guest failure rc={rc}, completed={ends}")
-        if args.suite == "barrier":
+        if args.suite == "alias":
+            if output.count("QBS context graph suite: PASS cases=2") != 16:
+                raise RuntimeError("Missing alias graph checks")
+            check_alias_dispatch(output)
+        elif args.suite == "barrier":
             if output.count("QBS context graph suite: PASS cases=2") != 4:
                 raise RuntimeError("Missing barrier graph checks")
             check_barrier_dispatch(output)
@@ -336,7 +386,7 @@ def main():
         drift = [path for path, sha in hashes.items() if digest(path) != sha]
         if drift:
             raise RuntimeError(f"Source/image drift: {drift}")
-        status.update(state="PASS", matrix_graphs=8 if args.suite == "barrier" else 48 if args.suite == "context" else 36 if args.suite == "natural" else 504,
+        status.update(state="PASS", matrix_graphs=32 if args.suite == "alias" else 8 if args.suite == "barrier" else 48 if args.suite == "context" else 36 if args.suite == "natural" else 504,
                       expert_graphs=8 if args.suite == "full" else 0, manifest_unchanged=True)
     except Exception as exc:
         status.update(state="FAIL", error=str(exc))

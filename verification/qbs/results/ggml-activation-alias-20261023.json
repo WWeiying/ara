@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "scope": "Native QBS QEMU graph lifetime correctness; no RTL timing claim",
+  "runs": [
+    {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-ggml-alias-probe-20261023-01",
+      "status": {
+        "state": "FAIL",
+        "kind": "QEMU native QBS functional checks",
+        "suite": "alias",
+        "qemu_pid": 2745737,
+        "error": "QEMU/guest failure rc=0, completed=[('0', '0', '134')]"
+      },
+      "sha256": {
+        "status.json": "fc17b51687474aefaefd0a490d9e16a62a5785fa58ca342f4fe7d0f71be89ea5",
+        "manifest.json": "b300fb9b0e7570ec96ba143bdc364b3f7e7d365a8979a8778be777be8820d9f0",
+        "qemu.log": "23182c391ed86b51342707bf6c57cb9b614f1ead127ea36a8fc761a7762a9d17",
+        "llama.patch": "4354abd6be983b4462b306e6a5f10f0141aaf459a62fe53a76b0cb72d957d539"
+      },
+      "quantization_skips": 1,
+      "mutation_checks": 1,
+      "first_mismatch": [
+        "QBS context mismatch output=1 row=0 column=0 actual=0.371987492 expected=0.18599376677132584"
+      ]
+    },
+    {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-ggml-alias-fixed-20261023-01",
+      "status": {
+        "state": "PASS",
+        "kind": "QEMU native QBS functional checks",
+        "suite": "alias",
+        "qemu_pid": 2748179,
+        "matrix_graphs": 32,
+        "expert_graphs": 0,
+        "manifest_unchanged": true
+      },
+      "sha256": {
+        "status.json": "d79930f8a4ed70c8f64ffeaa1f63e76c829b77ac50eb325447568b39332530c8",
+        "manifest.json": "d837010fa672366a2dccc41ef572cd6be34098484127dd646269cc710ab6c95d",
+        "qemu.log": "f1351246e40b4f4d82b1e855a096bb5d7ff24cb64a6a0b3bf169971eafa1917d",
+        "llama.patch": "fc03c5742f3907b64b41ef051fa624642fbf80e33ec300a54ca65e5603569d49"
+      },
+      "quantization_skips": 12,
+      "mutation_checks": 32,
+      "first_mismatch": []
+    },
+    {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-ggml-context-alias-regress-20261023-01",
+      "status": {
+        "state": "PASS",
+        "kind": "QEMU native QBS functional checks",
+        "suite": "context",
+        "qemu_pid": 2751436,
+        "matrix_graphs": 48,
+        "expert_graphs": 0,
+        "manifest_unchanged": true
+      },
+      "sha256": {
+        "status.json": "98ed8c57a1b69092a97cd2fac652c861d7958c747bca0e22ae618f74aa8d714d",
+        "manifest.json": "d837010fa672366a2dccc41ef572cd6be34098484127dd646269cc710ab6c95d",
+        "qemu.log": "28f5d8ae9609c16cd5107d2dcbe80dd27cba4d5da7abee788a246ae68ac3818d",
+        "llama.patch": "fc03c5742f3907b64b41ef051fa624642fbf80e33ec300a54ca65e5603569d49"
+      },
+      "quantization_skips": 10,
+      "mutation_checks": 0,
+      "first_mismatch": []
+    },
+    {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-ggml-barrier-alias-regress-20261023-01",
+      "status": {
+        "state": "PASS",
+        "kind": "QEMU native QBS functional checks",
+        "suite": "barrier",
+        "qemu_pid": 2761429,
+        "matrix_graphs": 8,
+        "expert_graphs": 0,
+        "manifest_unchanged": true
+      },
+      "sha256": {
+        "status.json": "4ad55810aec4812ad49de550e520ea208366ad881165428c504e508370a404f5",
+        "manifest.json": "d837010fa672366a2dccc41ef572cd6be34098484127dd646269cc710ab6c95d",
+        "qemu.log": "ab8ce8ee7725d83ab68b4a21215c8a117c42233c8c9dca239d9b5395b77c3833",
+        "llama.patch": "fc03c5742f3907b64b41ef051fa624642fbf80e33ec300a54ca65e5603569d49"
+      },
+      "quantization_skips": 0,
+      "mutation_checks": 0,
+      "first_mismatch": []
+    }
+  ]
+}

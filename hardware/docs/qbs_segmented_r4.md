@@ -381,10 +381,9 @@ values plus 36 expert outputs and issues six native commands in exact
 projection/expert/projection order. Each operation independently fills and
 releases its context. No cross-op reservation or wait occurs across MoE.
 
-This is a scoped deadlock repair. Arbitrary intervening in-place/alias writes,
-batched-plane tails, graph cancellation and multihart operation are not proven
-by these graphs. In-place/alias safety must be closed before generalizing
-cross-op lookahead to arbitrary graphs.
+This is a scoped deadlock repair. The in-place/alias boundary is addressed
+separately below. Batched-plane tails, graph cancellation and multihart
+operation are not proven by these graphs.
 
 The native runner requires an incremental QEMU build receipt tying the binary
 to audited ABI/reference/model source hashes. It also checks the configured
@@ -392,5 +391,36 @@ source root and the actual Ninja compile inputs for `qbs_ref.c` and
 `qbs_helper.c`. The original context run preceded receipt enforcement; the
 fixed runs include the receipt, and their unchanged build configuration was
 subsequently checked with the stronger source-association guard. No archived
-run is relabelled as a new simulation. The successor checks have 39 dispatch
+run is relabelled as a new simulation. The successor checks have 48 dispatch
 unit tests and eight build-receipt rejection tests.
+
+### Activation mutation between consumers
+
+`qbs-ggml-alias-probe-20261023-01/` reproduced a stale-activation bug in an
+actual graph: projection -> in-place SCALE(0.5) -> projection. Tensor identity,
+data pointer and graph epoch all remain unchanged. The input check proved
+that 512 input words changed correctly; the second projection incorrectly
+skipped quantization and returned 0.371987492 instead of 0.18599376677132584.
+The guest exited 134; a zero QEMU process exit does not make this a pass.
+
+Lookahead now stops when an intervening output storage span intersects the
+activation span. Metadata-only views do not write; custom callbacks and
+optimizer operations are conservative barriers because writes may extend
+beyond their result tensor. Ordinary disjoint writes retain reuse. This is
+a software lifetime fix: no RTL, arithmetic, quantizer or tolerance change.
+
+`qbs-ggml-alias-fixed-20261023-01/` passes 32 native graphs: whole-input
+in-place writes, offset-view writes, disjoint writes and pure offset views,
+four policies and two epochs. Each graph checks actual input changes, all
+111 projection/sum outputs against the independent FP64 matrix oracle,
+native command work and exact context access/quantization-skip behavior.
+The latter two scenarios require reuse where enabled, preventing a blanket
+disable from passing as a repair.
+
+`qbs-ggml-context-alias-regress-20261023-01/` passes 48 context graphs and
+`qbs-ggml-barrier-alias-regress-20261023-01/` passes eight expert-barrier
+graphs. All three source manifests remained unchanged. These are native
+QEMU functional results, not RTL cycles or full-model performance claims.
+CPY/SET aliases, custom callback side effects and graph cancellation are not
+individually exercised by this set. The barrier policy must be reviewed when
+adding a GGML operation that writes outside its result storage.
