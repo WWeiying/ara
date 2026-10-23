@@ -1,19 +1,61 @@
 # Q8_K shared-runtime selection gate
 
+## Current integration
+
+The VLA quantizer is now connected to the actual live GGML Q8_K M4 entry.
+`software/qbs/ggml/q8_K-m4.h` is the canonical source; its installed runtime copy
+is byte-identical. `software/qbs/ggml/repack-q8k-m4.patch` records the narrow
+runtime change separately from other local llama.cpp modifications. Existing
+generic functions, weight kernels and Q8_0 selection are not rewritten.
+
+Selection remains OFF by default. In the tested QBS/no-Zvfh build,
+`GGML_RISCV_QBS_M4_PREPARE=1` selects the helper for four-row Q8_K preparation;
+non-RNE or rejected input domains fall back to the unchanged generic before any
+output write. Other build paths retain their old behavior. See the canonical
+helper README for the installation and trace controls.
+
+The live-source gate recompiles the actual `ggml/src/ggml-cpu/repack.cpp`,
+without private selector rewriting or a test observer, using the sealed GNU
+production flags. It reuses only immutable checked graph stimuli/libraries,
+and pins current source/header identities separately. This deliberately does
+not relabel old source-bound test manifests after the live source changes.
+
+Run `verification/out/qbs-q8k-live-graphs-20261023-01/` passed 384 OFF/ON graphs,
+74592 checked output words, 52 Q8_K and 72 Q8_0 preparation calls per mode.
+Output digests match across preparation modes, context, wide-M, tail and
+three-thread configurations. The receipt is
+`results/q8k-live-graphs-20261023.json`. This is native QEMU functional evidence,
+not new RTL timing or full-model performance.
+
+```bash
+python3 verification/qbs/build_q8k_live_graphs.py \
+  --accepted-run verification/out/qbs-q8k-graphs-20261023-01 \
+  --graph-build verification/out/qbs-q8k-graphs-build-20261023-01 \
+  --production-build verification/out/qbs-m4-production-csr-build-20261023-02 \
+  --output /absolute/new/live-build
+
+python3 verification/qbs/run_q8k_graphs.py \
+  --build /absolute/new/live-build \
+  --configuration verification/out/qbs-m4-production-native-20261023-01/configuration.json \
+  --output /absolute/new/live-run
+```
+
 ## Purpose
 
 The isolated Q8_K helper already passes numerical acceptance and an RTL
 preparation measurement. Those results do not prove that GGML's actual
 `ggml_quantize_mat_t<1, GGML_TYPE_Q8_K>` entry selects or compiles it correctly.
-This gate checks that next boundary without modifying sources pinned by the
-running full-projection experiments.
+The earlier private gate checked that boundary while full-projection experiments
+still pinned the live source. Its archived evidence remains separate from the
+current integration above.
 
 `build_q8k_production_candidate.py` copies the complete current `repack.cpp`
 into a new output directory. Only that private source gains the candidate
 include, a test-only selection observer and selection in the Q8_K
 specialization. The existing generic function body is not rewritten. This is
 an opt-in candidate for the existing QBS/no-Zvfh build, not a portable upstream
-patch or a change to live llama.cpp. The live runtime remains unchanged.
+patch or a change to live llama.cpp at that stage. Live integration is now
+accepted separately above.
 
 ## Compilation and independent calls
 
@@ -48,7 +90,11 @@ distinct case/environment combinations repeated three times, **not** three
 production AVL modes. VLEN128 and VLEN1024 must have identical result digests.
 The previously accepted isolated-helper gate, not this gate, covers caps1/7/16.
 
-## Reproduction
+## Archived Private Reproduction
+
+These commands describe the earlier source state and require its pre-integration
+snapshot. Use the live-source commands above for the current runtime; do not
+reverse current changes merely to rerun the historical private gate.
 
 ```bash
 python3 verification/qbs/build_q8k_production_candidate.py \
@@ -120,7 +166,7 @@ The graph worker completed PASS on 2026-10-23. Independent rechecking accepts
 contains 52 Q8_K M4 preparation calls and 72 Q8_0 preparation calls. Context,
 wide-M, tail and three-thread dispatch checks all pass. The receipt is
 `results/q8k-production-graphs-20261023.json`. This closes the private graph
-selection gate; the candidate has not been enabled in live llama.cpp.
+selection gate. It did not by itself change the live runtime's selection.
 
 ## Full-projection RTL result
 
@@ -136,10 +182,21 @@ contains 192 accepted QBS commands and 98304 result bytes across four calls.
 | QBS matrix execution | 685356 | 685155 |
 | Complete projection | 1219716 | 1181209 |
 
-The full-projection speedup is 1.032600x; this is not a model-level speedup.
-The receipt is `results/q8k-full-projection-original-20261023.json`. The VLA
-preflight successor has a separate still-running full-projection gate and is
-the implementation used by the private production/graph functional gates.
-Do not attribute the original candidate's full-projection result to that
-successor or combine preparation-only speedups with complete-projection data.
-Live runtime deployment remains opt-in and pending its matching RTL result.
+The original full-projection speedup is 1.032600x, recorded separately in
+`results/q8k-full-projection-original-20261023.json`.
+
+The accepted VLA preflight successor completed its own full-projection gate:
+
+| Phase, sum of two matched trials | Generic | VLA candidate |
+| --- | ---: | ---: |
+| Activation preparation | 533659 | 391751 |
+| QBS matrix execution | 685347 | 685172 |
+| Complete projection | 1219006 | 1076923 |
+
+The resulting speedup is 1.131934x for the complete projection and 1.362240x
+for preparation alone. All four output hashes and FP status match. This is
+the implementation promoted into the canonical helper, with unchanged vector
+and preflight function bodies verified by `test_q8k_canonical.py`. The receipt
+is `results/q8k-full-projection-vla-20261023.json`. Neither number is model-level
+speedup, and preparation-only speedup must not be multiplied into full-operator
+measurements. Actual shared-runtime model-level RTL timing remains a later gate.
