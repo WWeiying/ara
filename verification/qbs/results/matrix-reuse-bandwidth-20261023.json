@@ -1,0 +1,25 @@
+{
+  "status": "PASS",
+  "scope": "Equal-output VCS engine sensitivity to bounded R-channel response gaps; not DDR or model latency",
+  "raw_root": "verification/out/qbs-matrix-reuse-bandwidth-20261023-01",
+  "raw_status_sha256": "3aa9e803aed5243b97b74ccf994adbd5e5f584cf8eae7ce31d5ddf79b93ead61",
+  "baseline_root": "verification/out/qbs-matrix-reuse-pair-20261023-01",
+  "baseline_status_sha256": "e0db546be16ae499ef8eb95a68b157df843ff2c283eb952ea3e759de3760f749",
+  "artifact_pins_rechecked": 355,
+  "new_cases_passed": 16,
+  "including_baseline_cases_passed": 24,
+  "rtl_changed": false,
+  "input_vectors_regenerated": false,
+  "source_manifest_unchanged": true,
+  "work_and_traffic_unchanged": true,
+  "gap_semantics": "idle cycles after each accepted R beat, so gap2/gap4 permit at most one beat per 3/5 cycles",
+  "results": [
+    {"gap": 0, "profile": "q4_K", "shape_mnk": [8, 32, 1536], "m4_cycles": 13850, "m8_cycles": 15456},
+    {"gap": 0, "profile": "q6_K", "shape_mnk": [8, 32, 8960], "m4_cycles": 80078, "m8_cycles": 90152},
+    {"gap": 2, "profile": "q4_K", "shape_mnk": [8, 32, 1536], "m4_cycles": 16912, "m8_cycles": 19800},
+    {"gap": 2, "profile": "q6_K", "shape_mnk": [8, 32, 8960], "m4_cycles": 116904, "m8_cycles": 117872},
+    {"gap": 4, "profile": "q4_K", "shape_mnk": [8, 32, 1536], "m4_cycles": 23852, "m8_cycles": 24144},
+    {"gap": 4, "profile": "q6_K", "shape_mnk": [8, 32, 8960], "m4_cycles": 185500, "m8_cycles": 145592}
+  ],
+  "decision": "Retain default M4 and opt-in M8. Design bounded cross-N multirow activation reuse rather than unconditionally adding an M8 lookahead bank. No whole-model gain is claimed."
+}
