@@ -149,7 +149,7 @@ and execution-contract tests, not RTL arithmetic validation.
 The native real-capture application now additionally compares five views for
 each of its two segment lengths against the whole-matrix bit patterns. It
 checks 114 selected outputs per segment, all outside-view output guards, and
-aggregate `fflags`. This updated native test is pending execution; the earlier
+aggregate `fflags`. This updated native test has not completed; the earlier
 SoC result above predates the view API.
 
 The new test is owned by user service
@@ -158,7 +158,19 @@ The new test is owned by user service
 half-scale SoC image and freezes ELF SHA256
 `563bfe60b1f9b619e5acc6918af563bbc0aad013ef4c1678c3861cf25587c024`.
 An independent source review found no blocking issue in the view addressing,
-range checks or local output coordinates. The native result remains pending.
+range checks or local output coordinates. Run01 stopped at its 1,800-second
+host timeout, not a reported result mismatch. Its console contains successful
+99-output old/new pairs for segments 16 and 3, and the complete five-view,
+114-output/guard/flag check for segment 16. At stop, the commit trace was
+advancing through a byte-copy loop near cycle 1,228,438, after further completed
+QBS commands. The segment-3 view suite and terminal protocol check are not
+accepted from this partial run.
+
+Service `qbs-segmented-view-soc-20261023-02.service` replays the identical frozen
+ELF and image in a new evidence directory, with a bounded 5,400-second host
+budget. No RTL, binary, expected output, trace or checker condition was changed.
+This extension follows observed completed phases and continued instruction
+progress; it is not a timeout increase used to hide an unexplained stall.
 
 GGML integration must bind packing and dispatch to the same immutable layout
 trait, preserve the complete base for GEMV/GEMM/tail/expert dispatch, and use
