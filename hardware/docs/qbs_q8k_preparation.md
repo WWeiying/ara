@@ -129,6 +129,48 @@ cycles or compare them as if code layout and cache state were identical.
 Report the paired projection's own phase cycles and full interval; a result
 remains pending until raw output, trace, UVM and source pins all pass.
 
+### Measured preflight bottleneck and successor gate
+
+Before the first ABBA run finished, its existing scalar retirement trace
+already contained the first two complete timed intervals. These observations
+are diagnostic only, not accepted performance results: generic 267361 cycles,
+candidate 248034 cycles. They are the values read by the ELF's `rdcycle` PCs
+`0x800003ba` and `0x800003e6`, not estimates from QEMU wall time.
+The candidate entry at `0x80000104` retires at cycle 365282; its first
+post-preflight instruction at `0x800001ce` retires at cycle 450475. That
+85193-cycle interval is 34.35% of this candidate call. The six scalar
+maximum/scale intervals from `0x80000228` to `0x8000028a` sum to 73900 cycles.
+These are instruction-retirement boundary intervals, not a disjoint execution
+unit utilization or stall attribution. The remaining ABBA observations and
+independent byte/CSR checks are still required.
+
+The isolated successor `q8k_m4_domain_vla.h` targets the measured first cost
+without changing the quantizer. For each four-row block, it loads FP32 bits,
+clears the sign and accumulates unsigned maximum and minimum of `abs_bits-1`
+using RVV integer operations. Zero wraps to UINT32_MAX, while exactly the
+nonzero subnormal range maps below 0x007fffff. The maximum-domain upper bound
+also excludes infinities and NaNs. Thus the original rejection conditions can
+be evaluated using two reductions per row instead of scalar per-element tests.
+The original lower/upper maximum bounds remain unchanged.
+
+Partial chunks preserve inactive accumulator elements with tail-undisturbed
+max/min updates. Reductions use the initial span, not the last short VL.
+This is necessary for non-divisor caps such as 7. The helper does not perform
+FP arithmetic, CSR save/restore or saturating fixed-point operations. The
+caller retains responsibility for nonnegative, block-aligned K, as in the
+existing candidate contract.
+
+Caps 1/7/16/32/64/256 compile with the target GNU RV64GCV toolchain.
+`run_q8k_domain_native.py` independently compares classification with the
+original scalar rule using 134 datasets, all five rounding modes, three initial
+FCSR/VCSR pairs and all six caps at VLEN128/1024 (12060 checks per VLEN).
+The datasets include invalid values at early, chunk-boundary and late positions,
+all-zero blocks, numerical-domain boundaries and six real capture slices.
+Execution is scheduled under `qbs-q8k-domain-native-20261023-01.service`.
+It is not yet a full quantizer or RTL performance result. The sealed candidate
+and both running VCS tests are unchanged; integrate only after this gate passes
+and the current consumers have finished.
+
 - Compile all AVL caps with the target RV64GCV compiler and strict FP options.
   This gate passed on 2026-10-23; it is not an execution result.
 - Compare all packed bytes, scales and bsums against the linked production
