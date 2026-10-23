@@ -4,6 +4,9 @@
 module qbs_compute_engine
   import qbs_pkg::*;
   import fpnew_pkg::*;
+#(
+  parameter bit SeedRestoreEnable = 1'b0
+)
 (
   input  logic                    clk_i,
   input  logic                    rst_ni,
@@ -18,6 +21,16 @@ module qbs_compute_engine
   input  logic [5:0]              command_n_i,
   input  logic [8:0]              command_k_blocks_i,
   input  logic                    command_activation_lookahead_i,
+
+  // Internal continuation interface. No architectural instruction selects it
+  // until its source dependency and lane/VLSU ownership route are integrated.
+  input  logic                    command_seed_i,
+  input  logic                    seed_valid_i,
+  output logic                    seed_ready_o,
+  input  logic [3:0]              seed_row_i,
+  input  logic [7:0]              seed_mask_i,
+  input  logic [31:0]             seed_data_i [8],
+  input  logic                    seed_done_i,
 
   // A fault stops new work. Work already admitted to the integer/FP pipelines
   // drains into hidden state before the command-local state is discarded.
@@ -94,7 +107,8 @@ module qbs_compute_engine
     QBS_FINAL_DRAIN,
     QBS_RESULT,
     QBS_FAULT_DRAIN,
-    QBS_FAULT_CLEAR
+    QBS_FAULT_CLEAR,
+    QBS_SEED
   } qbs_compute_state_e;
 
   qbs_compute_state_e state_q, state_d;
@@ -109,6 +123,8 @@ module qbs_compute_engine
   logic [5:0] row_base_q;
   logic context_wave_q;
   logic activation_lookahead_q;
+  logic seeded_q;
+  logic raw_seed_ready, raw_seed_valid;
   logic activation_read_bank, activation_write_bank;
   logic activation_write_current, activation_write_next;
   logic activation_next_available, activation_next_complete;
@@ -193,6 +209,51 @@ module qbs_compute_engine
   logic [31:0] fp_update_data;
 
 `ifndef SYNTHESIS
+  logic [127:0] seed_seen_q;
+  logic [15:0] seed_rows_q;
+  always_ff @(posedge clk_i or negedge rst_ni) begin : check_seed_ownership
+    logic [7:0] expected_mask;
+    if (!rst_ni) begin
+      seed_seen_q <= '0;
+      seed_rows_q <= '0;
+    end else if (state_q == QBS_INIT) begin
+      seed_seen_q <= '0;
+      seed_rows_q <= '0;
+    end
+    else if (state_q == QBS_SEED && !fault_i) begin
+      if (raw_seed_valid && raw_seed_ready) begin
+        expected_mask = '0;
+        for (int b = 0; b < 8; b++)
+          if (unsigned'(seed_row_i) / (wide_command ? 2:4) < unsigned'(m_q) &&
+              (unsigned'(seed_row_i) % (wide_command ? 2:4))*8+b < unsigned'(n_q))
+            expected_mask[b] = 1'b1;
+        assert (|seed_mask_i && seed_mask_i === expected_mask && !seed_rows_q[seed_row_i])
+          else $fatal(1, "QBS requires one complete active seed mask per row");
+        seed_rows_q[seed_row_i] <= 1'b1;
+        for (int b = 0; b < 8; b++) if (seed_mask_i[b]) begin
+          assert (unsigned'(seed_row_i) / (wide_command ? 2:4) < unsigned'(m_q) &&
+                  (unsigned'(seed_row_i) % (wide_command ? 2:4))*8+b < unsigned'(n_q))
+            else $fatal(1, "QBS seed writes outside active shape");
+          assert (!seed_seen_q[{seed_row_i, 3'(b)}])
+            else $fatal(1, "QBS seed word delivered twice");
+          seed_seen_q[{seed_row_i, 3'(b)}] <= 1'b1;
+        end
+      end
+      if (seed_done_i) begin
+        for (int r = 0; r < 8; r++)
+          for (int c = 0; c < 32; c++)
+            if (r < unsigned'(m_q) && c < unsigned'(n_q))
+              assert (seed_seen_q[r*(wide_command ? 16:32)+c] ||
+                      (raw_seed_valid && raw_seed_ready &&
+                       unsigned'(seed_row_i) == (r*(wide_command ? 16:32)+c)/8 &&
+                       seed_mask_i[c%8]))
+                else $fatal(1, "QBS computation started before all seeds arrived");
+      end
+      assert (!integer_busy && !integer_result_valid && !fp_busy)
+        else $fatal(1, "QBS seed phase overlapped compute");
+    end
+  end
+
   // Observation-only counters. Each blocked counter requires an actual
   // valid/ready failure; occupancy counters are named separately.
   logic [31:0] probe_context_start_blocked_cycles_q;
@@ -494,7 +555,7 @@ module qbs_compute_engine
     .start_context_base_i          (wave_context_base),
     .start_row_count_i             (row_count),
     .start_row_base_i              (row_base_q),
-    .start_first_block_i           (k_block_q == 0),
+    .start_first_block_i           (k_block_q == 0 && !seeded_q),
     .busy_o                        (integer_busy),
     .done_o                        (integer_done),
     .result_valid_o                (integer_result_valid),
@@ -540,7 +601,10 @@ module qbs_compute_engine
   end
   assign integer_result_ready = fp_request_ready;
 
-  qbs_fp_accumulator i_fp_accumulator (
+  assign raw_seed_valid = SeedRestoreEnable && state_q == QBS_SEED && !fault_i && seed_valid_i;
+  assign seed_ready_o = SeedRestoreEnable && state_q == QBS_SEED && !fault_i && raw_seed_ready;
+
+  qbs_fp_accumulator #(.RawSeedEnable(SeedRestoreEnable)) i_fp_accumulator (
     .clk_i,
     .rst_ni,
     .clear_i                       (clear_accumulator),
@@ -562,6 +626,11 @@ module qbs_compute_engine
     .bank_read_row_i               (result_bank_read_row_i),
     .bank_read_valid_o             (result_bank_read_valid_o),
     .bank_read_data_o              (result_bank_read_data_o),
+    .raw_seed_valid_i              (raw_seed_valid),
+    .raw_seed_ready_o              (raw_seed_ready),
+    .raw_seed_row_i                (seed_row_i),
+    .raw_seed_mask_i               (seed_mask_i),
+    .raw_seed_data_i               (seed_data_i),
     .update_valid_o                (fp_update_valid),
     .update_index_o                (fp_update_index),
     .update_data_o                 (fp_update_data),
@@ -583,7 +652,14 @@ module qbs_compute_engine
         if (command_valid_i)
           state_d = QBS_INIT;
       end
-      QBS_INIT: state_d = QBS_LOAD_TILE;
+      QBS_INIT: begin
+        if (seeded_q && fault_i) state_d = QBS_FAULT_DRAIN;
+        else state_d = seeded_q ? QBS_SEED : QBS_LOAD_TILE;
+      end
+      QBS_SEED: begin
+        if (fault_i) state_d = QBS_FAULT_DRAIN;
+        else if (seed_done_i) state_d = QBS_LOAD_TILE;
+      end
       QBS_LOAD_TILE: begin
         if (fault_i)
           state_d = QBS_FAULT_DRAIN;
@@ -663,6 +739,7 @@ module qbs_compute_engine
       row_base_q <= '0;
       context_wave_q <= 1'b0;
       activation_lookahead_q <= 1'b0;
+      seeded_q <= 1'b0;
       active_weight_bank_q <= 1'b0;
       weight_bank_row_count_q[0] <= '0;
       weight_bank_row_count_q[1] <= '0;
@@ -688,6 +765,7 @@ module qbs_compute_engine
         row_base_q <= '0;
         context_wave_q <= 1'b0;
         activation_lookahead_q <= command_activation_lookahead_i && command_m_i <= 4;
+        seeded_q <= SeedRestoreEnable && command_seed_i;
         active_weight_bank_q <= 1'b0;
         weight_bank_row_count_q[0] <= '0;
         weight_bank_row_count_q[1] <= '0;

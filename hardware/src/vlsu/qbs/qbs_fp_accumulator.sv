@@ -8,7 +8,8 @@ module qbs_fp_accumulator
   parameter int unsigned NumAccumulators = QbsMaxResults,
   parameter int unsigned AccIndexWidth = $clog2(NumAccumulators),
   parameter bit SplitIssue = 1'b1,
-  parameter bit HalfScaleIssue = 1'b1
+  parameter bit HalfScaleIssue = 1'b1,
+  parameter bit RawSeedEnable = 1'b0
 ) (
   input  logic                 clk_i,
   input  logic                 rst_ni,
@@ -34,6 +35,12 @@ module qbs_fp_accumulator
   input  logic [3:0]           bank_read_row_i,
   output logic [7:0]           bank_read_valid_o,
   output logic [31:0]          bank_read_data_o [8],
+
+  input  logic                 raw_seed_valid_i,
+  output logic                 raw_seed_ready_o,
+  input  logic [3:0]           raw_seed_row_i,
+  input  logic [7:0]           raw_seed_mask_i,
+  input  logic [31:0]          raw_seed_data_i [8],
 
   output logic                 update_valid_o,
   output logic [AccIndexWidth-1:0] update_index_o,
@@ -270,7 +277,10 @@ module qbs_fp_accumulator
     end
   end
 
-  assign request_ready_o = !clear_i && !entry_valid_q[request_slot_i] &&
+  wire raw_seed_pending = RawSeedEnable && raw_seed_valid_i;
+  wire raw_seed_fire = raw_seed_pending && raw_seed_ready_o;
+  assign raw_seed_ready_o = RawSeedEnable && rst_ni && !clear_i && !busy_o;
+  assign request_ready_o = !raw_seed_pending && !clear_i && !entry_valid_q[request_slot_i] &&
                            !request_accumulator_conflict;
   assign read_valid_o = accumulator_valid_q[read_index_i];
   assign read_data_o = accumulator_data_q[read_index_i[2:0]][read_index_i[6:3]];
@@ -347,7 +357,9 @@ module qbs_fp_accumulator
     wire bank_write = write_accumulator && write_index[2:0] == 3'(bank);
     for (genvar row = 0; row < 16; row++) begin : gen_row
       always_ff @(posedge clk_i)
-        if (bank_write && write_index[6:3] == 4'(row))
+        if (raw_seed_fire && raw_seed_mask_i[bank] && raw_seed_row_i == 4'(row))
+          accumulator_data_q[bank][row] <= raw_seed_data_i[bank];
+        else if (bank_write && write_index[6:3] == 4'(row))
           accumulator_data_q[bank][row] <= fp_result;
     end
   end
@@ -456,6 +468,10 @@ module qbs_fp_accumulator
         table_full_cycles_o <= '0;
         accumulator_updates_o <= '0;
       end else begin
+        if (raw_seed_fire) begin
+          for (int bank = 0; bank < 8; bank++)
+            accumulator_valid_q[{raw_seed_row_i, 3'(bank)}] <= raw_seed_mask_i[bank];
+        end
         if (busy_o) begin
           table_occupancy_sum_o <= table_occupancy_sum_o + entry_occupancy;
           if (entry_occupancy > table_occupancy_max_o)
@@ -588,6 +604,10 @@ module qbs_fp_accumulator
       end
 
 `ifndef SYNTHESIS
+      if (raw_seed_fire) begin
+        assert (!busy_o && !clear_i && !(request_valid_i && request_ready_o))
+          else $fatal(1, "QBS seed write overlapped arithmetic or clear");
+      end
       if (fp_fire)
         issued_state_q[fp_tag_in] <= entry_state_q[fp_tag_in];
       if (cast_fire)

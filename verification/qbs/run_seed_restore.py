@@ -16,6 +16,10 @@ def prototype(text):
         if text.count(old) != 1: raise ValueError("Accumulator anchor changed: " + old[:50])
         text = text.replace(old, new)
     replace("module qbs_fp_accumulator\n", "module qbs_fp_accumulator_seeded\n")
+    if "parameter bit RawSeedEnable = 1'b0" in text:
+        replace("parameter bit RawSeedEnable = 1'b0", "parameter bit RawSeedEnable = 1'b1")
+        replace("endmodule : qbs_fp_accumulator", "endmodule : qbs_fp_accumulator_seeded")
+        return text
     replace("  output logic                 update_valid_o,", """  input logic raw_seed_valid_i,
   output logic raw_seed_ready_o,
   input logic [3:0] raw_seed_row_i,
@@ -76,10 +80,13 @@ def main():
             raise RuntimeError("Seed prototype failed")
         log = (out / "run.log").read_text()
         marker = "QBS_SEED_RESTORE_PASS profiles=9 raw_words=128 compared=2432 witness=3f800000 stripe2=cc000000"
-        if log.splitlines().count(marker) != 1 or "Fatal:" in log or "Error:" in log or hashes(map(Path,pins)) != pins:
+        if (log.splitlines().count(marker) != 1 or
+                log.splitlines().count("QBS_SEED_PROTOCOL_PASS busy_clear_reset_priority=4") != 1 or
+                "Fatal:" in log or "Error:" in log or hashes(map(Path,pins)) != pins):
             raise ValueError("Incomplete seed acceptance or input drift")
         state["state"] = "PASS"
         atomic_json(out / "result.json", dict(state="PASS", profiles=9, raw_words=128, comparisons=2432,
+            protocol_checks=4,
             scope=state["scope"], evidence_sha256=hashes([out / "run.log", out / "manifest.json", candidate])))
     except BaseException as exc:
         state.update(state="FAIL", error=repr(exc)); raise

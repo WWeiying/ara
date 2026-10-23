@@ -43,7 +43,11 @@ module qbs_seed_restore_tb;
     .fflags_o(flags[I]), .busy_o(busy[I]), .fp_uop_issue_o(), .table_occupancy_sum_o(), \
     .table_occupancy_max_o(), .table_full_cycles_o(), .accumulator_updates_o(update_count[I])
 
-  qbs_fp_accumulator reference_dut (`COMMON_PORTS(0));
+  qbs_fp_accumulator reference_dut (
+    `COMMON_PORTS(0),
+    .raw_seed_valid_i(1'b0), .raw_seed_ready_o(), .raw_seed_row_i('0),
+    .raw_seed_mask_i('0), .raw_seed_data_i('{default:'0})
+  );
   qbs_fp_accumulator_seeded candidate_dut (
     `COMMON_PORTS(1),
     .raw_seed_valid_i(seed_valid), .raw_seed_ready_o(seed_ready),
@@ -132,6 +136,43 @@ module qbs_seed_restore_tb;
     seed(0, 8'ha5); read_row = 0; #1;
     assert (bank_valid[1] === 8'ha5 && flags[1] === 0 && update_count[1] === 0)
       else $fatal(1, "Mask or raw-copy status failure");
+
+    // Seeding has priority only when all older FP work has drained.
+    erase(1);
+    @(negedge clk);
+    req_valid[1] = 1; index[1] = 0; first_block[1] = 1;
+    dot[1] = 1; aux[1] = 0; scale[1] = 16'h3c00; minimum[1] = 0;
+    activation[1] = 32'h00003c00;
+    do @(posedge clk); while (!ready[1]);
+    @(negedge clk); req_valid[1] = 0; seed_valid = 1; seed_row = 0; seed_mask = 8'hff;
+    #1;
+    assert (busy[1] && !seed_ready) else $fatal(1, "Seed did not wait for active FP");
+    do @(posedge clk); while (!seed_ready);
+    @(negedge clk); seed_valid = 0; read_row = 0; #1;
+    assert (flags[1] === 0 && update_count[1] === 1 && bank_valid[1] === 8'hff)
+      else $fatal(1, "Seed changed arithmetic accounting after drain");
+    for (int bank = 0; bank < 8; bank++)
+      assert (bank_data[1][bank] === seed_data[bank]) else $fatal(1, "Delayed seed data loss");
+
+    erase(1);
+    @(negedge clk); req_valid[1] = 1; seed_valid = 1;
+    #1; assert (!ready[1] && seed_ready) else $fatal(1, "Seed/arithmetic priority failure");
+    @(negedge clk); req_valid[1] = 0; seed_valid = 0;
+    assert (!busy[1] && update_count[1] === 0) else $fatal(1, "Arithmetic accepted with seed");
+
+    @(negedge clk); clear[1] = 1; seed_valid = 1;
+    #1; assert (!seed_ready) else $fatal(1, "Seed accepted during clear");
+    @(negedge clk); seed_valid = 0; clear[1] = 0; read_row = 0; #1;
+    assert (bank_valid[1] === 0 && flags[1] === 0 && update_count[1] === 0)
+      else $fatal(1, "Clear did not invalidate seeded state");
+    @(negedge clk); rst_n = 0; seed_valid = 1;
+    #1; assert (!seed_ready) else $fatal(1, "Seed accepted during reset");
+    repeat (2) @(negedge clk);
+    seed_valid = 0; rst_n = 1;
+    @(negedge clk); #1;
+    assert (bank_valid[1] === 0 && !busy[1] && flags[1] === 0)
+      else $fatal(1, "Reset retained seeded ownership");
+    $display("QBS_SEED_PROTOCOL_PASS busy_clear_reset_priority=4");
 
     // Compare monolithic two-block execution with clear/restore continuation.
     for (int kind = 1; kind <= 9; kind++) begin

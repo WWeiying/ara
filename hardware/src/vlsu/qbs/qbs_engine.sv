@@ -1014,6 +1014,13 @@ module qbs_engine
     .command_k_blocks_i             (k_blocks_q),
     .command_activation_lookahead_i  (ActivationLookahead &&
                                      activation_access_q == QBS_ACTIVATION_ACCESS_DIRECT),
+    .command_seed_i                 (1'b0),
+    .seed_valid_i                   (1'b0),
+    .seed_ready_o                   (),
+    .seed_row_i                     ('0),
+    .seed_mask_i                    ('0),
+    .seed_data_i                    ('{default:'0}),
+    .seed_done_i                    (1'b0),
     .fault_i                        (compute_fault),
     .fault_done_o                   (compute_fault_done),
     .weight_write_valid_i           (compute_weight_write_valid),

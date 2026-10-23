@@ -49,6 +49,8 @@ module qbs_fp_split_tb;
       .request_activation_d_i(activation[index]),
       .read_index_i('0), .read_valid_o(), .read_data_o(),
       .bank_read_row_i('0), .bank_read_valid_o(), .bank_read_data_o(),
+      .raw_seed_valid_i(1'b0), .raw_seed_ready_o(), .raw_seed_row_i('0),
+      .raw_seed_mask_i('0), .raw_seed_data_i('{default:'0}),
       .update_valid_o(update[mode]), .update_index_o(update_index[mode]),
       .update_data_o(update_data[mode]), .fflags_o(flags[mode]), .busy_o(busy[mode]),
       .fp_uop_issue_o(issues[mode]), .table_occupancy_sum_o(),
