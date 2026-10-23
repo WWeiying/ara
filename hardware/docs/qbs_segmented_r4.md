@@ -58,9 +58,9 @@ an error occurs; callers must still discard/restart a failed operator.
 M8 plus split-K remains explicitly unsupported: this change must not bypass
 the existing activation-gather and wide-M restrictions. M1--M4 commands,
 including M/N tails and M4-grouped activation storage, are the initial scope.
-Activation-context eligibility is unchanged. Current GGML selection is not
-yet changed; production activation requires native tests and paired runtime
-packing/selection integration, not just enabling the new planner alone.
+Activation-context eligibility still rejects split-K. The optional GGML
+integration below applies the same segment policy to both packing and graph
+lookahead; it is not enabled by default.
 
 ## Evidence
 
@@ -164,4 +164,78 @@ GGML integration must bind packing and dispatch to the same immutable layout
 trait, preserve the complete base for GEMV/GEMM/tail/expert dispatch, and use
 global row coordinates when packing experts together. A fallback after packing
 must understand this layout; ordinary RVV kernels cannot consume these bytes
-as if they were their original packed format. Integration is not yet enabled.
+as if they were their original packed format.
+
+## GGML integration and graph acceptance
+
+The local llama.cpp integration is preserved in
+`software/qbs/integrations/llama-segmented-r4.patch`, relative to llama commit
+`8ed9403e37f1ceb43c6279cdefef01354eac6fd3`. It deliberately excludes the
+pre-existing, unrelated AKV edits. The llama worktree itself is not committed
+or pushed by this step.
+
+`GGML_RISCV_QBS_SEGMENT_K_BLOCKS` selects the weight layout at first QBS trait
+initialization. Unset or zero preserves global R4. A nonzero value fixes the
+segment length for the process; changing the environment after initialization
+does not reinterpret existing tensors. The selected immutable trait handles
+packing, ordinary matrix dispatch and expert dispatch together. Each dispatch
+passes the complete storage base, flattened row count and R4-aligned global
+row start. Unsupported expert shapes retain their original admission fallback.
+
+The same frozen policy is used by cross-operation activation-context lookahead.
+If it produces split-K, the operation cannot reserve/reuse a context or skip
+quantization. M1 explicitly uses row-major activations. M4 prefixes and smaller
+tails retain their existing grouped/row-major representation. Wide-M remains
+available only when the chosen segment fits all K blocks; a forced split must
+not select wide-M even if its environment option is enabled.
+
+`verification/out/qbs-ggml-segmented-20261023-02/` passed the actual GGML CPU
+backend graph suite under RVV1024 Linux/QEMU. QBS commands are software-emulated
+in this gate; it verifies integration and addressing, not hardware arithmetic
+or hardware timing. All four independent processes use the same ELF:
+`c2147e2473fb06615dee34416329817a8d35bc5e8a3b58c195e5dcdb9ffa0dcd`.
+
+| Segment policy | Wide option | Matrix graphs | Expert graphs | Result |
+|---|---:|---:|---:|---|
+| 0, original R4 | 0 | 126 | 2 | PASS |
+| 3, forced split | 0 | 126 | 2 | PASS |
+| 256, no split for these shapes | 1 | 126 | 2 | PASS |
+| 3, forced split | 1 | 126 | 2 | PASS; no M5--M8 commands |
+
+Matrix graphs cover all nine profiles, M=1/2/3/4/5/7/8, N=37, seven K blocks,
+and one/three worker threads. Reference results use original row-major weights,
+reference activation quantization and scalar dot products; every output must
+be finite and within the existing absolute/relative tolerance. Separately, an
+independent block-index check verifies packed storage bytes. Requested and
+effective layout policies must match, graph-scoped calls must have the expected
+K and split flag, and summed output counts must equal the logical matrix size.
+Wide policy 256 must execute M8 commands. Output-count equality alone is not a
+proof of nonoverlapping ranges; the complete numerical check supplies that
+additional evidence.
+
+Expert graphs use Q2_K, three experts with eight output rows each, two selected
+experts per token, three tokens, seven K blocks and one/three workers. A
+post-run checker additionally confirms all eight graph traces, 48 output values
+per graph, split flags, and the N8 command in the single-thread segmented path.
+Its eight fail-closed unit tests reject missing work, wrong layout/depth,
+disabled splitting/wide execution and old expert command geometry.
+
+The runner rebuilds the target incrementally, records source/runtime/config
+hashes and the ELF hash, and rejects source drift. The run02 cache was checked:
+its source is `/home/wangwy/llama/llama.cpp` and its runtime is this verification
+worktree's `software/qbs`. The successor runner enforces the source-directory
+check automatically. The extra expert checks were run against the preserved
+run02 log after its owning service completed, without changing that log or
+claiming another simulation pass.
+
+Run01 failed in the newly added test oracle before the matrix graphs because
+GGML does not register generic Q8_K conversion callbacks. The guest exception
+return address identifies that null callback. The test now calls the explicit
+reference Q8_K conversion functions, as the existing tests do. No hardware
+change or tolerance relaxation was made to pass this failure.
+
+Remaining acceptance gates are naturally long K beyond 256 blocks through a
+real GGML graph, native cross-operator context reuse/rejection, and real-model
+performance with preparation and weight packing costs separated. The existing
+direct K280 test does not substitute for the first gate. The switch stays
+opt-in until these gates and the pending native view test are resolved.

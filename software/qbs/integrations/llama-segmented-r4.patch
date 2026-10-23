@@ -1,0 +1,460 @@
+diff --git a/ggml/src/ggml-cpu/arch/riscv/qbs.cpp b/ggml/src/ggml-cpu/arch/riscv/qbs.cpp
+index 854a69c1b..97ec07bdd 100644
+--- a/ggml/src/ggml-cpu/arch/riscv/qbs.cpp
++++ b/ggml/src/ggml-cpu/arch/riscv/qbs.cpp
+@@ -855,7 +855,11 @@ static bool context_plan_supported(ggml_type weight_type, int64_t k_elements, in
+         static_cast<uint32_t>(k_elements),
+     };
+     qbs_plan_t plan{};
+-    return qbs_plan_create(&device(), &problem, &plan) == QBS_STATUS_OK &&
++    const unsigned segment = ggml_riscv_qbs_weight_segment_blocks();
++    const qbs_status_t status = segment != 0
++        ? qbs_plan_create_segmented_r4(&device(), &problem, segment, &plan)
++        : qbs_plan_create(&device(), &problem, &plan);
++    return status == QBS_STATUS_OK &&
+            qbs_plan_supports_activation_context(&plan);
+ }
+ 
+@@ -1264,6 +1268,28 @@ bool ggml_riscv_qbs_supports_tensor(ggml_type type, int64_t k_elements, int64_t
+     return tensor_support_reason(type, k_elements, output_rows) == qbs_support_reason::supported;
+ }
+ 
++unsigned ggml_riscv_qbs_weight_segment_blocks() {
++    // Packed tensors and graph lookahead must use the same immutable policy.
++    static const unsigned segment = []() -> unsigned {
++        const char * value = std::getenv("GGML_RISCV_QBS_SEGMENT_K_BLOCKS");
++        if (!qbs_runtime_enabled() || value == nullptr || *value == '\0') {
++            return 0;
++        }
++        for (const char * digit = value; *digit; ++digit) {
++            if (*digit < '0' || *digit > '9') {
++                GGML_ABORT("Invalid GGML_RISCV_QBS_SEGMENT_K_BLOCKS");
++            }
++        }
++        char * end = nullptr;
++        const unsigned long blocks = std::strtoul(value, &end, 10);
++        if (*end != '\0' || blocks > QBS_MAX_K_BLOCKS || blocks > device().capabilities.max_k_blocks) {
++            GGML_ABORT("Invalid GGML_RISCV_QBS_SEGMENT_K_BLOCKS");
++        }
++        return static_cast<unsigned>(blocks);
++    }();
++    return segment;
++}
++
+ void ggml_riscv_qbs_trace_tensor_decision(const void * tensor_identity,
+                                           const char * tensor_name,
+                                           ggml_type    type,
+@@ -1482,11 +1508,19 @@ int ggml_riscv_qbs_repack_r4(ggml_type    type,
+                              const void * src,
+                              size_t       src_size,
+                              int64_t      output_rows,
+-                             int64_t      k_blocks) {
++                             int64_t      k_blocks,
++                             unsigned     segment_k_blocks) {
+     const qbs_profile profile = profile_for_type(type);
+     if (!dst || !src || output_rows <= 0 || k_blocks <= 0 || profile.weight == QBS_WEIGHT_PROFILE_INVALID) {
+         return -1;
+     }
++    if (segment_k_blocks != 0) {
++        if (output_rows > UINT32_MAX) {
++            return -1;
++        }
++        return qbs_repack_weight_r4_segmented(profile.weight, src, src_size, static_cast<size_t>(output_rows),
++                                             static_cast<size_t>(k_blocks), segment_k_blocks, dst, dst_size) == QBS_STATUS_OK ? 0 : -1;
++    }
+     return qbs_repack_weight_r4(profile.weight, src, src_size, static_cast<size_t>(output_rows),
+                                 static_cast<size_t>(k_blocks), dst, dst_size) == QBS_STATUS_OK ?
+                0 :
+@@ -1541,7 +1575,10 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
+                                              const void * activations,
+                                              int          input_rows,
+                                              int          output_rows,
+-                                             unsigned     activation_storage) {
++                                             unsigned     activation_storage,
++                                             uint32_t     storage_rows = 0,
++                                             uint32_t     row_start = 0,
++                                             unsigned     segment_k_blocks = 0) {
+     const qbs_profile profile        = profile_for_type(weight_type);
+     const unsigned    block_elements = qbs_weight_block_elements(profile.weight);
+     GGML_ASSERT(input_rows > 0 && n > 0 && block_elements != 0 && n % static_cast<int>(block_elements) == 0);
+@@ -1555,16 +1592,18 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
+         static_cast<uint32_t>(n),
+     };
+     qbs_plan_t         plan{};
+-    const qbs_status_t plan_status = qbs_plan_create(&device(), &problem, &plan);
++    const qbs_status_t plan_status = segment_k_blocks != 0
++        ? qbs_plan_create_segmented_r4_view(&device(), &problem, segment_k_blocks, storage_rows, row_start, &plan)
++        : qbs_plan_create(&device(), &problem, &plan);
+     GGML_ASSERT(plan_status == QBS_STATUS_OK);
+-    record_operation(weight_type, true, n, input_rows, output_rows, plan.split_k);
++    record_operation(weight_type, input_rows != 1, n, input_rows, output_rows, plan.split_k);
+     qbs_workspace_buffer  workspace(plan.workspace_bytes);
+     const qbs_activation_trace_link trace_link = linked_activation(activations);
+     qbs_execution_context context{
+         weight_type, qbs_emulation_enabled(), trace_link.graph_epoch, trace_link.activation_sequence
+     };
+     const size_t          weight_bytes = qbs_weight_storage_bytes(profile.weight, QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+-                                                                  static_cast<size_t>(output_rows), plan.k_blocks);
++                                                                  segment_k_blocks != 0 ? storage_rows : static_cast<size_t>(output_rows), plan.k_blocks);
+     const size_t activation_bytes = qbs_activation_storage_bytes(
+         profile.activation, activation_storage, static_cast<size_t>(input_rows), plan.k_blocks);
+     const size_t output_capacity  = static_cast<size_t>(input_rows - 1) * dst_stride + static_cast<size_t>(output_rows);
+@@ -1574,6 +1613,18 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
+     GGML_ASSERT(status == QBS_STATUS_OK);
+ }
+ 
++void ggml_riscv_qbs_mul_mat_view(ggml_type weight_type, int k, float * dst, size_t dst_stride,
++                               const void * weights, const void * activations,
++                               int input_rows, int output_rows, int64_t storage_rows,
++                               int64_t row_start, unsigned segment_k_blocks, bool wide_m) {
++    GGML_ASSERT(storage_rows > 0 && storage_rows <= UINT32_MAX && row_start >= 0 && row_start <= storage_rows);
++    GGML_ASSERT(output_rows > 0 && output_rows <= storage_rows - row_start && segment_k_blocks != 0);
++    ggml_riscv_qbs_gemm_with_storage(weight_type, k, dst, dst_stride, weights, activations, input_rows, output_rows,
++                                    input_rows == 1 ? QBS_ACTIVATION_STORAGE_ROW_MAJOR :
++                                    wide_m ? QBS_ACTIVATION_STORAGE_M8_GROUPED : QBS_ACTIVATION_STORAGE_M4_GROUPED,
++                                    static_cast<uint32_t>(storage_rows), static_cast<uint32_t>(row_start), segment_k_blocks);
++}
++
+ void ggml_riscv_qbs_gemm(ggml_type    weight_type,
+                          int          n,
+                          float *      dst,
+diff --git a/ggml/src/ggml-cpu/arch/riscv/qbs.h b/ggml/src/ggml-cpu/arch/riscv/qbs.h
+index 1bc87a6ab..52a5e5978 100644
+--- a/ggml/src/ggml-cpu/arch/riscv/qbs.h
++++ b/ggml/src/ggml-cpu/arch/riscv/qbs.h
+@@ -36,6 +36,9 @@ struct ggml_riscv_qbs_iq4_nl_tag {};
+ 
+ bool ggml_riscv_qbs_supports_tensor(ggml_type type, int64_t k_elements, int64_t output_rows);
+ 
++// Read once when constructing a weight-layout trait; zero keeps global R4.
++unsigned ggml_riscv_qbs_weight_segment_blocks();
++
+ void ggml_riscv_qbs_trace_tensor_decision(const void * tensor_identity,
+                                           const char * tensor_name,
+                                           ggml_type    type,
+@@ -96,7 +99,13 @@ int ggml_riscv_qbs_repack_r4(ggml_type    type,
+                              const void * src,
+                              size_t       src_size,
+                              int64_t      output_rows,
+-                             int64_t      k_blocks);
++                             int64_t      k_blocks,
++                             unsigned     segment_k_blocks = 0);
++
++void ggml_riscv_qbs_mul_mat_view(ggml_type weight_type, int k, float * dst, size_t dst_stride,
++                               const void * weights, const void * activations,
++                               int input_rows, int output_rows, int64_t storage_rows,
++                               int64_t row_start, unsigned segment_k_blocks, bool wide_m);
+ 
+ void ggml_riscv_qbs_gemv(ggml_type    weight_type,
+                          int          n,
+diff --git a/ggml/src/ggml-cpu/repack.cpp b/ggml/src/ggml-cpu/repack.cpp
+index 4f6b4870f..75f376db9 100644
+--- a/ggml/src/ggml-cpu/repack.cpp
++++ b/ggml/src/ggml-cpu/repack.cpp
+@@ -4572,6 +4572,15 @@ class tensor_traits_base : public ggml::cpu::tensor_traits {
+ };
+ 
+ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PARAM_TYPE> class tensor_traits : public tensor_traits_base {
++  public:
++    explicit tensor_traits(unsigned segment_k_blocks = 0) : qbs_segment_k_blocks(segment_k_blocks) {}
++
++  private:
++    const unsigned qbs_segment_k_blocks;
++
++    bool qbs_allows_wide(const ggml_tensor * weights) const {
++        return qbs_segment_k_blocks == 0 || weights->ne[0] / ggml_blck_size(weights->type) <= qbs_segment_k_blocks;
++    }
+ 
+     bool work_size(int /* n_threads */, const struct ggml_tensor * op, size_t & size) override {
+         // not realy a GGML_TYPE_Q8_0 but same size.
+@@ -4582,7 +4591,7 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
+ #if defined(GGML_USE_RISCV_QBS)
+                     if constexpr (is_qbs_block_type<BLOC_TYPE>::value) {
+                         ggml_riscv_qbs_activation_plan activation_plan{};
+-                        if (op->src[1]->ne[2] == 1 && op->src[1]->ne[3] == 1 &&
++                        if (qbs_allows_wide(op->src[0]) && op->src[1]->ne[2] == 1 && op->src[1]->ne[3] == 1 &&
+                             ggml_riscv_qbs_plan_activations(op->src[0]->type, op->src[1]->ne[1],
+                                                            op->src[0]->ne[1], op->src[1]->ne[0],
+                                                            &activation_plan) &&
+@@ -4668,9 +4677,16 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
+ #if defined(GGML_USE_RISCV_QBS)
+         if constexpr (is_qbs_block_type<BLOC_TYPE>::value) {
+             ggml_riscv_qbs_activation_plan activation_plan{};
+-            const bool wide_m = ne12 == 1 && ne13 == 1 && src1_start == 0 && nrows == ne11 &&
++            const bool wide_m = qbs_allows_wide(src0) && ne12 == 1 && ne13 == 1 && src1_start == 0 && nrows == ne11 &&
+                                 ggml_riscv_qbs_plan_activations(
+                                     src0->type, ne11, ne01, ne10, &activation_plan) && activation_plan.wide_m;
++            if (qbs_segment_k_blocks != 0) {
++                ggml_riscv_qbs_mul_mat_view(
++                    src0->type, ne00, (float *) dst_ptr + src0_start, nb1 / nb0,
++                    src0->data, src1_ptr, static_cast<int>(nrows), static_cast<int>(ncols),
++                    ggml_nrows(src0), i02 * ne01 + src0_start, qbs_segment_k_blocks, wide_m);
++                return;
++            }
+             if (wide_m) {
+                 GGML_ASSERT(activation_plan.packed_bytes <= params->wsize);
+                 ggml_riscv_qbs_gemm_wide(
+@@ -4762,7 +4778,7 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
+         const uint64_t quantize_time_start_us = quantize_time_valid ? ggml_time_us() : 0;
+         uint64_t quantize_time_us = 0;
+         ggml_riscv_qbs_activation_plan qbs_activation_plan{};
+-        const bool qbs_wide_m = is_qbs_block_type<BLOC_TYPE>::value && ne12 == 1 && ne13 == 1 &&
++        const bool qbs_wide_m = is_qbs_block_type<BLOC_TYPE>::value && qbs_allows_wide(src0) && ne12 == 1 && ne13 == 1 &&
+                                 ggml_riscv_qbs_plan_activations(
+                                     src0->type, ne11, ne01, ne10, &qbs_activation_plan) &&
+                                 qbs_activation_plan.wide_m;
+@@ -5028,6 +5044,17 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
+ 
+                 const auto * src1_col = (const char *) wdata + (i11 * nbw1 + i12 * nbw2);
+ 
++#if defined(GGML_USE_RISCV_QBS)
++                if constexpr (is_qbs_block_type<BLOC_TYPE>::value) {
++                    if (qbs_segment_k_blocks != 0) {
++                        ggml_riscv_qbs_mul_mat_view(
++                            src0->type, ne00, (float *) ((char *) dst->data + (i1 * nb1 + i2 * nb2)) + src0_cur_start,
++                            ne01, src0->data, src1_col, 1, src0_cur_end - src0_cur_start,
++                            ggml_nrows(src0), cur_a * ne01 + src0_cur_start, qbs_segment_k_blocks, false);
++                        continue;
++                    }
++                }
++#endif
+                 gemv<BLOC_TYPE, INTER_SIZE, NB_COLS, PARAM_TYPE>(
+                     ne00, (float *) ((char *) dst->data + (i1 * nb1 + i2 * nb2)) + src0_cur_start, ne01,
+                     src0_cur + src0_cur_start * nb01, src1_col, 1, src0_cur_end - src0_cur_start);
+@@ -5039,6 +5066,16 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
+     int repack(struct ggml_tensor * t, const void * data, size_t data_size) override {
+         GGML_LOG_DEBUG("%s: repack tensor %s with %s_%dx%d\n", __func__, t->name, ggml_type_name(t->type),
+                        (int) NB_COLS, (int) INTER_SIZE);
++#if defined(GGML_USE_RISCV_QBS)
++        if constexpr (is_qbs_block_type<BLOC_TYPE>::value) {
++            if (qbs_segment_k_blocks != 0) {
++                const size_t padded_rows = (static_cast<size_t>(ggml_nrows(t)) + 3) & ~size_t(3);
++                return ggml_riscv_qbs_repack_r4(t->type, t->data, ggml_row_size(t->type, t->ne[0]) * padded_rows,
++                                               data, data_size, ggml_nrows(t), t->ne[0] / ggml_blck_size(t->type),
++                                               qbs_segment_k_blocks);
++            }
++        }
++#endif
+         return ggml::cpu::repack::repack<BLOC_TYPE, INTER_SIZE, NB_COLS>(t, data, data_size);
+     }
+ };
+@@ -5047,15 +5084,16 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
+ 
+ static const ggml::cpu::tensor_traits * ggml_repack_get_optimal_repack_type(const struct ggml_tensor * cur) {
+ #if defined(GGML_USE_RISCV_QBS)
+-    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q4_k_tag, 1, 4, GGML_TYPE_Q8_K> qbs_q4_K;
+-    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q5_k_tag, 1, 4, GGML_TYPE_Q8_K> qbs_q5_K;
+-    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q6_k_tag, 1, 4, GGML_TYPE_Q8_K> qbs_q6_K;
+-    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q3_k_tag, 1, 4, GGML_TYPE_Q8_K> qbs_q3_K;
+-    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q8_0_tag, 1, 4, GGML_TYPE_Q8_0> qbs_q8_0;
+-    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q4_0_tag, 1, 4, GGML_TYPE_Q8_0> qbs_q4_0;
+-    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q2_k_tag, 1, 4, GGML_TYPE_Q8_K> qbs_q2_K;
+-    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q5_0_tag, 1, 4, GGML_TYPE_Q8_0> qbs_q5_0;
+-    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_iq4_nl_tag, 1, 4, GGML_TYPE_Q8_0> qbs_iq4_nl;
++    static const unsigned qbs_segment = ggml_riscv_qbs_weight_segment_blocks();
++    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q4_k_tag, 1, 4, GGML_TYPE_Q8_K> qbs_q4_K(qbs_segment);
++    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q5_k_tag, 1, 4, GGML_TYPE_Q8_K> qbs_q5_K(qbs_segment);
++    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q6_k_tag, 1, 4, GGML_TYPE_Q8_K> qbs_q6_K(qbs_segment);
++    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q3_k_tag, 1, 4, GGML_TYPE_Q8_K> qbs_q3_K(qbs_segment);
++    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q8_0_tag, 1, 4, GGML_TYPE_Q8_0> qbs_q8_0(qbs_segment);
++    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q4_0_tag, 1, 4, GGML_TYPE_Q8_0> qbs_q4_0(qbs_segment);
++    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q2_k_tag, 1, 4, GGML_TYPE_Q8_K> qbs_q2_K(qbs_segment);
++    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_iq4_nl_tag, 1, 4, GGML_TYPE_Q8_0> qbs_iq4_nl(qbs_segment);
++    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q5_0_tag, 1, 4, GGML_TYPE_Q8_0> qbs_q5_0(qbs_segment);
+ #endif
+ 
+     // instance for Q4
+@@ -5111,6 +5149,7 @@ static const ggml::cpu::tensor_traits * ggml_repack_get_optimal_repack_type(cons
+     const bool qbs_dimensions_supported = qbs_n_dims == 2 ||
+         (qbs_n_dims == 3 && cur->ne[1] % 4 == 0);
+     const bool qbs_selected = qbs_dimensions_supported &&
++        (qbs_segment == 0 || ggml_nrows(cur) <= UINT32_MAX) &&
+         ggml_riscv_qbs_supports_tensor(cur->type, cur->ne[0], cur->ne[1]);
+     ggml_riscv_qbs_trace_tensor_decision(
+         cur, cur->name, cur->type, qbs_n_dims, cur->ne[0], cur->ne[1],
+@@ -5371,7 +5410,7 @@ class extra_buffer_type : ggml::cpu::extra_buffer_type {
+                 op->src[0]->buffer &&
+                 (ggml_n_dims(op->src[0]) == 2) &&
+                 op->src[0]->buffer->buft == ggml_backend_cpu_repack_buffer_type() &&
+-                ggml_repack_get_optimal_repack_type(op->src[0])
++                (op->src[0]->extra || ggml_repack_get_optimal_repack_type(op->src[0]))
+                 ) {
+             if (op->src[1]->buffer && !ggml_backend_buft_is_host(op->src[1]->buffer->buft)) {
+                 return false;
+@@ -5387,7 +5426,7 @@ class extra_buffer_type : ggml::cpu::extra_buffer_type {
+                 && op->src[0]->buffer
+                 && (ggml_n_dims(op->src[0]) == 3)
+                 && op->src[0]->buffer->buft == ggml_backend_cpu_repack_buffer_type()
+-                && ggml_repack_get_optimal_repack_type(op->src[0])
++                && (op->src[0]->extra || ggml_repack_get_optimal_repack_type(op->src[0]))
+                 ) {
+             if (op->src[1]->buffer && !ggml_backend_buft_is_host(op->src[1]->buffer->buft)) {
+                 return false;
+diff --git a/tests/test-ara-q4k-repack.cpp b/tests/test-ara-q4k-repack.cpp
+index 821c0e934..c5e3111fc 100644
+--- a/tests/test-ara-q4k-repack.cpp
++++ b/tests/test-ara-q4k-repack.cpp
+@@ -1,6 +1,7 @@
+ #include "repack.h"
+ #include "arch/riscv/qbs-layout.h"
+ #include "ggml-backend.h"
++#include "ggml-cpu.h"
+ #include "ggml-quants.h"
+ #include "quants.h"
+ #if defined(GGML_TEST_RISCV_QBS)
+@@ -719,8 +720,8 @@ static void test_qbs_moe_repack_fallback() {
+     std::printf("QBS MUL_MAT_ID non-R4 expert shape fallback: PASS\n");
+ }
+ 
+-static void test_qbs_moe_graph() {
+-    constexpr int64_t n = 2 * QK_K;
++static void test_qbs_moe_graph(int threads) {
++    constexpr int64_t n = 7 * QK_K;
+     constexpr int64_t rows_per_expert = 8;
+     constexpr int64_t experts = 3;
+     constexpr int64_t experts_per_token = 2;
+@@ -798,6 +799,7 @@ static void test_qbs_moe_graph() {
+     ggml_backend_t backend =
+         ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_CPU, nullptr);
+     assert(backend != nullptr);
++    ggml_backend_cpu_set_n_threads(backend, threads);
+     ggml_backend_buffer_t graph_buffer =
+         ggml_backend_alloc_ctx_tensors(graph_context, backend);
+     assert(graph_buffer != nullptr);
+@@ -848,7 +850,124 @@ static void test_qbs_moe_graph() {
+     ggml_backend_buffer_free(weights_buffer);
+     ggml_free(weights_context);
+     std::printf("QBS MUL_MAT_ID Q2_K 3-expert graph: PASS "
+-                "(max abs error %.8g)\n", max_error);
++                "(threads %d, max abs error %.8g)\n", threads, max_error);
++}
++
++static void test_qbs_matrix_graphs() {
++    const char * requested = std::getenv("GGML_RISCV_QBS_SEGMENT_K_BLOCKS");
++    const unsigned segment = requested ? static_cast<unsigned>(std::strtoul(requested, nullptr, 10)) : 0;
++    assert(ggml_riscv_qbs_weight_segment_blocks() == segment);
++    const ggml_type types[] = {GGML_TYPE_Q2_K, GGML_TYPE_Q3_K, GGML_TYPE_Q4_K,
++        GGML_TYPE_Q5_K, GGML_TYPE_Q6_K, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0,
++        GGML_TYPE_Q8_0, GGML_TYPE_IQ4_NL};
++    constexpr int64_t rows = 37;
++    unsigned cases = 0;
++    for (ggml_type type : types) {
++        const bool q8_0 = type == GGML_TYPE_Q4_0 || type == GGML_TYPE_Q5_0 ||
++                          type == GGML_TYPE_Q8_0 || type == GGML_TYPE_IQ4_NL;
++        const ggml_type activation_type = q8_0 ? GGML_TYPE_Q8_0 : GGML_TYPE_Q8_K;
++        const auto * wt = ggml_get_type_traits(type);
++        const int64_t k = 7 * ggml_blck_size(type);
++        const size_t weight_stride = ggml_row_size(type, k);
++        const size_t activation_stride = ggml_row_size(activation_type, k);
++        std::vector<uint8_t> packed_weights(rows * weight_stride);
++        std::vector<float> weight_values(rows * k), source(k);
++        for (int64_t row = 0; row < rows; ++row) {
++            for (int64_t i = 0; i < k; ++i) {
++                source[i] = 0.625f * std::sin(float(row * 23 + i * 7) * 0.01953125f);
++            }
++            wt->from_float_ref(source.data(), packed_weights.data() + row * weight_stride, k);
++            wt->to_float(packed_weights.data() + row * weight_stride, weight_values.data() + row * k, k);
++        }
++        for (int inputs : {1, 2, 3, 4, 5, 7, 8}) {
++            std::vector<float> activations(inputs * k), activation_values(inputs * k);
++            std::vector<uint8_t> activation_quantized(activation_stride);
++            for (int input = 0; input < inputs; ++input) {
++                for (int64_t i = 0; i < k; ++i) {
++                    activations[input * k + i] = 0.5f * std::cos(float(input * 17 + i * 11) * 0.015625f);
++                }
++                if (q8_0) {
++                    auto * quantized = reinterpret_cast<block_q8_0 *>(activation_quantized.data());
++                    quantize_row_q8_0_ref(activations.data() + input * k, quantized, k);
++                    dequantize_row_q8_0(quantized, activation_values.data() + input * k, k);
++                } else {
++                    auto * quantized = reinterpret_cast<block_q8_K *>(activation_quantized.data());
++                    quantize_row_q8_K_ref(activations.data() + input * k, quantized, k);
++                    dequantize_row_q8_K(quantized, activation_values.data() + input * k, k);
++                }
++            }
++            for (int threads : {1, 3}) {
++                ggml_init_params params{};
++                params.mem_size = 1024 * 1024;
++                params.no_alloc = true;
++                ggml_context * weight_context = ggml_init(params);
++                assert(weight_context != nullptr);
++                ggml_tensor * weights = ggml_new_tensor_2d(weight_context, type, k, rows);
++                ggml_backend_buffer_t weight_buffer = ggml_backend_alloc_ctx_tensors_from_buft(
++                    weight_context, ggml_backend_cpu_repack_buffer_type());
++                assert(weight_buffer != nullptr && weights->extra != nullptr);
++                ggml_backend_tensor_set(weights, packed_weights.data(), 0, packed_weights.size());
++                const size_t block_bytes = ggml_type_size(type);
++                const size_t segment_blocks = segment ? segment : 7;
++                for (size_t row = 0; row < static_cast<size_t>(rows); ++row) {
++                    for (size_t block = 0; block < 7; ++block) {
++                        const size_t start = block / segment_blocks * segment_blocks;
++                        const size_t local_k = std::min(segment_blocks, size_t(7) - start);
++                        const size_t index = start * 40 + (row / 4) * local_k * 4 + (block - start) * 4 + row % 4;
++                        assert(std::memcmp(static_cast<const uint8_t *>(weights->data) + index * block_bytes,
++                                           packed_weights.data() + (row * 7 + block) * block_bytes, block_bytes) == 0);
++                    }
++                }
++
++                ggml_context * context = ggml_init(params);
++                assert(context != nullptr);
++                ggml_tensor * activation = ggml_new_tensor_2d(context, GGML_TYPE_F32, k, inputs);
++                ggml_tensor * output = ggml_mul_mat(context, weights, activation);
++                ggml_backend_t backend = ggml_backend_cpu_init();
++                assert(backend != nullptr);
++                ggml_backend_cpu_set_n_threads(backend, threads);
++                ggml_backend_buffer_t buffer = ggml_backend_alloc_ctx_tensors(context, backend);
++                assert(buffer != nullptr);
++                ggml_backend_tensor_set(activation, activations.data(), 0, activations.size() * sizeof(float));
++                ggml_cgraph * graph = ggml_new_graph(context);
++                ggml_build_forward_expand(graph, output);
++                std::printf("QBS_MATRIX_BEGIN type=%s m=%d n=%lld k=%lld threads=%d segment=%u\n",
++                    ggml_type_name(type), inputs, (long long) rows, (long long) k, threads,
++                    ggml_riscv_qbs_weight_segment_blocks());
++                std::fflush(stdout);
++                assert(ggml_backend_graph_compute(backend, graph) == GGML_STATUS_SUCCESS);
++                std::vector<float> actual(rows * inputs);
++                ggml_backend_tensor_get(output, actual.data(), 0, actual.size() * sizeof(float));
++                float max_error = 0;
++                for (int input = 0; input < inputs; ++input) {
++                    for (int64_t row = 0; row < rows; ++row) {
++                        const float expected = qbs_scalar_dot(weight_values.data() + row * k,
++                                                              activation_values.data() + input * k, k);
++                        const float error = std::fabs(actual[input * rows + row] - expected);
++                        max_error = std::max(max_error, error);
++                        if (!std::isfinite(actual[input * rows + row]) || !std::isfinite(expected) ||
++                            !std::isfinite(error) || error > 2e-4f + 2e-5f * std::fabs(expected)) {
++                            std::fprintf(stderr, "QBS graph mismatch type=%s M=%d N=%lld threads=%d row=%lld input=%d actual=%g expected=%g\n",
++                                ggml_type_name(type), inputs, (long long) rows, threads, (long long) row,
++                                input, actual[input * rows + row], expected);
++                            std::abort();
++                        }
++                    }
++                }
++                std::printf("QBS MUL_MAT graph: PASS type=%s M=%d N=%lld K=%lld threads=%d segment=%u error=%g\n",
++                    ggml_type_name(type), inputs, (long long) rows, (long long) k, threads,
++                    ggml_riscv_qbs_weight_segment_blocks(), max_error);
++                ++cases;
++                ggml_backend_buffer_free(buffer);
++                ggml_backend_free(backend);
++                ggml_free(context);
++                ggml_backend_buffer_free(weight_buffer);
++                ggml_free(weight_context);
++            }
++        }
++    }
++    assert(cases == 126);
++    std::printf("QBS matrix graph suite: PASS cases=%u\n", cases);
+ }
+ 
+ static void test_qbs_segmented_k() {
+@@ -1003,7 +1122,9 @@ int main() {
+     test_qbs_repack_buffer_tail();
+     test_qbs_moe_repack();
+     test_qbs_moe_repack_fallback();
+-    test_qbs_moe_graph();
++    test_qbs_moe_graph(1);
++    test_qbs_moe_graph(3);
++    test_qbs_matrix_graphs();
+     test_qbs_segmented_k();
+ #endif
+     return 0;
