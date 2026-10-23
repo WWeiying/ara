@@ -174,6 +174,29 @@ This is not yet a full quantizer or RTL performance result. The sealed candidate
 and both running VCS tests are unchanged; integrate only after this gate passes
 and the current consumers have finished.
 
+The isolated full-quantizer successor is
+`ggml_q8k_m4_prepare_vla_candidate.h`. Its quantize template is checked to be
+text-identical to the sealed candidate's template; only its `vector_domain`
+helper redirects to the accepted integer VLA preflight. This temporarily
+preserves the earlier candidate for its still-running consumers. It does not
+introduce a different scale selection, FMA rounding or bsums algorithm.
+
+`build_q8k_vla_native.py` redirects only the include and three candidate calls
+in the original native harness. The same production generic archive, 50-case
+matrix, expected paths, byte comparisons, CSR checks and parser are reused.
+The original harness and sealed sources are not edited. The successor native
+worker is `qbs-q8k-vla-native-20261023-01.service`; its full numerical result
+is separate from the already passed preflight-only result.
+
+For subsequent RTL measurement, `build_q8k_vla_soc.py` first creates a fresh
+private baseline build using the unchanged preparation or projection builder.
+It recompiles only the benchmark translation unit with the candidate include
+and namespace redirected, then relinks with those freshly produced common and
+oracle objects. Unique-argument checks prevent accidental substitutions in
+compiler/linker commands. The full original source manifests, build artifacts,
+new helper and ELF are pinned. This reuses the existing ABBA emitters and
+acceptance parsers without changing ongoing builds or writing over their ELFs.
+
 - Compile all AVL caps with the target RV64GCV compiler and strict FP options.
   This gate passed on 2026-10-23; it is not an execution result.
 - Compare all packed bytes, scales and bsums against the linked production
