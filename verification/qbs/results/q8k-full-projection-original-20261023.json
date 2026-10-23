@@ -1,0 +1,68 @@
+{
+  "deployment_approved": false,
+  "full_projection_speedup": 1.0325996500195986,
+  "log_sha256": "0e0a0cdb5a114fb691555fdeb3f6175a4ee74a43dd439b715eb4ac02047e9600",
+  "manifest_sha256": "197c666780a9ef7f4da5d57b766f22ea043490bc90243513b57d3f0996c37831",
+  "preparation_speedup": 1.0772214315376956,
+  "result_sha256": "aea8182b5818d4dbd2249b863499920afd4fbd5ffe2ec3bd6dfe5e38d2312066",
+  "scope": "Real full M4/N1536/K1536 Q projection, same QBS commands, only preparation differs; not model speedup",
+  "state": "PASS",
+  "status_sha256": "4dd6b6c7b44762954ad4fc493320c4147e06722ffb44ff81b464f4c107d1dcf5",
+  "sums": {
+    "generic": {
+      "matmul": 685356,
+      "prep": 534360,
+      "total": 1219716
+    },
+    "vector": {
+      "matmul": 685155,
+      "prep": 496054,
+      "total": 1181209
+    }
+  },
+  "trace_sha256": "9764db04aea37fb785044213b8b32392f7c87074d49f399f9855cfec3a44bee4",
+  "traffic": {
+    "commands": 192,
+    "result_bytes": 98304
+  },
+  "trials": [
+    {
+      "checksum": "fbb83bb6df5ca009",
+      "fcsr": 1,
+      "matmul_cycles": 342779,
+      "path": "generic",
+      "prep_cycles": 267005,
+      "total_cycles": 609784,
+      "trial": 0
+    },
+    {
+      "checksum": "fbb83bb6df5ca009",
+      "fcsr": 1,
+      "matmul_cycles": 342578,
+      "path": "vector",
+      "prep_cycles": 248138,
+      "total_cycles": 590716,
+      "trial": 1
+    },
+    {
+      "checksum": "fbb83bb6df5ca009",
+      "fcsr": 1,
+      "matmul_cycles": 342577,
+      "path": "vector",
+      "prep_cycles": 247916,
+      "total_cycles": 590493,
+      "trial": 2
+    },
+    {
+      "checksum": "fbb83bb6df5ca009",
+      "fcsr": 1,
+      "matmul_cycles": 342577,
+      "path": "generic",
+      "prep_cycles": 267355,
+      "total_cycles": 609932,
+      "trial": 3
+    }
+  ],
+  "uvm_sha256": "29438ba66f61764074ab5b714cbbb98441edf0eab0e9a9d5b2bbcf5e314f9a15",
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-projection-soc-20261023-01"
+}

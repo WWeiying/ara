@@ -1,0 +1,18 @@
+{
+  "cases": 961,
+  "checks": 162172,
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-vrf-seed-mapper-20261023-02/manifest.json": "acae8c6502ecf3e1123da85c7fd12e0c8ebf0046bac6179220391fde4b301df6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-vrf-seed-mapper-20261023-02/qbs_fp_accumulator_seeded.sv": "709fcce5495b5d33980cf2f28fc1947101a7a3b0b712af00c3276e24785937fc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-vrf-seed-mapper-20261023-02/run.log": "5af0d1e40036dcda15951ed230d823a667e72fb9deb12f45c8562421123b5077"
+  },
+  "isa_integrated": false,
+  "production_route_changed": false,
+  "reset_flush": 1,
+  "scenarios_per_shape": 5,
+  "scope": "Actual commit and accumulator; modeled VRF/StA, not lane/ISA/SoC integration",
+  "shape_count": 192,
+  "state": "PASS",
+  "status_sha256": "80472cf9507e4fb0f0dd10da011451944ad1b6a54c122cb1d590375671e84148",
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-vrf-seed-mapper-20261023-02"
+}

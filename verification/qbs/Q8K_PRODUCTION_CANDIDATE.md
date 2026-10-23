@@ -121,3 +121,25 @@ contains 52 Q8_K M4 preparation calls and 72 Q8_0 preparation calls. Context,
 wide-M, tail and three-thread dispatch checks all pass. The receipt is
 `results/q8k-production-graphs-20261023.json`. This closes the private graph
 selection gate; the candidate has not been enabled in live llama.cpp.
+
+## Full-projection RTL result
+
+The original (pre-VLA-preflight) quantizer completed the full real M4/N1536/
+K1536 Q projection on 2026-10-23. One ELF executes generic/vector/vector/generic
+trials, with 6144 outputs per call checked against the independent reference.
+All four checksums are `fbb83bb6df5ca009`, with identical FP status. The trace
+contains 192 accepted QBS commands and 98304 result bytes across four calls.
+
+| Phase, sum of two matched trials | Generic | Vector candidate |
+| --- | ---: | ---: |
+| Activation preparation | 534360 | 496054 |
+| QBS matrix execution | 685356 | 685155 |
+| Complete projection | 1219716 | 1181209 |
+
+The full-projection speedup is 1.032600x; this is not a model-level speedup.
+The receipt is `results/q8k-full-projection-original-20261023.json`. The VLA
+preflight successor has a separate still-running full-projection gate and is
+the implementation used by the private production/graph functional gates.
+Do not attribute the original candidate's full-projection result to that
+successor or combine preparation-only speedups with complete-projection data.
+Live runtime deployment remains opt-in and pending its matching RTL result.

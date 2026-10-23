@@ -1,0 +1,16 @@
+{
+  "comparisons": 2432,
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-seed-restore-20261023-01/manifest.json": "985f71ab2c7caff52110dbca6838d56813d12169590468ea2e64c35f55a570fd",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-seed-restore-20261023-01/qbs_fp_accumulator_seeded.sv": "709fcce5495b5d33980cf2f28fc1947101a7a3b0b712af00c3276e24785937fc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-seed-restore-20261023-01/run.log": "999af0af23e8f998219ee7947b9640a396bb6e64fcf358f13bc5bfe1360578c3"
+  },
+  "isa_integrated": false,
+  "production_rtl_changed": false,
+  "profiles": 9,
+  "raw_words": 128,
+  "scope": "Accumulator raw-bit port prototype only, no ISA/VLSU integration or performance claim",
+  "state": "PASS",
+  "status_sha256": "fe78d551c39615287ce466cdec555adeb759cad343db2bd9c8819862e7cd0c00",
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-seed-restore-20261023-01"
+}
