@@ -1,0 +1,803 @@
+{
+  "attention_speedup": 0.9847844579836763,
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/analyze_refill_attention_abba.py": "9429be192461b4f5015eb9b3ea731891905042f210204e5b26ad6300cd654028",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-abba-20261023-01/manifest.json": "548ef22c6cea469b60d01db075ae90ce82facc9a358d61501973b4765f8703b6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-abba-20261023-01/result.json": "e4c5da6794a1d5568f6ba8e03b60d4e0dbf01eff4401baa8baf0f7db911cc91d",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-abba-20261023-01/work/commit_trace.csv": "07d58bb7ed8bb131fbc06c90c13862c3b616f7111fe17277b0fadd8b80dc159b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-abba-20261023-01/work/run.vcs.log": "40564fa77e704b6bbf7cff16b2302f1a9d5673ed7b09239d382fc07084dac722",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-abba-20261023-01/work/vector_trace.csv": "24669f9323dfe9ca456f8b935693b8caf77428dbb97aa9a4c3f99cf388e25c2c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-abba-build-20261023-02/attention_abba.elf": "004366e1e60afc2efa46625ee055bd4ac3ccf7cd9181607bd94d594c0760b1ce"
+  },
+  "mode1_minus_mode0": {
+    "__ieee754_expf": {
+      "instructions": 0,
+      "retire_gap_cycles": 463
+    },
+    "__wrap_akv_attention_execute_v2_native": {
+      "instructions": 0,
+      "retire_gap_cycles": -35
+    },
+    "akv_attention_execute_v2_native": {
+      "instructions": 0,
+      "retire_gap_cycles": 36
+    },
+    "akv_attention_execute_v2_with_features_native": {
+      "instructions": 544,
+      "retire_gap_cycles": -6664
+    },
+    "akv_attention_features_validate": {
+      "instructions": 0,
+      "retire_gap_cycles": 60
+    },
+    "akv_attention_plan_create_v2": {
+      "instructions": 0,
+      "retire_gap_cycles": -33
+    },
+    "akv_attention_v2_shape_supported": {
+      "instructions": 0,
+      "retire_gap_cycles": 2
+    },
+    "akv_v2_compute_scores_f16_d128_gqa6": {
+      "instructions": 0,
+      "retire_gap_cycles": 218
+    },
+    "akv_v2_descriptor_is_valid": {
+      "instructions": 4,
+      "retire_gap_cycles": 98
+    },
+    "akv_v2_update_outputs_f16_d128_gqa6": {
+      "instructions": -6344,
+      "retire_gap_cycles": -24070
+    },
+    "akv_v2_update_outputs_f16_d128_gqa6_refill": {
+      "instructions": 6356,
+      "retire_gap_cycles": 32778
+    },
+    "apply_scale_mask_and_softmax": {
+      "instructions": 0,
+      "retire_gap_cycles": -2
+    },
+    "attention_plan_create.part.0": {
+      "instructions": 0,
+      "retire_gap_cycles": 99
+    },
+    "expf": {
+      "instructions": 0,
+      "retire_gap_cycles": 128
+    },
+    "finitef": {
+      "instructions": 0,
+      "retire_gap_cycles": 26
+    },
+    "memcpy": {
+      "instructions": 0,
+      "retire_gap_cycles": 37
+    },
+    "memset": {
+      "instructions": 0,
+      "retire_gap_cycles": 16
+    },
+    "run_attention_akv_v2.constprop.0": {
+      "instructions": 0,
+      "retire_gap_cycles": 38
+    },
+    "store_outputs": {
+      "instructions": 0,
+      "retire_gap_cycles": 114
+    }
+  },
+  "mode_totals": {
+    "0": {
+      "__ieee754_expf": {
+        "instructions": 1920,
+        "retire_gap_cycles": 3854
+      },
+      "__wrap_akv_attention_execute_v2_native": {
+        "instructions": 20,
+        "retire_gap_cycles": 199
+      },
+      "akv_attention_execute_v2_native": {
+        "instructions": 12,
+        "retire_gap_cycles": 42
+      },
+      "akv_attention_execute_v2_with_features_native": {
+        "instructions": 1288,
+        "retire_gap_cycles": 21618
+      },
+      "akv_attention_features_validate": {
+        "instructions": 12,
+        "retire_gap_cycles": 73
+      },
+      "akv_attention_plan_create_v2": {
+        "instructions": 36,
+        "retire_gap_cycles": 123
+      },
+      "akv_attention_v2_shape_supported": {
+        "instructions": 22,
+        "retire_gap_cycles": 120
+      },
+      "akv_v2_compute_scores_f16_d128_gqa6": {
+        "instructions": 22264,
+        "retire_gap_cycles": 78686
+      },
+      "akv_v2_descriptor_is_valid": {
+        "instructions": 312,
+        "retire_gap_cycles": 988
+      },
+      "akv_v2_update_outputs_f16_d128_gqa6": {
+        "instructions": 12688,
+        "retire_gap_cycles": 48353
+      },
+      "apply_scale_mask_and_softmax": {
+        "instructions": 6984,
+        "retire_gap_cycles": 37212
+      },
+      "attention_plan_create.part.0": {
+        "instructions": 836,
+        "retire_gap_cycles": 3069
+      },
+      "expf": {
+        "instructions": 720,
+        "retire_gap_cycles": 1533
+      },
+      "finitef": {
+        "instructions": 192,
+        "retire_gap_cycles": 237
+      },
+      "main": {
+        "instructions": 12,
+        "retire_gap_cycles": 72
+      },
+      "memcpy": {
+        "instructions": 4408,
+        "retire_gap_cycles": 5729
+      },
+      "memset": {
+        "instructions": 244,
+        "retire_gap_cycles": 443
+      },
+      "run_attention_akv_v2.constprop.0": {
+        "instructions": 4074,
+        "retire_gap_cycles": 8686
+      },
+      "store_outputs": {
+        "instructions": 656,
+        "retire_gap_cycles": 3129
+      }
+    },
+    "1": {
+      "__ieee754_expf": {
+        "instructions": 1920,
+        "retire_gap_cycles": 4317
+      },
+      "__wrap_akv_attention_execute_v2_native": {
+        "instructions": 20,
+        "retire_gap_cycles": 164
+      },
+      "akv_attention_execute_v2_native": {
+        "instructions": 12,
+        "retire_gap_cycles": 78
+      },
+      "akv_attention_execute_v2_with_features_native": {
+        "instructions": 1832,
+        "retire_gap_cycles": 14954
+      },
+      "akv_attention_features_validate": {
+        "instructions": 12,
+        "retire_gap_cycles": 133
+      },
+      "akv_attention_plan_create_v2": {
+        "instructions": 36,
+        "retire_gap_cycles": 90
+      },
+      "akv_attention_v2_shape_supported": {
+        "instructions": 22,
+        "retire_gap_cycles": 122
+      },
+      "akv_v2_compute_scores_f16_d128_gqa6": {
+        "instructions": 22264,
+        "retire_gap_cycles": 78904
+      },
+      "akv_v2_descriptor_is_valid": {
+        "instructions": 316,
+        "retire_gap_cycles": 1086
+      },
+      "akv_v2_update_outputs_f16_d128_gqa6": {
+        "instructions": 6344,
+        "retire_gap_cycles": 24283
+      },
+      "akv_v2_update_outputs_f16_d128_gqa6_refill": {
+        "instructions": 6356,
+        "retire_gap_cycles": 32778
+      },
+      "apply_scale_mask_and_softmax": {
+        "instructions": 6984,
+        "retire_gap_cycles": 37210
+      },
+      "attention_plan_create.part.0": {
+        "instructions": 836,
+        "retire_gap_cycles": 3168
+      },
+      "expf": {
+        "instructions": 720,
+        "retire_gap_cycles": 1661
+      },
+      "finitef": {
+        "instructions": 192,
+        "retire_gap_cycles": 263
+      },
+      "main": {
+        "instructions": 12,
+        "retire_gap_cycles": 72
+      },
+      "memcpy": {
+        "instructions": 4408,
+        "retire_gap_cycles": 5766
+      },
+      "memset": {
+        "instructions": 244,
+        "retire_gap_cycles": 459
+      },
+      "run_attention_akv_v2.constprop.0": {
+        "instructions": 4074,
+        "retire_gap_cycles": 8724
+      },
+      "store_outputs": {
+        "instructions": 656,
+        "retire_gap_cycles": 3243
+      }
+    }
+  },
+  "performance_accepted": false,
+  "refills": [
+    {
+      "arch": 1706,
+      "first_ar": 36816,
+      "gap_after_older_write": 182,
+      "older_fma_arch": [
+        1694,
+        1695,
+        1696,
+        1697,
+        1698,
+        1699
+      ],
+      "older_last_write": 36634,
+      "older_write_overlap_cycles": 0,
+      "ordinal": 1,
+      "overlap": 0,
+      "start": 36811,
+      "terminal": 38898,
+      "trial": 0,
+      "vid": 0
+    },
+    {
+      "arch": 5111,
+      "first_ar": 88942,
+      "gap_after_older_write": 181,
+      "older_fma_arch": [
+        5099,
+        5100,
+        5101,
+        5102,
+        5103,
+        5104
+      ],
+      "older_last_write": 88761,
+      "older_write_overlap_cycles": 0,
+      "ordinal": 2,
+      "overlap": 0,
+      "start": 88937,
+      "terminal": 91024,
+      "trial": 0,
+      "vid": 0
+    },
+    {
+      "arch": 8513,
+      "first_ar": 261442,
+      "gap_after_older_write": -23,
+      "older_fma_arch": [
+        8507,
+        8508,
+        8509,
+        8510,
+        8511,
+        8512
+      ],
+      "older_last_write": 261465,
+      "older_write_overlap_cycles": 23,
+      "ordinal": 3,
+      "overlap": 1,
+      "start": 261437,
+      "terminal": 263522,
+      "trial": 1,
+      "vid": 2
+    },
+    {
+      "arch": 11918,
+      "first_ar": 314391,
+      "gap_after_older_write": -23,
+      "older_fma_arch": [
+        11912,
+        11913,
+        11914,
+        11915,
+        11916,
+        11917
+      ],
+      "older_last_write": 314414,
+      "older_write_overlap_cycles": 23,
+      "ordinal": 4,
+      "overlap": 1,
+      "start": 314386,
+      "terminal": 316471,
+      "trial": 1,
+      "vid": 2
+    },
+    {
+      "arch": 15326,
+      "first_ar": 487209,
+      "gap_after_older_write": -23,
+      "older_fma_arch": [
+        15320,
+        15321,
+        15322,
+        15323,
+        15324,
+        15325
+      ],
+      "older_last_write": 487232,
+      "older_write_overlap_cycles": 23,
+      "ordinal": 5,
+      "overlap": 1,
+      "start": 487204,
+      "terminal": 489289,
+      "trial": 2,
+      "vid": 2
+    },
+    {
+      "arch": 18731,
+      "first_ar": 539946,
+      "gap_after_older_write": -23,
+      "older_fma_arch": [
+        18725,
+        18726,
+        18727,
+        18728,
+        18729,
+        18730
+      ],
+      "older_last_write": 539969,
+      "older_write_overlap_cycles": 23,
+      "ordinal": 6,
+      "overlap": 1,
+      "start": 539941,
+      "terminal": 542026,
+      "trial": 2,
+      "vid": 2
+    },
+    {
+      "arch": 22145,
+      "first_ar": 712688,
+      "gap_after_older_write": 182,
+      "older_fma_arch": [
+        22133,
+        22134,
+        22135,
+        22136,
+        22137,
+        22138
+      ],
+      "older_last_write": 712506,
+      "older_write_overlap_cycles": 0,
+      "ordinal": 7,
+      "overlap": 0,
+      "start": 712683,
+      "terminal": 714770,
+      "trial": 3,
+      "vid": 0
+    },
+    {
+      "arch": 25550,
+      "first_ar": 764620,
+      "gap_after_older_write": 182,
+      "older_fma_arch": [
+        25538,
+        25539,
+        25540,
+        25541,
+        25542,
+        25543
+      ],
+      "older_last_write": 764438,
+      "older_write_overlap_cycles": 0,
+      "ordinal": 8,
+      "overlap": 0,
+      "start": 764615,
+      "terminal": 766702,
+      "trial": 3,
+      "vid": 0
+    }
+  ],
+  "scope": "Measured retirement attribution and older-FMA write timing, not exclusive stall causes",
+  "state": "PASS",
+  "trials": [
+    {
+      "begin": {
+        "csr_cycle": 7374,
+        "cycle": 7375
+      },
+      "csr_cycles": 107236,
+      "end": {
+        "csr_cycle": 114610,
+        "cycle": 114611
+      },
+      "functions": {
+        "__ieee754_expf": {
+          "instructions": 960,
+          "retire_gap_cycles": 1957
+        },
+        "__wrap_akv_attention_execute_v2_native": {
+          "instructions": 10,
+          "retire_gap_cycles": 81
+        },
+        "akv_attention_execute_v2_native": {
+          "instructions": 6,
+          "retire_gap_cycles": 23
+        },
+        "akv_attention_execute_v2_with_features_native": {
+          "instructions": 644,
+          "retire_gap_cycles": 10799
+        },
+        "akv_attention_features_validate": {
+          "instructions": 6,
+          "retire_gap_cycles": 42
+        },
+        "akv_attention_plan_create_v2": {
+          "instructions": 18,
+          "retire_gap_cycles": 49
+        },
+        "akv_attention_v2_shape_supported": {
+          "instructions": 11,
+          "retire_gap_cycles": 52
+        },
+        "akv_v2_compute_scores_f16_d128_gqa6": {
+          "instructions": 11132,
+          "retire_gap_cycles": 39324
+        },
+        "akv_v2_descriptor_is_valid": {
+          "instructions": 156,
+          "retire_gap_cycles": 532
+        },
+        "akv_v2_update_outputs_f16_d128_gqa6": {
+          "instructions": 6344,
+          "retire_gap_cycles": 24179
+        },
+        "apply_scale_mask_and_softmax": {
+          "instructions": 3492,
+          "retire_gap_cycles": 18618
+        },
+        "attention_plan_create.part.0": {
+          "instructions": 418,
+          "retire_gap_cycles": 1592
+        },
+        "expf": {
+          "instructions": 360,
+          "retire_gap_cycles": 776
+        },
+        "finitef": {
+          "instructions": 96,
+          "retire_gap_cycles": 139
+        },
+        "main": {
+          "instructions": 6,
+          "retire_gap_cycles": 36
+        },
+        "memcpy": {
+          "instructions": 2204,
+          "retire_gap_cycles": 2865
+        },
+        "memset": {
+          "instructions": 122,
+          "retire_gap_cycles": 225
+        },
+        "run_attention_akv_v2.constprop.0": {
+          "instructions": 2037,
+          "retire_gap_cycles": 4393
+        },
+        "store_outputs": {
+          "instructions": 328,
+          "retire_gap_cycles": 1554
+        }
+      },
+      "instructions": 28350,
+      "overlap": 0,
+      "trial": 0
+    },
+    {
+      "begin": {
+        "csr_cycle": 231610,
+        "cycle": 231611
+      },
+      "csr_cycles": 108986,
+      "end": {
+        "csr_cycle": 340596,
+        "cycle": 340597
+      },
+      "functions": {
+        "__ieee754_expf": {
+          "instructions": 960,
+          "retire_gap_cycles": 2146
+        },
+        "__wrap_akv_attention_execute_v2_native": {
+          "instructions": 10,
+          "retire_gap_cycles": 88
+        },
+        "akv_attention_execute_v2_native": {
+          "instructions": 6,
+          "retire_gap_cycles": 46
+        },
+        "akv_attention_execute_v2_with_features_native": {
+          "instructions": 916,
+          "retire_gap_cycles": 7592
+        },
+        "akv_attention_features_validate": {
+          "instructions": 6,
+          "retire_gap_cycles": 66
+        },
+        "akv_attention_plan_create_v2": {
+          "instructions": 18,
+          "retire_gap_cycles": 49
+        },
+        "akv_attention_v2_shape_supported": {
+          "instructions": 11,
+          "retire_gap_cycles": 54
+        },
+        "akv_v2_compute_scores_f16_d128_gqa6": {
+          "instructions": 11132,
+          "retire_gap_cycles": 39452
+        },
+        "akv_v2_descriptor_is_valid": {
+          "instructions": 158,
+          "retire_gap_cycles": 585
+        },
+        "akv_v2_update_outputs_f16_d128_gqa6": {
+          "instructions": 3172,
+          "retire_gap_cycles": 12135
+        },
+        "akv_v2_update_outputs_f16_d128_gqa6_refill": {
+          "instructions": 3178,
+          "retire_gap_cycles": 16404
+        },
+        "apply_scale_mask_and_softmax": {
+          "instructions": 3492,
+          "retire_gap_cycles": 18654
+        },
+        "attention_plan_create.part.0": {
+          "instructions": 418,
+          "retire_gap_cycles": 1632
+        },
+        "expf": {
+          "instructions": 360,
+          "retire_gap_cycles": 809
+        },
+        "finitef": {
+          "instructions": 96,
+          "retire_gap_cycles": 119
+        },
+        "main": {
+          "instructions": 6,
+          "retire_gap_cycles": 36
+        },
+        "memcpy": {
+          "instructions": 2204,
+          "retire_gap_cycles": 2895
+        },
+        "memset": {
+          "instructions": 122,
+          "retire_gap_cycles": 241
+        },
+        "run_attention_akv_v2.constprop.0": {
+          "instructions": 2037,
+          "retire_gap_cycles": 4366
+        },
+        "store_outputs": {
+          "instructions": 328,
+          "retire_gap_cycles": 1617
+        }
+      },
+      "instructions": 28630,
+      "overlap": 1,
+      "trial": 1
+    },
+    {
+      "begin": {
+        "csr_cycle": 457763,
+        "cycle": 457764
+      },
+      "csr_cycles": 108489,
+      "end": {
+        "csr_cycle": 566252,
+        "cycle": 566253
+      },
+      "functions": {
+        "__ieee754_expf": {
+          "instructions": 960,
+          "retire_gap_cycles": 2171
+        },
+        "__wrap_akv_attention_execute_v2_native": {
+          "instructions": 10,
+          "retire_gap_cycles": 76
+        },
+        "akv_attention_execute_v2_native": {
+          "instructions": 6,
+          "retire_gap_cycles": 32
+        },
+        "akv_attention_execute_v2_with_features_native": {
+          "instructions": 916,
+          "retire_gap_cycles": 7362
+        },
+        "akv_attention_features_validate": {
+          "instructions": 6,
+          "retire_gap_cycles": 67
+        },
+        "akv_attention_plan_create_v2": {
+          "instructions": 18,
+          "retire_gap_cycles": 41
+        },
+        "akv_attention_v2_shape_supported": {
+          "instructions": 11,
+          "retire_gap_cycles": 68
+        },
+        "akv_v2_compute_scores_f16_d128_gqa6": {
+          "instructions": 11132,
+          "retire_gap_cycles": 39452
+        },
+        "akv_v2_descriptor_is_valid": {
+          "instructions": 158,
+          "retire_gap_cycles": 501
+        },
+        "akv_v2_update_outputs_f16_d128_gqa6": {
+          "instructions": 3172,
+          "retire_gap_cycles": 12148
+        },
+        "akv_v2_update_outputs_f16_d128_gqa6_refill": {
+          "instructions": 3178,
+          "retire_gap_cycles": 16374
+        },
+        "apply_scale_mask_and_softmax": {
+          "instructions": 3492,
+          "retire_gap_cycles": 18556
+        },
+        "attention_plan_create.part.0": {
+          "instructions": 418,
+          "retire_gap_cycles": 1536
+        },
+        "expf": {
+          "instructions": 360,
+          "retire_gap_cycles": 852
+        },
+        "finitef": {
+          "instructions": 96,
+          "retire_gap_cycles": 144
+        },
+        "main": {
+          "instructions": 6,
+          "retire_gap_cycles": 36
+        },
+        "memcpy": {
+          "instructions": 2204,
+          "retire_gap_cycles": 2871
+        },
+        "memset": {
+          "instructions": 122,
+          "retire_gap_cycles": 218
+        },
+        "run_attention_akv_v2.constprop.0": {
+          "instructions": 2037,
+          "retire_gap_cycles": 4358
+        },
+        "store_outputs": {
+          "instructions": 328,
+          "retire_gap_cycles": 1626
+        }
+      },
+      "instructions": 28630,
+      "overlap": 1,
+      "trial": 2
+    },
+    {
+      "begin": {
+        "csr_cycle": 683407,
+        "cycle": 683408
+      },
+      "csr_cycles": 106930,
+      "end": {
+        "csr_cycle": 790337,
+        "cycle": 790338
+      },
+      "functions": {
+        "__ieee754_expf": {
+          "instructions": 960,
+          "retire_gap_cycles": 1897
+        },
+        "__wrap_akv_attention_execute_v2_native": {
+          "instructions": 10,
+          "retire_gap_cycles": 118
+        },
+        "akv_attention_execute_v2_native": {
+          "instructions": 6,
+          "retire_gap_cycles": 19
+        },
+        "akv_attention_execute_v2_with_features_native": {
+          "instructions": 644,
+          "retire_gap_cycles": 10819
+        },
+        "akv_attention_features_validate": {
+          "instructions": 6,
+          "retire_gap_cycles": 31
+        },
+        "akv_attention_plan_create_v2": {
+          "instructions": 18,
+          "retire_gap_cycles": 74
+        },
+        "akv_attention_v2_shape_supported": {
+          "instructions": 11,
+          "retire_gap_cycles": 68
+        },
+        "akv_v2_compute_scores_f16_d128_gqa6": {
+          "instructions": 11132,
+          "retire_gap_cycles": 39362
+        },
+        "akv_v2_descriptor_is_valid": {
+          "instructions": 156,
+          "retire_gap_cycles": 456
+        },
+        "akv_v2_update_outputs_f16_d128_gqa6": {
+          "instructions": 6344,
+          "retire_gap_cycles": 24174
+        },
+        "apply_scale_mask_and_softmax": {
+          "instructions": 3492,
+          "retire_gap_cycles": 18594
+        },
+        "attention_plan_create.part.0": {
+          "instructions": 418,
+          "retire_gap_cycles": 1477
+        },
+        "expf": {
+          "instructions": 360,
+          "retire_gap_cycles": 757
+        },
+        "finitef": {
+          "instructions": 96,
+          "retire_gap_cycles": 98
+        },
+        "main": {
+          "instructions": 6,
+          "retire_gap_cycles": 36
+        },
+        "memcpy": {
+          "instructions": 2204,
+          "retire_gap_cycles": 2864
+        },
+        "memset": {
+          "instructions": 122,
+          "retire_gap_cycles": 218
+        },
+        "run_attention_akv_v2.constprop.0": {
+          "instructions": 2037,
+          "retire_gap_cycles": 4293
+        },
+        "store_outputs": {
+          "instructions": 328,
+          "retire_gap_cycles": 1575
+        }
+      },
+      "instructions": 28350,
+      "overlap": 0,
+      "trial": 3
+    }
+  ]
+}
