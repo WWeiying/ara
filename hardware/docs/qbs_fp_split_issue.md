@@ -10,8 +10,9 @@ The sixteen transaction entries, 128 FP32 accumulator locations, payload SRAM,
 profile formats, instruction encoding and rounding contract are unchanged.
 
 Evidence below is command-level RTL, not complete-model or physical-design
-performance. The candidate remains in the feature worktree until integration
-regression. The main and FPGA RTL copies are not changed by this stage.
+performance. The candidate passed focused SoC integration and was returned to
+the verification branch on 2026-10-23. Main and FPGA RTL copies are not changed
+by this stage; see `verification/qbs/SOC_INTEGRATION_20261023.md`.
 
 ## Root cause
 
@@ -127,7 +128,7 @@ vector root and baseline evidence directory. Do not overwrite prior results.
 
 ## Remaining acceptance
 
-Run representative full-SoC QBS and ordinary-RVV integration regression before
-mainline integration. Preserve Q4_K/Q6_K controls and the fault tests alongside
-the Q8_0 gain. Full-model speedup, netlist area and timing are not established
-by these command-level results. No synthesis was launched in this stage.
+Focused full-SoC QBS/AKV handoff, ordinary-RVV FMA, and the current-source
+Q8_0 real-data app passed. Preserve Q4_K/Q6_K controls and fault tests alongside
+the Q8_0 gain. This is not a complete RVV signoff campaign. Full-model speedup,
+netlist area and timing remain unmeasured; no synthesis was launched.

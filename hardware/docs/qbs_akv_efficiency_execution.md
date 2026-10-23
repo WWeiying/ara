@@ -7,8 +7,9 @@ first passing experiment. Preserve ordinary RVV and llama.cpp fallback,
 numerical contracts, fault recovery and existing model/shape support. No
 synthesis or physical implementation is part of this stage.
 
-Main baseline: `03743c61`. Work takes place in the independent
-`ara_dsa_qbs_activation_overlap` feature worktree. Main's unrelated uncommitted
+Main baseline: `03743c61`. The initial candidate was developed in
+`ara_dsa_qbs_activation_overlap`; accepted changes and continuing verification
+now belong to `ara_dsa_signoff_integration`. Main's unrelated uncommitted
 files and FPGA copies are not experimental outputs. Record each accepted
 mechanism in a separate commit; integrate only reviewed, tested changes.
 
@@ -16,7 +17,7 @@ mechanism in a separate commit; integrate only reviewed, tested changes.
 
 | Priority | Work | Evidence required | State |
 |---|---|---|---|
-| 1 | Short-block QBS conversion/scale/accumulation throughput | Current-image cycle probes; real Q8_0 and neighboring format inputs; bit/fflags checks; paired cycles and traffic; multi-profile fault regression | Command-level validated; integration pending |
+| 1 | Short-block QBS conversion/scale/accumulation throughput | Current-image cycle probes; real Q8_0 and neighboring format inputs; bit/fflags checks; paired cycles and traffic; multi-profile fault regression | Command-level and focused SoC integration passed; no model/PPA claim |
 | 2 | QBS activation overlap and Prefill scheduling | Existing M1/M4 overlap plus M5..8 comparison; include activation preparation and traffic; shared runtime selection if software changes | Direct M1..4 overlap validated; remaining scope open |
 | 3 | AKV fill/replay/RVV compute overlap | Lifecycle and single-port conflict analysis; real Attention tile; matched QK/PV/numerical checks; shape and fault regression | Pending |
 | Parallel resource work | Shared QBS/AKV reader; unified legacy/v2 AKV storage | Ownership/drain invariants; unchanged outstanding capacity and context lifetime; matched latency/fault tests | Pending |
@@ -65,6 +66,8 @@ Stage 1 command-level results and invariants are recorded in
 81 passing paired command cases without cycle regression and a separate
 live-reset/intermediate-result/per-cycle-flags equivalence test. Q8_0 M4 and
 M8 command cycles decrease by about 34.4%; this is not a model-level claim.
+Focused SoC integration, including resolution of a stale version-1 descriptor
+ELF, is recorded in `verification/qbs/SOC_INTEGRATION_20261023.md`.
 
 ## Next design gates
 

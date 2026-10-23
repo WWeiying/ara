@@ -78,11 +78,21 @@ VLEN=1024, four lanes, 1 MiB simulation L2, no injected AXI delay.
 - Limit: 1800 seconds, independent directory, no FSDB.
 - Launch confirmed the actual `simv` child in the service control group.
 
-At creation of this record, the replay is running, not accepted. Require
-normal application completion, checked numerical output, clean independent
-UVM result, and source/image/ELF identity checks before claiming integration
-PASS. Preserve the original failed run. No current coverage or performance
-claim is derived from that failed run.
+Replay completed successfully on 2026-10-23. The application checks all 256
+outputs with zero mismatches (`qbs_status=0`); the independent UVM report is
+PASS with an empty issue list. All 342 requests have responses, all 268 backend
+allocations complete, and no exception, protocol error or outstanding request
+remains. There are 2,107 matched AXI reads and 36 matched AXI write responses.
+The saved `RUN_SHA256SUMS` checks pass. VCS CPU time is 142.320 seconds.
+
+The current-source benchmark measures 33,831 cycles, including 5,032 cycles
+of activation quantization and 28,799 cycles in the matmul region. No matching
+old-RTL execution of this rebuilt ELF has been measured here; these numbers
+are not an end-to-end speedup claim. Preserve the original failed run. No
+coverage or performance claim is derived from that failed run.
+
+The two accepted candidate commits have been returned to the verification
+branch as `d389febb` and `302be584`. Main and FPGA copies remain unchanged.
 
 ## Remaining work
 
