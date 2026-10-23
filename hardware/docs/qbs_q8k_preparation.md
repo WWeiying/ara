@@ -63,6 +63,28 @@ production generic; per-case digests match across VLENs. See
 `verification/qbs/results/q8k-m4-native-20261023.json`. Production integration
 and same-image RTL preparation/projection performance remain unproven.
 
+### RTL preparation measurement in progress
+
+The independent Linux production function exported the first four real
+attention-projection activation rows, M=4/K=1536, into a 7008-byte Q8_K M4
+reference. The exporter completed with FCSR=1 and unchanged VCSR=5. Its record
+is `verification/out/qbs-q8k-oracle-20261023-01/golden.json`.
+
+`build_q8k_prepare_soc.py` extracts the current production generic and its
+`nearest_int` helper without manual algorithm substitution, checks that the
+bare-metal reference still contains `fmadd.s`, and builds one ABBA executable.
+Every call is checked against the independent reference, including scales and
+bsums, output guards and FCSR/VCSR. The timed candidate includes its domain
+preflight and scalar maximum search; setup, printing and comparison are outside
+the interval. Both paths use the same output buffer and input capture.
+
+The existing SoC image is executing this ELF under the direct systemd worker
+`qbs-q8k-prepare-soc-20261023-01.service`, with a 7200-second simulation bound.
+Results belong to `verification/out/qbs-q8k-prepare-soc-20261023-01/`.
+Starting the simulator is not performance acceptance. A passing preparation
+measurement must still be followed by a complete projection test and actual
+GGML dispatch validation; no full-projection speedup is inferred from it.
+
 - Compile all AVL caps with the target RV64GCV compiler and strict FP options.
   This gate passed on 2026-10-23; it is not an execution result.
 - Compare all packed bytes, scales and bsums against the linked production
