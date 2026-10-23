@@ -653,3 +653,30 @@ pins remained unchanged. Evidence is
 `verification/qbs/results/ggml-m4-prepare-native-20261023.json`. This clears
 the numerical gate for Q8_0 M4; Q8_K, production selection and paired native
 RTL timing remain open.
+
+## Byte-packing full-projection RTL result
+
+The separate row-quantize/pack candidate completed on the unchanged SoC image.
+`audit_pack_projection.py` rechecks the original simulator, frozen ELF/object
+identities, protocol result, independent numerical oracle and matching work.
+
+| Interval | Scalar packing | VLA packing |
+| --- | ---: | ---: |
+| Quantization | 26056 | 26063 |
+| Packing | 62462 | 16409 |
+| Matmul and command setup | 168457 | 168451 |
+| Complete projection | 256975 | 210923 |
+
+Both runs produce checksum `0xa6e8082b37dbf573`, zero oracle mismatches and zero
+quantized-byte mismatches for all 3584 outputs of the real M4/N896/K896 input.
+All ten original objects are reused; the candidate adds only a private packer
+wrapper. Total cycles fall 17.9208% (1.21834x speedup); packing itself improves
+3.80657x. The few-cycle changes in other intervals do not support an arithmetic
+throughput claim. Logical input reads remain 974400 bytes under the existing
+definition, which excludes scratch packing traffic.
+
+Evidence: `verification/qbs/results/pack-projection-soc-20261023.json`. This is
+not a fused-GGML-M4 or whole-model speedup. It validates improving the separate
+packing path; production wide-M selection and other shapes still require their
+own integration/performance gates. The fused-M4 candidate above follows a
+different baseline and must not inherit this speedup.
