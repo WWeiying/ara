@@ -54,14 +54,18 @@ static int test_device_and_profiles(void) {
   CHECK(device.capabilities.idempotent_memory_only);
   CHECK(device.capabilities.requires_accelerator_consistency);
   CHECK(device.capabilities.activation_context_count == 1);
-  CHECK(device.capabilities.activation_context_max_m == 1);
-  CHECK(device.capabilities.activation_context_max_k_blocks == 16);
+  CHECK(device.capabilities.activation_context_max_m == 8);
+  CHECK(device.capabilities.activation_context_max_k_blocks == 32);
+  CHECK(device.capabilities.activation_context_capacity_bytes == 4672);
   CHECK(device.capabilities.activation_context_generation_bits == 8);
   CHECK(device.capabilities.activation_context_access_modes == 0x0f);
   CHECK(device.capabilities.activation_context_profiles ==
-        (UINT16_C(1) << QBS_ACTIVATION_PROFILE_Q8_K));
+        ((UINT16_C(1) << QBS_ACTIVATION_PROFILE_Q8_K) |
+         (UINT16_C(1) << QBS_ACTIVATION_PROFILE_Q8_0)));
   CHECK(device.capabilities.activation_context_layouts ==
-        (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR));
+        ((UINT16_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR) |
+         (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED) |
+         (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED)));
   CHECK((device.capabilities.activation_layouts &
          (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED)) != 0);
 
@@ -176,6 +180,98 @@ static int test_device_and_profiles(void) {
   CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
   CHECK(qbs_device_init_reference(2048, &device) == QBS_STATUS_BAD_ARGUMENT);
   CHECK(!device.capabilities.valid);
+  return 0;
+}
+
+typedef struct {
+  uint64_t info2;
+  uint64_t info3;
+  unsigned word3_reads;
+} context_capability_reader_t;
+
+static uint64_t context_capability_reader(void *opaque, unsigned index) {
+  context_capability_reader_t *reader = opaque;
+  if (index == 2u) return reader->info2;
+  if (index == 3u) {
+    ++reader->word3_reads;
+    return reader->info3;
+  }
+  return qbs_capability_word(index, 1024);
+}
+
+static uint64_t context_word2(int legacy) {
+  const uint64_t profiles = (UINT64_C(1) << QBS_ACTIVATION_PROFILE_Q8_K) |
+      (legacy ? 0 : UINT64_C(1) << QBS_ACTIVATION_PROFILE_Q8_0);
+  const uint64_t layouts = (UINT64_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR) |
+      (legacy ? 0 : (UINT64_C(1) << QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED) |
+                    (UINT64_C(1) << QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED));
+  return UINT64_C(1) | ((legacy ? UINT64_C(0) : UINT64_C(7)) << 4) |
+      ((legacy ? UINT64_C(15) : UINT64_C(31)) << 7) | (profiles << 12) |
+      (UINT64_C(15) << 28) | (UINT64_C(8) << 32) | (layouts << 40);
+}
+
+static int test_context_capabilities(void) {
+  const uint64_t storage = (UINT64_C(1) << 32) | UINT64_C(4672);
+  CHECK(qbs_capability_word(2, 1024) == context_word2(0));
+  CHECK(qbs_capability_word(3, 1024) == storage);
+  context_capability_reader_t reader = {.info2 = context_word2(0), .info3 = storage};
+  qbs_device_t device;
+  CHECK(qbs_device_query(context_capability_reader, &reader, &device) == QBS_STATUS_OK);
+  CHECK(reader.word3_reads == 1u);
+  CHECK(device.capabilities.activation_context_capacity_bytes == 4672u);
+  const uint64_t bad_storage[] = {
+      0, 4672, UINT64_C(1) << 32, storage - 2, storage + 2,
+      storage | (UINT64_C(1) << 40), storage | (UINT64_C(1) << 63),
+      (UINT64_C(2) << 32) | 4672, (UINT64_C(1) << 32) | UINT32_MAX,
+  };
+  for (size_t i = 0; i < sizeof(bad_storage) / sizeof(bad_storage[0]); ++i) {
+    reader.info3 = bad_storage[i];
+    CHECK(qbs_device_query(context_capability_reader, &reader, &device) == QBS_STATUS_CAPABILITY);
+    CHECK(!device.capabilities.valid && !device.weight_profiles &&
+          !device.capabilities.activation_context_capacity_bytes);
+  }
+  reader.info3 = storage;
+  const unsigned changed_bits[] = {0, 4, 7, 12, 28, 32, 40, 56};
+  for (size_t i = 0; i < sizeof(changed_bits) / sizeof(changed_bits[0]); ++i) {
+    reader.info2 = context_word2(0) ^ (UINT64_C(1) << changed_bits[i]);
+    CHECK(qbs_device_query(context_capability_reader, &reader, &device) == QBS_STATUS_CAPABILITY);
+  }
+  reader.info2 = context_word2(1);
+  CHECK(qbs_device_query(context_capability_reader, &reader, &device) == QBS_STATUS_CAPABILITY);
+  reader.info3 = 0;
+  CHECK(qbs_device_query(context_capability_reader, &reader, &device) == QBS_STATUS_OK);
+  CHECK(device.capabilities.activation_context_max_m == 1u);
+  CHECK(device.capabilities.activation_context_max_k_blocks == 16u);
+  CHECK(device.capabilities.activation_context_capacity_bytes == 4672u);
+  qbs_problem_t problem = {
+      .weight_profile = QBS_WEIGHT_PROFILE_Q4_K,
+      .activation_profile = QBS_ACTIVATION_PROFILE_Q8_K,
+      .weight_layout = QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+      .activation_storage = QBS_ACTIVATION_STORAGE_ROW_MAJOR,
+      .m = 1, .n = 37, .k_elements = 16u * 256u,
+  };
+  qbs_plan_t plan;
+  CHECK(qbs_plan_create(&device, &problem, &plan) == QBS_STATUS_OK);
+  CHECK(qbs_plan_supports_activation_context(&plan));
+  problem.k_elements = 17u * 256u;
+  CHECK(qbs_plan_create(&device, &problem, &plan) == QBS_STATUS_OK);
+  CHECK(!qbs_plan_supports_activation_context(&plan));
+  problem.k_elements = 256u;
+  problem.m = 4;
+  problem.activation_storage = QBS_ACTIVATION_STORAGE_M4_GROUPED;
+  CHECK(qbs_plan_create(&device, &problem, &plan) == QBS_STATUS_OK);
+  CHECK(!qbs_plan_supports_activation_context(&plan));
+  problem.m = 1;
+  problem.activation_storage = QBS_ACTIVATION_STORAGE_ROW_MAJOR;
+  problem.weight_profile = QBS_WEIGHT_PROFILE_Q4_0;
+  problem.activation_profile = QBS_ACTIVATION_PROFILE_Q8_0;
+  problem.k_elements = 32u;
+  CHECK(qbs_plan_create(&device, &problem, &plan) == QBS_STATUS_OK);
+  CHECK(!qbs_plan_supports_activation_context(&plan));
+  for (size_t i = 0; i < sizeof(changed_bits) / sizeof(changed_bits[0]); ++i) {
+    reader.info2 = context_word2(1) ^ (UINT64_C(1) << changed_bits[i]);
+    CHECK(qbs_device_query(context_capability_reader, &reader, &device) == QBS_STATUS_CAPABILITY);
+  }
   return 0;
 }
 
@@ -358,7 +454,25 @@ typedef struct {
   uint8_t expect_activation_context;
   uint8_t activation_context_scope;
   qbs_activation_context_token_t expected_token;
+  uint8_t validate_residency;
+  uint8_t resident_valid;
+  unsigned resident_m;
+  qbs_descriptor_fields_t resident_fields;
+  uint8_t resident_bytes[4672];
+  size_t fail_command_plus_one;
+  unsigned fills;
+  unsigned reuses;
+  unsigned releases;
 } mock_executor_t;
+
+/* Deliberately byte-based rather than a quantized arithmetic reference: this
+   executor checks context ownership, padding and complete activation identity. */
+static unsigned activation_checksum(const uint8_t *bytes, size_t count) {
+  unsigned value = 0;
+  for (size_t i = 0; i < count; ++i)
+    value = (value * 33u + bytes[i]) % 65521u;
+  return value;
+}
 
 static qbs_status_t mock_execute(
     void *opaque, const qbs_descriptor_t *descriptor, unsigned m,
@@ -429,10 +543,50 @@ static qbs_status_t mock_execute(
         return QBS_STATUS_EXECUTION;
     }
   }
+  if (mock->fail_command_plus_one == command_index + 1u)
+    return QBS_STATUS_EXECUTION;
+  unsigned checksum = 0;
+  if (mock->validate_residency) {
+    const unsigned storage_rows = fields.activation_layout ==
+            QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED ? 8u :
+        (fields.activation_layout == QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED
+             ? 4u : m);
+    const size_t bytes = (size_t)storage_rows * fields.k_blocks *
+        qbs_activation_block_bytes(fields.activation_profile);
+    const uint8_t *data = (const uint8_t *)activations;
+    if (fields.activation_access != QBS_ACTIVATION_ACCESS_DIRECT) {
+      if (bytes > sizeof(mock->resident_bytes)) return QBS_STATUS_EXECUTION;
+      if (fields.activation_access == QBS_ACTIVATION_ACCESS_FILL) {
+        memcpy(mock->resident_bytes, activations, bytes);
+        mock->resident_valid = 1u;
+        mock->resident_fields = fields;
+        mock->resident_m = m;
+        ++mock->fills;
+      } else {
+        if (!mock->resident_valid || mock->resident_m != m ||
+            mock->resident_fields.activation_profile != fields.activation_profile ||
+            mock->resident_fields.activation_layout != fields.activation_layout ||
+            mock->resident_fields.k_blocks != fields.k_blocks ||
+            mock->resident_fields.context_id != fields.context_id ||
+            mock->resident_fields.context_generation != fields.context_generation ||
+            memcmp(mock->resident_bytes, activations, bytes) != 0)
+          return QBS_STATUS_EXECUTION;
+        ++mock->reuses;
+      }
+      data = mock->resident_bytes;
+      if (fields.activation_access == QBS_ACTIVATION_ACCESS_RELEASE) {
+        mock->resident_valid = 0u;
+        ++mock->releases;
+      }
+    }
+    checksum = activation_checksum(data, bytes);
+  }
   for (unsigned row = 0; row < m; ++row)
     for (unsigned column = 0; column < n; ++column)
       output[(size_t)row * output_stride + column] =
-          (float)command->k_blocks;
+          mock->validate_residency
+              ? (float)(checksum + row * 128u + command->output_start + column)
+              : (float)command->k_blocks;
   return QBS_STATUS_OK;
 }
 
@@ -969,6 +1123,237 @@ static int test_activation_context_execution(void) {
   return 0;
 }
 
+static int test_tile_context_case(const qbs_device_t *device,
+                                  unsigned profile, unsigned storage,
+                                  unsigned m, unsigned n, unsigned blocks,
+                                  int eligible) {
+  const qbs_problem_t problem = {
+      .weight_profile = profile == QBS_ACTIVATION_PROFILE_Q8_K
+          ? QBS_WEIGHT_PROFILE_Q4_K : QBS_WEIGHT_PROFILE_Q4_0,
+      .activation_profile = (uint8_t)profile,
+      .weight_layout = QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+      .activation_storage = (uint8_t)storage,
+      .m = m, .n = n,
+      .k_elements = blocks * (profile == QBS_ACTIVATION_PROFILE_Q8_K ? 256u : 32u),
+  };
+  qbs_plan_t plan;
+  CHECK(qbs_plan_create(device, &problem, &plan) == QBS_STATUS_OK);
+  CHECK(qbs_plan_supports_activation_context(&plan) == eligible);
+  CHECK(validate_plan_commands(&plan) == 0);
+  const size_t weight_bytes = qbs_weight_storage_bytes(
+      problem.weight_profile, problem.weight_layout, n, blocks);
+  const size_t activation_bytes = qbs_activation_storage_bytes(profile, storage, m, blocks);
+  const size_t stride = n + 3u;
+  const size_t output_count = (size_t)m * stride;
+  uint8_t *weights = calloc(1, weight_bytes);
+  uint8_t *activations = malloc(activation_bytes);
+  float *output = malloc(output_count * sizeof(float));
+  float *direct = malloc(output_count * sizeof(float));
+  void *workspace = malloc(plan.workspace_bytes ? plan.workspace_bytes : 1u);
+  CHECK(weights != NULL && activations != NULL && output != NULL &&
+        direct != NULL && workspace != NULL);
+  uint32_t pattern = UINT32_C(0x8ba641cd);
+  for (size_t i = 0; i < activation_bytes; ++i) {
+    pattern ^= pattern << 13;
+    pattern ^= pattern >> 17;
+    pattern ^= pattern << 5;
+    activations[i] = (uint8_t)pattern;
+  }
+  for (size_t i = 0; i < output_count; ++i) output[i] = direct[i] = -991.0f;
+  mock_executor_t mock = {
+      .plan = &plan, .weights = weights, .activations = activations,
+      .validate_residency = (uint8_t)eligible,
+      .expected_token = {.context_id = 0, .generation = 0x31},
+  };
+  CHECK(collect_commands(&plan, &mock) == 0);
+  CHECK(qbs_execute(&plan, weights, weight_bytes, activations, activation_bytes,
+                    direct, output_count, stride, workspace, plan.workspace_bytes,
+                    mock_execute, &mock) == QBS_STATUS_OK);
+  for (size_t i = 0; i < mock.command_count; ++i)
+    CHECK(mock.observed_activation_access[i] == QBS_ACTIVATION_ACCESS_DIRECT);
+  mock.next_command = 0;
+  mock.expect_activation_context = 1;
+  qbs_execution_options_t options = {
+      .use_activation_context = 1, .activation_context = mock.expected_token,
+  };
+  CHECK(qbs_execute_with_options(
+            &plan, weights, weight_bytes, activations, activation_bytes,
+            output, output_count, stride, workspace, plan.workspace_bytes,
+            &options, mock_execute, &mock) ==
+        (eligible ? QBS_STATUS_OK : QBS_STATUS_CONTEXT_UNSUPPORTED));
+  if (!eligible) {
+    CHECK(mock.next_command == 0u && mock.fills == 0u && !mock.resident_valid);
+    for (size_t i = 0; i < output_count; ++i) CHECK(output[i] == -991.0f);
+  } else {
+    CHECK(mock.next_command == mock.command_count);
+    CHECK(!mock.resident_valid);
+    CHECK(memcmp(output, direct, output_count * sizeof(float)) == 0);
+    unsigned tiles = 0;
+    for (unsigned input = 0; input < m;) {
+      const unsigned remaining = m - input;
+      const unsigned tile_m = storage == QBS_ACTIVATION_STORAGE_M8_GROUPED && remaining >= 5u
+          ? (remaining < 8u ? remaining : 8u)
+          : (storage == QBS_ACTIVATION_STORAGE_M4_GROUPED && remaining >= 4u ? 4u : 1u);
+      const unsigned packed_rows = tile_m >= 5u ? 8u : tile_m;
+      const size_t row_bytes = (size_t)blocks * qbs_activation_block_bytes(profile);
+      const unsigned sum = activation_checksum(activations + input * row_bytes,
+                                                packed_rows * row_bytes);
+      for (unsigned row = 0; row < tile_m; ++row) {
+        for (unsigned col = 0; col < n; ++col)
+          CHECK(output[(input + row) * stride + col] == (float)(sum + row * 128u + col));
+        for (size_t col = n; col < stride; ++col)
+          CHECK(output[(input + row) * stride + col] == -991.0f);
+      }
+      input += tile_m;
+      ++tiles;
+    }
+    CHECK(mock.fills == tiles && mock.releases == tiles);
+    CHECK(mock.reuses == mock.command_count - tiles);
+
+    for (uint8_t scope = QBS_ACTIVATION_CONTEXT_SCOPE_FILL_KEEP;
+         scope <= QBS_ACTIVATION_CONTEXT_SCOPE_REUSE_RELEASE; ++scope) {
+      options.activation_context_scope = scope;
+      mock.activation_context_scope = scope;
+      mock.next_command = 0;
+      CHECK(qbs_execute_with_options(
+                &plan, weights, weight_bytes, activations, activation_bytes,
+                output, output_count, stride, workspace, plan.workspace_bytes,
+                &options, mock_execute, &mock) ==
+            (tiles == 1u ? QBS_STATUS_OK : QBS_STATUS_CONTEXT_UNSUPPORTED));
+      CHECK(mock.next_command == (tiles == 1u ? mock.command_count : 0u));
+      CHECK(mock.resident_valid == (tiles == 1u && scope != QBS_ACTIVATION_CONTEXT_SCOPE_REUSE_RELEASE));
+      CHECK(memcmp(output, direct, output_count * sizeof(float)) == 0);
+    }
+    options.activation_context_scope = QBS_ACTIVATION_CONTEXT_SCOPE_OPERATION;
+    mock.activation_context_scope = QBS_ACTIVATION_CONTEXT_SCOPE_OPERATION;
+    for (size_t fault = 0; fault < mock.command_count; ++fault) {
+      mock.next_command = 0;
+      mock.resident_valid = 0;
+      mock.fail_command_plus_one = fault + 1u;
+      for (size_t i = 0; i < output_count; ++i) output[i] = -991.0f;
+      CHECK(qbs_execute_with_options(
+                &plan, weights, weight_bytes, activations, activation_bytes,
+                output, output_count, stride, workspace, plan.workspace_bytes,
+                &options, mock_execute, &mock) == QBS_STATUS_EXECUTION);
+      CHECK(mock.next_command == fault + 1u);
+      for (size_t i = 0; i < mock.command_count; ++i) {
+        const qbs_command_t *cmd = &mock.commands[i];
+        for (unsigned row = 0; row < cmd->m; ++row)
+          for (unsigned col = 0; col < cmd->n; ++col) {
+            const size_t at = (cmd->input_start + row) * stride + cmd->output_start + col;
+            CHECK(output[at] == (i < fault ? direct[at] : -991.0f));
+          }
+      }
+      /* Failed RELEASE can leave the cache live; a fresh FILL must recover it. */
+      mock.fail_command_plus_one = 0;
+      mock.next_command = 0;
+      ++mock.expected_token.generation;
+      options.activation_context = mock.expected_token;
+      CHECK(qbs_execute_with_options(
+                &plan, weights, weight_bytes, activations, activation_bytes,
+                output, output_count, stride, workspace, plan.workspace_bytes,
+                &options, mock_execute, &mock) == QBS_STATUS_OK);
+      CHECK(!mock.resident_valid);
+      CHECK(memcmp(output, direct, output_count * sizeof(float)) == 0);
+    }
+    mock.next_command = 0;
+    options.use_activation_context = 0;
+    options.activation_context_scope = QBS_ACTIVATION_CONTEXT_SCOPE_FILL_KEEP;
+    CHECK(qbs_execute_with_options(
+              &plan, weights, weight_bytes, activations, activation_bytes,
+              output, output_count, stride, workspace, plan.workspace_bytes,
+              &options, mock_execute, &mock) == QBS_STATUS_BAD_ARGUMENT);
+    CHECK(mock.next_command == 0u);
+  }
+  free(workspace);
+  free(direct);
+  free(output);
+  free(activations);
+  free(weights);
+  return 0;
+}
+
+static int test_tile_context_execution(void) {
+  qbs_device_t device;
+  CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
+  static const struct {
+    unsigned profile, storage, m, n, blocks;
+    int eligible;
+  } cases[] = {
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M4_GROUPED, 4, 37, 3, 1},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M4_GROUPED, 8, 65, 4, 1},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M4_GROUPED, 4, 37, 5, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M4_GROUPED, 5, 37, 2, 1},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M4_GROUPED, 6, 37, 2, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M4_GROUPED, 7, 37, 2, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M4_GROUPED, 4, 32, 2, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M4_GROUPED, 4, 37, 257, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M8_GROUPED, 16, 37, 2, 1},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M8_GROUPED, 5, 37, 3, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M8_GROUPED, 8, 17, 2, 1},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M8_GROUPED, 8, 16, 2, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M8_GROUPED, 9, 17, 2, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M8_GROUPED, 9, 37, 2, 1},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M8_GROUPED, 10, 37, 2, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M8_GROUPED, 11, 37, 2, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_M8_GROUPED, 12, 37, 2, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_ROW_MAJOR, 1, 37, 16, 1},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_ROW_MAJOR, 1, 37, 17, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_ROW_MAJOR, 2, 37, 2, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_STORAGE_ROW_MAJOR, 3, 37, 2, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_0, QBS_ACTIVATION_STORAGE_M4_GROUPED, 4, 37, 28, 1},
+      {QBS_ACTIVATION_PROFILE_Q8_0, QBS_ACTIVATION_STORAGE_M4_GROUPED, 8, 65, 32, 1},
+      {QBS_ACTIVATION_PROFILE_Q8_0, QBS_ACTIVATION_STORAGE_M4_GROUPED, 4, 37, 33, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_0, QBS_ACTIVATION_STORAGE_M4_GROUPED, 9, 37, 3, 1},
+      {QBS_ACTIVATION_PROFILE_Q8_0, QBS_ACTIVATION_STORAGE_M8_GROUPED, 8, 37, 16, 1},
+      {QBS_ACTIVATION_PROFILE_Q8_0, QBS_ACTIVATION_STORAGE_M8_GROUPED, 21, 37, 17, 1},
+      {QBS_ACTIVATION_PROFILE_Q8_0, QBS_ACTIVATION_STORAGE_M8_GROUPED, 5, 37, 18, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_0, QBS_ACTIVATION_STORAGE_M8_GROUPED, 17, 37, 17, 1},
+      {QBS_ACTIVATION_PROFILE_Q8_0, QBS_ACTIVATION_STORAGE_M8_GROUPED, 17, 17, 17, 0},
+      {QBS_ACTIVATION_PROFILE_Q8_0, QBS_ACTIVATION_STORAGE_ROW_MAJOR, 1, 37, 32, 1},
+      {QBS_ACTIVATION_PROFILE_Q8_0, QBS_ACTIVATION_STORAGE_ROW_MAJOR, 1, 37, 33, 0},
+  };
+  for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+    CHECK(test_tile_context_case(&device, cases[i].profile, cases[i].storage,
+                                 cases[i].m, cases[i].n, cases[i].blocks,
+                                 cases[i].eligible) == 0);
+  }
+  for (unsigned m = 5; m <= 8; ++m) {
+    CHECK(test_tile_context_case(&device, QBS_ACTIVATION_PROFILE_Q8_K,
+                                 QBS_ACTIVATION_STORAGE_M8_GROUPED, m, 37, 2, 1) == 0);
+    CHECK(test_tile_context_case(&device, QBS_ACTIVATION_PROFILE_Q8_0,
+                                 QBS_ACTIVATION_STORAGE_M8_GROUPED, m, 37, 17, 1) == 0);
+  }
+  qbs_device_t restricted = device;
+  restricted.capabilities.max_m = 1;
+  CHECK(test_tile_context_case(&restricted, QBS_ACTIVATION_PROFILE_Q8_K,
+                               QBS_ACTIVATION_STORAGE_ROW_MAJOR, 3, 37, 2, 1) == 0);
+  CHECK(test_tile_context_case(&restricted, QBS_ACTIVATION_PROFILE_Q8_0,
+                               QBS_ACTIVATION_STORAGE_ROW_MAJOR, 2, 37, 1, 0) == 0);
+  restricted = device;
+  restricted.capabilities.activation_context_capacity_bytes = 1024;
+  CHECK(test_tile_context_case(&restricted, QBS_ACTIVATION_PROFILE_Q8_K,
+                               QBS_ACTIVATION_STORAGE_M4_GROUPED, 8, 37, 1, 0) == 0);
+  restricted = device;
+  restricted.capabilities.activation_context_layouts &=
+      (uint16_t)~(UINT16_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR);
+  CHECK(test_tile_context_case(&restricted, QBS_ACTIVATION_PROFILE_Q8_K,
+                               QBS_ACTIVATION_STORAGE_M8_GROUPED, 9, 37, 1, 0) == 0);
+  restricted = device;
+  restricted.capabilities.activation_context_profiles &=
+      (uint16_t)~(UINT16_C(1) << QBS_ACTIVATION_PROFILE_Q8_0);
+  CHECK(test_tile_context_case(&restricted, QBS_ACTIVATION_PROFILE_Q8_0,
+                               QBS_ACTIVATION_STORAGE_M4_GROUPED, 8, 37, 1, 0) == 0);
+  context_capability_reader_t reader = {.info2 = context_word2(1), .info3 = 0};
+  CHECK(qbs_device_query(context_capability_reader, &reader, &restricted) == QBS_STATUS_OK);
+  CHECK(test_tile_context_case(&restricted, QBS_ACTIVATION_PROFILE_Q8_K,
+                               QBS_ACTIVATION_STORAGE_ROW_MAJOR, 1, 37, 16, 1) == 0);
+  CHECK(test_tile_context_case(&restricted, QBS_ACTIVATION_PROFILE_Q8_K,
+                               QBS_ACTIVATION_STORAGE_M4_GROUPED, 8, 37, 1, 0) == 0);
+  puts("QBS capacity-bounded context capabilities, tiles, preflight and faults: PASS");
+  return 0;
+}
+
 static int test_restricted_row_major_device(void) {
   qbs_device_t device;
   CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
@@ -1188,6 +1573,7 @@ static int test_non_split_alignment_gather(void) {
 
 int main(void) {
   CHECK(test_device_and_profiles() == 0);
+  CHECK(test_context_capabilities() == 0);
   CHECK(test_weight_repack() == 0);
   CHECK(test_activation_pack_profile(QBS_ACTIVATION_PROFILE_Q8_K) == 0);
   CHECK(test_activation_pack_profile(QBS_ACTIVATION_PROFILE_Q8_0) == 0);
@@ -1198,6 +1584,7 @@ int main(void) {
   CHECK(test_plan_and_execute() == 0);
   CHECK(test_adaptive_multirow_plan() == 0);
   CHECK(test_activation_context_execution() == 0);
+  CHECK(test_tile_context_execution() == 0);
   CHECK(test_restricted_row_major_device() == 0);
   CHECK(test_non_split_alignment_gather() == 0);
   CHECK(test_workspace_sizing() == 0);

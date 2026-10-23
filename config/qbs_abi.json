@@ -13,11 +13,13 @@
   },
   "activation_context": {
     "count": 1,
-    "max_m": 1,
-    "max_k_blocks": 16,
+    "max_m": 8,
+    "max_k_blocks": 32,
+    "capacity_bytes": 4672,
+    "storage_version": 1,
     "generation_bits": 8,
-    "activation_profiles": ["Q8_K"],
-    "activation_layouts": ["ROW_MAJOR"]
+    "activation_profiles": ["Q8_K", "Q8_0"],
+    "activation_layouts": ["ROW_MAJOR", "M4_INTERLEAVED", "M8_INTERLEAVED"]
   },
   "instruction": {
     "opcode": 91,

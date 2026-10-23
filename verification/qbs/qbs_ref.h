@@ -148,7 +148,7 @@ typedef struct {
 
 enum {
   QBS_REF_ACTIVATION_CONTEXT_BYTES =
-      QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS * QBS_Q8_K_BLOCK_BYTES,
+      QBS_ACTIVATION_CONTEXT_CAPACITY_BYTES,
 };
 
 // Architectural state carried across QBS commands by the stateful reference

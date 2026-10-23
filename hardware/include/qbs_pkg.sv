@@ -36,8 +36,10 @@ package qbs_pkg;
   localparam int unsigned QbsWeightBaseAlignmentLog2 = 1;
   localparam int unsigned QbsActivationBaseAlignmentLog2 = 2;
   localparam int unsigned QbsActivationContextCount = 1;
-  localparam int unsigned QbsActivationContextMaxM = 1;
-  localparam int unsigned QbsActivationContextMaxKBlocks = 16;
+  localparam int unsigned QbsActivationContextMaxM = 8;
+  localparam int unsigned QbsActivationContextMaxKBlocks = 32;
+  localparam int unsigned QbsActivationContextCapacityBytes = 4672;
+  localparam int unsigned QbsActivationContextStorageVersion = 1;
   localparam int unsigned QbsActivationContextGenerationBits = 8;
 
   typedef enum logic [1:0] {
@@ -525,9 +527,16 @@ package qbs_pkg;
         result[6:4] = 3'(QbsActivationContextMaxM - 1);
         result[11:7] = 5'(QbsActivationContextMaxKBlocks - 1);
         result[12 + QBS_ACTIVATION_PROFILE_Q8_K] = 1'b1;
+        result[12 + QBS_ACTIVATION_PROFILE_Q8_0] = 1'b1;
         result[31:28] = 4'b1111;
         result[39:32] = 8'(QbsActivationContextGenerationBits);
         result[40 + QBS_ACTIVATION_LAYOUT_ROW_MAJOR] = 1'b1;
+        result[40 + QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED] = 1'b1;
+        result[40 + QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED] = 1'b1;
+      end
+      64'h03: begin
+        result[31:0] = 32'(QbsActivationContextCapacityBytes);
+        result[39:32] = 8'(QbsActivationContextStorageVersion);
       end
       64'h11: begin
         result[QBS_ACTIVATION_PROFILE_Q8_K] = 1'b1;

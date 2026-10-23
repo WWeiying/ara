@@ -119,16 +119,30 @@ See the exact-import section below before converting a foreign weight or
 activation format for reuse.
 
 `qbs_execute()` is the compatibility path and always emits `DIRECT` commands.
-`qbs_execute_with_options()` can eliminate repeated Q8_K activation reads
+`qbs_execute_with_options()` can eliminate repeated quantized activation reads
 between output tiles when `qbs_plan_supports_activation_context()` is true.
-The current device contract is deliberately narrow: one context, `M=1`,
-row-major Q8_K, at most 16 K blocks (`K<=4096`), no split-K or gather, and at
-least two output tiles. By default, one eligible execution emits `FILL`, zero
-or more `REUSE` commands, and a final `RELEASE` command.
-`activation_context_scope` can instead make that lifetime explicit across
-serialized executions:
+The expanded device contract retains one 4672-byte context, admitting Q8_K
+and Q8_0 with row-major M1, interleaved M4, or padded interleaved M5--M8.
+Every input tile must fit both the byte budget and the 32-block tag limit,
+require no split-K or gather, and have at least two output tiles. The planner
+checks all commands before execution, including mixed-width input tails.
+An unsupported tail makes the whole plan ineligible, before any command is
+submitted; use `qbs_execute()` for its DIRECT fallback.
 
-- `OPERATION` preserves the per-execution sequence;
+`qbinfo(2)` advertises shape/profile/layout limits. `qbinfo(3)` has the byte
+capacity in bits 31:0, storage-contract version 1 in bits 39:32, and zero in
+bits 63:40. No instruction or descriptor encoding changes. The runtime also
+accepts the exact legacy word-2 contract with word 3 equal to zero: M1,
+row-major Q8_K, at most 16 blocks. It must not infer expanded support from
+zero or an unrecognized capacity/version word.
+
+By default, each eligible input tile independently emits `FILL`, zero or more
+`REUSE` commands, and a final `RELEASE`. A later input tile must refill from
+its own activation address, even when M and K match the preceding tile.
+`activation_context_scope` can instead make that lifetime explicit across
+serialized executions, restricted to plans with exactly one input tile:
+
+- `OPERATION` preserves the per-input-tile sequence;
 - `FILL_KEEP` fills on the first output tile and leaves the context resident;
 - `REUSE_KEEP` consumes a resident context without releasing it; and
 - `REUSE_RELEASE` releases it on the final output tile.

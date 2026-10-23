@@ -302,7 +302,7 @@ module qbs_engine
   logic context_fill_abort;
   logic context_release;
   logic context_lookup_valid;
-  logic [2:0] context_m;
+  logic [3:0] context_m;
   logic context_lookup_match;
   qbs_validation_error_e context_lookup_error;
   logic context_replay_start_valid;
@@ -311,7 +311,7 @@ module qbs_engine
   logic context_replay_data_ready;
   logic [127:0] context_replay_data;
   logic [15:0] context_replay_strb;
-  logic [10:0] context_replay_offset;
+  logic [11:0] context_replay_offset;
   logic context_replay_last;
   logic context_replay_done;
   logic context_replay_busy;
@@ -837,7 +837,7 @@ module qbs_engine
           QBS_ACTIVATION_ACCESS_RELEASE}) begin
       compute_activation_write_context = '0;
       compute_activation_write_k = compute_expected_k;
-      compute_activation_write_offset = {1'b0, context_replay_offset};
+      compute_activation_write_offset = context_replay_offset;
       compute_activation_write_data = context_replay_data;
       compute_activation_write_strb = context_replay_strb;
     end
@@ -924,10 +924,7 @@ module qbs_engine
       descriptor_valid && descriptor_activation_access inside {
           QBS_ACTIVATION_ACCESS_REUSE,
           QBS_ACTIVATION_ACCESS_RELEASE};
-  // The bounded activation context is intentionally an M1-only facility.
-  // Wider direct commands never exercise its 3-bit metadata interface.
-  assign context_m = unsigned'(m_q) <= QbsActivationContextMaxM
-      ? 3'(m_q) : '0;
+  assign context_m = m_q;
   assign context_fill_begin = state_q == QBS_ENGINE_VALIDATE &&
       descriptor_valid &&
       descriptor_activation_access == QBS_ACTIVATION_ACCESS_FILL;
@@ -953,7 +950,7 @@ module qbs_engine
           QBS_ACTIVATION_ACCESS_REUSE,
           QBS_ACTIVATION_ACCESS_RELEASE};
 
-  qbs_activation_context i_activation_context (
+  qbs_activation_context #(.ExtendedShapes(1'b1)) i_activation_context (
     .clk_i,
     .rst_ni,
     .fill_begin_i              (context_fill_begin),
@@ -965,7 +962,7 @@ module qbs_engine
     .fill_k_blocks_i           (descriptor_k_blocks),
     .fill_write_valid_i        (context_fill_write),
     .fill_write_k_block_i      (read_data_tag.k_block),
-    .fill_write_offset_i       (read_data_offset[10:0]),
+    .fill_write_offset_i       (read_data_offset[11:0]),
     .fill_write_data_i         (read_data),
     .fill_write_strb_i         (read_data_strb),
     .fill_block_complete_i     (context_fill_block_complete),
@@ -983,6 +980,7 @@ module qbs_engine
     .lookup_error_o            (context_lookup_error),
     .release_i                 (context_release),
     .replay_start_valid_i      (context_replay_start_valid),
+    .replay_abort_i            (state_q == QBS_ENGINE_COMPUTE_FAULT_DRAIN),
     .replay_start_ready_o      (context_replay_start_ready),
     .replay_k_block_i          (compute_expected_k),
     .replay_data_valid_o       (context_replay_data_valid),
@@ -1243,6 +1241,8 @@ module qbs_engine
       end
 
       QBS_ENGINE_COMPUTE_FAULT_DRAIN: begin
+        // Replay cancellation completes before the compute pipeline reports
+        // fault_done; no hidden replay may survive the terminal response.
         if (compute_fault_done)
           state_d = QBS_ENGINE_FAULT;
       end
@@ -1378,10 +1378,9 @@ module qbs_engine
       end
 
       if (state_q == QBS_ENGINE_VALIDATE && descriptor_valid) begin
-        if (unsigned'(m_q) > QbsActivationContextMaxM)
-          assert (descriptor_activation_access ==
-                  QBS_ACTIVATION_ACCESS_DIRECT)
-            else $fatal(1, "QBS wide command reached the M1 context path");
+        if (descriptor_activation_access != QBS_ACTIVATION_ACCESS_DIRECT)
+          assert (descriptor_activation_storage_bytes <= QbsActivationContextCapacityBytes)
+            else $fatal(1, "QBS context admission exceeded the SRAM byte budget");
         weight_profile_q <= descriptor_weight_profile;
         activation_profile_q <= descriptor_activation_profile;
         weight_layout_q <= descriptor_weight_layout;
@@ -1542,6 +1541,8 @@ module qbs_engine
         assert (!read_busy && compute_result_valid)
           else $fatal(1, "QBS commit started before reads/compute completed");
       if (state_q inside {QBS_ENGINE_SUCCESS, QBS_ENGINE_FAULT}) begin
+        assert (!context_replay_busy && !context_replay_data_valid)
+          else $fatal(1, "QBS terminal response retained activation replay");
         assert (phase_setup_cycles_o + phase_activation_cycles_o +
                 phase_weight_cycles_o + phase_compute_cycles_o +
                 phase_overlap_cycles_o + phase_drain_cycles_o +

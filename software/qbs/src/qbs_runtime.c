@@ -162,7 +162,7 @@ qbs_status_t qbs_capabilities_decode(uint64_t info0, uint64_t info1,
 }
 
 static qbs_status_t qbs_context_capabilities_decode(
-    uint64_t info2, qbs_capabilities_t *capabilities) {
+    uint64_t info2, uint64_t info3, qbs_capabilities_t *capabilities) {
   if (capabilities == NULL) return QBS_STATUS_BAD_ARGUMENT;
   capabilities->activation_context_count = (uint8_t)(info2 & 0x0fu);
   capabilities->activation_context_max_m =
@@ -178,24 +178,39 @@ static qbs_status_t qbs_context_capabilities_decode(
   capabilities->activation_context_layouts =
       (uint16_t)((info2 >> 40) & 0xffffu);
 
-  const uint16_t expected_profiles =
+  const uint16_t legacy_profiles =
       (uint16_t)(UINT16_C(1) << QBS_ACTIVATION_PROFILE_Q8_K);
-  const uint16_t expected_layouts =
+  const uint16_t legacy_layouts =
       (uint16_t)(UINT16_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR);
+  const bool legacy = info3 == 0;
+  const uint16_t expected_profiles = legacy ? legacy_profiles :
+      (uint16_t)(legacy_profiles |
+                 (UINT16_C(1) << QBS_ACTIVATION_PROFILE_Q8_0));
+  const uint16_t expected_layouts = legacy ? legacy_layouts :
+      (uint16_t)(legacy_layouts |
+                 (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED) |
+                 (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED));
+  const uint64_t extended_storage =
+      (uint64_t)QBS_ACTIVATION_CONTEXT_CAPACITY_BYTES |
+      ((uint64_t)QBS_ACTIVATION_CONTEXT_STORAGE_VERSION << 32);
+  /* Word 3 was zero on legacy hardware. Only its exact old word-2 contract
+     may omit the explicit byte budget; expanded shapes must advertise it. */
   if (capabilities->activation_context_count !=
           QBS_ACTIVATION_CONTEXT_COUNT ||
       capabilities->activation_context_max_m !=
-          QBS_ACTIVATION_CONTEXT_MAX_M ||
+          (legacy ? 1u : QBS_ACTIVATION_CONTEXT_MAX_M) ||
       capabilities->activation_context_max_k_blocks !=
-          QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS ||
+          (legacy ? 16u : QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS) ||
       capabilities->activation_context_generation_bits !=
           QBS_ACTIVATION_CONTEXT_GENERATION_BITS ||
       capabilities->activation_context_access_modes != 0x0fu ||
       capabilities->activation_context_profiles != expected_profiles ||
       capabilities->activation_context_layouts != expected_layouts ||
-      (info2 >> 56) != 0) {
+      (info2 >> 56) != 0 || (!legacy && info3 != extended_storage)) {
     return QBS_STATUS_CAPABILITY;
   }
+  capabilities->activation_context_capacity_bytes = legacy
+      ? 16u * QBS_Q8_K_BLOCK_BYTES : (uint32_t)info3;
   return QBS_STATUS_OK;
 }
 
@@ -210,7 +225,7 @@ qbs_status_t qbs_device_query(qbs_info_reader_t reader, void *context,
   qbs_status_t status = qbs_capabilities_decode(
       reader(context, 0), reader(context, 1), &device->capabilities);
   if (status != QBS_STATUS_OK) return status;
-  status = qbs_context_capabilities_decode(reader(context, 2),
+  status = qbs_context_capabilities_decode(reader(context, 2), reader(context, 3),
                                            &device->capabilities);
   if (status != QBS_STATUS_OK) {
     memset(device, 0, sizeof(*device));
@@ -671,6 +686,63 @@ qbs_activation_storage_t qbs_recommend_activation_storage(
   return saved >= required ? QBS_ACTIVATION_STORAGE_M8_GROUPED : fallback;
 }
 
+static bool plan_context_eligible(const qbs_plan_t *plan,
+                                  const qbs_capabilities_t *caps) {
+  const uint8_t required_modes =
+      (uint8_t)((UINT8_C(1) << QBS_ACTIVATION_ACCESS_FILL) |
+                (UINT8_C(1) << QBS_ACTIVATION_ACCESS_REUSE) |
+                (UINT8_C(1) << QBS_ACTIVATION_ACCESS_RELEASE));
+  if (plan->split_k || plan->needs_activation_gather ||
+      caps->activation_context_count == 0u ||
+      caps->activation_context_generation_bits == 0u ||
+      caps->activation_context_generation_bits > 8u ||
+      caps->activation_context_capacity_bytes == 0u ||
+      (caps->activation_context_access_modes & required_modes) != required_modes ||
+      (caps->activation_context_profiles &
+       (UINT16_C(1) << plan->problem.activation_profile)) == 0u)
+    return false;
+
+  /* Inspect actual commands, including mixed-width tails, before any FILL.
+     A singleton N tile cannot both FILL and RELEASE with the current ABI. */
+  qbs_plan_cursor_t cursor;
+  qbs_plan_cursor_reset(&cursor);
+  bool saw_command = false;
+  for (;;) {
+    qbs_command_t command;
+    int has_command;
+    if (qbs_plan_next(plan, &cursor, &command, &has_command) != QBS_STATUS_OK)
+      return false;
+    if (!has_command) return saw_command;
+    saw_command = true;
+    unsigned storage_rows;
+    if (command.activation_layout == QBS_ACTIVATION_LAYOUT_ROW_MAJOR &&
+        command.m == 1u)
+      storage_rows = 1u;
+    else if (command.activation_layout == QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED &&
+             command.m == 4u)
+      storage_rows = 4u;
+    else if (command.activation_layout == QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED &&
+             command.m >= 5u && command.m <= 8u)
+      storage_rows = 8u;
+    else
+      return false;
+    size_t payload_bytes;
+    if (command.gather_activation || command.accumulate || command.k_block_start != 0u ||
+        command.k_blocks != plan->k_blocks ||
+        command.m > caps->activation_context_max_m ||
+        command.k_blocks > caps->activation_context_max_k_blocks ||
+        (caps->activation_context_layouts &
+         (UINT16_C(1) << command.activation_layout)) == 0u ||
+        (command.output_start == 0u && command.n == plan->problem.n) ||
+        !size_mul(storage_rows, command.k_blocks, &payload_bytes) ||
+        !size_mul(payload_bytes,
+                  qbs_activation_block_bytes(plan->problem.activation_profile),
+                  &payload_bytes) ||
+        payload_bytes > caps->activation_context_capacity_bytes)
+      return false;
+  }
+}
+
 static qbs_status_t plan_create(const qbs_device_t *device,
                              const qbs_problem_t *problem,
                              unsigned weight_segment_k_blocks,
@@ -782,31 +854,12 @@ static qbs_status_t plan_create(const qbs_device_t *device,
 
   plan->needs_activation_gather =
       plan_needs_activation_gather(plan, activation.block_bytes);
-  const uint8_t required_context_access_modes =
-      (uint8_t)((UINT8_C(1) << QBS_ACTIVATION_ACCESS_FILL) |
-                (UINT8_C(1) << QBS_ACTIVATION_ACCESS_REUSE) |
-                (UINT8_C(1) << QBS_ACTIVATION_ACCESS_RELEASE));
   plan->activation_context_count =
       device->capabilities.activation_context_count;
   plan->activation_context_generation_bits =
       device->capabilities.activation_context_generation_bits;
   plan->activation_context_eligible =
-      problem->m == 1u &&
-      problem->activation_profile == QBS_ACTIVATION_PROFILE_Q8_K &&
-      problem->activation_storage == QBS_ACTIVATION_STORAGE_ROW_MAJOR &&
-      !plan->split_k && !plan->needs_activation_gather &&
-      plan->k_blocks <= device->capabilities.activation_context_max_k_blocks &&
-      device->capabilities.activation_context_max_m >= 1u &&
-      device->capabilities.activation_context_count != 0u &&
-      device->capabilities.activation_context_generation_bits != 0u &&
-      device->capabilities.activation_context_generation_bits <= 8u &&
-      (device->capabilities.activation_context_access_modes &
-       required_context_access_modes) == required_context_access_modes &&
-      (device->capabilities.activation_context_profiles &
-       (UINT16_C(1) << QBS_ACTIVATION_PROFILE_Q8_K)) != 0u &&
-      (device->capabilities.activation_context_layouts &
-       (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR)) != 0u &&
-      problem->n > plan->command_n;
+      plan_context_eligible(plan, &device->capabilities);
   if (plan->split_k) {
     size_t partial_elements;
     size_t partial_bytes;
@@ -1030,7 +1083,9 @@ qbs_status_t qbs_execute_with_options(
       activation_context_scope > QBS_ACTIVATION_CONTEXT_SCOPE_REUSE_RELEASE)
     return QBS_STATUS_BAD_ARGUMENT;
   if (use_activation_context) {
-    if (!qbs_plan_supports_activation_context(plan))
+    if (!qbs_plan_supports_activation_context(plan) ||
+        (activation_context_scope != QBS_ACTIVATION_CONTEXT_SCOPE_OPERATION &&
+         command_m(plan, 0u) != plan->problem.m))
       return QBS_STATUS_CONTEXT_UNSUPPORTED;
     const qbs_activation_context_token_t token =
         options->activation_context;

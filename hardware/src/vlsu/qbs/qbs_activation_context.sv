@@ -3,7 +3,7 @@
 
 // One explicitly managed activation context. Adjacent 128-bit rows reside in
 // different banks, allowing compact blocks to cross rows at one beat/cycle.
-// ExtendedShapes is opt-in until descriptor/runtime admission is integrated.
+// ExtendedShapes admits capacity-bounded multirow and compact-profile tiles.
 module qbs_activation_context import qbs_pkg::*; #(
   parameter bit ExtendedShapes = 1'b0
 ) (
@@ -40,6 +40,7 @@ module qbs_activation_context import qbs_pkg::*; #(
   input  logic                    release_i,
 
   input  logic                    replay_start_valid_i,
+  input  logic                    replay_abort_i,
   output logic                    replay_start_ready_o,
   input  logic [7:0]              replay_k_block_i,
   output logic                    replay_data_valid_o,
@@ -160,14 +161,14 @@ module qbs_activation_context import qbs_pkg::*; #(
   assign context_valid_o = context_valid_q;
   assign fill_in_progress_o = fill_in_progress_q;
   assign replay_busy_o = replay_active_q;
-  assign replay_start_ready_o = !replay_active_q && !fill_in_progress_q;
+  assign replay_start_ready_o = !replay_active_q && !fill_in_progress_q && !replay_abort_i;
   assign replay_start_fire = replay_start_valid_i && replay_start_ready_o;
-  assign replay_data_valid_o = replay_data_valid_q;
+  assign replay_data_valid_o = replay_data_valid_q && !replay_abort_i;
   assign replay_strb_o = replay_strb_q;
   assign replay_offset_o = replay_offset_q;
   assign replay_last_o = replay_last_q;
   assign replay_data_fire = replay_data_valid_o && replay_data_ready_i;
-  assign replay_issue = replay_active_q && !replay_issue_done_q &&
+  assign replay_issue = replay_active_q && !replay_issue_done_q && !replay_abort_i &&
       (!replay_data_valid_q || replay_data_ready_i);
 
   always_comb begin
@@ -410,7 +411,15 @@ module qbs_activation_context import qbs_pkg::*; #(
       if (release_i)
         context_valid_q <= 1'b0;
 
-      if (replay_start_fire) begin
+      // Cancel transient SRAM read state only. A failed REUSE/RELEASE leaves
+      // the committed context intact and the next replay starts at byte zero.
+      if (replay_abort_i) begin
+        replay_active_q <= 1'b0;
+        replay_issue_done_q <= 1'b0;
+        replay_data_valid_q <= 1'b0;
+        replay_issue_beat_q <= '0;
+        replay_last_q <= 1'b0;
+      end else if (replay_start_fire) begin
         replay_active_q <= 1'b1;
         replay_issue_done_q <= 1'b0;
         replay_k_block_q <= replay_k_block_i;
@@ -451,8 +460,8 @@ module qbs_activation_context import qbs_pkg::*; #(
 `ifndef SYNTHESIS
   initial begin
     assert (QbsActivationContextCount == 1);
-    assert (QbsActivationContextMaxM == 1);
-    assert (QbsActivationContextMaxKBlocks == 16);
+    assert (QbsActivationContextCapacityBytes == TotalBytes);
+    assert (!ExtendedShapes || QbsActivationContextMaxKBlocks == MaxBlocks);
     assert (QbsQ8KBlockBytes % 4 == 0);
     assert ((BankCount & (BankCount - 1)) == 0);
     assert (BankDepth <= 2 * MacroDepth);

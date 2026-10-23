@@ -32,8 +32,10 @@
 #define QBS_WEIGHT_BASE_ALIGNMENT_LOG2 1u
 #define QBS_ACTIVATION_BASE_ALIGNMENT_LOG2 2u
 #define QBS_ACTIVATION_CONTEXT_COUNT 1u
-#define QBS_ACTIVATION_CONTEXT_MAX_M 1u
-#define QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS 16u
+#define QBS_ACTIVATION_CONTEXT_MAX_M 8u
+#define QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS 32u
+#define QBS_ACTIVATION_CONTEXT_CAPACITY_BYTES 4672u
+#define QBS_ACTIVATION_CONTEXT_STORAGE_VERSION 1u
 #define QBS_ACTIVATION_CONTEXT_GENERATION_BITS 8u
 
 typedef enum {
@@ -551,9 +553,12 @@ static inline uint64_t qbs_capability_word(unsigned index,
   }
   if (index == 0x02u) {
     const uint64_t context_profiles =
-        (UINT64_C(1) << QBS_ACTIVATION_PROFILE_Q8_K);
+        (UINT64_C(1) << QBS_ACTIVATION_PROFILE_Q8_K) |
+        (UINT64_C(1) << QBS_ACTIVATION_PROFILE_Q8_0);
     const uint64_t context_layouts =
-        (UINT64_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR);
+        (UINT64_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR) |
+        (UINT64_C(1) << QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED) |
+        (UINT64_C(1) << QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED);
     return ((uint64_t)QBS_ACTIVATION_CONTEXT_COUNT << 0) |
            ((uint64_t)(QBS_ACTIVATION_CONTEXT_MAX_M - 1u) << 4) |
            ((uint64_t)(QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS - 1u) << 7) |
@@ -561,6 +566,10 @@ static inline uint64_t qbs_capability_word(unsigned index,
            (UINT64_C(0x0f) << 28) |
            ((uint64_t)QBS_ACTIVATION_CONTEXT_GENERATION_BITS << 32) |
            (context_layouts << 40);
+  }
+  if (index == 0x03u) {
+    return (uint64_t)QBS_ACTIVATION_CONTEXT_CAPACITY_BYTES |
+           ((uint64_t)QBS_ACTIVATION_CONTEXT_STORAGE_VERSION << 32);
   }
   if (index == 0x11u)
     return (UINT64_C(1) << QBS_ACTIVATION_PROFILE_Q8_K);

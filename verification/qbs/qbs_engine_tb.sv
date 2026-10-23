@@ -357,6 +357,8 @@ module qbs_engine_tb;
   integer commit_aggregate_words;
   integer unexpected_write_count;
   bit functional_only;
+  bit context_suite;
+  logic [31:0] commit_seen;
   bit saw_dual_read_outstanding;
   bit saw_read_outstanding_full;
   logic activation_ar_monitor;
@@ -542,6 +544,17 @@ module qbs_engine_tb;
   logic response_wr;
   logic [1:0] response_count;
   logic inject_axi_fault;
+  logic fault_replay_overlap_seen;
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n || score_reset) fault_replay_overlap_seen <= 1'b0;
+    else if (dut.read_fault_valid && dut.context_replay_busy) begin
+      fault_replay_overlap_seen <= 1'b1;
+      if (!fault_replay_overlap_seen)
+        $display("QBS fault/replay overlap time=%0t access=%0d offset=%0d last=%b ready=%b",
+                 $time, activation_access, dut.context_replay_offset,
+                 dut.context_replay_last, dut.context_replay_data_ready);
+    end
+  end
   integer response_gap;
   integer response_delay;
 
@@ -607,6 +620,7 @@ module qbs_engine_tb;
     if (!rst_n || score_reset) begin
       commit_aggregate_words <= 0;
       unexpected_write_count <= 0;
+      commit_seen <= '0;
     end else if (|ldu_result_req) begin
       if (!score_commit) begin
         unexpected_write_count <= unexpected_write_count + 1;
@@ -626,6 +640,9 @@ module qbs_engine_tb;
         if (ctx < 0 || ctx >= score_m || register_word < 0 ||
             register_word >= words_per_context)
           $fatal(1, "QBS commit address outside destination group");
+        if (commit_seen[relative_word])
+          $fatal(1, "QBS committed a destination word twice");
+        commit_seen[relative_word] <= 1'b1;
         for (int lane = 0; lane < NrLanes; lane++) begin
           automatic int low_element = register_word * 8 + lane;
           automatic int high_element = low_element + NrLanes;
@@ -706,11 +723,16 @@ module qbs_engine_tb;
       @(posedge clk);
       timeout++;
     end
-    if (!success_valid)
+    if (success_valid !== 1'b1)
       $fatal(1,
              "case %0d did not succeed fault=%0b validation=%0b verr=%0d read=%0d vaddr=%h",
              case_id, fault_valid, fault_is_validation, validation_error,
              read_fault_kind, fault_vaddr);
+    if ($isunknown({result_fflags, command_cycles, commit_aggregate_words,
+                    read_payload_bytes, read_range_count, context_read_bytes,
+                    context_reuse_count, context_reuse_block_count,
+                    activation_axi_bytes_saved, activation_ar_count}))
+      $fatal(1, "case %0d has unknown completion metadata/counters", case_id);
   endtask
 
   task automatic expect_fault(input logic expected_validation,
@@ -718,15 +740,18 @@ module qbs_engine_tb;
                               input qbs_read_fault_e expected_read_fault,
                               input logic [63:0] expected_vaddr);
     integer timeout;
+    if ($isunknown({expected_validation, expected_validation_error,
+                    expected_read_fault, expected_vaddr}))
+      $fatal(1, "unknown expected fault metadata");
     timeout = 0;
     while (!fault_valid && !success_valid && timeout < 50000) begin
       @(posedge clk);
       timeout++;
     end
-    if (!fault_valid || fault_is_validation != expected_validation ||
-        validation_error != expected_validation_error ||
-        read_fault_kind != expected_read_fault ||
-        fault_vaddr != expected_vaddr) begin
+    if (fault_valid !== 1'b1 || fault_is_validation !== expected_validation ||
+        validation_error !== expected_validation_error ||
+        read_fault_kind !== expected_read_fault ||
+        fault_vaddr !== expected_vaddr) begin
       $display("descriptor observed header=%h access=%0d generation=%h k_blocks=%0d; context valid=%0b generation=%h k_blocks=%0d",
                dut.descriptor_q[63:0], dut.descriptor_activation_access,
                dut.descriptor_context_generation, dut.descriptor_k_blocks,
@@ -782,10 +807,12 @@ module qbs_engine_tb;
     monitored_activation_base = '0;
     monitored_activation_end = '0;
     functional_only = $test$plusargs("QBS_FUNCTIONAL_ONLY");
+    context_suite = $test$plusargs("QBS_CONTEXT_SUITE");
     response_gap = 0;
     void'($value$plusargs("QBS_RESPONSE_GAP=%d", response_gap));
     if (response_gap < 0 || response_gap > 8)
       $fatal(1, "QBS_RESPONSE_GAP must be 0..8");
+    $display("QBS configuration response_gap=%0d context_suite=%0d", response_gap, context_suite);
 
     if (!$value$plusargs("QBS_COMMAND_VECTOR_FILE=%s", vector_file))
       vector_file = "../qbs_command_vectors.txt";
@@ -821,6 +848,7 @@ module qbs_engine_tb;
       integer expected_ranges;
       integer output_records;
       integer case_errors;
+      integer direct_activation_ar_count;
       logic [63:0] descriptor_base;
       logic [63:0] weight_base;
       logic [63:0] activation_base;
@@ -927,6 +955,15 @@ module qbs_engine_tb;
       score_n = n;
       score_vd = m == 1 ? 3 : (m == 2 ? 4 : 8);
       score_id = case_id + 1;
+      if (context_suite) begin
+        if (k_blocks < 2 || k_blocks > QbsActivationContextMaxKBlocks ||
+            expected_activation_bytes > QbsActivationContextCapacityBytes ||
+            (activation_layout == QBS_ACTIVATION_LAYOUT_ROW_MAJOR && m != 1))
+          $fatal(1, "context suite requires an admitted multi-block tile");
+        activation_ar_monitor = 1'b1;
+        monitored_activation_base = activation_base;
+        monitored_activation_end = activation_base + expected_activation_bytes;
+      end
       reset_scoreboard();
       send_command(score_id, score_vd, m, descriptor_base, activation_base);
       wait_success(case_id);
@@ -1027,20 +1064,31 @@ module qbs_engine_tb;
                  weight_prefetch_wait_cycles);
       end
       total_errors += case_errors;
+      direct_activation_ar_count = activation_ar_count;
       acknowledge_terminal();
+      activation_ar_monitor = 1'b0;
 
-      if (ordinal == 0 && !functional_only) begin
+      if ((ordinal == 0 && !functional_only) || context_suite) begin
         const integer context_generation = 8'h35;
-        const integer expected_weight_ranges =
-            weight_layout == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR
-                ? ((n + 3) / 4) * k_blocks : n * k_blocks;
+        integer expected_weight_ranges;
+        integer context_block_bytes;
+        integer context_commit_words;
+        integer fill_cycles, reuse_cycles;
+        byte unsigned activation_snapshot[];
+        expected_weight_ranges = weight_layout == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR
+            ? ((n + 3) / 4) * k_blocks : n * k_blocks;
+        context_block_bytes = expected_activation_bytes / k_blocks;
+        context_commit_words = m * (m > 4 ? ((n + 7) / 8) : WordsPerRegister);
+        activation_snapshot = new[expected_activation_bytes];
+        for (int byte_index = 0; byte_index < expected_activation_bytes; byte_index++)
+          activation_snapshot[byte_index] = memory[longint'(activation_base + byte_index)];
 
         // Fault the second activation block, then replay the original command.
         // Keep the same vectors and strict VRF scoreboard across all trials.
         for (int kind = 0; kind < 3; kind++) begin
           // PMA covers the aligned AXI footprint, including the first
           // block's trailing bytes. Place its fault beyond that footprint.
-          inject_fault_start = activation_base + activation_block_bytes +
+          inject_fault_start = activation_base + context_block_bytes +
               (kind == 1 ? BeatBytes : 0);
           inject_fault_end = inject_fault_start + 1;
           translation_enable = kind == 0;
@@ -1052,7 +1100,7 @@ module qbs_engine_tb;
           expect_fault(1'b0, QBS_VALIDATION_OK,
                        kind == 0 ? QBS_READ_FAULT_MMU :
                        kind == 1 ? QBS_READ_FAULT_PMA : QBS_READ_FAULT_AXI_RESPONSE,
-                       activation_base + activation_block_bytes);
+                       activation_base + context_block_bytes);
           inject_mmu_fault = 1'b0;
           inject_pma_fault = 1'b0;
           inject_axi_fault = 1'b0;
@@ -1061,10 +1109,14 @@ module qbs_engine_tb;
           send_command(score_id, score_vd, m, descriptor_base, activation_base);
           wait_success(200 + kind);
           if (result_fflags != expected_flags[4:0] ||
-              commit_aggregate_words != m * WordsPerRegister ||
+              commit_aggregate_words != context_commit_words ||
               unexpected_write_count != 0 || read_payload_bytes !=
                   QbsDescriptorBytes + expected_weight_bytes + expected_activation_bytes)
-            $fatal(1, "QBS next-block fault recovery changed results or traffic");
+            $fatal(1, "QBS fault recovery mismatch flags=%h/%h commit=%0d/%0d payload=%0d/%0d unexpected=%0d",
+                   result_fflags, expected_flags[4:0], commit_aggregate_words,
+                   context_commit_words, read_payload_bytes,
+                   QbsDescriptorBytes + expected_weight_bytes + expected_activation_bytes,
+                   unexpected_write_count);
           acknowledge_terminal();
           $display("QBS next-block fault/replay PASS kind=%0d", kind);
         end
@@ -1088,7 +1140,7 @@ module qbs_engine_tb;
           send_command(score_id, score_vd, m, descriptor_base, activation_base);
           wait_success(203);
           if (result_fflags != expected_flags[4:0] ||
-              commit_aggregate_words != m * WordsPerRegister || unexpected_write_count != 0)
+              commit_aggregate_words != context_commit_words || unexpected_write_count != 0)
             $fatal(1, "QBS activation reset/replay changed results");
           acknowledge_terminal();
           $display("QBS next-block reset/replay PASS");
@@ -1105,15 +1157,34 @@ module qbs_engine_tb;
         send_command(score_id, score_vd, m, descriptor_base,
                      activation_base);
         wait_success(100);
+        fill_cycles = command_cycles;
         if (activation_access != QBS_ACTIVATION_ACCESS_FILL ||
             context_fill_count != 1 || context_reuse_count != 0 ||
             context_read_bytes != 0 || activation_axi_bytes_saved != 0 ||
-            activation_ar_count != k_blocks ||
-            commit_aggregate_words != m * WordsPerRegister ||
+            activation_ar_count != (context_suite ? direct_activation_ar_count : k_blocks) ||
+            result_fflags != expected_flags[4:0] ||
+            read_payload_bytes != QbsDescriptorBytes + expected_weight_bytes + expected_activation_bytes ||
+            commit_aggregate_words != context_commit_words ||
             unexpected_write_count != 0)
           $fatal(1, "QBS FILL counters or result mismatch");
         acknowledge_terminal();
         activation_ar_monitor = 1'b0;
+
+        // A DIRECT command may use the datapath but must not replace the saved tile.
+        install_descriptor(descriptor_base, weight_base, QbsDescriptorVersion,
+                           profile, weight_layout, activation_layout, n, k_blocks);
+        reset_scoreboard();
+        send_command(score_id, score_vd, m, descriptor_base, activation_base);
+        wait_success(104);
+        if (result_fflags != expected_flags[4:0] || unexpected_write_count != 0 ||
+            commit_aggregate_words != context_commit_words ||
+            !dut.i_activation_context.context_valid_q)
+          $fatal(1, "DIRECT corrupted the resident context or result");
+        acknowledge_terminal();
+        // REUSE must not depend on the original bytes after a committed FILL.
+        for (int byte_index = 0; byte_index < expected_activation_bytes; byte_index++)
+          memory[longint'(activation_base + byte_index)] = 8'ha5;
+        memory_epoch++;
 
         install_context_descriptor(
             descriptor_base, weight_base, profile, weight_layout,
@@ -1166,6 +1237,59 @@ module qbs_engine_tb;
         if (context_validation_fault_count != 1 || read_range_count != 1)
           $fatal(1, "metadata mismatch accessed payload or was not counted");
 
+        // A failed consume must stop replay without retiring the saved tile.
+        // Probe both REUSE and RELEASE; successful REUSE retries check every
+        // result against the original FILL input, now poisoned in memory.
+        for (int release_mode = 0; release_mode < 2; release_mode++) begin
+          for (int kind = 0; kind < 3; kind++) begin
+            install_context_descriptor(
+                descriptor_base, weight_base, profile, weight_layout,
+                activation_layout, n, k_blocks,
+                release_mode ? QBS_ACTIVATION_ACCESS_RELEASE : QBS_ACTIVATION_ACCESS_REUSE,
+                0, context_generation);
+            score_commit = 1'b0;
+            inject_fault_start = weight_base;
+            inject_fault_end = weight_base + 1;
+            translation_enable = kind == 0;
+            inject_mmu_fault = kind == 0;
+            inject_pma_fault = kind == 1;
+            inject_axi_fault = kind == 2;
+            reset_scoreboard();
+            send_command(score_id, score_vd, m, descriptor_base, activation_base);
+            expect_fault(1'b0, QBS_VALIDATION_OK,
+                         kind == 0 ? QBS_READ_FAULT_MMU :
+                         kind == 1 ? QBS_READ_FAULT_PMA : QBS_READ_FAULT_AXI_RESPONSE,
+                         weight_base);
+            if (dut.context_replay_busy !== 1'b0 ||
+                dut.i_activation_context.context_valid_q !== 1'b1 ||
+                dut.i_activation_context.context_generation_q !== context_generation[7:0])
+              $fatal(1, "context fault left replay busy or changed saved tile M=%0d kind=%0d release=%0d busy=%b overlap=%b",
+                     m, kind, release_mode, dut.context_replay_busy, fault_replay_overlap_seen);
+            if (m >= 4 && context_block_bytes >= 1000 && !fault_replay_overlap_seen)
+              $fatal(1, "wide context fault did not interrupt active replay");
+            inject_mmu_fault = 1'b0;
+            inject_pma_fault = 1'b0;
+            inject_axi_fault = 1'b0;
+            translation_enable = 1'b0;
+            install_context_descriptor(
+                descriptor_base, weight_base, profile, weight_layout,
+                activation_layout, n, k_blocks, QBS_ACTIVATION_ACCESS_REUSE,
+                0, context_generation);
+            score_commit = 1'b1;
+            reset_scoreboard();
+            send_command(score_id, score_vd, m, descriptor_base, activation_base);
+            wait_success(300 + 3 * release_mode + kind);
+            if (result_fflags !== expected_flags[4:0] ||
+                commit_aggregate_words != context_commit_words || unexpected_write_count != 0 ||
+                context_read_bytes != expected_activation_bytes ||
+                read_payload_bytes != QbsDescriptorBytes + expected_weight_bytes)
+              $fatal(1, "context weight-fault retry mismatch");
+            acknowledge_terminal();
+            $display("QBS context weight fault/retry PASS case=%0d release=%0d kind=%0d",
+                     case_id, release_mode, kind);
+          end
+        end
+
         install_context_descriptor(
             descriptor_base, weight_base, profile, weight_layout,
             activation_layout, n, k_blocks, QBS_ACTIVATION_ACCESS_REUSE, 0,
@@ -1178,6 +1302,7 @@ module qbs_engine_tb;
         send_command(score_id, score_vd, m, descriptor_base,
                      activation_base);
         wait_success(101);
+        reuse_cycles = command_cycles;
         if (activation_access != QBS_ACTIVATION_ACCESS_REUSE ||
             context_reuse_count != 1 ||
             context_reuse_block_count != k_blocks ||
@@ -1186,7 +1311,8 @@ module qbs_engine_tb;
             activation_ar_count != 0 ||
             read_range_count != 1 + expected_weight_ranges ||
             read_payload_bytes != 16 + expected_weight_bytes ||
-            commit_aggregate_words != m * WordsPerRegister ||
+            commit_aggregate_words != context_commit_words ||
+            result_fflags != expected_flags[4:0] ||
             unexpected_write_count != 0)
           $fatal(1, "QBS REUSE did not eliminate activation AXI traffic");
         acknowledge_terminal();
@@ -1203,7 +1329,10 @@ module qbs_engine_tb;
         if (activation_access != QBS_ACTIVATION_ACCESS_RELEASE ||
             context_reuse_count != 1 ||
             context_reuse_block_count != k_blocks ||
-            commit_aggregate_words != m * WordsPerRegister)
+            commit_aggregate_words != context_commit_words ||
+            result_fflags != expected_flags[4:0] || unexpected_write_count != 0 ||
+            context_read_bytes != expected_activation_bytes ||
+            read_payload_bytes != QbsDescriptorBytes + expected_weight_bytes)
           $fatal(1, "QBS RELEASE did not consume the context correctly");
         acknowledge_terminal();
 
@@ -1216,6 +1345,10 @@ module qbs_engine_tb;
         send_command(0, score_vd, m, descriptor_base, activation_base);
         expect_fault(1'b1, QBS_VALIDATION_CONTEXT_INVALID,
                      QBS_READ_FAULT_NONE, descriptor_base);
+
+        for (int byte_index = 0; byte_index < expected_activation_bytes; byte_index++)
+          memory[longint'(activation_base + byte_index)] = activation_snapshot[byte_index];
+        memory_epoch++;
 
         install_context_descriptor(
             descriptor_base, weight_base, profile, weight_layout,
@@ -1250,7 +1383,8 @@ module qbs_engine_tb;
         send_command(0, score_vd, m, descriptor_base, activation_base);
         expect_fault(1'b1, QBS_VALIDATION_CONTEXT_INVALID,
                      QBS_READ_FAULT_NONE, descriptor_base);
-        $display("QBS activation context FILL/REUSE/RELEASE PASS");
+        $display("QBS activation context FILL/REUSE/RELEASE PASS case=%0d M=%0d Kb=%0d bytes=%0d fill_cycles=%0d reuse_cycles=%0d",
+                 case_id, m, k_blocks, expected_activation_bytes, fill_cycles, reuse_cycles);
       end
 
       score_commit = 1'b0;

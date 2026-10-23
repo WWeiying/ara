@@ -91,6 +91,7 @@ typedef struct {
   uint8_t activation_context_access_modes;
   uint16_t activation_context_profiles;
   uint16_t activation_context_layouts;
+  uint32_t activation_context_capacity_bytes;
 } qbs_capabilities_t;
 
 typedef struct {
@@ -149,7 +150,7 @@ typedef struct {
 } qbs_activation_context_token_t;
 
 typedef enum {
-  /* Preserve the original per-execution FILL ... RELEASE behavior. */
+  /* Each input tile independently executes FILL ... RELEASE. */
   QBS_ACTIVATION_CONTEXT_SCOPE_OPERATION = 0,
   /* Fill a new logical activation and leave it resident after this call. */
   QBS_ACTIVATION_CONTEXT_SCOPE_FILL_KEEP = 1,
@@ -292,13 +293,17 @@ qbs_status_t qbs_execute(const qbs_plan_t *plan, const void *weights,
                          qbs_command_executor_t executor,
                          void *executor_context);
 
-/* Context reuse is explicit: the caller owns token generation and must not
-   reuse a generation for a different logical activation. OPERATION preserves
-   the original per-call FILL ... RELEASE scope. The KEEP scopes allow a
-   serialized adapter to span one activation across multiple calls; that
-   adapter must eventually use REUSE_RELEASE or supersede the generation with
-   a new FILL. Unsupported plans return CONTEXT_UNSUPPORTED; qbs_execute()
-   remains the always-DIRECT fallback. */
+/* Context reuse is explicit; the caller must exclusively own the context for
+   the entire blocking execution. OPERATION fills and releases each input tile
+   separately, reusing the token only after the previous tile was released.
+   Every tile must fit the context and have at least two N commands; eligibility
+   is checked for the complete plan before execution. Cross-call scopes require
+   exactly one input tile. Their caller owns generation/activation identity and
+   must eventually use REUSE_RELEASE or supersede the generation with a new
+   FILL. After executor failure, do not assume release occurred or blindly retry
+   a REUSE scope; recover with a new FILL. Unsupported plans/scopes return
+   CONTEXT_UNSUPPORTED before submitting commands; qbs_execute() remains the
+   always-DIRECT fallback. */
 qbs_status_t qbs_execute_with_options(
     const qbs_plan_t *plan, const void *weights, size_t weights_bytes,
     const void *activations, size_t activations_bytes, float *output,

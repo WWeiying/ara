@@ -124,10 +124,12 @@ module qbs_descriptor_decoder import qbs_pkg::*; #(
       error_o = QBS_VALIDATION_CONTEXT_ENCODING;
     else if (activation_access_o != QBS_ACTIVATION_ACCESS_DIRECT &&
              (unsigned'(context_id_o) >= QbsActivationContextCount ||
-              activation_profile_o != QBS_ACTIVATION_PROFILE_Q8_K ||
-              activation_layout_o != QBS_ACTIVATION_LAYOUT_ROW_MAJOR ||
+              !(activation_profile_o inside {QBS_ACTIVATION_PROFILE_Q8_K,
+                                            QBS_ACTIVATION_PROFILE_Q8_0}) ||
+              (activation_layout_o == QBS_ACTIVATION_LAYOUT_ROW_MAJOR && m_i != 1) ||
               unsigned'(m_i) > QbsActivationContextMaxM ||
-              unsigned'(k_blocks_o) > QbsActivationContextMaxKBlocks))
+              unsigned'(k_blocks_o) > QbsActivationContextMaxKBlocks ||
+              activation_storage_bytes_o > QbsActivationContextCapacityBytes))
       error_o = QBS_VALIDATION_CONTEXT_UNSUPPORTED;
     else if ((unsigned'(vd_i) & (destination_registers - 1)) != 0 ||
              unsigned'(vd_i) + destination_registers > 32)

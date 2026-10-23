@@ -106,6 +106,10 @@ def validate_spec(spec: dict) -> None:
             "activation_context.max_k_blocks must fit the capability field")
     if context["generation_bits"] != 8:
         raise ValueError("descriptor v2 requires an 8-bit context generation")
+    if not 1 <= context["capacity_bytes"] <= 0xffffffff:
+        raise ValueError("activation_context.capacity_bytes must fit 32 bits")
+    if context["storage_version"] != 1:
+        raise ValueError("unsupported activation context storage contract")
 
     encoding_ids = set()
     encoding_names = set()
@@ -480,6 +484,8 @@ def c_header(spec: dict) -> str:
 #define QBS_ACTIVATION_CONTEXT_COUNT {context['count']}u
 #define QBS_ACTIVATION_CONTEXT_MAX_M {context['max_m']}u
 #define QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS {context['max_k_blocks']}u
+#define QBS_ACTIVATION_CONTEXT_CAPACITY_BYTES {context['capacity_bytes']}u
+#define QBS_ACTIVATION_CONTEXT_STORAGE_VERSION {context['storage_version']}u
 #define QBS_ACTIVATION_CONTEXT_GENERATION_BITS {context['generation_bits']}u
 
 typedef enum {{
@@ -717,6 +723,10 @@ static inline uint64_t qbs_capability_word(unsigned index,
            (UINT64_C(0x0f) << 28) |
            ((uint64_t)QBS_ACTIVATION_CONTEXT_GENERATION_BITS << 32) |
            (context_layouts << 40);
+  }}
+  if (index == 0x03u) {{
+    return (uint64_t)QBS_ACTIVATION_CONTEXT_CAPACITY_BYTES |
+           ((uint64_t)QBS_ACTIVATION_CONTEXT_STORAGE_VERSION << 32);
   }}
 {c_capability_cases(spec)}
   return 0;
@@ -981,6 +991,8 @@ package qbs_pkg;
   localparam int unsigned QbsActivationContextCount = {context['count']};
   localparam int unsigned QbsActivationContextMaxM = {context['max_m']};
   localparam int unsigned QbsActivationContextMaxKBlocks = {context['max_k_blocks']};
+  localparam int unsigned QbsActivationContextCapacityBytes = {context['capacity_bytes']};
+  localparam int unsigned QbsActivationContextStorageVersion = {context['storage_version']};
   localparam int unsigned QbsActivationContextGenerationBits = {context['generation_bits']};
 
   typedef enum logic [1:0] {{
@@ -1188,6 +1200,10 @@ package qbs_pkg;
         result[31:28] = 4'b1111;
         result[39:32] = 8'(QbsActivationContextGenerationBits);
 {chr(10).join(f"        result[40 + QBS_ACTIVATION_LAYOUT_{name}] = 1'b1;" for name in context['activation_layouts'])}
+      end
+      64'h03: begin
+        result[31:0] = 32'(QbsActivationContextCapacityBytes);
+        result[39:32] = 8'(QbsActivationContextStorageVersion);
       end
 {sv_capability_cases(spec)}
       default: ;

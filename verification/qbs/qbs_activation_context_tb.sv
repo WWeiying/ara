@@ -3,6 +3,8 @@
 module qbs_activation_context_tb;
   import qbs_pkg::*;
 
+  localparam int LegacyMaxBlocks = 16;
+
   logic clk;
   logic rst_n;
 
@@ -82,6 +84,7 @@ module qbs_activation_context_tb;
     .release_i                   (release_context),
     .replay_start_valid_i        (replay_start_valid),
     .replay_start_ready_o        (replay_start_ready),
+    .replay_abort_i              (1'b0),
     .replay_k_block_i            (replay_k_block),
     .replay_data_valid_o         (replay_data_valid),
     .replay_data_ready_i         (replay_data_ready),
@@ -290,17 +293,17 @@ module qbs_activation_context_tb;
     // Exercise every physical address, both packed halves, and the final
     // partial beat; repeat with new data so stale contents cannot pass.
     for (int pass = 0; pass < 2; pass++) begin
-      pulse_fill_begin(8'h60 + 8'(pass), QbsActivationContextMaxKBlocks);
-      for (int block = 0; block < QbsActivationContextMaxKBlocks; block++)
+      pulse_fill_begin(8'h60 + 8'(pass), LegacyMaxBlocks);
+      for (int block = 0; block < LegacyMaxBlocks; block++)
         fill_block(block, 4 * (1 + (block + pass) % 4));
       if (!fill_ready_to_commit) $fatal(1, "full-depth context incomplete");
       @(negedge clk);
       fill_commit = 1'b1;
       @(negedge clk);
       fill_commit = 1'b0;
-      check_lookup(8'h60 + 8'(pass), QbsActivationContextMaxKBlocks,
+      check_lookup(8'h60 + 8'(pass), LegacyMaxBlocks,
                    1'b1, QBS_VALIDATION_OK);
-      for (int block = QbsActivationContextMaxKBlocks - 1; block >= 0; block--)
+      for (int block = LegacyMaxBlocks - 1; block >= 0; block--)
         replay_and_check(block);
       @(negedge clk);
       release_context = 1'b1;

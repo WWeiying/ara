@@ -533,7 +533,8 @@ static int emit_real_case(FILE *output, unsigned profile,
 }
 
 int main(int argc, char **argv) {
-  if (argc != 2 && argc != 11) {
+  if (argc != 2 && argc != 11 &&
+      !(argc == 3 && strcmp(argv[2], "--context-suite") == 0)) {
     fprintf(stderr,
             "usage: %s OUTPUT\n"
             "       %s OUTPUT --real q4_K|q6_K|q8_0|q2_K|q4_0|q5_0|iq4_nl "
@@ -546,6 +547,29 @@ int main(int argc, char **argv) {
   if (output == NULL) {
     perror(argv[1]);
     return 2;
+  }
+  if (argc == 3) {
+    fprintf(output, "QBSCMD1 12\n");
+    unsigned case_id = 0;
+    int failed = 0;
+    for (unsigned compact = 0; compact < 2; ++compact) {
+      for (unsigned m = 1; m <= 8; ++m) {
+        if (m == 2 || m == 3) continue;
+        const unsigned rows = m == 1 ? 1 : m == 4 ? 4 : 8;
+        const unsigned bytes = compact ? QBS_Q8_0_BLOCK_BYTES : QBS_Q8_K_BLOCK_BYTES;
+        unsigned blocks = QBS_ACTIVATION_CONTEXT_CAPACITY_BYTES / (rows * bytes);
+        if (blocks > QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS)
+          blocks = QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS;
+        failed |= emit_case(output, case_id++,
+            compact ? QBS_WEIGHT_PROFILE_Q8_0_WEIGHT : QBS_WEIGHT_PROFILE_Q4_K,
+            QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+            m == 1 ? QBS_ACTIVATION_LAYOUT_ROW_MAJOR : m == 4
+                ? QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED : QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED,
+            m, 5, blocks);
+      }
+    }
+    fclose(output);
+    return failed ? 1 : 0;
   }
   if (argc == 11) {
     unsigned profile = parse_profile(argv[3]);

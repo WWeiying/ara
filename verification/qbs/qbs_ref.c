@@ -403,10 +403,14 @@ qbs_ref_status_t qbs_ref_validate_descriptor(
     return QBS_REF_CONTEXT_ENCODING;
   if (fields.activation_access != QBS_ACTIVATION_ACCESS_DIRECT &&
       (fields.context_id >= QBS_ACTIVATION_CONTEXT_COUNT ||
-       fields.activation_profile != QBS_ACTIVATION_PROFILE_Q8_K ||
-       fields.activation_layout != QBS_ACTIVATION_LAYOUT_ROW_MAJOR ||
+       (fields.activation_profile != QBS_ACTIVATION_PROFILE_Q8_K &&
+        fields.activation_profile != QBS_ACTIVATION_PROFILE_Q8_0) ||
+       (fields.activation_layout == QBS_ACTIVATION_LAYOUT_ROW_MAJOR && m != 1) ||
        m > QBS_ACTIVATION_CONTEXT_MAX_M ||
-       fields.k_blocks > QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS))
+       fields.k_blocks > QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS ||
+       qbs_ref_activation_storage_bytes_for_profile(fields.activation_profile,
+           fields.activation_layout, m, fields.k_blocks) >
+           QBS_ACTIVATION_CONTEXT_CAPACITY_BYTES))
     return QBS_REF_CONTEXT_UNSUPPORTED;
 
   const unsigned registers = destination_register_count(m);

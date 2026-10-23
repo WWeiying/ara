@@ -37,6 +37,7 @@ module qbs_activation_tile_context_tb;
   qbs_validation_error_e lookup_error;
   logic release_context = 0;
   logic replay_start_valid = 0;
+  logic replay_abort = 0;
   logic replay_start_ready;
   logic [7:0] replay_k_block = 0;
   logic replay_data_valid;
@@ -84,6 +85,7 @@ module qbs_activation_tile_context_tb;
     .lookup_k_blocks_i(lookup_k_blocks), .lookup_match_o(lookup_match),
     .lookup_error_o(lookup_error), .release_i(release_context),
     .replay_start_valid_i(replay_start_valid),
+    .replay_abort_i(replay_abort),
     .replay_start_ready_o(replay_start_ready), .replay_k_block_i(replay_k_block),
     .replay_data_valid_o(replay_data_valid), .replay_data_ready_i(replay_data_ready),
     .replay_data_o(replay_data), .replay_strb_o(replay_strb),
@@ -388,6 +390,30 @@ module qbs_activation_tile_context_tb;
     expect_lookup(0, QBS_VALIDATION_CONTEXT_INVALID);
   endtask
 
+  task automatic abort_replay_and_retry(input bit at_last);
+    int cycles;
+    replay_data_ready = 0;
+    start_replay(0);
+    cycles = 0;
+    // Stop either the first returned beat or the final, unconsumed beat.
+    while (!(replay_data_valid && (!at_last || replay_last))) begin
+      if (cycles++ >= ReplayTimeout) $fatal(1, "abort replay setup timeout");
+      replay_data_ready = at_last && !replay_last;
+      @(negedge clk);
+    end
+    replay_data_ready = 0;
+    @(negedge clk);
+    replay_abort = 1;
+    @(negedge clk);
+    replay_abort = 0;
+    if (replay_busy !== 1'b0 || replay_done !== 1'b0 ||
+        replay_data_valid !== 1'b0 || context_valid !== 1'b1)
+      $fatal(1, "replay abort retained transient state or retired context");
+    set_lookup();
+    expect_lookup(1, QBS_VALIDATION_OK);
+    replay_and_check(0, 1);
+  endtask
+
   task automatic abort_and_check;
     @(negedge clk);
     fill_abort = 1;
@@ -410,6 +436,7 @@ module qbs_activation_tile_context_tb;
     fill_abort = 0;
     release_context = 0;
     replay_start_valid = 0;
+    replay_abort = 0;
     replay_data_ready = 0;
     lookup_valid = 0;
     repeat (3) @(negedge clk);
@@ -438,6 +465,8 @@ module qbs_activation_tile_context_tb;
     end
     commit_fill();
     check_metadata();
+    abort_replay_and_retry(0);
+    abort_replay_and_retry(1);
     for (int k = blocks - 1; k >= 0; k--) replay_and_check(k, 1);
     for (int k = 0; k < blocks; k++) replay_and_check(k, 0);
     if (model_payload * blocks == CapacityBytes) full_capacity_cases++;

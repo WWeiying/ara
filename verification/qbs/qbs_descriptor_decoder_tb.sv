@@ -211,7 +211,7 @@ module qbs_descriptor_decoder_tb;
     check_error(QBS_VALIDATION_CONTEXT_UNSUPPORTED);
     descriptor_header = make_header(QbsDescriptorVersion,
                                     1, 1, 1, 1, 4,
-                                    QbsActivationContextMaxKBlocks) |
+                                    QbsActivationContextCapacityBytes / QbsQ8KBlockBytes) |
                         (64'(QBS_ACTIVATION_ACCESS_FILL) <<
                          QbsDescActivationAccessLsb) |
                         (64'ha5 << QbsDescContextGenerationLsb);
@@ -225,6 +225,37 @@ module qbs_descriptor_decoder_tb;
                         (64'(QBS_ACTIVATION_ACCESS_FILL) <<
                          QbsDescActivationAccessLsb);
     check_error(QBS_VALIDATION_CONTEXT_UNSUPPORTED);
+
+    // Each profile/layout is constrained by bytes as well as block tags.
+    for (int compact = 0; compact < 2; compact++) begin
+      for (int rows = 1; rows <= 8; rows++) begin
+        automatic int layout = rows == 1 ? 1 : rows == 4 ? 2 : 3;
+        automatic int storage_rows = rows == 1 ? 1 : rows == 4 ? 4 : 8;
+        automatic int bytes_per_block = compact ? QbsQ8_0BlockBytes : QbsQ8KBlockBytes;
+        automatic int limit_blocks = QbsActivationContextCapacityBytes /
+                                     (storage_rows * bytes_per_block);
+        if (rows == 2 || rows == 3) continue;
+        if (limit_blocks > QbsActivationContextMaxKBlocks)
+          limit_blocks = QbsActivationContextMaxKBlocks;
+        m = rows;
+        vd = 0;
+        descriptor_header = make_header(QbsDescriptorVersion,
+            compact ? 6 : 1, compact ? 2 : 1, 2, layout, 4, limit_blocks) |
+            (64'(QBS_ACTIVATION_ACCESS_FILL) << QbsDescActivationAccessLsb);
+        check_error(QBS_VALIDATION_OK);
+        if (activation_storage_bytes != storage_rows * bytes_per_block * limit_blocks)
+          $fatal(1, "context byte budget computed incorrectly");
+        descriptor_header = make_header(QbsDescriptorVersion,
+            compact ? 6 : 1, compact ? 2 : 1, 2, layout, 4, limit_blocks + 1) |
+            (64'(QBS_ACTIVATION_ACCESS_FILL) << QbsDescActivationAccessLsb);
+        check_error(QBS_VALIDATION_CONTEXT_UNSUPPORTED);
+      end
+    end
+    m = 2;
+    descriptor_header = make_header(QbsDescriptorVersion, 1, 1, 1, 1, 4, 1) |
+        (64'(QBS_ACTIVATION_ACCESS_FILL) << QbsDescActivationAccessLsb);
+    check_error(QBS_VALIDATION_CONTEXT_UNSUPPORTED);
+    m = 1;
 
     descriptor_header = make_header(QbsDescriptorVersion, 1, 1, 1, 1, 4, 2);
     m = 0;
