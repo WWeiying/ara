@@ -156,12 +156,24 @@ class HalfScaleSocTests(unittest.TestCase):
             f'QBS_REAL_BENCH case={short} k=896 rows=896 inputs=4 outputs=3584 tiles=28 '
             'operations=1 quantizations=1 cross_op_reuse=0 mismatches=0 result=PASS qbs_status=0 '
             'setup_included=1 activation_context=1 compute_cycles=123 quantize_cycles=10 pack_cycles=13 '
-            'matmul_cycles=100 timed_cycles=123 logical_read_bytes=856800\n')
-        runner.check_projection_app(log, case)
+            'matmul_cycles=100 timed_cycles=123 logical_read_bytes=871584\n')
+        checked = runner.check_projection_app(log, case)
+        self.assertEqual(checked['logical_read_components'],
+                         dict(quantization_input=14336, descriptors=448,
+                              weights=852992, activations=3808))
+        direct_case = runner.PROJECTION_CASES[0]
+        direct = log.replace(short, direct_case.removeprefix('llama_qwen25_')).replace(
+            'activation_context=1', 'activation_context=0').replace(
+                'logical_read_bytes=871584', 'logical_read_bytes=974400')
+        self.assertEqual(runner.check_projection_app(direct, direct_case)
+                         ['logical_read_components']['activations'], 106624)
         for broken in (log + log, log.replace('quant_byte_mismatches=0', 'quant_byte_mismatches=1'),
                        log.replace('timed_cycles=123', 'timed_cycles=122'),
                        log.replace('outputs=3584', 'outputs=128'),
-                       log.replace('logical_read_bytes=856800', 'logical_read_bytes=0'),
+                       log.replace('logical_read_bytes=871584', 'logical_read_bytes=0'),
+                       log.replace('logical_read_bytes=871584', 'logical_read_bytes=856800'),
+                       log.replace('logical_read_bytes=871584', 'logical_read_bytes=857248'),
+                       log.replace('logical_read_bytes=871584', 'logical_read_bytes=871136'),
                        log.replace('result=PASS', 'result=FAIL')):
             with self.subTest(broken=broken[-120:]), self.assertRaises(RuntimeError):
                 runner.check_projection_app(broken, case)

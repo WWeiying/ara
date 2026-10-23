@@ -337,8 +337,8 @@ response stall, not measured DDR behavior. All four groups and their source,
 image and input hashes were independently rechecked after the worker finished.
 This covers 224 command executions (112 DIRECT and 112 context commands),
 with 7168 distinct captured scalar outputs tested under both supply conditions
-and execution modes. Native SoC execution is pending; deployment remains
-unapproved. Checked log SHA256 values:
+and execution modes. Native SoC results are recorded below; default deployment
+is not justified by the low-wait performance result. Checked log SHA256 values:
 
 - gap0: `5f1605450e87b7fe3a8863d4d8eba51f0e3e846b572d079fa8b559d67d2ee193`.
 - gap4: `4093408fb81cac4e8e5a29940bb27c500e17d9e9c1681552aec3c4feb50aba0b`.
@@ -351,12 +351,48 @@ eight SoC-runner tests, five isolation tests, and the earlier
 admission and new-capability Spike integration remain separate gates. The
 new-capability QEMU instruction contract has since passed as described below.
 
-This closes the admitted engine/storage/runtime unit gates, not native SoC or
-GGML deployment. Remaining checks include full-N real projection execution
-with preparation, a freshly built SoC
-regression, and matching QEMU/GGML integration. Long-K striped residency and
+This closes the admitted engine/storage/runtime unit gates. Full-N native SoC
+execution with preparation has also completed as recorded below; matching
+QEMU/GGML integration remains a separate gate. Long-K striped residency and
 partial-output lifetime remain separate design work. No FPGA, synthesis or
 physical result is claimed for this stage.
+
+### Full-projection native SoC result
+
+The corrected bare-metal pair uses the same VCS image, 16 MiB simulation L2,
+M4/N896/K896 geometry and real capture input. Both executions check all 3584
+outputs against the independent offline FP64 oracle and compare every
+quantized input byte. Both pass, with identical output checksum
+`0xa6e8082b37dbf573`.
+
+| Application interval | DIRECT cycles | Context cycles |
+|---|---:|---:|
+| Quantization | 26056 | 26056 |
+| Activation packing | 62462 | 62496 |
+| Matmul including command setup | 168457 | 168632 |
+| Total | 256975 | 257184 |
+| Logical input reads, bytes | 974400 | 871584 |
+
+Context saves 102816 logical bytes but increases total time by 209 cycles
+(0.0813%). It is not a measured speedup in this low-wait SoC configuration.
+Packing alone takes about 24.3% of DIRECT total time; it uses the shared
+runtime's scalar byte-interleaving helper. This makes packing an independently
+measured preparation target, rather than a reason to enlarge context storage.
+
+The logical-read field includes 14336 bytes of FP32 quantization input,
+448 descriptor bytes, 852992 weight bytes, and either 106624 or 3808
+activation bytes. It excludes packing scratch reads and is not AXI bus traffic.
+The initial host checker incorrectly omitted quantization input and descriptors;
+its rejection is preserved in worker02's original status. Corrected checks
+reject that old payload-only total, missing descriptors and missing input reads.
+No simulator or application rerun was needed for the already passing DIRECT.
+
+Evidence directories are `qbs-context-projection-soc-20261023-02` (DIRECT) and
+`qbs-context-projection-soc-20261023-03` (context), under `verification/out/`.
+The independent image/ELF/oracle re-audit is archived in
+`verification/qbs/results/context-projection-soc-20261023.json`; reproduce it
+using `verification/qbs/audit_projection_soc_pair.py` with a new output path.
+The context worker finished normally, including its final source-manifest gate.
 
 ## Distinct-input DIRECT isolation gate
 

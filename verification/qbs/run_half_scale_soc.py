@@ -160,10 +160,18 @@ def check_projection_app(text, case):
             timings['pack_cycles'] + timings['matmul_cycles'] or
             int(result['timed_cycles']) != timings['compute_cycles']):
         raise RuntimeError('Inconsistent projection cycle accounting')
-    expected_reads = 852992 + 3808 * (1 if 'context' in case else 28)
+    # benchmark_qbs() counts logical input/descriptor reads as well as payload.
+    # This is not AXI bus traffic (alignment and repeated bursts differ).
+    read_components = dict(quantization_input=4 * 896 * 4,
+                           descriptors=28 * 16,
+                           weights=896 * 28 * 34,
+                           activations=4 * 28 * 34 * (1 if 'context' in case else 28))
+    expected_reads = sum(read_components.values())
     if int(result['logical_read_bytes']) != expected_reads:
-        raise RuntimeError('Projection activation traffic differs from contract')
-    return dict(preflight=preflight, oracle=oracle, result=result)
+        raise RuntimeError('Projection logical reads differ from contract: '
+                           f'expected={expected_reads}, components={read_components}')
+    return dict(preflight=preflight, oracle=oracle, result=result,
+                logical_read_components=read_components)
 
 
 def parse_args(argv=None):
