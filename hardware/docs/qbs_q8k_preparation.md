@@ -229,6 +229,11 @@ RVV FMA/strided-store instructions and the external call reference are checked
 instead of requiring a retained helper symbol. This gate has one production
 MaxAVL16 configuration repeated three times per environment, not three AVL
 modes. See `verification/qbs/Q8K_PRODUCTION_CANDIDATE.md` for its exact scope.
+This private full-TU gate subsequently passed both VLEN128 and VLEN1024,
+including all bytes, FCSR/VCSR, block sums and guards. Independent raw-log audit
+is archived in `verification/qbs/results/q8k-production-candidate-native-20261023.json`.
+The actual GGML graph OFF/ON gate is prepared separately by `build_q8k_graphs.py`;
+live production selection is still unchanged while source-pinned VCS runs execute.
 
 - Compile all AVL caps with the target RV64GCV compiler and strict FP options.
   This gate passed on 2026-10-23; it is not an execution result.

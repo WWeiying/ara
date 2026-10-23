@@ -1,0 +1,29 @@
+{
+  "build": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-production-candidate-build-20261023-03",
+  "bytes_fcsr_vcsr_guards_exact": true,
+  "checks": 12000,
+  "datasets_per_vlen": 50,
+  "distinct_case_environment_vlen_combinations": 4000,
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-production-candidate-build-20261023-03/build.json": "6f1f8bc929936addd00c9758e1b8b33095317b6b956c46f116dac4c4069b8eed",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-production-candidate-build-20261023-03/native.o": "94045f80ba06ff1f682e0d27764534a6acbd3e36b6f736da301a75d97f292461",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-production-candidate-build-20261023-03/production-entry.log": "29a989f35e74bf37f4f0feb126adaf93e3d5bbf7b6ab34a19caf7409caa59873",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-production-candidate-build-20261023-03/production.o": "b8ea243f84576dccc1a5fe74a1169aa94975f63dadcdab35c7d86f95c10c98d3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-production-candidate-native-20261023-01/manifest.json": "22ecc811b27c19eb59579261622f394f8827b46c8aef94b8de2a0bfd1f2ea1b8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-production-candidate-native-20261023-01/pins-after.json": "22ecc811b27c19eb59579261622f394f8827b46c8aef94b8de2a0bfd1f2ea1b8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-production-candidate-native-20261023-01/qemu-1024.log": "cb2790ff8cd6a3139f7967bee97b2487c07406831f954a16fca3467826a1454d",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-production-candidate-native-20261023-01/qemu-128.log": "06ad163cd5fcd6e2463491dad34d204510b8adcb61e16148cc88d5b594dddc25",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-production-candidate-native-20261023-01/status.json": "0cf9ef81d179f8afc4d9e65c12b97beb731ca19bc678ca8d7299d67db5064e98"
+  },
+  "matches_isolated_successor_digests": true,
+  "production_max_avl": 16,
+  "real_datasets_per_vlen": 6,
+  "repeats_per_combination": 3,
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-production-candidate-native-20261023-01",
+  "scope": "Private full production repack TU selected via real GGML Q8_K specialization; live runtime unchanged; functional not RTL performance",
+  "state": "PASS",
+  "vlens": [
+    128,
+    1024
+  ]
+}

@@ -68,3 +68,49 @@ the similarly named earlier production build is rejected before compilation.
 Running sources, ELFs and simulator images are not overwritten. Acceptance
 does not enable the candidate in live GGML, establish graph/model dispatch,
 or substitute for the pending full-projection RTL performance gate.
+
+## Accepted full-TU numerical result
+
+The private production entry passed both VLENs. Independent raw-log rechecking
+accepts 12000 observations (4000 distinct case/environment/VLEN combinations,
+each repeated three times), matching the isolated successor's per-case output
+digests. The receipt is `results/q8k-production-candidate-native-20261023.json`.
+The first build retained a missing test-side template declaration; the second
+retained a rejected symbol-presence test despite correct O3 inlining. Neither
+was executed or counted as an RTL failure. Build03 is the accepted input.
+
+## Actual GGML graph selection
+
+`build_q8k_graphs.py` consumes the accepted build and creates a separate private
+full TU with a thread-local path observer and one Q8_K preparation trace line
+per call. The observer is test-only, not hidden hardware state or a new runtime
+requirement. The quantizer body and generic oracle remain unchanged. The graph
+caller reuses `ggml_m4_prepare_production/graph.cpp`, its independent scalar
+oracle and sixteen shapes; this suite uses deterministic graph inputs, not a
+new model capture. Real activation datasets are covered by the numerical gate.
+
+`q8k_graph_init.c` executes preparation OFF/ON with six existing context, wide-M
+and thread settings per mode. `check_q8k_graphs.py` requires 384 complete graphs,
+exact paired output digests and 52 actual Q8_K M4 preparation calls per mode.
+It retains the old checker's Q8_0 preparation, native-command, lifetime and
+fallback checks rather than replacing them with new PASS strings. Wide-M and
+M1/M2/M3 paths must not report an M4 call. The three-thread cases exercise the
+existing GGML scheduler under one guest hart. This checks concurrency and
+selection semantics, not physical parallel throughput.
+
+```bash
+python3 verification/qbs/build_q8k_graphs.py \
+  --accepted-run verification/out/qbs-q8k-production-candidate-native-20261023-01 \
+  --production-build verification/out/qbs-m4-production-csr-build-20261023-02 \
+  --output /absolute/new/graph-build
+
+python3 verification/qbs/run_q8k_graphs.py \
+  --build /absolute/new/graph-build \
+  --configuration verification/out/qbs-m4-production-native-20261023-01/configuration.json \
+  --output /absolute/new/graph-run
+```
+
+No existing worker, helper, live runtime source, archive or ELF is overwritten.
+The graph boot is bounded to 900 seconds. A passing result is functional QEMU
+evidence only; full-projection RTL performance and eventual live runtime
+integration remain separate requirements.
