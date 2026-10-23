@@ -616,3 +616,40 @@ This is instruction-model functional evidence. It does not establish native
 RTL performance, GGML admission, OS save/restore of resident state, or complete
 model numerical accuracy. The separate native SoC projection and new-capability
 GGML graph gates remain necessary.
+
+## Production M4 preparation candidate (isolated numerical gate)
+
+`verification/qbs/ggml_m4_prepare_candidate.h` experiments with Q8_0 four-row
+preparation, not with the row quantizer or QBS RTL. It preserves the production
+scalar maximum, scale and FP16 conversion, then uses VLA multiply, explicit
+RMM integer conversion and interleaved byte stores. Non-RNE callers and guarded
+exceptional/tiny inputs delegate to the actual compiled GGML generic function.
+The pinned toolchain's `roundf` preserves exception flags for its conversion;
+the candidate therefore restores conversion flags without discarding flags
+from multiplication or scale computation. This contract must be revalidated
+for a different compiler/libm, not inferred from byte agreement alone.
+
+`run_ggml_m4_prepare_candidate.py` reuses the completed private GGML static
+libraries. It verifies their original source manifest, pins headers, libraries,
+compiler, guest ELF and model activation bytes, and runs one ELF at VLEN128
+and VLEN1024. Each run checks 3375 boundary configurations (585 vector-path,
+2790 fallback), plus 45 configurations of the real M4/K896 Qwen activation.
+Checks include all output bytes, guards, unchanged inputs, five rounding modes,
+sticky flags, `vcsr`, and forced strip-mining limits 1/7/32. The oracle is the
+production `ggml_quantize_mat_q8_0_4x1_generic`, not the different row quantizer.
+
+The first worker stopped at compilation because unused static functions in
+external GGML headers were promoted to errors. The successor uses system
+include paths for those headers, matching the existing sidecar convention;
+candidate warnings remain errors. Native results and RTL performance must be
+recorded separately. The conservative scalar preflight still reads the input
+before quantization, so neither successful compilation nor functional agreement
+establishes a speedup. No production dispatch selects this candidate yet.
+
+The successor completed both VLENs successfully: 6750 boundary configurations
+and 90 real-capture configurations (6840 total), with exact output bytes and
+FP environment agreement. Both guests exited zero and all source/library/ELF
+pins remained unchanged. Evidence is
+`verification/qbs/results/ggml-m4-prepare-native-20261023.json`. This clears
+the numerical gate for Q8_0 M4; Q8_K, production selection and paired native
+RTL timing remain open.

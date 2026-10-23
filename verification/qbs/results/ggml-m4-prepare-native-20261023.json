@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "state": "PASS",
+  "scope": "Q8_0 M4 candidate byte and FP-environment equivalence, not RTL performance",
+  "worker": "verification/out/qbs-m4-prepare-native-20261023-02",
+  "manifest_sha256": "d15c19de3611b458261993de54957de22e28c3201ae8aadcc47f80f1613cd281",
+  "status_sha256": "8eebf0f7e2e8ba7a08acbbf1af796b3dbe00674e8eda901959b010e313cb3082",
+  "candidate_sha256": "14cc38e65043fba701155d90e9b3259e1a59882c580f7dd45e73b1253ca216fc",
+  "test_sha256": "cc5e3176279136dba6f45ae6706c353896f049a6f57a32321dbe293062e4f4b4",
+  "elf_sha256": "76d08f05b0ce6cc929e74c371c14e4e8a9659c55ceed837d31b0e8bc290ac772",
+  "oracle": "Actual compiled ggml_quantize_mat_q8_0_4x1_generic from pinned private GGML static library",
+  "cases": [
+    {
+      "vlen": 128,
+      "synthetic_checks": 3375,
+      "synthetic_vector": 585,
+      "synthetic_fallback": 2790,
+      "real_capture_checks": 45,
+      "real_capture_vector": 9,
+      "real_capture_fallback": 36,
+      "log_sha256": "c71eb4ba772d44778f58061ab496a92d10a5318f5e36c106193768e5f0e81376"
+    },
+    {
+      "vlen": 1024,
+      "synthetic_checks": 3375,
+      "synthetic_vector": 585,
+      "synthetic_fallback": 2790,
+      "real_capture_checks": 45,
+      "real_capture_vector": 9,
+      "real_capture_fallback": 36,
+      "log_sha256": "9574e6ffb3f2362466f999ea7c248b1e465cf57f41bd797e9eac49876542e776"
+    }
+  ],
+  "real_capture": "Qwen2.5 Q8_0 projection FP32 activation M4/K896, 3584 elements",
+  "checked": ["all output bytes", "input preservation", "output guards", "frm", "fflags", "vcsr", "AVL limits 1/7/32"],
+  "limitations": [
+    "No RTL performance result for this fused M4 candidate",
+    "No production dispatch change",
+    "Exceptional-input equivalence is pinned to this generic object and toolchain",
+    "Does not cover Q8_K fused preparation or complete-model accuracy"
+  ]
+}
