@@ -6,17 +6,23 @@ BUILD := build
 SOURCES := src/qbs_runtime.c src/qbs_native_riscv.c src/qbs_format.c
 OBJECTS := $(SOURCES:%.c=$(BUILD)/%.o)
 
-.PHONY: all check example clean
+.PHONY: all check example traffic-audit clean
 
 all: $(BUILD)/libqbs_runtime.a
 
-check: $(BUILD)/qbs_runtime_test $(BUILD)/qbs_runtime_adapter_example $(BUILD)/qbs_format_test $(BUILD)/qbs_segmented_test
+check: $(BUILD)/qbs_runtime_test $(BUILD)/qbs_runtime_adapter_example $(BUILD)/qbs_format_test $(BUILD)/qbs_segmented_test $(BUILD)/qbs_planner_traffic
 	$(BUILD)/qbs_runtime_test
 	$(BUILD)/qbs_runtime_adapter_example
 	$(BUILD)/qbs_format_test
 	$(BUILD)/qbs_segmented_test
+	$(BUILD)/qbs_planner_traffic > /dev/null
 
 example: $(BUILD)/qbs_runtime_adapter_example
+
+traffic-audit: $(BUILD)/qbs_planner_traffic
+
+$(BUILD)/qbs_planner_traffic: examples/planner_traffic.c $(OBJECTS)
+	$(CC) $(CFLAGS) $^ -o $@
 
 $(BUILD)/libqbs_runtime.a: $(OBJECTS)
 	$(AR) rcs $@ $^

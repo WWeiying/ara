@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "state": "PASS",
+  "kind": "host execution of production planner; static logical payload accounting",
+  "cases": 160,
+  "rtl_simulation": false,
+  "baseline_commit": "331e0714271ff47ff46b952a34679a85521860d1",
+  "sha256": {
+    "software/qbs/examples/planner_traffic.c": "9e265db2c39bac59e9986c1bed3ecbbe121a24e61c40ac82c4a2ea5dc322d268",
+    "software/qbs/src/qbs_runtime.c": "fea9c94ade3f17be1266f30b476600f55f482302eabcfe5f854b4e6f90b157f1",
+    "software/qbs/include/qbs/qbs.h": "250d22b13638c59d8adc7105f2fcb476de7ac2b4ee664dafeff74e4b9e792eba",
+    "software/qbs/include/qbs/qbs_abi.h": "86fb8f1b48ad1ba23d0af07307285f323282ead735354f002db8f5b1d0707015",
+    "hardware/src/vlsu/qbs/qbs_engine.sv": "589998d5b67bf4ad8c660b96da4bc6150cc23c03a4f4e8efa1255664ec97d1f1",
+    "hardware/src/vlsu/qbs/qbs_compute_engine.sv": "9f3328dfb1f3545ab5bb0e1dcc82a4b63311e8cf815561f5068222d74ec664b1",
+    "verification/qbs/results/planner-traffic-20261023.csv": "64fe8b480e2689910f7ee2db971d5d8fbd4c0d940257234c3d98e6b14bd99832"
+  }
+}
