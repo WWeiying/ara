@@ -62,6 +62,64 @@ Activation-context eligibility still rejects split-K. The optional GGML
 integration below applies the same segment policy to both packing and graph
 lookahead; it is not enabled by default.
 
+## Natural long-K graph acceptance
+
+The focused `--suite natural` mode of `verification/qbs/run_ggml_segmented.py`
+adds real GGML graphs with 280 native blocks, rather than only forcing the
+device limit below a short tensor. It checks Q4_K K71680 and Q8_0 K8960,
+N37, M1/M3/M4, and one/three workers. Each of the 12 graphs runs with global
+R4, segment-major R4 at 256 blocks, and the same segmented layout with the
+wide-M request enabled. The last configuration must still reject wide-M for
+split-K. These are generated functional inputs, not captured-model timing.
+
+Acceptance requires the independent dequantized FP64 scalar arithmetic check,
+the original `2e-4 + 2e-5 * abs(expected)` error limit, matching output digests
+between all three layouts, exact requested/effective policy, split dispatch,
+and complete command work at both K256 and K24. A single-worker segmented
+graph must actually issue N32, rather than quietly retaining the old N4 plan.
+The report verifies all 12 distinct shapes, not just a count of PASS lines.
+
+Two rejected runs and a discriminating probe are retained under
+`verification/out/qbs-ggml-natural-20261023-01/`, `...-02/`, and
+`verification/out/qbs-ggml-natural-probe-20261023-01/`. They exposed a test
+input-contract mismatch before the segmented policy was selected:
+
+| First global-R4 Q4_K output | Value |
+|---|---:|
+| Reference-quantized input, sequential FP32 sum | 0.827204585 |
+| Reference-quantized input, FP64 sum | 0.82719127619630939 |
+| Reference-quantized input, block/split FP32 sum | 0.827156067 |
+| Production-quantized input, block/split FP32 sum | 0.827568054 |
+| Actual graph output | 0.827568054 |
+
+The reference and production Q8_K payloads differed in four bytes. Disassembly
+of `quantize_row_q8_K_ref` contains `vfmadd.vv` for the scaled input plus
+12582912 rounding bias; the explicit RVV quantizer instead rounds its multiply
+before RNE integer conversion. Thus a reference quantizer is not necessarily
+bit-identical to the selected production quantizer near a rounding boundary.
+Merely switching the arithmetic oracle to FP64 did not resolve this mismatch.
+
+The natural-K matrix check now uses the actual GGML tail-row quantizer's
+payload, independently dequantizes it, and evaluates the matrix in FP64.
+Full four-row groups retain the generic/reference preparation path. The
+test reports reference-payload differences separately; it does not certify
+reference/production quantization equivalence. Layout equivalence is also
+checked through cross-run output digests. No library, RTL, tolerance, or
+arithmetic order was changed to accommodate this finding. The existing short
+nine-profile graph suite retains its original reference input generation.
+
+Run `qbs-ggml-natural-20261023-03.service` completed with 36/36 graphs PASS
+and an unchanged source/tool/ELF manifest. Output digests match the global-R4
+baseline in both segmented modes. Across each single-worker Q4_K/Q8_0
+M1/M3/M4 N37 graph, command count falls from 20 to 4; K256 and K24 each
+cover every output exactly once. Maximum error against the selected-input
+FP64 matrix oracle is 8.46385956e-5 for Q4_K and 1.54972076e-5 for Q8_0.
+These results establish natural split-K software integration, not native
+instruction execution, model-quality equivalence or RTL cycle improvement.
+Native cross-operator context admission/rejection remains a separate gate.
+Nineteen host checker tests cover the existing graph suite plus natural-K
+missing/wrong work, layout, tail, context, emulation, shape and digest evidence.
+
 ## Evidence
 
 `make -C software/qbs check` passes existing tests and 1,530 new shape tests.

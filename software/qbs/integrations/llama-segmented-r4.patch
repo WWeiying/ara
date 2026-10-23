@@ -14,11 +14,11 @@ index 854a69c1b..97ec07bdd 100644
 +    return status == QBS_STATUS_OK &&
             qbs_plan_supports_activation_context(&plan);
  }
- 
+
 @@ -1264,6 +1268,28 @@ bool ggml_riscv_qbs_supports_tensor(ggml_type type, int64_t k_elements, int64_t
      return tensor_support_reason(type, k_elements, output_rows) == qbs_support_reason::supported;
  }
- 
+
 +unsigned ggml_riscv_qbs_weight_segment_blocks() {
 +    // Packed tensors and graph lookahead must use the same immutable policy.
 +    static const unsigned segment = []() -> unsigned {
@@ -102,7 +102,7 @@ index 854a69c1b..97ec07bdd 100644
 @@ -1574,6 +1613,18 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
      GGML_ASSERT(status == QBS_STATUS_OK);
  }
- 
+
 +void ggml_riscv_qbs_mul_mat_view(ggml_type weight_type, int k, float * dst, size_t dst_stride,
 +                               const void * weights, const void * activations,
 +                               int input_rows, int output_rows, int64_t storage_rows,
@@ -123,9 +123,9 @@ index 1bc87a6ab..52a5e5978 100644
 --- a/ggml/src/ggml-cpu/arch/riscv/qbs.h
 +++ b/ggml/src/ggml-cpu/arch/riscv/qbs.h
 @@ -36,6 +36,9 @@ struct ggml_riscv_qbs_iq4_nl_tag {};
- 
+
  bool ggml_riscv_qbs_supports_tensor(ggml_type type, int64_t k_elements, int64_t output_rows);
- 
+
 +// Read once when constructing a weight-layout trait; zero keeps global R4.
 +unsigned ggml_riscv_qbs_weight_segment_blocks();
 +
@@ -144,7 +144,7 @@ index 1bc87a6ab..52a5e5978 100644
 +                               const void * weights, const void * activations,
 +                               int input_rows, int output_rows, int64_t storage_rows,
 +                               int64_t row_start, unsigned segment_k_blocks, bool wide_m);
- 
+
  void ggml_riscv_qbs_gemv(ggml_type    weight_type,
                           int          n,
 diff --git a/ggml/src/ggml-cpu/repack.cpp b/ggml/src/ggml-cpu/repack.cpp
@@ -153,7 +153,7 @@ index 4f6b4870f..75f376db9 100644
 +++ b/ggml/src/ggml-cpu/repack.cpp
 @@ -4572,6 +4572,15 @@ class tensor_traits_base : public ggml::cpu::tensor_traits {
  };
- 
+
  template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PARAM_TYPE> class tensor_traits : public tensor_traits_base {
 +  public:
 +    explicit tensor_traits(unsigned segment_k_blocks = 0) : qbs_segment_k_blocks(segment_k_blocks) {}
@@ -164,7 +164,7 @@ index 4f6b4870f..75f376db9 100644
 +    bool qbs_allows_wide(const ggml_tensor * weights) const {
 +        return qbs_segment_k_blocks == 0 || weights->ne[0] / ggml_blck_size(weights->type) <= qbs_segment_k_blocks;
 +    }
- 
+
      bool work_size(int /* n_threads */, const struct ggml_tensor * op, size_t & size) override {
          // not realy a GGML_TYPE_Q8_0 but same size.
 @@ -4582,7 +4591,7 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
@@ -204,9 +204,9 @@ index 4f6b4870f..75f376db9 100644
                                      src0->type, ne11, ne01, ne10, &qbs_activation_plan) &&
                                  qbs_activation_plan.wide_m;
 @@ -5028,6 +5044,17 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
- 
+
                  const auto * src1_col = (const char *) wdata + (i11 * nbw1 + i12 * nbw2);
- 
+
 +#if defined(GGML_USE_RISCV_QBS)
 +                if constexpr (is_qbs_block_type<BLOC_TYPE>::value) {
 +                    if (qbs_segment_k_blocks != 0) {
@@ -239,7 +239,7 @@ index 4f6b4870f..75f376db9 100644
      }
  };
 @@ -5047,15 +5084,16 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
- 
+
  static const ggml::cpu::tensor_traits * ggml_repack_get_optimal_repack_type(const struct ggml_tensor * cur) {
  #if defined(GGML_USE_RISCV_QBS)
 -    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q4_k_tag, 1, 4, GGML_TYPE_Q8_K> qbs_q4_K;
@@ -262,7 +262,7 @@ index 4f6b4870f..75f376db9 100644
 +    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_iq4_nl_tag, 1, 4, GGML_TYPE_Q8_0> qbs_iq4_nl(qbs_segment);
 +    static const ggml::cpu::repack::tensor_traits<ggml_riscv_qbs_q5_0_tag, 1, 4, GGML_TYPE_Q8_0> qbs_q5_0(qbs_segment);
  #endif
- 
+
      // instance for Q4
 @@ -5111,6 +5149,7 @@ static const ggml::cpu::tensor_traits * ggml_repack_get_optimal_repack_type(cons
      const bool qbs_dimensions_supported = qbs_n_dims == 2 ||
@@ -291,7 +291,7 @@ index 4f6b4870f..75f376db9 100644
              if (op->src[1]->buffer && !ggml_backend_buft_is_host(op->src[1]->buffer->buft)) {
                  return false;
 diff --git a/tests/test-ara-q4k-repack.cpp b/tests/test-ara-q4k-repack.cpp
-index 821c0e934..c5e3111fc 100644
+index 821c0e934..61844ccb7 100644
 --- a/tests/test-ara-q4k-repack.cpp
 +++ b/tests/test-ara-q4k-repack.cpp
 @@ -1,6 +1,7 @@
@@ -305,7 +305,7 @@ index 821c0e934..c5e3111fc 100644
 @@ -719,8 +720,8 @@ static void test_qbs_moe_repack_fallback() {
      std::printf("QBS MUL_MAT_ID non-R4 expert shape fallback: PASS\n");
  }
- 
+
 -static void test_qbs_moe_graph() {
 -    constexpr int64_t n = 2 * QK_K;
 +static void test_qbs_moe_graph(int threads) {
@@ -321,7 +321,7 @@ index 821c0e934..c5e3111fc 100644
      ggml_backend_buffer_t graph_buffer =
          ggml_backend_alloc_ctx_tensors(graph_context, backend);
      assert(graph_buffer != nullptr);
-@@ -848,7 +850,124 @@ static void test_qbs_moe_graph() {
+@@ -848,7 +850,203 @@ static void test_qbs_moe_graph() {
      ggml_backend_buffer_free(weights_buffer);
      ggml_free(weights_context);
      std::printf("QBS MUL_MAT_ID Q2_K 3-expert graph: PASS "
@@ -329,7 +329,7 @@ index 821c0e934..c5e3111fc 100644
 +                "(threads %d, max abs error %.8g)\n", threads, max_error);
 +}
 +
-+static void test_qbs_matrix_graphs() {
++static void test_qbs_matrix_graphs(bool natural_k = false) {
 +    const char * requested = std::getenv("GGML_RISCV_QBS_SEGMENT_K_BLOCKS");
 +    const unsigned segment = requested ? static_cast<unsigned>(std::strtoul(requested, nullptr, 10)) : 0;
 +    assert(ggml_riscv_qbs_weight_segment_blocks() == segment);
@@ -337,13 +337,17 @@ index 821c0e934..c5e3111fc 100644
 +        GGML_TYPE_Q5_K, GGML_TYPE_Q6_K, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0,
 +        GGML_TYPE_Q8_0, GGML_TYPE_IQ4_NL};
 +    constexpr int64_t rows = 37;
++    const size_t k_blocks = natural_k ? 280 : 7;
 +    unsigned cases = 0;
 +    for (ggml_type type : types) {
++        if (natural_k && type != GGML_TYPE_Q4_K && type != GGML_TYPE_Q8_0) {
++            continue;
++        }
 +        const bool q8_0 = type == GGML_TYPE_Q4_0 || type == GGML_TYPE_Q5_0 ||
 +                          type == GGML_TYPE_Q8_0 || type == GGML_TYPE_IQ4_NL;
 +        const ggml_type activation_type = q8_0 ? GGML_TYPE_Q8_0 : GGML_TYPE_Q8_K;
 +        const auto * wt = ggml_get_type_traits(type);
-+        const int64_t k = 7 * ggml_blck_size(type);
++        const int64_t k = k_blocks * ggml_blck_size(type);
 +        const size_t weight_stride = ggml_row_size(type, k);
 +        const size_t activation_stride = ggml_row_size(activation_type, k);
 +        std::vector<uint8_t> packed_weights(rows * weight_stride);
@@ -356,8 +360,12 @@ index 821c0e934..c5e3111fc 100644
 +            wt->to_float(packed_weights.data() + row * weight_stride, weight_values.data() + row * k, k);
 +        }
 +        for (int inputs : {1, 2, 3, 4, 5, 7, 8}) {
++            if (natural_k && inputs != 1 && inputs != 3 && inputs != 4) {
++                continue;
++            }
 +            std::vector<float> activations(inputs * k), activation_values(inputs * k);
 +            std::vector<uint8_t> activation_quantized(activation_stride);
++            size_t quant_reference_differences = 0;
 +            for (int input = 0; input < inputs; ++input) {
 +                for (int64_t i = 0; i < k; ++i) {
 +                    activations[input * k + i] = 0.5f * std::cos(float(input * 17 + i * 11) * 0.015625f);
@@ -370,6 +378,22 @@ index 821c0e934..c5e3111fc 100644
 +                    auto * quantized = reinterpret_cast<block_q8_K *>(activation_quantized.data());
 +                    quantize_row_q8_K_ref(activations.data() + input * k, quantized, k);
 +                    dequantize_row_q8_K(quantized, activation_values.data() + input * k, k);
++                }
++                if (natural_k && input >= inputs - inputs % 4) {
++                    // Match GGML's tail-row quantizer; _ref can contract rounding into FMA.
++                    const auto reference = activation_quantized;
++                    ggml_get_type_traits_cpu(activation_type)->from_float(
++                        activations.data() + input * k, activation_quantized.data(), k);
++                    for (size_t byte = 0; byte < reference.size(); ++byte) {
++                        quant_reference_differences += reference[byte] != activation_quantized[byte];
++                    }
++                    if (q8_0) {
++                        dequantize_row_q8_0(reinterpret_cast<const block_q8_0 *>(activation_quantized.data()),
++                            activation_values.data() + input * k, k);
++                    } else {
++                        dequantize_row_q8_K(reinterpret_cast<const block_q8_K *>(activation_quantized.data()),
++                            activation_values.data() + input * k, k);
++                    }
 +                }
 +            }
 +            for (int threads : {1, 3}) {
@@ -384,14 +408,14 @@ index 821c0e934..c5e3111fc 100644
 +                assert(weight_buffer != nullptr && weights->extra != nullptr);
 +                ggml_backend_tensor_set(weights, packed_weights.data(), 0, packed_weights.size());
 +                const size_t block_bytes = ggml_type_size(type);
-+                const size_t segment_blocks = segment ? segment : 7;
++                const size_t segment_blocks = segment ? segment : k_blocks;
 +                for (size_t row = 0; row < static_cast<size_t>(rows); ++row) {
-+                    for (size_t block = 0; block < 7; ++block) {
++                    for (size_t block = 0; block < k_blocks; ++block) {
 +                        const size_t start = block / segment_blocks * segment_blocks;
-+                        const size_t local_k = std::min(segment_blocks, size_t(7) - start);
++                        const size_t local_k = std::min(segment_blocks, k_blocks - start);
 +                        const size_t index = start * 40 + (row / 4) * local_k * 4 + (block - start) * 4 + row % 4;
 +                        assert(std::memcmp(static_cast<const uint8_t *>(weights->data) + index * block_bytes,
-+                                           packed_weights.data() + (row * 7 + block) * block_bytes, block_bytes) == 0);
++                                           packed_weights.data() + (row * k_blocks + block) * block_bytes, block_bytes) == 0);
 +                    }
 +                }
 +
@@ -415,20 +439,75 @@ index 821c0e934..c5e3111fc 100644
 +                std::vector<float> actual(rows * inputs);
 +                ggml_backend_tensor_get(output, actual.data(), 0, actual.size() * sizeof(float));
 +                float max_error = 0;
++                double max_scalar_drift = 0;
 +                for (int input = 0; input < inputs; ++input) {
 +                    for (int64_t row = 0; row < rows; ++row) {
-+                        const float expected = qbs_scalar_dot(weight_values.data() + row * k,
-+                                                              activation_values.data() + input * k, k);
++                        const float scalar = qbs_scalar_dot(weight_values.data() + row * k,
++                                                            activation_values.data() + input * k, k);
++                        double precise = 0;
++                        if (natural_k) {
++                            // A long, cancelling FP32 sum is not an independent accuracy oracle.
++                            for (int64_t i = 0; i < k; ++i) {
++                                precise += double(weight_values[row * k + i]) * double(activation_values[input * k + i]);
++                            }
++                            max_scalar_drift = std::max(max_scalar_drift, std::fabs(double(scalar) - precise));
++                        }
++                        const float expected = natural_k ? static_cast<float>(precise) : scalar;
 +                        const float error = std::fabs(actual[input * rows + row] - expected);
 +                        max_error = std::max(max_error, error);
 +                        if (!std::isfinite(actual[input * rows + row]) || !std::isfinite(expected) ||
 +                            !std::isfinite(error) || error > 2e-4f + 2e-5f * std::fabs(expected)) {
++                            if (natural_k) {
++                                std::vector<uint8_t> reference(activation_stride), production(activation_stride);
++                                std::vector<float> produced_values(k);
++                                const float * values = activations.data() + input * k;
++                                ggml_get_type_traits_cpu(activation_type)->from_float(values, production.data(), k);
++                                if (q8_0) {
++                                    quantize_row_q8_0_ref(values, reinterpret_cast<block_q8_0 *>(reference.data()), k);
++                                    dequantize_row_q8_0(reinterpret_cast<const block_q8_0 *>(production.data()), produced_values.data(), k);
++                                } else {
++                                    quantize_row_q8_K_ref(values, reinterpret_cast<block_q8_K *>(reference.data()), k);
++                                    dequantize_row_q8_K(reinterpret_cast<const block_q8_K *>(production.data()), produced_values.data(), k);
++                                }
++                                size_t different_bytes = 0;
++                                for (size_t byte = 0; byte < reference.size(); ++byte) {
++                                    different_bytes += reference[byte] != production[byte];
++                                }
++                                float reference_blocked = 0, production_blocked = 0;
++                                for (size_t start = 0; start < k_blocks; start += 256) {
++                                    float ref_partial = 0, prod_partial = 0;
++                                    for (size_t block = start; block < std::min(start + 256, k_blocks); ++block) {
++                                        const size_t offset = block * ggml_blck_size(type);
++                                        ref_partial += qbs_scalar_dot(weight_values.data() + row * k + offset,
++                                            activation_values.data() + input * k + offset, ggml_blck_size(type));
++                                        prod_partial += qbs_scalar_dot(weight_values.data() + row * k + offset,
++                                            produced_values.data() + offset, ggml_blck_size(type));
++                                    }
++                                    reference_blocked += ref_partial;
++                                    production_blocked += prod_partial;
++                                }
++                                std::fprintf(stderr, "QBS_NATURAL_DIAG quant_byte_diffs=%zu scalar=%.9g precise=%.17g ref_blocked=%.9g prod_blocked=%.9g actual=%.9g\n",
++                                    different_bytes, double(scalar), precise, double(reference_blocked), double(production_blocked), double(actual[input * rows + row]));
++                            }
 +                            std::fprintf(stderr, "QBS graph mismatch type=%s M=%d N=%lld threads=%d row=%lld input=%d actual=%g expected=%g\n",
 +                                ggml_type_name(type), inputs, (long long) rows, threads, (long long) row,
 +                                input, actual[input * rows + row], expected);
 +                            std::abort();
 +                        }
 +                    }
++                }
++                if (natural_k) {
++                    uint64_t hash = UINT64_C(14695981039346656037);
++                    for (float value : actual) {
++                        uint32_t bits;
++                        std::memcpy(&bits, &value, sizeof(bits));
++                        for (unsigned byte = 0; byte < 4; ++byte) {
++                            hash = (hash ^ ((bits >> (8 * byte)) & 255u)) * UINT64_C(1099511628211);
++                        }
++                    }
++                    std::printf("QBS_NATURAL_ORACLE quant_reference_differences=%zu max_fp32_scalar_drift=%.9g max_qbs_error=%.9g\n",
++                        quant_reference_differences, max_scalar_drift, double(max_error));
++                    std::printf("QBS_NATURAL_DIGEST value=%016llx\n", (unsigned long long) hash);
 +                }
 +                std::printf("QBS MUL_MAT graph: PASS type=%s M=%d N=%lld K=%lld threads=%d segment=%u error=%g\n",
 +                    ggml_type_name(type), inputs, (long long) rows, (long long) k, threads,
@@ -442,12 +521,26 @@ index 821c0e934..c5e3111fc 100644
 +            }
 +        }
 +    }
-+    assert(cases == 126);
++    assert(cases == (natural_k ? 12 : 126));
 +    std::printf("QBS matrix graph suite: PASS cases=%u\n", cases);
  }
- 
+
  static void test_qbs_segmented_k() {
-@@ -1003,7 +1122,9 @@ int main() {
+@@ -954,6 +1152,13 @@ static void test_qbs_segmented_k() {
+ #endif
+
+ int main() {
++#if defined(GGML_TEST_RISCV_QBS)
++    if (const char * suite = std::getenv("GGML_QBS_GRAPH_SUITE")) {
++        assert(std::strcmp(suite, "natural") == 0);
++        test_qbs_matrix_graphs(true);
++        return 0;
++    }
++#endif
+     test_qbs_r4_layout();
+     test_qbs_activation_layouts();
+     constexpr int64_t nrows = 64;
+@@ -1003,7 +1208,9 @@ int main() {
      test_qbs_repack_buffer_tail();
      test_qbs_moe_repack();
      test_qbs_moe_repack_fallback();

@@ -20,3 +20,20 @@ graph evidence, native evidence and outstanding acceptance gates. The graph
 runner is `verification/qbs/run_ggml_segmented.py`; use a new evidence directory
 for each run. QEMU emulation here is a software integration test, not RTL
 performance evidence.
+
+Use `--suite natural` to check 280-block Q4_K/Q8_0 GGML matrices under the
+unchanged 256-block device limit. It checks three layout/mode policies and
+rejects missing K tails, lost command work, layout drift, and changed output
+digests. The default `--suite full` retains the nine-profile short/forced-split
+matrix and expert graph suite. For example:
+
+```bash
+python3 verification/qbs/run_ggml_segmented.py \
+  --binary /home/wangwy/llama/llama.cpp/build-rv64-qbs-segmented-20261023/bin/test-ara-q4k-repack \
+  --out verification/out/qbs-natural-new-run --suite natural
+```
+
+The natural-K matrix oracle follows the selected GGML activation quantizer,
+then independently dequantizes and calculates in FP64. It does not claim
+bit-identical reference/optimized quantization: compiler FMA contraction can
+change boundary cases. The source, ELF, runtime and tools are hashed per run.

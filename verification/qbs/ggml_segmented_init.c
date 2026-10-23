@@ -5,14 +5,22 @@
 #include <unistd.h>
 
 int main(void) {
+#ifdef QBS_NATURAL_K
+    const char * segments[] = {"0", "256", "256"};
+    const char * wide[] = {"0", "0", "1"};
+#else
     const char * segments[] = {"0", "3", "256", "3"};
     const char * wide[] = {"0", "0", "1", "1"};
+#endif
     int result = 0;
-    for (unsigned run = 0; run < 4; ++run) {
+    for (unsigned run = 0; run < sizeof(segments) / sizeof(segments[0]); ++run) {
         printf("QBS_GRAPH_RUN_BEGIN segment=%s wide=%s\n", segments[run], wide[run]);
         fflush(NULL);
         const pid_t child = fork();
         if (child == 0) {
+#ifdef QBS_NATURAL_K
+            setenv("GGML_QBS_GRAPH_SUITE", "natural", 1);
+#endif
             setenv("GGML_RISCV_QBS_EMULATE", "1", 1);
             setenv("GGML_RISCV_QBS_TRACE", "1", 1);
             setenv("GGML_RISCV_QBS_TRACE_CALLS", "1", 1);

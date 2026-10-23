@@ -13,6 +13,49 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def check_natural_dispatch(output):
+    runs = re.findall(r"QBS_GRAPH_RUN_BEGIN segment=(\d+) wide=(\d+)\s+(.*?)QBS_GRAPH_RUN_END", output, re.S)
+    if [(s, w) for s, w, _ in runs] != [("0", "0"), ("256", "0"), ("256", "1")]:
+        raise RuntimeError("Missing natural-K layout runs")
+    expected = {(kind, m, k, threads) for kind, k in (("q4_K", 71680), ("q8_0", 8960))
+                for m in (1, 3, 4) for threads in (1, 3)}
+    baseline_digests = {}
+    for requested, _, trace in runs:
+        graphs = re.findall(
+            r"QBS_MATRIX_BEGIN type=(\S+) m=(\d+) n=(\d+) k=(\d+) threads=(\d+) segment=(\d+)\s+"
+            r"(.*?)QBS MUL_MAT graph: PASS", trace, re.S)
+        keys = [(kind, int(m), int(k), int(threads)) for kind, m, _, k, threads, _, _ in graphs]
+        if len(keys) != len(expected) or set(keys) != expected:
+            raise RuntimeError("Natural-K matrix shape coverage differs")
+        for kind, m, n, k, threads, segment, body in graphs:
+            m, n, k = int(m), int(n), int(k)
+            hashes = re.findall(r"QBS_NATURAL_DIGEST value=([0-9a-f]{16})", body)
+            if len(hashes) != 1:
+                raise RuntimeError("Missing natural-K output digest")
+            key = kind, m, k, threads
+            if requested == "0":
+                baseline_digests[key] = hashes[0]
+            elif baseline_digests.get(key) != hashes[0]:
+                raise RuntimeError("Natural-K segmented output differs bitwise from global-R4 baseline")
+            if n != 37 or segment != requested:
+                raise RuntimeError("Natural-K geometry or effective layout differs")
+            calls = re.findall(r"GGML_RISCV_QBS_CALL type=(\S+) mode=\S+ k=(\d+) input_rows=(\d+) output_rows=(\d+) split_k=(\d+)", body)
+            if not calls or any(t != kind or int(depth) != k or split != "1" for t, depth, _, _, split in calls):
+                raise RuntimeError("Natural-K graph did not select split-K")
+            if sum(int(rows) * int(cols) for _, _, rows, cols, _ in calls) != m * n:
+                raise RuntimeError("Natural-K dispatch output count differs")
+            commands = re.findall(r"GGML_RISCV_QBS_COMMAND[^\n]+ weight_type=(\S+)[^\n]+ m=(\d+) n=(\d+) k_blocks=(\d+) access=(\d+)[^\n]+ emulated=(\d+)", body)
+            if not commands or any(t != kind or not 1 <= int(rows) <= 4 or not 1 <= int(cols) <= 32 or
+                                   depth not in {"256", "24"} or access != "0" or emulated != "1"
+                                   for t, rows, cols, depth, access, emulated in commands):
+                raise RuntimeError("Natural-K command contract differs")
+            for depth in ("256", "24"):
+                if sum(int(rows) * int(cols) for _, rows, cols, blocks, _, _ in commands if blocks == depth) != m * n:
+                    raise RuntimeError("Natural-K command work or K-tail coverage differs")
+            if requested == "256" and threads == "1" and not any(cols == "32" for _, _, cols, _, _, _ in commands):
+                raise RuntimeError("Segment-major graph did not execute N32 commands")
+
+
 def check_graph_dispatch(output):
     runs = re.findall(r"QBS_GRAPH_RUN_BEGIN segment=(\d+) wide=(\d+)\s+(.*?)QBS_GRAPH_RUN_END", output, re.S)
     if [(s, w) for s, w, _ in runs] != [("0", "0"), ("3", "0"), ("256", "1"), ("3", "1")]:
@@ -60,6 +103,7 @@ def main():
     parser.add_argument("--llama", type=Path, default=Path("/home/wangwy/llama/llama.cpp"))
     parser.add_argument("--platform", type=Path, default=Path("/home/wangwy/llama/platforms/cva6-qemu"))
     parser.add_argument("--timeout", type=int, default=600)
+    parser.add_argument("--suite", choices=("full", "natural"), default="full")
     args = parser.parse_args()
     args.out = args.out.resolve()
     args.out.mkdir(parents=True, exist_ok=False)
@@ -97,7 +141,7 @@ def main():
         ["git", "-C", str(args.llama), "diff", "--", "ggml/src/ggml-cpu/repack.cpp",
          "ggml/src/ggml-cpu/arch/riscv/qbs.cpp", "ggml/src/ggml-cpu/arch/riscv/qbs.h",
          "tests/test-ara-q4k-repack.cpp"]))
-    status = {"state": "preparing", "kind": "QEMU GGML software functional checks"}
+    status = {"state": "preparing", "kind": "QEMU GGML software functional checks", "suite": args.suite}
 
     def save():
         (args.out / "status.json").write_text(json.dumps(status, indent=2) + "\n")
@@ -105,7 +149,7 @@ def main():
     save()
     try:
         with (args.out / "build.log").open("wb") as log:
-            subprocess.run([str(tools / "riscv64-linux-gcc"), "-march=rv64gc", "-mabi=lp64d",
+            subprocess.run([str(tools / "riscv64-linux-gcc"), *(["-DQBS_NATURAL_K"] if args.suite == "natural" else []), "-march=rv64gc", "-mabi=lp64d",
                             "-O2", "-static", str(init_source), "-o", str(args.out / "init")],
                            stdout=log, stderr=subprocess.STDOUT, check=True)
         listing = args.out / "initramfs.list"
@@ -131,18 +175,25 @@ def main():
                     raise
         output = (args.out / "qemu.log").read_text(errors="replace")
         ends = re.findall(r"QBS_GRAPH_RUN_END segment=(\d+) wide=(\d+) exit=(\d+)", output)
-        expected = [("0", "0", "0"), ("3", "0", "0"), ("256", "1", "0"), ("3", "1", "0")]
+        expected = ([("0", "0", "0"), ("256", "0", "0"), ("256", "1", "0")]
+                    if args.suite == "natural" else [("0", "0", "0"), ("3", "0", "0"), ("256", "1", "0"), ("3", "1", "0")])
         if rc != 0 or ends != expected or "GUEST_TEST_EXIT=0" not in output:
             raise RuntimeError(f"QEMU/guest failure rc={rc}, completed={ends}")
-        if output.count("QBS matrix graph suite: PASS cases=126") != 4:
-            raise RuntimeError("Missing matrix graph checks")
-        if output.count("QBS MUL_MAT_ID Q2_K 3-expert graph: PASS") != 8:
-            raise RuntimeError("Missing expert graph checks")
-        check_graph_dispatch(output)
+        if args.suite == "natural":
+            if output.count("QBS matrix graph suite: PASS cases=12") != 3:
+                raise RuntimeError("Missing natural-K graph checks")
+            check_natural_dispatch(output)
+        else:
+            if output.count("QBS matrix graph suite: PASS cases=126") != 4:
+                raise RuntimeError("Missing matrix graph checks")
+            if output.count("QBS MUL_MAT_ID Q2_K 3-expert graph: PASS") != 8:
+                raise RuntimeError("Missing expert graph checks")
+            check_graph_dispatch(output)
         drift = [path for path, sha in hashes.items() if digest(path) != sha]
         if drift:
             raise RuntimeError(f"Source/image drift: {drift}")
-        status.update(state="PASS", matrix_graphs=504, expert_graphs=8, manifest_unchanged=True)
+        status.update(state="PASS", matrix_graphs=36 if args.suite == "natural" else 504,
+                      expert_graphs=0 if args.suite == "natural" else 8, manifest_unchanged=True)
     except Exception as exc:
         status.update(state="FAIL", error=str(exc))
         save()
