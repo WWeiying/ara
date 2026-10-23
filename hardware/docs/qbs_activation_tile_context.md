@@ -680,3 +680,29 @@ not a fused-GGML-M4 or whole-model speedup. It validates improving the separate
 packing path; production wide-M selection and other shapes still require their
 own integration/performance gates. The fused-M4 candidate above follows a
 different baseline and must not inherit this speedup.
+
+### Fused-M4 RTL timing gate
+
+`export_m4_prepare_oracle.py` exports 3808 packed bytes from the actual Linux
+GGML generic object using the same real activation capture. Its successful
+export records `fcsr=1`, `vcsr=5`, and SHA256
+`2802b758f22508c566d1a69f450eb7bc19daac55b94f90062f6a77069dacdd28`.
+The full source/tool/library/log evidence is in
+`verification/out/qbs-m4-oracle-20261023-01/golden.json`.
+
+`build_m4_prepare_soc.py` extracts the exact production Q8_0 M4 function body
+from pinned `repack.cpp` rather than transcribing it. A private bare-metal
+build links that oracle, the same candidate header and the captured inputs;
+it does not rebuild GGML or RTL. It uses rv64gcv, without optional half-precision
+instructions, to match the Linux oracle's conversion choice. The final ELF
+binds newlib `roundf`; its finite-input implementation uses integer bit handling
+without adding flags. Independent Linux bytes and FP state are checked again
+on RTL, rather than assuming the two toolchains are interchangeable.
+
+`run_m4_prepare_soc.py` runs four calls in generic/vector/vector/generic order.
+Every call resets the same FP environment and checks all bytes against the
+independently exported golden, with exact FP/vcsr agreement. Quantization,
+preflight, interleaving and FP/write completion are inside timing; checking
+and printing are outside. This is a preparation-only ABBA comparison, not a
+whole-projection or model speedup. Worker `qbs-m4-prepare-soc-20261023-01`
+has been dispatched on the existing SoC image; no result is claimed here.
