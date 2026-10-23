@@ -209,6 +209,15 @@ compiler/linker commands. The full original source manifests, build artifacts,
 new helper and ELF are pinned. This reuses the existing ABBA emitters and
 acceptance parsers without changing ongoing builds or writing over their ELFs.
 
+The successor preparation RTL run completed PASS and was independently audited:
+generic 266877/267146 cycles, candidate 196002/195715 cycles. ABBA sums are
+534023/391717, a 1.36329x preparation speedup and 26.65% cycle reduction.
+The receipt is `verification/qbs/results/q8k-vla-prepare-soc-20261023.json`.
+This comparison uses that ELF's own generic observations; do not attribute
+small layout/cache differences between separately linked ELFs to the preflight
+algorithm. Both original and successor full-projection runs remain independent
+pending gates, and production GGML selection is unchanged.
+
 - Compile all AVL caps with the target RV64GCV compiler and strict FP options.
   This gate passed on 2026-10-23; it is not an execution result.
 - Compare all packed bytes, scales and bsums against the linked production

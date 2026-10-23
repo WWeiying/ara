@@ -1,0 +1,24 @@
+{
+  "state": "PASS",
+  "scope": "Shared PV schedule compilation, old-entry instruction equivalence and host admission tests only; not new-schedule numerical or RTL performance acceptance",
+  "output": "verification/out/akv-refill-software-20261023-01",
+  "default_enabled": false,
+  "evaluation_define": "AKV_REFILL_OVERLAP=1",
+  "shape": "F16 Decode PV, D128, GQA6; next tile exists and workspace/KV disjoint",
+  "old_entry_instruction_count": 74,
+  "old_entry_instructions_unchanged": true,
+  "old_entry_word_digest": "96bb1de243808b4df43ef13f918b0a08632726693285d20e7b7414bbca8ae3c7",
+  "new_entry_refill_after_final_fma_before_stores": true,
+  "host_schedule_checks": 12,
+  "host_portability_cases": 192,
+  "host_online_cases": 108,
+  "host_make_check": "PASS",
+  "gnu_compile_on_off": "PASS",
+  "objects": {
+    "before.o": "2f68e42cc4ac832bd37f1cd25dc34ce520d988f83f1d0c28208ca92563f86f24",
+    "after.o": "07f8e64ead02def479ed5610defd01fb4d8294edc32add4a9ac505690f6abd3a",
+    "runtime-on.o": "c1e3f88c7d09d2b48957f8bbb92c0523ca0a328fe7250d2dbeb05ef135e6c5a5",
+    "runtime-off.o": "d4a1724b362db7da5c9b945cddcc7e98b720a277fa0e76aad0624163431bd8c1"
+  },
+  "remaining": ["Real Attention numerical/flags and tile-count equivalence", "RTL full Attention latency", "FULL-based recovery after REFILL read fault", "Production GGML enablement"]
+}

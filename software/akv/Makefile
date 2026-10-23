@@ -12,10 +12,15 @@ OBJECTS := $(SOURCES:%.c=$(BUILD)/%.o)
 
 all: $(BUILD)/libakv_runtime.a
 
-check: $(BUILD)/akv_runtime_test $(BUILD)/akv_portability_test $(BUILD)/akv_online_test
+check: $(BUILD)/akv_runtime_test $(BUILD)/akv_portability_test $(BUILD)/akv_online_test $(BUILD)/akv_refill_schedule_test
 	$(BUILD)/akv_runtime_test
 	$(BUILD)/akv_portability_test
 	$(BUILD)/akv_online_test
+	$(BUILD)/akv_refill_schedule_test
+
+$(BUILD)/akv_refill_schedule_test: tests/akv_refill_schedule_test.c src/akv_refill_schedule.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $< -o $@
 
 $(BUILD)/libakv_runtime.a: $(OBJECTS)
 	$(AR) rcs $@ $^

@@ -343,14 +343,18 @@ akv_v2_compute_scores_f16_d128_gqa6_q2_panel4:
           .-akv_v2_compute_scores_f16_d128_gqa6_q2_panel4
     .purgem AKV_Q2_PANEL_COLUMN
 
-    .globl  akv_v2_update_outputs_f16_d128_gqa6
-    .type   akv_v2_update_outputs_f16_d128_gqa6,@function
-
 // a0: six row-major F32 softmax-weight rows, 64-element stride
 // a1: six row-major F16 D128 output accumulators
 // a2: six F32 old-state scale factors
 // a3: active token count, 1..64
-akv_v2_update_outputs_f16_d128_gqa6:
+// The refill entry additionally takes the next tile start in a4.
+    .macro AKV_PV_F16_D128_GQA6 name, with_refill
+    .globl \name
+    .type \name,@function
+\name:
+    .if \with_refill
+    mv              t5, a4
+    .endif
     mv              t0, a0
     mv              t1, a1
     mv              t2, a2
@@ -391,7 +395,7 @@ akv_v2_update_outputs_f16_d128_gqa6:
     vfmul.vf        v12, v12, ft5
 
     li              t4, 0
-.Lakv_v2_value_token:
+.Lakv_v2_value_token\@:
     flw             ft0, 0(t0)
     flw             ft1, 256(t0)
     flw             ft2, 512(t0)
@@ -417,7 +421,12 @@ akv_v2_update_outputs_f16_d128_gqa6:
 
     addi            t0, t0, 4
     addi            t4, t4, 1
-    bltu            t4, t3, .Lakv_v2_value_token
+    bltu            t4, t3, .Lakv_v2_value_token\@
+
+    .if \with_refill
+    mv              a0, t5
+    .word           0x02a0605b  // blocking vakv2refill before dependent stores
+    .endif
 
     mv              a4, t1
     vse16.v         v0, (a4)
@@ -433,8 +442,11 @@ akv_v2_update_outputs_f16_d128_gqa6:
     vse16.v         v12, (a4)
     ret
 
-    .size akv_v2_update_outputs_f16_d128_gqa6, \
-          .-akv_v2_update_outputs_f16_d128_gqa6
+    .size \name, .-\name
+    .endm
+
+    AKV_PV_F16_D128_GQA6 akv_v2_update_outputs_f16_d128_gqa6, 0
+    AKV_PV_F16_D128_GQA6 akv_v2_update_outputs_f16_d128_gqa6_refill, 1
 
     .globl  akv_v2_compute_scores_f16_generic
     .type   akv_v2_compute_scores_f16_generic,@function

@@ -185,8 +185,14 @@ instruction execution. It is valid only for private, non-aliasing workspace and
 immutable Q/K/V inputs during the call. Establish these requirements at the
 runtime boundary. Preserve all per-output FMA/rounding orders and flags. On a
 REFILL page fault, older FMA results/flags must be complete before the exception;
-following stores have not executed. Resume must retry the faulting REFILL, not
-repeat the PV loop. If these memory/ownership requirements cannot be established,
+following stores have not executed. Precise exception order alone does not
+prove transparent instruction retry: the current engine clears
+`context_ready_q` after a read fault, and another REFILL requires a ready
+context. Recovery must therefore re-establish FULL state and restart Attention
+with initialized workspace, or a separately specified engine retry mechanism
+must be implemented and tested. Simply resuming the faulting REFILL is not an
+accepted recovery path. Do not repeat PV on an already accumulated workspace.
+If these memory/ownership requirements cannot be established,
 retain the original schedule instead of weakening the hardware barrier.
 
 Start with the shared D128/GQA6 Decode/PV path, then cover the equivalent F32
@@ -194,6 +200,37 @@ Prefill path. Generic head groups and D256 have different loop/rounding details;
 they retain the old schedule until a separately checked transformation exists.
 This initial admission step does not replace the larger objective of overlapping
 next-tile fill with current-tile computation or reducing intermediate traffic.
+
+### Shared PV scheduling candidate
+
+The shared assembly now emits both the original
+`akv_v2_update_outputs_f16_d128_gqa6` entry and a
+`akv_v2_update_outputs_f16_d128_gqa6_refill` entry from one macro body. The new
+entry takes the next tile start in its fifth argument, issues the existing
+blocking REFILL after the final PV FMA group and before accumulator stores,
+then performs the original stores. The original entry's 74 instruction
+encodings are identical before and after this source refactoring. No extra
+branch or REFILL is added to that original entry.
+
+`akv_v2_native_riscv.c` selects this schedule only with the evaluation define
+`AKV_REFILL_OVERLAP=1`, D128/GQA6, more than one KV tile and a successful
+workspace/KV-disjointness check. It skips exactly the next loop-head fill that
+the preceding PV entry completed; the final tile uses the original entry.
+Unsupported shapes, aliases and the default define value 0 retain the old
+schedule. Inputs must not be concurrently modified during the call.
+
+`akv_refill_schedule.h` checks both K and V address hulls, including row stride,
+count, end boundaries and integer overflow. Its twelve host checks are included
+in `make -C software/akv check`. The normal runtime, portable Decode suite (192
+cases) and online schedule suite (108 cases) also pass; these are host tests,
+not hardware numerical execution of the new schedule. Both define values and
+the shared assembly compile with GNU RV64GCV/Zfh/Zvfh. Disassembly confirms one
+REFILL after the final FMA and before all stores in the new entry. This gate is
+recorded in `verification/akv/results/refill-software-gate-20261023.json`.
+
+The new schedule remains disabled by default until real Attention output/flags,
+tile counts, numerical fallback, whole-interval latency and recovery are checked.
+It is not yet enabled in the production GGML backend or in Linux workloads.
 
 ## Acceptance matrix
 

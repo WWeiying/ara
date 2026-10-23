@@ -1,0 +1,66 @@
+{
+  "backend_counts": {
+    "aborted": 0,
+    "allocations": 14408,
+    "completions": 14408,
+    "max_live": 5
+  },
+  "contract_counts": {
+    "exceptions": 0,
+    "mmu_request_cycles": 0,
+    "outstanding": 0,
+    "protocol_errors": 0,
+    "req_stalled": 0,
+    "requests": 13416,
+    "resp_stalled": 0,
+    "responses": 13416
+  },
+  "elf_sha256": "0db016f6f71a4ccc4ddbf21989f2ca14d6b09163692ae09001d7fae3ad09bcea",
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-vla-prepare-soc-20261023-01/manifest.json": "fba83bc12c67ba89f50df65fe18c32bf5fb20844bbc9edd9de425f6e79a40ad5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-vla-prepare-soc-20261023-01/result.json": "d6d852e789735957e25bdb19e10eca9bce48e87bb354f4323ec1be09664c3c2e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-vla-prepare-soc-20261023-01/soc/uvm_result.json": "7e2cbdbec7d6cb319bff3948b5620ac1449ecb313e947834e678703319b9a031",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-vla-prepare-soc-20261023-01/soc/work/run.vcs.log": "1f2fce5bf73ac729ffc20b25a8a30409fa65b67b014963ed3ca1ca539c5cff9a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-vla-prepare-soc-20261023-01/soc/work/vector_trace.csv": "88ebe6bad6b1495a5c2c4345bf0c6cb85fcf77fbd066fba8888883236ee1e80b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-vla-prepare-soc-20261023-01/status.json": "b8cdd529d289dfe8b7cffdfd8d6a7b49c7b2a48c6ccaea6e0d77542fe5804901"
+  },
+  "generic_sum_cycles": 534023,
+  "limitations": [
+    "One real capture, two ABBA observations per path",
+    "No production GGML enablement from this gate alone"
+  ],
+  "preparation_cycle_reduction_percent": 26.647915913734053,
+  "preparation_speedup": 1.363287781740389,
+  "scope": "Real M4/K1536 preparation only; not full projection or model speedup",
+  "simv_sha256": "adef2cd6fa24673e84cdd35d873176683d752244bc0949258553d64e6bda6ce8",
+  "state": "PASS",
+  "trials": [
+    {
+      "cycles": 266877,
+      "fcsr": 1,
+      "path": "generic",
+      "trial": 0
+    },
+    {
+      "cycles": 196002,
+      "fcsr": 1,
+      "path": "vector",
+      "trial": 1
+    },
+    {
+      "cycles": 195715,
+      "fcsr": 1,
+      "path": "vector",
+      "trial": 2
+    },
+    {
+      "cycles": 267146,
+      "fcsr": 1,
+      "path": "generic",
+      "trial": 3
+    }
+  ],
+  "variant": "integer_vla_preflight",
+  "vector_sum_cycles": 391717,
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-vla-prepare-soc-20261023-01"
+}

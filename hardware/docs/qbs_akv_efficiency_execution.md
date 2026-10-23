@@ -161,8 +161,10 @@ results directory. The full projection measurement remains separate. Existing
 retirement traces locate about 34% of the first candidate interval in scalar
 domain checking. An integer VLA successor now passes both its isolated
 classification gate (24120 comparisons) and the unchanged full quantizer gate
-(12000 comparisons), including FP/vector status. Its new RTL preparation
-measurement is running independently; no measured successor speedup is claimed.
+(12000 comparisons), including FP/vector status. Its independently audited RTL
+preparation result is 534023 generic versus 391717 candidate cycles, 1.36329x.
+The original and successor full-projection runs remain separate pending gates;
+no production or model-level successor speedup is claimed.
 
 The independent AKV refill-overlap probe completed PASS under
 `akv-refill-overlap-probe-20261023-01.service`. Its exact work/traffic and
@@ -176,3 +178,14 @@ all-PE completion and deferred precise fault response must be covered before
 relaxing the dispatcher barrier. Matrix partial sums,
 Attention intermediate reuse, quantized KV and justified resource sharing
 remain open parts of the full objective.
+
+The restricted AKV admission candidate is now connected in the verification
+RTL. The actual-sequencer fixture passes 38 checks covering six success/fault
+terminal orders and delayed nonzero-lane completion. An independently built
+SoC image is executing the unchanged sealed REFILL probe, with new start/first
+payload AR/terminal cycle records. The production PV schedule has a shared,
+default-disabled candidate that moves next-tile REFILL before accumulator
+stores only for disjoint D128/GQA6 Decode. Host tests and original-entry opcode
+equivalence pass; real Attention numerical/performance acceptance and recovery
+remain open. Current read faults invalidate AKV context, so transparent
+instruction-only REFILL retry must not be inferred from precise response order.
