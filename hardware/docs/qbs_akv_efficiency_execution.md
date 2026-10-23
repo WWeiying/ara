@@ -122,6 +122,17 @@ repack translation-unit CSR equivalence and canonical-helper RTL performance
 remain separate open gates. Q8_K fused preparation remains open:
 the Q8_0 preparation result must not be generalized to K-quant model weights.
 
+The canonical Q8_0 helper RTL preparation gate is now scheduled as
+`qbs-m4-canonical-soc-20261023-01.service`, with a private build and output
+under matching `verification/out/qbs-m4-canonical-soc-*` directories. It
+reuses the same real input, Linux-generated golden and ABBA harness, replacing
+only the candidate include/namespace with the production helper. The builder
+rejects unrelated source drift and requires the current generic function body
+to equal the archived oracle exactly. Its three unit checks pass. Execution
+and performance acceptance remain pending; starting this service is not a PASS.
+The Q8_K isolated candidate and its distinct numerical contract are documented
+in `qbs_q8k_preparation.md`; native and production gates remain open.
+
 The independent AKV refill-overlap probe completed PASS under
 `akv-refill-overlap-probe-20261023-01.service`. Its exact work/traffic and
 architectural-order-to-uop joins were reaudited in
