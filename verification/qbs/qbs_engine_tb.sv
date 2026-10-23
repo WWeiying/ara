@@ -118,12 +118,52 @@ module qbs_engine_tb;
   logic [31:0] context_reuse_count;
   logic [31:0] context_reuse_block_count;
   logic [31:0] context_read_bytes;
+  integer activation_ahead_beats;
+  integer activation_overlap_beats;
+  integer activation_ready_boundaries;
+  logic [7:0] observed_k;
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      activation_ahead_beats <= 0;
+      activation_overlap_beats <= 0;
+      activation_ready_boundaries <= 0;
+      observed_k <= 0;
+    end else if (command_valid && command_ready) begin
+      activation_ahead_beats <= 0;
+      activation_overlap_beats <= 0;
+      activation_ready_boundaries <= 0;
+      observed_k <= 0;
+    end else begin
+      observed_k <= dut.compute_expected_k;
+      if (dut.compute_activation_write_valid && dut.compute_activation_write_ready &&
+          dut.compute_activation_write_k != dut.compute_expected_k) begin
+        activation_ahead_beats <= activation_ahead_beats + 1;
+        if (dut.compute_phase_compute)
+          activation_overlap_beats <= activation_overlap_beats + 1;
+      end
+      if (observed_k != dut.compute_expected_k &&
+          dut.i_compute_engine.all_activation_complete)
+        activation_ready_boundaries <= activation_ready_boundaries + 1;
+      if ($test$plusargs("QBS_ACTIVATION_TRACE") && command_cycles < 400 &&
+          (dut.read_range_fire || dut.i_compute_engine.integer_start_fire))
+        $display("ACT_TRACE cycle=%0d k=%0d act_k=%0d range=%0b role=%0d tag_k=%0d start=%0b bank=%0b complete=%0b%0b",
+                 command_cycles, dut.compute_expected_k, dut.compute_expected_activation_k,
+                 dut.read_range_fire, dut.read_range_tag.role, dut.read_range_tag.k_block,
+                 dut.i_compute_engine.integer_start_fire,
+                 dut.i_compute_engine.activation_read_bank,
+                 dut.i_compute_engine.all_activation_complete_bank[1],
+                 dut.i_compute_engine.all_activation_complete_bank[0]);
+    end
+  end
   logic [31:0] activation_axi_bytes_saved;
   logic [31:0] context_replay_cycles;
   logic [31:0] context_replay_compute_overlap_cycles;
   logic [31:0] context_validation_fault_count;
 
   qbs_engine #(
+`ifdef QBS_NO_ACTIVATION_LOOKAHEAD
+    .ActivationLookahead(1'b0),
+`endif
     .AxiDataWidth (AxiDataWidth),
     .AxiAddrWidth (64),
     .VAddrWidth   (64),
@@ -430,9 +470,11 @@ module qbs_engine_tb;
   logic response_wr;
   logic [1:0] response_count;
   logic inject_axi_fault;
+  integer response_gap;
+  integer response_delay;
 
   assign axi_ar_ready = response_count < 2;
-  assign axi_r_valid = response_count != 0;
+  assign axi_r_valid = response_count != 0 && response_delay == 0;
 
   always_comb begin
     axi_r = '0;
@@ -460,7 +502,10 @@ module qbs_engine_tb;
       response_rd <= '0;
       response_wr <= '0;
       response_count <= '0;
+      response_delay <= 0;
     end else begin
+      if (response_delay != 0) response_delay <= response_delay - 1;
+      else if (axi_r_valid && axi_r_ready) response_delay <= response_gap;
       if (axi_ar_valid && axi_ar_ready) begin
         response_addr[response_wr] <= axi_ar.addr;
         response_len[response_wr] <= axi_ar.len;
@@ -665,6 +710,10 @@ module qbs_engine_tb;
     monitored_activation_base = '0;
     monitored_activation_end = '0;
     functional_only = $test$plusargs("QBS_FUNCTIONAL_ONLY");
+    response_gap = 0;
+    void'($value$plusargs("QBS_RESPONSE_GAP=%d", response_gap));
+    if (response_gap < 0 || response_gap > 8)
+      $fatal(1, "QBS_RESPONSE_GAP must be 0..8");
 
     if (!$value$plusargs("QBS_COMMAND_VECTOR_FILE=%s", vector_file))
       vector_file = "../qbs_command_vectors.txt";
@@ -883,6 +932,11 @@ module qbs_engine_tb;
                  case_id, profile, m, n, k_blocks, weight_layout,
                  activation_layout, command_cycles);
       if (case_errors == 0 && functional_only) begin
+        $display("QBS activation lookahead case=%0d ahead_beats=%0d overlap_beats=%0d ready_boundaries=%0d",
+                 case_id, activation_ahead_beats, activation_overlap_beats, activation_ready_boundaries);
+        if ($test$plusargs("QBS_REQUIRE_ACTIVATION_OVERLAP") && m <= 4 && k_blocks > 1)
+          assert (activation_overlap_beats > 0 && activation_ready_boundaries > 0)
+            else $fatal(1, "QBS lookahead did not overlap activation loading");
         $display("QBS phase case=%0d setup=%0d activation=%0d weight=%0d compute=%0d overlap=%0d drain=%0d scheduler=%0d commit=%0d terminal=%0d",
                  case_id, phase_setup_cycles, phase_activation_cycles,
                  phase_weight_cycles, phase_compute_cycles,
@@ -902,6 +956,65 @@ module qbs_engine_tb;
         const integer expected_weight_ranges =
             weight_layout == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR
                 ? ((n + 3) / 4) * k_blocks : n * k_blocks;
+
+        // Fault the second activation block, then replay the original command.
+        // Keep the same vectors and strict VRF scoreboard across all trials.
+        for (int kind = 0; kind < 3; kind++) begin
+          // PMA covers the aligned AXI footprint, including the first
+          // block's trailing bytes. Place its fault beyond that footprint.
+          inject_fault_start = activation_base + activation_block_bytes +
+              (kind == 1 ? BeatBytes : 0);
+          inject_fault_end = inject_fault_start + 1;
+          translation_enable = kind == 0;
+          inject_mmu_fault = kind == 0;
+          inject_pma_fault = kind == 1;
+          inject_axi_fault = kind == 2;
+          reset_scoreboard();
+          send_command(score_id, score_vd, m, descriptor_base, activation_base);
+          expect_fault(1'b0, QBS_VALIDATION_OK,
+                       kind == 0 ? QBS_READ_FAULT_MMU :
+                       kind == 1 ? QBS_READ_FAULT_PMA : QBS_READ_FAULT_AXI_RESPONSE,
+                       activation_base + activation_block_bytes);
+          inject_mmu_fault = 1'b0;
+          inject_pma_fault = 1'b0;
+          inject_axi_fault = 1'b0;
+          translation_enable = 1'b0;
+          reset_scoreboard();
+          send_command(score_id, score_vd, m, descriptor_base, activation_base);
+          wait_success(200 + kind);
+          if (result_fflags != expected_flags[4:0] ||
+              commit_aggregate_words != m * WordsPerRegister ||
+              unexpected_write_count != 0 || read_payload_bytes !=
+                  QbsDescriptorBytes + expected_weight_bytes + expected_activation_bytes)
+            $fatal(1, "QBS next-block fault recovery changed results or traffic");
+          acknowledge_terminal();
+          $display("QBS next-block fault/replay PASS kind=%0d", kind);
+        end
+
+        begin
+          integer reset_wait;
+          reset_scoreboard();
+          send_command(score_id, score_vd, m, descriptor_base, activation_base);
+          reset_wait = 0;
+          while (!(dut.compute_activation_write_valid &&
+                   dut.compute_activation_write_k == 1) && reset_wait < 20000) begin
+            @(negedge clk);
+            reset_wait++;
+          end
+          if (reset_wait == 20000) $fatal(1, "No activation response before reset");
+          @(negedge clk);
+          rst_n = 1'b0;
+          repeat (2) @(negedge clk);
+          rst_n = 1'b1;
+          reset_scoreboard();
+          send_command(score_id, score_vd, m, descriptor_base, activation_base);
+          wait_success(203);
+          if (result_fflags != expected_flags[4:0] ||
+              commit_aggregate_words != m * WordsPerRegister || unexpected_write_count != 0)
+            $fatal(1, "QBS activation reset/replay changed results");
+          acknowledge_terminal();
+          $display("QBS next-block reset/replay PASS");
+        end
 
         install_context_descriptor(
             descriptor_base, weight_base, profile, weight_layout,

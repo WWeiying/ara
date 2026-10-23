@@ -9,7 +9,8 @@ module qbs_payload_buffer import qbs_pkg::*; #(
   // The adapter maps bytes of one contiguous 16-byte source beat. Standalone
   // arbitrary-target clients retain the generic last-writer data selection.
   parameter bit StreamWriteData = 1'b0,
-  parameter int unsigned ActivationContextBase = 0
+  parameter int unsigned ActivationContextBase = 0,
+  parameter bit NarrowActivationAlias = 1'b0
 ) (
   input logic clk_i, rst_ni,
   input qbs_weight_profile_e weight_profile_i,
@@ -141,8 +142,10 @@ module qbs_payload_buffer import qbs_pkg::*; #(
     case (layout)
       QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED:
         return profile == QBS_ACTIVATION_PROFILE_Q8_K
-            ? aligned_data[8*activation_phase(4, 256, 4, ctx, b, side) +: 8]
-            : aligned_data[8*activation_phase(2, 32, 4, ctx, b, side) +: 8];
+            ? aligned_data[8*activation_phase(4, 256, 4,
+                NarrowActivationAlias ? ctx % 4 : ctx, b, side) +: 8]
+            : aligned_data[8*activation_phase(2, 32, 4,
+                NarrowActivationAlias ? ctx % 4 : ctx, b, side) +: 8];
       QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED:
         return profile == QBS_ACTIVATION_PROFILE_Q8_K
             ? aligned_data[8*activation_phase(4, 256, 8, ctx, b, side) +: 8]

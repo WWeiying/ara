@@ -16,6 +16,7 @@ module qbs_engine
     parameter int unsigned PAddrWidth = 56,
     parameter int unsigned NrLanes = 4,
     parameter int unsigned VLEN = 1024,
+    parameter bit ActivationLookahead = 1'b1,
     parameter type         vid_t = logic,
     parameter type         vaddr_t = logic,
     parameter type         axi_ar_t = logic,
@@ -214,6 +215,7 @@ module qbs_engine
   logic [63:0] weight_base_q;
 
   logic [7:0] scheduler_k_q;
+  logic [7:0] activation_scheduler_k_q;
   logic [5:0] scheduler_row_base_q;
   logic [2:0] activation_range_index_q;
   logic [2:0] weight_range_index_q;
@@ -259,6 +261,10 @@ module qbs_engine
   logic compute_activation_write_valid;
   logic compute_activation_write_ready;
   logic [7:0] compute_expected_k;
+  logic [7:0] compute_expected_activation_k;
+  logic [7:0] compute_activation_write_k;
+  logic activation_cursor_current;
+  logic weight_range_eligible;
   logic [5:0] compute_expected_row_base;
   logic [2:0] compute_expected_row_count;
   logic compute_expected_weight_bank;
@@ -652,16 +658,17 @@ module qbs_engine
       weight_row_offset_q <= '0;
       lookahead_row_offset_q <= '0;
     end else if (state_q == QBS_ENGINE_RUN) begin
-      if (!scheduler_tuple_current) begin
+      if (!activation_cursor_current)
         activation_row_offset_q <= '0;
+      else if ((read_range_fire && read_range_tag.role == QBS_RANGE_ACTIVATION) ||
+               (context_replay_start_valid && context_replay_start_ready))
+        activation_row_offset_q <= activation_row_offset_q + activation_row_bytes_q;
+      if (!scheduler_tuple_current) begin
         weight_row_offset_q <=
             (weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR
                 ? (compute_expected_row_base >> 2) : compute_expected_row_base)
             * weight_row_bytes_q;
       end else begin
-        if ((read_range_fire && read_range_tag.role == QBS_RANGE_ACTIVATION) ||
-            (context_replay_start_valid && context_replay_start_ready))
-          activation_row_offset_q <= activation_row_offset_q + activation_row_bytes_q;
         if (read_range_fire && read_range_tag.role == QBS_RANGE_WEIGHT &&
             !weight_lookahead_enabled && weight_layout_q != QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR)
           weight_row_offset_q <= weight_row_offset_q + weight_row_bytes_q;
@@ -679,11 +686,18 @@ module qbs_engine
     end else if (state_q == QBS_ENGINE_COMPUTE_START && compute_command_ready) begin
       weight_k_offset_q <= '0;
       activation_k_offset_q <= '0;
-    end else if (state_q == QBS_ENGINE_RUN && !scheduler_tuple_current) begin
-      weight_k_offset_q <= compute_expected_k * weight_block_bytes_q;
-      activation_k_offset_q <= compute_expected_k * activation_block_bytes_q;
+    end else if (state_q == QBS_ENGINE_RUN) begin
+      if (!scheduler_tuple_current)
+        weight_k_offset_q <= compute_expected_k * weight_block_bytes_q;
+      if (!activation_cursor_current)
+        activation_k_offset_q <= compute_expected_activation_k * activation_block_bytes_q;
     end
   end
+
+  assign activation_cursor_current = activation_scheduler_k_q == compute_expected_activation_k;
+  assign weight_range_eligible = weight_lookahead_enabled
+      ? weight_issue_cursor_current && weight_issue_row_base_q < n_q && weight_ranges_pending_q < 2
+      : compute_weight_needed && weight_range_index_q < weight_range_count;
 
   always_comb begin : form_read_range
     automatic logic [63:0] logical_row;
@@ -716,7 +730,8 @@ module qbs_engine
                          weight_bank: 1'b0, weight_row_count: '0,
                          k_block: '0};
     end else if (state_q == QBS_ENGINE_RUN && scheduler_tuple_current) begin
-      if (compute_activation_needed &&
+      if (compute_activation_needed && activation_cursor_current &&
+          (compute_expected_activation_k == compute_expected_k || !weight_range_eligible) &&
           activation_access_q inside {
               QBS_ACTIVATION_ACCESS_DIRECT,
               QBS_ACTIVATION_ACCESS_FILL} &&
@@ -725,7 +740,7 @@ module qbs_engine
         read_range_tag = '{role: QBS_RANGE_ACTIVATION,
                            target: activation_range_index_q[1:0],
                            weight_bank: 1'b0, weight_row_count: '0,
-                           k_block: compute_expected_k};
+                           k_block: compute_expected_activation_k};
         if (activation_layout_q inside {
               QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED,
               QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED}) begin
@@ -812,6 +827,7 @@ module qbs_engine
             QBS_ACTIVATION_ACCESS_REUSE,
             QBS_ACTIVATION_ACCESS_RELEASE}));
   always_comb begin
+    compute_activation_write_k = read_data_tag.k_block;
     compute_activation_write_context = read_data_tag.target;
     compute_activation_write_offset = read_data_offset[11:0];
     compute_activation_write_data = read_data;
@@ -820,6 +836,7 @@ module qbs_engine
           QBS_ACTIVATION_ACCESS_REUSE,
           QBS_ACTIVATION_ACCESS_RELEASE}) begin
       compute_activation_write_context = '0;
+      compute_activation_write_k = compute_expected_k;
       compute_activation_write_offset = {1'b0, context_replay_offset};
       compute_activation_write_data = context_replay_data;
       compute_activation_write_strb = context_replay_strb;
@@ -930,7 +947,7 @@ module qbs_engine
       commit_done_valid &&
       activation_access_q == QBS_ACTIVATION_ACCESS_RELEASE;
   assign context_replay_start_valid = state_q == QBS_ENGINE_RUN &&
-      scheduler_tuple_current && compute_activation_needed &&
+      scheduler_tuple_current && activation_cursor_current && compute_activation_needed &&
       activation_range_index_q == 0 &&
       activation_access_q inside {
           QBS_ACTIVATION_ACCESS_REUSE,
@@ -997,6 +1014,8 @@ module qbs_engine
     .command_m_i                    (m_q),
     .command_n_i                    (n_q),
     .command_k_blocks_i             (k_blocks_q),
+    .command_activation_lookahead_i  (ActivationLookahead &&
+                                     activation_access_q == QBS_ACTIVATION_ACCESS_DIRECT),
     .fault_i                        (compute_fault),
     .fault_done_o                   (compute_fault_done),
     .weight_write_valid_i           (compute_weight_write_valid),
@@ -1009,12 +1028,14 @@ module qbs_engine
     .weight_write_data_i            (read_data),
     .weight_write_strb_i            (read_data_strb),
     .activation_write_valid_i       (compute_activation_write_valid),
+    .activation_write_k_block_i     (compute_activation_write_k),
     .activation_write_ready_o       (compute_activation_write_ready),
     .activation_write_context_i     (compute_activation_write_context),
     .activation_write_offset_i      (compute_activation_write_offset),
     .activation_write_data_i        (compute_activation_write_data),
     .activation_write_strb_i        (compute_activation_write_strb),
     .expected_k_block_o             (compute_expected_k),
+    .expected_activation_k_block_o  (compute_expected_activation_k),
     .expected_row_base_o            (compute_expected_row_base),
     .expected_row_count_o           (compute_expected_row_count),
     .expected_weight_bank_o         (compute_expected_weight_bank),
@@ -1274,6 +1295,7 @@ module qbs_engine
       activation_row_bytes_q <= '0;
       weight_base_q <= '0;
       scheduler_k_q <= '0;
+      activation_scheduler_k_q <= '0;
       scheduler_row_base_q <= '0;
       activation_range_index_q <= '0;
       weight_range_index_q <= '0;
@@ -1403,6 +1425,7 @@ module qbs_engine
 
       if (state_q == QBS_ENGINE_COMPUTE_START && compute_command_ready) begin
         scheduler_k_q <= '0;
+        activation_scheduler_k_q <= '0;
         scheduler_row_base_q <= '0;
         activation_range_index_q <= '0;
         weight_range_index_q <= '0;
@@ -1411,20 +1434,20 @@ module qbs_engine
         weight_issue_bank_q <= 1'b0;
         weight_ranges_pending_q <= '0;
       end else if (state_q == QBS_ENGINE_RUN) begin
+        if (!activation_cursor_current) begin
+          activation_scheduler_k_q <= compute_expected_activation_k;
+          activation_range_index_q <= '0;
+        end else if (context_replay_start_valid && context_replay_start_ready)
+          activation_range_index_q <= 3'd1;
+        else if (read_range_fire && read_range_tag.role == QBS_RANGE_ACTIVATION)
+          activation_range_index_q <= activation_range_index_q + 1'b1;
         if (!scheduler_tuple_current) begin
           scheduler_k_q <= compute_expected_k;
           scheduler_row_base_q <= compute_expected_row_base;
-          activation_range_index_q <= '0;
           weight_range_index_q <= '0;
         end else begin
-          // REUSE/RELEASE issues one local M1 range. Remember its handshake:
-          // the final beat can be accepted before adapter writes have drained.
-          if (context_replay_start_valid && context_replay_start_ready)
-            activation_range_index_q <= 3'd1;
           if (read_range_fire) begin
             unique case (read_range_tag.role)
-              QBS_RANGE_ACTIVATION:
-                activation_range_index_q <= activation_range_index_q + 1'b1;
               QBS_RANGE_WEIGHT:
                 weight_range_index_q <= weight_range_index_q + 1'b1;
               default: ;
@@ -1483,9 +1506,20 @@ module qbs_engine
   always_ff @(posedge clk_i) begin
     if (rst_ni) begin
       if (state_q == QBS_ENGINE_RUN && scheduler_tuple_current) begin
-        assert (weight_k_offset_q == 24'(compute_expected_k * weight_block_bytes_q) &&
-                activation_k_offset_q == 24'(compute_expected_k * activation_block_bytes_q))
-          else $fatal(1, "QBS range K-byte offset is not aligned with the scheduler");
+        assert (weight_k_offset_q == 24'(compute_expected_k * weight_block_bytes_q))
+          else $fatal(1, "QBS weight K-byte offset is not aligned with its scheduler");
+      end
+      if (state_q == QBS_ENGINE_RUN && activation_cursor_current) begin
+        assert (activation_k_offset_q == 24'(compute_expected_activation_k * activation_block_bytes_q))
+          else $fatal(1, "QBS activation K-byte offset is not aligned with its scheduler");
+      end
+      if (read_range_fire && read_range_tag.role == QBS_RANGE_ACTIVATION) begin
+        assert ({1'b0, read_range_tag.k_block} < k_blocks_q &&
+            (read_range_tag.k_block == compute_expected_k ||
+             (ActivationLookahead && m_q <= 4 &&
+              activation_access_q == QBS_ACTIVATION_ACCESS_DIRECT &&
+              {1'b0, read_range_tag.k_block} == {1'b0, compute_expected_k} + 9'd1)))
+          else $fatal(1, "QBS activation read exceeds its bounded K window");
       end
       assert (!(success_valid_o && fault_valid_o))
         else $fatal(1, "QBS command cannot succeed and fault together");

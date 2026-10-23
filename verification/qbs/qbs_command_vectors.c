@@ -565,7 +565,7 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  fprintf(output, "QBSCMD1 33\n");
+  fprintf(output, "QBSCMD1 36\n");
   int failed = 0;
   failed |= emit_case(output, 0, QBS_WEIGHT_PROFILE_Q4_K,
                       QBS_WEIGHT_LAYOUT_ROW_MAJOR,
@@ -672,8 +672,18 @@ int main(int argc, char **argv) {
   failed |= emit_case(output, 32, QBS_WEIGHT_PROFILE_IQ4_NL,
                       QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
                       QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED, 5, 11, 1);
+  // Alternating activation banks: final 8-bit K tag and multi-block wide controls.
+  failed |= emit_case(output, 33, QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
+                      QBS_WEIGHT_LAYOUT_ROW_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 1, 1, 256);
+  failed |= emit_case(output, 34, QBS_WEIGHT_PROFILE_Q4_K,
+                      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED, 5, 7, 3);
+  failed |= emit_case(output, 35, QBS_WEIGHT_PROFILE_Q6_K,
+                      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED, 8, 16, 3);
   fclose(output);
   if (failed) return 1;
-  printf("wrote 33 QBS command cases to %s\n", argv[1]);
+  printf("wrote 36 QBS command cases to %s\n", argv[1]);
   return 0;
 }
