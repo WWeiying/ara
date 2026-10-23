@@ -450,9 +450,12 @@ strip-mines by the actual returned VL instead of assuming VLEN=1024.
 
 Host validation covers 33264 layouts/input patterns and 14 rejected argument
 cases, including M4/M5..24, short and long K, odd strides, misalignment,
-canaries and unchanged input buffers. Native QEMU checks use VLEN128 and
-VLEN1024, plus an artificial AVL ceiling of seven to exercise repeated tails;
-their result must be inspected before claiming native acceptance.
+canaries and unchanged input buffers. Native QEMU checks passed at VLEN128 and
+VLEN1024, plus VLEN1024 with an artificial AVL ceiling of seven to exercise
+repeated tails: 99792 layout/input checks in total, with 14 invalid-argument
+checks per configuration. Source, ELF and completed-log hashes were rechecked
+by `functional_gate` before VCS dispatch. Evidence is
+`verification/qbs/results/activation-pack-native-20261023.json`.
 
 `build_pack_projection_candidate.py` reuses all ten frozen object files of
 the passing real M4/N896/K896 DIRECT application. It adds only a private

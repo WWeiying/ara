@@ -1,0 +1,20 @@
+{
+  "state": "PASS",
+  "scope": "native RVV byte packing correctness, not RTL performance",
+  "directory": "verification/out/qbs-pack-candidate-20261023-01",
+  "layout_input_checks_per_configuration": 33264,
+  "invalid_argument_checks_per_configuration": 14,
+  "cases": [
+    {"vlen": 128, "avl_limit": 0,
+     "elf_sha256": "8aea0c79b5ce4bc181ef4ef3d6d83ca4fa66381b8745cf64976e88afb2ebf484",
+     "log_sha256": "a5a1b8e6f269dcfe86565e5c1ec9f55b689f236d48e162dd74993e1616173379"},
+    {"vlen": 1024, "avl_limit": 0,
+     "elf_sha256": "8aea0c79b5ce4bc181ef4ef3d6d83ca4fa66381b8745cf64976e88afb2ebf484",
+     "log_sha256": "77c44ea8dc25652fd72182533fc554273669cf93034bbb0fe02bea746cfad697"},
+    {"vlen": 1024, "avl_limit": 7,
+     "elf_sha256": "36607adc71226d0a0a0e7181acb97aa5ac37579b18e7460ca9b2891d49db2695",
+     "log_sha256": "25f9a6f38790daae3258686b2e5ef6fb51368b87e4e068947522c298209df8a5"}
+  ],
+  "status_sha256": "27b9a6ea0b8b444e986660b486197ed8c3715fd8fd94214cad8c2378474aa08c",
+  "manifest_sha256": "db3647e95ac6cf8d0389cff60674bbd62a0a7f01281628321fbdfd552c182758"
+}
