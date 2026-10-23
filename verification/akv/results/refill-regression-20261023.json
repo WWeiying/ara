@@ -1,0 +1,54 @@
+{
+  "cases": {
+    "qbs_akv_handoff_smoke": {
+      "backend": {
+        "aborted": 0,
+        "allocations": 29,
+        "completions": 29,
+        "max_live": 3
+      },
+      "elf_sha256": "c236301a6ddb75357c52edca01e2a42a22e5c177ed39ff84a9cbadd1f1d607e1",
+      "protocol": {
+        "exceptions": 0,
+        "mmu_request_cycles": 0,
+        "outstanding": 0,
+        "protocol_errors": 0,
+        "req_stalled": 0,
+        "requests": 42,
+        "resp_stalled": 0,
+        "responses": 42
+      },
+      "result_sha256": "9899ab1d12c9dbcbc70cf3d83da584d8a45189f6f354be0ffefd8ec9a5838da7",
+      "state": "PASS"
+    },
+    "rv64uv-ara-vfmacc": {
+      "backend": {
+        "aborted": 0,
+        "allocations": 77,
+        "completions": 77,
+        "max_live": 1
+      },
+      "elf_sha256": "1dda285079a5c96cb109ca450e00cb06f5f8ea9d7b2a1d4f13c2e44df87c5d98",
+      "protocol": {
+        "exceptions": 0,
+        "mmu_request_cycles": 0,
+        "outstanding": 0,
+        "protocol_errors": 0,
+        "req_stalled": 0,
+        "requests": 193,
+        "resp_stalled": 0,
+        "responses": 193
+      },
+      "result_sha256": "9a5af0d05c9ad7098c64475ade7d56c808cd68b3fcda265c86cac0463a3a5133",
+      "state": "PASS"
+    }
+  },
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-regression-20261023-01/image-pins.json": "abdd2b69db34a08727d0eb710c06eb6eb3dcbdcfdbfce32c8531ad758391215a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-regression-20261023-01/input-pins.json": "be8f988ab325384c7eff88a65f3adfe7e130dc2c43cf1651ad900cacac380659",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-regression-20261023-01/status.json": "6140f2e48e3c7be62bf0ab1f0c036eede36abd878fc1b002f74df419d471e7af"
+  },
+  "scope": "New AKV REFILL admission image, original RVV FMA and QBS/AKV handoff programs; no model or broad ISA claim",
+  "state": "PASS",
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-regression-20261023-01"
+}

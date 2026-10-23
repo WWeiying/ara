@@ -246,6 +246,14 @@ REFILL completes at 121721, after older arithmetic. The serial control remains
 sticky flags, canaries and protocol checks pass. This is a small controlled
 window, not a complete Attention performance result.
 
+Two neighboring programs were replayed on that new image and passed the
+independent UVM checks: ordinary `rv64uv-ara-vfmacc` (twelve reported arithmetic
+subchecks) and the original `qbs_akv_handoff_smoke` (QBS/AKV-v2/ordinary-RVV
+ownership transitions, result data and zero unexpected traps). The handoff
+program does not inject faults. Its success must not be described as fill
+fault/retry coverage. The receipt is
+`verification/akv/results/refill-regression-20261023.json`.
+
 The next gate uses `build_refill_attention_soc.py` and
 `run_refill_attention_soc.py` in `verification/akv/`. It calls the existing
 captured-operator adapter and shared AKV runtime rather than a private PV

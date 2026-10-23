@@ -218,6 +218,18 @@ small layout/cache differences between separately linked ELFs to the preflight
 algorithm. Both original and successor full-projection runs remain independent
 pending gates, and production GGML selection is unchanged.
 
+`verification/qbs/build_q8k_production_candidate.py` prepares the next
+selection gate in a private complete `repack.cpp` translation unit, leaving
+the running experiments' source and live GGML unchanged. It uses the sealed
+production compiler options and a separate caller of the real
+`ggml_quantize_mat_t<1, GGML_TYPE_Q8_K>` specialization. The unchanged generic
+body in the same object remains the oracle; no helper is instantiated in the
+test translation unit. GNU O3 inlines the candidate into the entry, so linked
+RVV FMA/strided-store instructions and the external call reference are checked
+instead of requiring a retained helper symbol. This gate has one production
+MaxAVL16 configuration repeated three times per environment, not three AVL
+modes. See `verification/qbs/Q8K_PRODUCTION_CANDIDATE.md` for its exact scope.
+
 - Compile all AVL caps with the target RV64GCV compiler and strict FP options.
   This gate passed on 2026-10-23; it is not an execution result.
 - Compare all packed bytes, scales and bsums against the linked production

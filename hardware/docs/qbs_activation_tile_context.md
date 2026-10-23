@@ -588,6 +588,34 @@ the panel merely because a reuse counter improves. Expansion to more tiles
 requires a new capacity/benefit evaluation; this decision does not claim the
 long-K requirement has been completed.
 
+### Captured FFN capacity/traffic check
+
+The existing real Qwen2.5 capture's `blk_0_ffn_down_weight` metadata is
+F32 activation `[8960,15,1,1]` and Q6_K weight `[8960,1536,1,1]`.
+This gives 35 K-quant blocks per row. For one four-input, two-N32-tile panel,
+the following are derived payload counts, not measured cycles or area:
+
+| Quantity | Independent DIRECT tiles | Proposed striped panel |
+| --- | ---: | ---: |
+| Logical M/N/K | 4/64/8960 | 4/64/8960 |
+| Q6_K weight bytes | 470400 | 470400 |
+| Q8_K activation bytes read externally | 81760 | 40880 |
+| Commands | 2 | 18 |
+| Descriptor bytes | 32 | 288 |
+| Total external read payload | 552192 | 511568 |
+| Additional local checkpoint save/restore bytes | 0 | 16384 |
+
+One complete M4 activation is 40880 bytes, exceeding the existing 4672-byte
+context. Four blocks fit per stripe, requiring eight full stripes and a
+three-block tail. The raw checkpoint traffic is two tiles times eight
+boundaries times 512 bytes times save/restore. External read payload decreases
+7.3569%, not 50%; only the activation component halves. This count excludes
+CPU preparation, output stores, alignment/burst padding and command latency.
+It cannot establish a latency bound when memory queueing and overlap differ.
+The implementation must retain the numerical/lifetime contract above and
+measure all added local transfers and command costs. It must not be enabled
+solely on this traffic calculation.
+
 ## New-capability QEMU acceptance
 
 The private QEMU 10.2.0 build in
