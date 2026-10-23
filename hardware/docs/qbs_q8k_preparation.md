@@ -85,6 +85,22 @@ Starting the simulator is not performance acceptance. A passing preparation
 measurement must still be followed by a complete projection test and actual
 GGML dispatch validation; no full-projection speedup is inferred from it.
 
+The full-projection data gate is prepared separately by
+`prepare_q8k_projection_data.py`: real M4/N1536/K1536 attention-Q weights,
+the same first four captured activation rows and the independent production
+Q8_K bytes. The output reference decodes original row-major Q4_K weights and
+M4 Q8_K bytes, then computes 6144 outputs with FP64 products and `math.fsum`.
+This calculation does not use the R4 packed weight blob, QBS reference engine
+or vector candidate to obtain expected results. Q8_K bsums are independently
+validated before projection. The R4 weight blob is produced only for the DUT.
+
+The prepared data in
+`verification/out/qbs-q8k-projection-data-20261023-01/` passes captured-GGML
+cross-checking at unchanged 2e-3 absolute/relative tolerance; maximum absolute
+drift is 1.3857520642091004e-6. The tighter planned DUT oracle tolerance remains
+2e-4 absolute plus 2e-5 relative. This is data/oracle preparation, not a passed
+RTL projection measurement or a model-level numerical result.
+
 - Compile all AVL caps with the target RV64GCV compiler and strict FP options.
   This gate passed on 2026-10-23; it is not an execution result.
 - Compare all packed bytes, scales and bsums against the linked production
