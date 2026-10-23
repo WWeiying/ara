@@ -101,6 +101,34 @@ drift is 1.3857520642091004e-6. The tighter planned DUT oracle tolerance remains
 2e-4 absolute plus 2e-5 relative. This is data/oracle preparation, not a passed
 RTL projection measurement or a model-level numerical result.
 
+### Full-projection paired measurement
+
+`q8k_projection_soc.cpp` uses one ELF and one shared output buffer for four
+trials in generic/vector/vector/generic order. Both preparation paths consume
+the same F32 rows and produce the same M4 Q8_K layout. After preparation, both
+call the unchanged production `qbs_native_execute_command` entry for 48 tiles
+of N=32. Descriptor construction, command fences/configuration, execution and
+output stores remain inside the matrix phase. Offline weight repacking is
+excluded equally. Domain preflight, maximum selection, quantization and bsums
+are inside the preparation phase; no quantization is precomputed for timing.
+
+Every trial independently checks all 7008 prepared bytes and all 6144 output
+values, output canaries and FP/vector status. All four output bit checksums
+must also match each other. The acceptance parser requires positive phase
+cycles and exact `total = preparation + matrix` accounting. The trace audit
+requires 192 unique M4 QBS allocations and 512 result bytes per command,
+98304 bytes overall. The UVM interface audit must pass separately.
+
+The first paired run is scheduled under
+`qbs-q8k-projection-soc-20261023-01.service`, with private outputs in
+`verification/out/qbs-q8k-projection-soc-20261023-01/`. The reused image is
+4-lane/VLEN1024 with 16 MiB simulation RAM and unchanged AXI-delay configuration.
+The simulation bound is three hours. This run is separate from the preparation
+microbenchmark, not a continuation of its timing interval. Do not add their
+cycles or compare them as if code layout and cache state were identical.
+Report the paired projection's own phase cycles and full interval; a result
+remains pending until raw output, trace, UVM and source pins all pass.
+
 - Compile all AVL caps with the target RV64GCV compiler and strict FP options.
   This gate passed on 2026-10-23; it is not an execution result.
 - Compare all packed bytes, scales and bsums against the linked production
