@@ -13,6 +13,34 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def verify_native_build(qemu):
+    receipt = qemu.parent / "native-model-manifest.json"
+    data = json.loads(receipt.read_text())
+    if data.get("state") != "PASS" or data.get("executable") != str(qemu) or data.get("executable_sha256") != digest(qemu):
+        raise RuntimeError("Native QEMU executable differs from its build receipt")
+    sources = data.get("source_sha256", {})
+    model = qemu.parent.parent / "qemu-10.2.0/target/riscv"
+    config = qemu.parent / "config-host.mak"
+    ninja = qemu.parent / "build.ninja"
+    configured = re.findall(r"^SRC_PATH=(.+)$", config.read_text(), re.M)
+    if len(configured) != 1 or Path(configured[0]).resolve() != model.parents[1]:
+        raise RuntimeError("Native QEMU build uses a different source tree")
+    if str(config) not in sources or str(ninja) not in sources:
+        raise RuntimeError("Native QEMU receipt omits build configuration")
+    for name in ("qbs_helper.c", "qbs_ref.c"):
+        inputs = re.findall(r"^build libqemu-riscv64-softmmu\.a\.p/target_riscv_" +
+                            re.escape(name) + r"\.o: c_COMPILER (\S+)", ninja.read_text(), re.M)
+        if len(inputs) != 1 or (qemu.parent / inputs[0]).resolve() != model / name:
+            raise RuntimeError("Native QEMU model compile input differs from audited source")
+    if not all(str(model / name) in sources for name in ("qbs_abi.h", "qbs_ref.h", "qbs_ref.c", "qbs_helper.c")):
+        raise RuntimeError("Native QEMU build receipt omits model sources")
+    if any(digest(path) != sha for path, sha in sources.items()):
+        raise RuntimeError("Native QEMU source/configuration differs from build receipt")
+    if digest(qemu.parent / "native-model-build.log") != data.get("build_log_sha256"):
+        raise RuntimeError("Native QEMU build log differs from receipt")
+    return [receipt, qemu.parent / "native-model-build.log", *map(Path, sources)]
+
+
 def check_natural_dispatch(output):
     runs = re.findall(r"QBS_GRAPH_RUN_BEGIN segment=(\d+) wide=(\d+)\s+(.*?)QBS_GRAPH_RUN_END", output, re.S)
     if [(s, w) for s, w, _ in runs] != [("0", "0"), ("256", "0"), ("256", "1")]:
@@ -52,8 +80,12 @@ def check_natural_dispatch(output):
             for depth in ("256", "24"):
                 if sum(int(rows) * int(cols) for _, rows, cols, blocks, _, _ in commands if blocks == depth) != m * n:
                     raise RuntimeError("Natural-K command work or K-tail coverage differs")
-            if requested == "256" and threads == "1" and not any(cols == "32" for _, _, cols, _, _, _ in commands):
-                raise RuntimeError("Segment-major graph did not execute N32 commands")
+            if threads == "1":
+                expected_tiles = [(m, 5), (m, 32)] if requested == "256" else [(m, 1)] + [(m, 4)] * 9
+                for depth in ("256", "24"):
+                    tiles = sorted((int(rows), int(cols)) for _, rows, cols, blocks, _, _ in commands if blocks == depth)
+                    if tiles != expected_tiles:
+                        raise RuntimeError("Natural-K per-depth command tiling differs")
 
 
 def check_graph_dispatch(output):
@@ -96,6 +128,89 @@ def check_graph_dispatch(output):
             raise RuntimeError("QBS graph output coverage differs from the logical matrix")
 
 
+def check_context_dispatch(output):
+    runs = re.findall(r"QBS_GRAPH_RUN_BEGIN segment=(\d+) wide=(\d+)\s+(.*?)QBS_GRAPH_RUN_END", output, re.S)
+    if [(s, w) for s, w, _ in runs] != [("0", "0"), ("3", "0"), ("256", "0"), ("256", "0")]:
+        raise RuntimeError("Missing context policy runs")
+    expected = {(b, m, shared, threads, epoch) for b, m, shared, threads in
+                ((2, 1, 1, 1), (7, 1, 1, 1), (7, 1, 0, 1), (7, 1, 1, 3), (7, 3, 1, 1), (7, 4, 1, 1))
+                for epoch in (0, 1)}
+    for run_index, (requested, _, trace) in enumerate(runs):
+        enabled = run_index != 3
+        if re.findall(r"QBS_CONTEXT_POLICY enabled=(\d+)", trace) != [str(int(enabled))]:
+            raise RuntimeError("Wrong cross-operator context policy")
+        graphs = re.findall(r"QBS_CONTEXT_BEGIN blocks=(\d+) m=(\d+) n=(\d+) shared=(\d+) threads=(\d+) epoch=(\d+) segment=(\d+)\s+(.*?)QBS_CONTEXT_PASS outputs=(\d+)", trace, re.S)
+        keys = [(int(b), int(m), int(shared), int(threads), int(epoch)) for b, m, _, shared, threads, epoch, _, _, _ in graphs]
+        if len(keys) != 12 or set(keys) != expected:
+            raise RuntimeError("Incomplete context graph shape/epoch coverage")
+        epochs = set()
+        for blocks, m, n, shared, threads, _, segment, body, outputs in graphs:
+            blocks, m, n, threads = int(blocks), int(m), int(n), int(threads)
+            if n != 37 or segment != requested or int(outputs) != 3 * m * n:
+                raise RuntimeError("Wrong context graph geometry or checked outputs")
+            split = requested == "3" and blocks > 3
+            eligible = enabled and shared == "1" and m == 1 and threads == 1 and not split
+            actions = re.findall(r"GGML_RISCV_QBS_CROSS_OP graph_epoch=(\d+) action=(\w+) source_id=(\S+)[^\n]+ generation=(\d+)[^\n]+ quantization_skipped=(\d+)", body)
+            if eligible:
+                if len(actions) != 2 or [(a, skip) for _, a, _, _, skip in actions] != [("fill_keep", "0"), ("reuse_release", "1")]:
+                    raise RuntimeError("Eligible graph did not fill/reuse/release exactly once")
+                first, second = actions
+                if first[0] != second[0] or first[2:4] != second[2:4] or first[0] in epochs:
+                    raise RuntimeError("Context identity/generation/epoch mismatch")
+                epochs.add(first[0])
+            elif actions:
+                raise RuntimeError("Ineligible graph skipped activation preparation")
+            calls = re.findall(r"GGML_RISCV_QBS_CALL type=(\S+) mode=\S+ k=(\d+) input_rows=(\d+) output_rows=(\d+) split_k=(\d+)", body)
+            if not calls or any(t != "q4_K" or int(k) != blocks * 256 or int(s) != split for t, k, _, _, s in calls):
+                raise RuntimeError("Wrong context graph dispatch")
+            if sum(int(rows) * int(cols) for _, _, rows, cols, _ in calls) != 2 * m * n:
+                raise RuntimeError("Missing context graph projection work")
+            commands = re.findall(r"GGML_RISCV_QBS_COMMAND[^\n]+ weight_type=(\S+)[^\n]+ m=(\d+) n=(\d+) k_blocks=(\d+) access=(\d+)[^\n]+ emulated=(\d+)", body)
+            if not commands or any(t != "q4_K" or emulated != "0" or not 1 <= int(rows) <= 4 or not 1 <= int(cols) <= 32
+                                   for t, rows, cols, _, _, emulated in commands):
+                raise RuntimeError("Context graph did not execute native QBS commands")
+            if sum(int(rows) * int(cols) * int(k) for _, rows, cols, k, _, _ in commands) != 2 * m * n * blocks:
+                raise RuntimeError("Context command work differs")
+            depths = {3: 2, 1: 1} if split else {blocks: 1}
+            if {int(k) for _, _, _, k, _, _ in commands} != set(depths):
+                raise RuntimeError("Context command K partitions differ")
+            for depth, repetitions in depths.items():
+                group = [c for c in commands if int(c[3]) == depth]
+                if sum(int(c[1]) * int(c[2]) for c in group) != 2 * m * n * repetitions:
+                    raise RuntimeError("Context per-depth command work differs")
+                if threads == 1 and sorted((int(c[1]), int(c[2])) for c in group) != sorted([(m, 32), (m, 5)] * (2 * repetitions)):
+                    raise RuntimeError("Context single-worker tiling differs")
+            accesses = [c[4] for c in commands]
+            if split or m != 1 or threads != 1:
+                if any(access != "0" for access in accesses):
+                    raise RuntimeError("Ineligible command used resident activation context")
+            elif accesses != (["1", "2", "2", "3"] if eligible else ["1", "3", "1", "3"]):
+                raise RuntimeError("Native context lifetime commands differ")
+
+
+def check_barrier_dispatch(output):
+    runs = re.findall(r"QBS_GRAPH_RUN_BEGIN segment=(\d+) wide=(\d+)\s+(.*?)QBS_GRAPH_RUN_END", output, re.S)
+    if [(s, w) for s, w, _ in runs] != [("0", "0"), ("3", "0"), ("256", "0"), ("256", "0")]:
+        raise RuntimeError("Missing barrier policy runs")
+    for index, (segment, _, trace) in enumerate(runs):
+        if re.findall(r"QBS_CONTEXT_POLICY enabled=(\d+)", trace) != [str(int(index != 3))]:
+            raise RuntimeError("Wrong barrier context policy")
+        graphs = re.findall(r"QBS_CONTEXT_BEGIN blocks=2 m=1 n=37 shared=1 threads=1 epoch=(\d+) segment=(\d+)\s+(.*?)QBS_CONTEXT_MOE_PASS outputs=(\d+)", trace, re.S)
+        if [(epoch, s, outputs) for epoch, s, _, outputs in graphs] != [("0", segment, "36"), ("1", segment, "36")]:
+            raise RuntimeError("Missing barrier graph/epoch checks")
+        for _, _, body, _ in graphs:
+            if "GGML_RISCV_QBS_CROSS_OP" in body or "GGML_RISCV_QBS_CONTEXT_WAIT" in body:
+                raise RuntimeError("Context reservation crosses a matrix barrier")
+            if "QBS_CONTEXT_MOE_BARRIER expert=1 rows=36" not in body or "QBS_CONTEXT_PASS outputs=111" not in body:
+                raise RuntimeError("Missing barrier numerical checks")
+            calls = re.findall(r"GGML_RISCV_QBS_CALL type=(\S+) mode=\S+ k=(\d+) input_rows=(\d+) output_rows=(\d+) split_k=(\d+)", body)
+            if calls != [("q4_K", "512", "1", str(n), "0") for n in (37, 36, 37)]:
+                raise RuntimeError("Wrong projection/expert execution order")
+            commands = re.findall(r"GGML_RISCV_QBS_COMMAND[^\n]+ weight_type=(\S+)[^\n]+ m=(\d+) n=(\d+) k_blocks=(\d+) access=(\d+)[^\n]+ emulated=(\d+)", body)
+            if commands != [("q4_K", "1", str(n), "2", str(a), "0") for n, a in ((32, 1), (5, 3), (32, 1), (4, 3), (32, 1), (5, 3))]:
+                raise RuntimeError("Barrier operation-local context lifetimes differ")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
@@ -103,7 +218,8 @@ def main():
     parser.add_argument("--llama", type=Path, default=Path("/home/wangwy/llama/llama.cpp"))
     parser.add_argument("--platform", type=Path, default=Path("/home/wangwy/llama/platforms/cva6-qemu"))
     parser.add_argument("--timeout", type=int, default=600)
-    parser.add_argument("--suite", choices=("full", "natural"), default="full")
+    parser.add_argument("--suite", choices=("full", "natural", "context", "barrier"), default="full")
+    parser.add_argument("--native-qemu", type=Path)
     args = parser.parse_args()
     args.out = args.out.resolve()
     args.out.mkdir(parents=True, exist_ok=False)
@@ -111,17 +227,33 @@ def main():
     init_source = Path(__file__).with_name("ggml_segmented_init.c")
     cpio_tool = platform / "sdk/buildroot/output/build/linux-6.19.6/usr/gen_init_cpio"
     tools = platform / "tools/bin"
+    native = args.suite in {"context", "barrier"}
+    if native != (args.native_qemu is not None):
+        raise RuntimeError("Context suite requires an explicit native QBS QEMU; other suites use software emulation")
+    qemu = args.native_qemu.resolve() if args.native_qemu else tools / "qemu-system-riscv64"
     build = args.binary.resolve().parent.parent
     if args.binary.name != "test-ara-q4k-repack" or not (build / "CMakeCache.txt").is_file():
         raise RuntimeError("Use the test binary in its CMake build/bin directory")
     files = [init_source.resolve(), Path(__file__).resolve(), build / "CMakeCache.txt",
-             tools / "qemu-system-riscv64", platform / "images/Image", platform / "images/fw_dynamic.bin",
+             qemu, platform / "images/Image", platform / "images/fw_dynamic.bin",
              cpio_tool, tools / "riscv64-linux-gcc"]
     files += [args.llama / relative for relative in (
         "ggml/src/ggml-cpu/repack.cpp", "ggml/src/ggml-cpu/arch/riscv/qbs.cpp",
         "ggml/src/ggml-cpu/arch/riscv/qbs.h", "tests/test-ara-q4k-repack.cpp")]
     runtime = Path(__file__).resolve().parents[2] / "software/qbs"
     files += sorted(runtime.glob("src/*.c")) + sorted(runtime.glob("include/qbs/*.h"))
+    if args.native_qemu:
+        files += verify_native_build(qemu)
+        root = runtime.parents[1]
+        model = qemu.parent.parent / "qemu-10.2.0/target/riscv"
+        if digest(model / "qbs_abi.h") != digest(root / "apps/common/qbs_abi.h") or digest(model / "qbs_ref.c") != digest(root / "verification/qbs/qbs_ref.c"):
+            raise RuntimeError("Native QEMU ABI/reference differs from this worktree")
+        reference_header = (root / "verification/qbs/qbs_ref.h").read_text().replace("../../apps/common/qbs_abi.h", "qbs_abi.h")
+        if (model / "qbs_ref.h").read_text() != reference_header:
+            raise RuntimeError("Native QEMU reference header differs")
+        files += [model / name for name in ("qbs_abi.h", "qbs_ref.h", "qbs_ref.c", "qbs_helper.c")]
+        files += [root / "apps/common/qbs_abi.h", root / "verification/qbs/qbs_ref.h", root / "verification/qbs/qbs_ref.c",
+                  root / "verification/qbs/qemu/qemu-10.2.0-xaraqbs.patch"]
     cache = (build / "CMakeCache.txt").read_text()
     if not re.search(r"CMAKE_HOME_DIRECTORY:[^=]+=" + re.escape(str(args.llama.resolve())) + r"\n", cache):
         raise RuntimeError("CMake source directory differs from the audited llama checkout")
@@ -141,7 +273,7 @@ def main():
         ["git", "-C", str(args.llama), "diff", "--", "ggml/src/ggml-cpu/repack.cpp",
          "ggml/src/ggml-cpu/arch/riscv/qbs.cpp", "ggml/src/ggml-cpu/arch/riscv/qbs.h",
          "tests/test-ara-q4k-repack.cpp"]))
-    status = {"state": "preparing", "kind": "QEMU GGML software functional checks", "suite": args.suite}
+    status = {"state": "preparing", "kind": "QEMU native QBS functional checks" if native else "QEMU GGML software functional checks", "suite": args.suite}
 
     def save():
         (args.out / "status.json").write_text(json.dumps(status, indent=2) + "\n")
@@ -149,7 +281,9 @@ def main():
     save()
     try:
         with (args.out / "build.log").open("wb") as log:
-            subprocess.run([str(tools / "riscv64-linux-gcc"), *(["-DQBS_NATURAL_K"] if args.suite == "natural" else []), "-march=rv64gc", "-mabi=lp64d",
+            defines = (["-DQBS_CONTEXT", "-DQBS_BARRIER"] if args.suite == "barrier" else ["-DQBS_CONTEXT"]
+                       if native else ["-DQBS_NATURAL_K"] if args.suite == "natural" else [])
+            subprocess.run([str(tools / "riscv64-linux-gcc"), *defines, "-march=rv64gc", "-mabi=lp64d",
                             "-O2", "-static", str(init_source), "-o", str(args.out / "init")],
                            stdout=log, stderr=subprocess.STDOUT, check=True)
         listing = args.out / "initramfs.list"
@@ -158,8 +292,9 @@ def main():
                            f"file /test {args.binary.resolve()} 755 0 0\n")
         with (args.out / "initramfs.cpio").open("wb") as cpio:
             subprocess.run([str(cpio_tool), str(listing)], stdout=cpio, check=True)
-        command = [str(tools / "qemu-system-riscv64"), "-M", "virt", "-cpu", "rv64,v=true,vlen=1024,elen=64",
-                   "-smp", "3", "-m", "512M", "-display", "none", "-monitor", "none", "-serial", "stdio",
+        cpu = "rv64,v=true,vlen=1024,elen=64" + (",xaraqbs=true" if native else "")
+        command = [str(qemu), "-M", "virt", "-cpu", cpu,
+                   "-smp", "1" if native else "3", "-m", "512M", "-display", "none", "-monitor", "none", "-serial", "stdio",
                    "-bios", str(platform / "images/fw_dynamic.bin"), "-kernel", str(platform / "images/Image"),
                    "-initrd", str(args.out / "initramfs.cpio"), "-append", "console=ttyS0 rdinit=/init"]
         (args.out / "command.json").write_text(json.dumps(command, indent=2) + "\n")
@@ -175,11 +310,20 @@ def main():
                     raise
         output = (args.out / "qemu.log").read_text(errors="replace")
         ends = re.findall(r"QBS_GRAPH_RUN_END segment=(\d+) wide=(\d+) exit=(\d+)", output)
-        expected = ([("0", "0", "0"), ("256", "0", "0"), ("256", "1", "0")]
+        expected = ([("0", "0", "0"), ("3", "0", "0"), ("256", "0", "0"), ("256", "0", "0")]
+                    if native else [("0", "0", "0"), ("256", "0", "0"), ("256", "1", "0")]
                     if args.suite == "natural" else [("0", "0", "0"), ("3", "0", "0"), ("256", "1", "0"), ("3", "1", "0")])
         if rc != 0 or ends != expected or "GUEST_TEST_EXIT=0" not in output:
             raise RuntimeError(f"QEMU/guest failure rc={rc}, completed={ends}")
-        if args.suite == "natural":
+        if args.suite == "barrier":
+            if output.count("QBS context graph suite: PASS cases=2") != 4:
+                raise RuntimeError("Missing barrier graph checks")
+            check_barrier_dispatch(output)
+        elif args.suite == "context":
+            if output.count("QBS context graph suite: PASS cases=12") != 4:
+                raise RuntimeError("Missing context graph checks")
+            check_context_dispatch(output)
+        elif args.suite == "natural":
             if output.count("QBS matrix graph suite: PASS cases=12") != 3:
                 raise RuntimeError("Missing natural-K graph checks")
             check_natural_dispatch(output)
@@ -192,8 +336,8 @@ def main():
         drift = [path for path, sha in hashes.items() if digest(path) != sha]
         if drift:
             raise RuntimeError(f"Source/image drift: {drift}")
-        status.update(state="PASS", matrix_graphs=36 if args.suite == "natural" else 504,
-                      expert_graphs=0 if args.suite == "natural" else 8, manifest_unchanged=True)
+        status.update(state="PASS", matrix_graphs=8 if args.suite == "barrier" else 48 if args.suite == "context" else 36 if args.suite == "natural" else 504,
+                      expert_graphs=8 if args.suite == "full" else 0, manifest_unchanged=True)
     except Exception as exc:
         status.update(state="FAIL", error=str(exc))
         save()

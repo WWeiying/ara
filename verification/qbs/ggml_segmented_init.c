@@ -5,7 +5,11 @@
 #include <unistd.h>
 
 int main(void) {
-#ifdef QBS_NATURAL_K
+#ifdef QBS_CONTEXT
+    const char * segments[] = {"0", "3", "256", "256"};
+    const char * wide[] = {"0", "0", "0", "0"};
+    const char * context[] = {"1", "1", "1", "0"};
+#elif defined(QBS_NATURAL_K)
     const char * segments[] = {"0", "256", "256"};
     const char * wide[] = {"0", "0", "1"};
 #else
@@ -15,13 +19,28 @@ int main(void) {
     int result = 0;
     for (unsigned run = 0; run < sizeof(segments) / sizeof(segments[0]); ++run) {
         printf("QBS_GRAPH_RUN_BEGIN segment=%s wide=%s\n", segments[run], wide[run]);
+#ifdef QBS_CONTEXT
+        printf("QBS_CONTEXT_POLICY enabled=%s\n", context[run]);
+#endif
         fflush(NULL);
         const pid_t child = fork();
         if (child == 0) {
+#ifdef QBS_CONTEXT
+#ifdef QBS_BARRIER
+            setenv("GGML_QBS_GRAPH_SUITE", "barrier", 1);
+#else
+            setenv("GGML_QBS_GRAPH_SUITE", "context", 1);
+#endif
+            setenv("GGML_RISCV_QBS", "1", 1);
+            setenv("GGML_RISCV_QBS_EMULATE", "0", 1);
+            setenv("GGML_RISCV_QBS_ACTIVATION_CONTEXT", "1", 1);
+            setenv("GGML_RISCV_QBS_CROSS_OP_CONTEXT", context[run], 1);
+#else
+            setenv("GGML_RISCV_QBS_EMULATE", "1", 1);
+#endif
 #ifdef QBS_NATURAL_K
             setenv("GGML_QBS_GRAPH_SUITE", "natural", 1);
 #endif
-            setenv("GGML_RISCV_QBS_EMULATE", "1", 1);
             setenv("GGML_RISCV_QBS_TRACE", "1", 1);
             setenv("GGML_RISCV_QBS_TRACE_CALLS", "1", 1);
             setenv("GGML_RISCV_QBS_TRACE_LIFETIME", "1", 1);

@@ -1,5 +1,5 @@
 diff --git a/ggml/src/ggml-cpu/arch/riscv/qbs.cpp b/ggml/src/ggml-cpu/arch/riscv/qbs.cpp
-index 854a69c1b..97ec07bdd 100644
+index 854a69c1b..bfeb52f54 100644
 --- a/ggml/src/ggml-cpu/arch/riscv/qbs.cpp
 +++ b/ggml/src/ggml-cpu/arch/riscv/qbs.cpp
 @@ -855,7 +855,11 @@ static bool context_plan_supported(ggml_type weight_type, int64_t k_elements, in
@@ -15,7 +15,39 @@ index 854a69c1b..97ec07bdd 100644
             qbs_plan_supports_activation_context(&plan);
  }
 
-@@ -1264,6 +1268,28 @@ bool ggml_riscv_qbs_supports_tensor(ggml_type type, int64_t k_elements, int64_t
+@@ -895,8 +899,17 @@ static bool next_context_consumer_matches(const ggml_compute_params * params,
+     }
+     const int node_count = ggml_graph_n_nodes(params->cgraph);
+     for (int node_index = params->node_index + 1; node_index < node_count; ++node_index) {
++        const ggml_tensor * next_node = ggml_graph_node(params->cgraph, node_index);
++        // Expert kernels may acquire the same context without cross-op reuse.
++        if (next_node->op == GGML_OP_MUL_MAT_ID) {
++            return false;
++        }
+         qbs_cross_op_identity next{};
+-        if (!context_identity_for_node(ggml_graph_node(params->cgraph, node_index), params->graph_epoch, &next)) {
++        if (!context_identity_for_node(next_node, params->graph_epoch, &next)) {
++            // A different matrix shape may still acquire a context for a tail.
++            if (next_node->op == GGML_OP_MUL_MAT) {
++                return false;
++            }
+             continue;
+         }
+         return same_cross_op_identity(current, next);
+@@ -1001,6 +1014,12 @@ static qbs_status_t execute_plan(const qbs_plan_t &          plan,
+             return QBS_STATUS_CONTEXT_TOKEN;
+         }
+     } else {
++        if (state.reserved && ggml_riscv_qbs_trace_activation_lifetime_enabled()) {
++            std::fprintf(stderr, "GGML_RISCV_QBS_CONTEXT_WAIT graph_epoch=%llu owner_epoch=%llu generation=%u m=%u n=%u k_blocks=%u\n",
++                         static_cast<unsigned long long>(context->graph_epoch),
++                         static_cast<unsigned long long>(state.owner.graph_epoch), state.generation,
++                         plan.problem.m, plan.problem.n, plan.k_blocks);
++        }
+         state.available.wait(lock, [&] { return !state.reserved; });
+     }
+
+@@ -1264,6 +1283,28 @@ bool ggml_riscv_qbs_supports_tensor(ggml_type type, int64_t k_elements, int64_t
      return tensor_support_reason(type, k_elements, output_rows) == qbs_support_reason::supported;
  }
 
@@ -44,7 +76,7 @@ index 854a69c1b..97ec07bdd 100644
  void ggml_riscv_qbs_trace_tensor_decision(const void * tensor_identity,
                                            const char * tensor_name,
                                            ggml_type    type,
-@@ -1482,11 +1508,19 @@ int ggml_riscv_qbs_repack_r4(ggml_type    type,
+@@ -1482,11 +1523,19 @@ int ggml_riscv_qbs_repack_r4(ggml_type    type,
                               const void * src,
                               size_t       src_size,
                               int64_t      output_rows,
@@ -65,7 +97,7 @@ index 854a69c1b..97ec07bdd 100644
      return qbs_repack_weight_r4(profile.weight, src, src_size, static_cast<size_t>(output_rows),
                                  static_cast<size_t>(k_blocks), dst, dst_size) == QBS_STATUS_OK ?
                 0 :
-@@ -1541,7 +1575,10 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
+@@ -1541,7 +1590,10 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
                                               const void * activations,
                                               int          input_rows,
                                               int          output_rows,
@@ -77,7 +109,7 @@ index 854a69c1b..97ec07bdd 100644
      const qbs_profile profile        = profile_for_type(weight_type);
      const unsigned    block_elements = qbs_weight_block_elements(profile.weight);
      GGML_ASSERT(input_rows > 0 && n > 0 && block_elements != 0 && n % static_cast<int>(block_elements) == 0);
-@@ -1555,16 +1592,18 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
+@@ -1555,16 +1607,18 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
          static_cast<uint32_t>(n),
      };
      qbs_plan_t         plan{};
@@ -99,7 +131,7 @@ index 854a69c1b..97ec07bdd 100644
      const size_t activation_bytes = qbs_activation_storage_bytes(
          profile.activation, activation_storage, static_cast<size_t>(input_rows), plan.k_blocks);
      const size_t output_capacity  = static_cast<size_t>(input_rows - 1) * dst_stride + static_cast<size_t>(output_rows);
-@@ -1574,6 +1613,18 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
+@@ -1574,6 +1628,18 @@ static void ggml_riscv_qbs_gemm_with_storage(ggml_type    weight_type,
      GGML_ASSERT(status == QBS_STATUS_OK);
  }
 
@@ -291,7 +323,7 @@ index 4f6b4870f..75f376db9 100644
              if (op->src[1]->buffer && !ggml_backend_buft_is_host(op->src[1]->buffer->buft)) {
                  return false;
 diff --git a/tests/test-ara-q4k-repack.cpp b/tests/test-ara-q4k-repack.cpp
-index 821c0e934..61844ccb7 100644
+index 821c0e934..88cdc6a23 100644
 --- a/tests/test-ara-q4k-repack.cpp
 +++ b/tests/test-ara-q4k-repack.cpp
 @@ -1,6 +1,7 @@
@@ -321,7 +353,7 @@ index 821c0e934..61844ccb7 100644
      ggml_backend_buffer_t graph_buffer =
          ggml_backend_alloc_ctx_tensors(graph_context, backend);
      assert(graph_buffer != nullptr);
-@@ -848,7 +850,203 @@ static void test_qbs_moe_graph() {
+@@ -848,7 +850,354 @@ static void test_qbs_moe_graph() {
      ggml_backend_buffer_free(weights_buffer);
      ggml_free(weights_context);
      std::printf("QBS MUL_MAT_ID Q2_K 3-expert graph: PASS "
@@ -459,14 +491,16 @@ index 821c0e934..61844ccb7 100644
 +                            !std::isfinite(error) || error > 2e-4f + 2e-5f * std::fabs(expected)) {
 +                            if (natural_k) {
 +                                std::vector<uint8_t> reference(activation_stride), production(activation_stride);
-+                                std::vector<float> produced_values(k);
++                                std::vector<float> produced_values(k), reference_values(k);
 +                                const float * values = activations.data() + input * k;
 +                                ggml_get_type_traits_cpu(activation_type)->from_float(values, production.data(), k);
 +                                if (q8_0) {
 +                                    quantize_row_q8_0_ref(values, reinterpret_cast<block_q8_0 *>(reference.data()), k);
++                                    dequantize_row_q8_0(reinterpret_cast<const block_q8_0 *>(reference.data()), reference_values.data(), k);
 +                                    dequantize_row_q8_0(reinterpret_cast<const block_q8_0 *>(production.data()), produced_values.data(), k);
 +                                } else {
 +                                    quantize_row_q8_K_ref(values, reinterpret_cast<block_q8_K *>(reference.data()), k);
++                                    dequantize_row_q8_K(reinterpret_cast<const block_q8_K *>(reference.data()), reference_values.data(), k);
 +                                    dequantize_row_q8_K(reinterpret_cast<const block_q8_K *>(production.data()), produced_values.data(), k);
 +                                }
 +                                size_t different_bytes = 0;
@@ -479,7 +513,7 @@ index 821c0e934..61844ccb7 100644
 +                                    for (size_t block = start; block < std::min(start + 256, k_blocks); ++block) {
 +                                        const size_t offset = block * ggml_blck_size(type);
 +                                        ref_partial += qbs_scalar_dot(weight_values.data() + row * k + offset,
-+                                            activation_values.data() + input * k + offset, ggml_blck_size(type));
++                                            reference_values.data() + offset, ggml_blck_size(type));
 +                                        prod_partial += qbs_scalar_dot(weight_values.data() + row * k + offset,
 +                                            produced_values.data() + offset, ggml_blck_size(type));
 +                                    }
@@ -523,24 +557,177 @@ index 821c0e934..61844ccb7 100644
 +    }
 +    assert(cases == (natural_k ? 12 : 126));
 +    std::printf("QBS matrix graph suite: PASS cases=%u\n", cases);
++}
++
++static void test_qbs_context_graphs(bool moe_barrier = false) {
++    struct scenario { int blocks; int rows; bool shared; int threads; };
++    const scenario scenarios[] = {{2, 1, true, 1}, {7, 1, true, 1}, {7, 1, false, 1},
++                                  {7, 1, true, 3}, {7, 3, true, 1}, {7, 4, true, 1}};
++    constexpr int n = 37;
++    constexpr int expert_rows = 36;
++    unsigned cases = 0;
++    for (const auto & test : scenarios) {
++        if (moe_barrier && test.blocks != 2) {
++            continue;
++        }
++        const int k = test.blocks * QK_K;
++        const size_t stride = ggml_row_size(GGML_TYPE_Q4_K, k);
++        std::vector<uint8_t> packed[2];
++        std::vector<float> weights[2];
++        std::vector<float> source(k);
++        for (int projection = 0; projection < 2; ++projection) {
++            packed[projection].resize(n * stride);
++            weights[projection].resize(n * k);
++            for (int row = 0; row < n; ++row) {
++                for (int i = 0; i < k; ++i) {
++                    source[i] = 0.375f * std::sin(float(i * 7 + row * 19 + projection * 31) * 0.0234375f);
++                }
++                auto * block = reinterpret_cast<block_q4_K *>(packed[projection].data() + row * stride);
++                quantize_row_q4_K_ref(source.data(), block, k);
++                dequantize_row_q4_K(block, weights[projection].data() + row * k, k);
++            }
++        }
++        ggml_init_params params{};
++        params.mem_size = 1024 * 1024;
++        params.no_alloc = true;
++        ggml_context * wc = ggml_init(params);
++        assert(wc != nullptr);
++        ggml_tensor * w[2] = {ggml_new_tensor_2d(wc, GGML_TYPE_Q4_K, k, n),
++                             ggml_new_tensor_2d(wc, GGML_TYPE_Q4_K, k, n)};
++        ggml_tensor * experts = moe_barrier ? ggml_new_tensor_3d(wc, GGML_TYPE_Q4_K, k, expert_rows, 2) : nullptr;
++        ggml_backend_buffer_t wb = ggml_backend_alloc_ctx_tensors_from_buft(wc, ggml_backend_cpu_repack_buffer_type());
++        assert(wb != nullptr && w[0]->extra != nullptr && w[1]->extra != nullptr);
++        for (int projection = 0; projection < 2; ++projection) {
++            ggml_backend_tensor_set(w[projection], packed[projection].data(), 0, packed[projection].size());
++        }
++        if (moe_barrier) {
++            assert(experts->extra != nullptr);
++            std::vector<uint8_t> expert_data(2 * expert_rows * stride);
++            for (int expert = 0; expert < 2; ++expert) {
++                std::memcpy(expert_data.data() + expert * expert_rows * stride, packed[expert].data(), expert_rows * stride);
++            }
++            ggml_backend_tensor_set(experts, expert_data.data(), 0, expert_data.size());
++        }
++        ggml_context * ctx = ggml_init(params);
++        assert(ctx != nullptr);
++        ggml_tensor * x[2];
++        x[0] = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, k, test.rows);
++        x[1] = test.shared ? x[0] : ggml_new_tensor_2d(ctx, GGML_TYPE_F32, k, test.rows);
++        ggml_tensor * y[2] = {ggml_mul_mat(ctx, w[0], x[0]), ggml_mul_mat(ctx, w[1], x[1])};
++        ggml_tensor * sum = ggml_add(ctx, y[0], y[1]);
++        ggml_tensor * ids = moe_barrier ? ggml_new_tensor_2d(ctx, GGML_TYPE_I32, 1, 1) : nullptr;
++        ggml_tensor * moe = moe_barrier ? ggml_mul_mat_id(ctx, experts, x[0], ids) : nullptr;
++        ggml_backend_t backend = ggml_backend_cpu_init();
++        assert(backend != nullptr);
++        ggml_backend_cpu_set_n_threads(backend, test.threads);
++        ggml_backend_buffer_t buffer = ggml_backend_alloc_ctx_tensors(ctx, backend);
++        assert(buffer != nullptr);
++        ggml_cgraph * graph = ggml_new_graph(ctx);
++        if (moe_barrier) {
++            const int32_t selected = 1;
++            ggml_backend_tensor_set(ids, &selected, 0, sizeof(selected));
++            ggml_build_forward_expand(graph, y[0]);
++            ggml_build_forward_expand(graph, moe);
++        }
++        ggml_build_forward_expand(graph, sum);
++        for (int epoch = 0; epoch < 2; ++epoch) {
++            std::vector<float> input(test.rows * k), dequantized(test.rows * k);
++            std::vector<block_q8_K> quantized(test.blocks);
++            for (int row = 0; row < test.rows; ++row) {
++                for (int i = 0; i < k; ++i) {
++                    input[row * k + i] = 0.5f * std::cos(float(i * 11 + row * 17 + epoch * 53) * 0.01953125f);
++                }
++                if (row < test.rows - test.rows % 4) {
++                    quantize_row_q8_K_ref(input.data() + row * k, quantized.data(), k);
++                } else {
++                    ggml_get_type_traits_cpu(GGML_TYPE_Q8_K)->from_float(input.data() + row * k, quantized.data(), k);
++                }
++                dequantize_row_q8_K(quantized.data(), dequantized.data() + row * k, k);
++            }
++            ggml_backend_tensor_set(x[0], input.data(), 0, input.size() * sizeof(float));
++            if (!test.shared) {
++                // Equal bytes at a different tensor identity must not enable reuse.
++                ggml_backend_tensor_set(x[1], input.data(), 0, input.size() * sizeof(float));
++            }
++            std::printf("QBS_CONTEXT_BEGIN blocks=%d m=%d n=%d shared=%d threads=%d epoch=%d segment=%u\n",
++                test.blocks, test.rows, n, test.shared, test.threads, epoch, ggml_riscv_qbs_weight_segment_blocks());
++            if (moe_barrier) {
++                std::printf("QBS_CONTEXT_MOE_BARRIER expert=1 rows=%d\n", expert_rows);
++            }
++            std::fflush(stdout);
++            assert(ggml_backend_graph_compute(backend, graph) == GGML_STATUS_SUCCESS);
++            std::vector<float> actual[3];
++            for (int output = 0; output < 3; ++output) {
++                actual[output].resize(test.rows * n);
++                ggml_backend_tensor_get(output < 2 ? y[output] : sum, actual[output].data(), 0, actual[output].size() * sizeof(float));
++            }
++            double max_error = 0;
++            for (int row = 0; row < test.rows; ++row) {
++                for (int column = 0; column < n; ++column) {
++                    double expected[3] = {};
++                    for (int projection = 0; projection < 2; ++projection) {
++                        for (int i = 0; i < k; ++i) {
++                            expected[projection] += double(weights[projection][column * k + i]) * double(dequantized[row * k + i]);
++                        }
++                    }
++                    expected[2] = expected[0] + expected[1];
++                    for (int output = 0; output < 3; ++output) {
++                        const double value = actual[output][row * n + column];
++                        const double error = std::fabs(value - expected[output]);
++                        max_error = std::max(max_error, error);
++                        if (!std::isfinite(value) || !std::isfinite(expected[output]) || error > 2e-4 + 2e-5 * std::fabs(expected[output])) {
++                            std::fprintf(stderr, "QBS context mismatch output=%d row=%d column=%d actual=%.9g expected=%.17g\n",
++                                output, row, column, value, expected[output]);
++                            std::abort();
++                        }
++                    }
++                }
++            }
++            std::printf("QBS_CONTEXT_PASS outputs=%d max_error=%.9g\n", 3 * n * test.rows, max_error);
++            if (moe_barrier) {
++                float values[expert_rows];
++                ggml_backend_tensor_get(moe, values, 0, sizeof(values));
++                for (int row = 0; row < expert_rows; ++row) {
++                    double expected = 0;
++                    for (int i = 0; i < k; ++i) {
++                        expected += double(weights[1][row * k + i]) * double(dequantized[i]);
++                    }
++                    assert(std::isfinite(values[row]) && std::fabs(double(values[row]) - expected) <= 2e-4 + 2e-5 * std::fabs(expected));
++                }
++                std::printf("QBS_CONTEXT_MOE_PASS outputs=%d\n", expert_rows);
++            }
++            ++cases;
++        }
++        ggml_backend_buffer_free(buffer);
++        ggml_backend_free(backend);
++        ggml_free(ctx);
++        ggml_backend_buffer_free(wb);
++        ggml_free(wc);
++    }
++    assert(cases == (moe_barrier ? 2 : 12));
++    std::printf("QBS context graph suite: PASS cases=%u\n", cases);
  }
 
  static void test_qbs_segmented_k() {
-@@ -954,6 +1152,13 @@ static void test_qbs_segmented_k() {
+@@ -954,6 +1303,17 @@ static void test_qbs_segmented_k() {
  #endif
 
  int main() {
 +#if defined(GGML_TEST_RISCV_QBS)
 +    if (const char * suite = std::getenv("GGML_QBS_GRAPH_SUITE")) {
-+        assert(std::strcmp(suite, "natural") == 0);
-+        test_qbs_matrix_graphs(true);
++        if (std::strcmp(suite, "context") == 0 || std::strcmp(suite, "barrier") == 0) {
++            test_qbs_context_graphs(std::strcmp(suite, "barrier") == 0);
++        } else {
++            assert(std::strcmp(suite, "natural") == 0);
++            test_qbs_matrix_graphs(true);
++        }
 +        return 0;
 +    }
 +#endif
      test_qbs_r4_layout();
      test_qbs_activation_layouts();
      constexpr int64_t nrows = 64;
-@@ -1003,7 +1208,9 @@ int main() {
+@@ -1003,7 +1363,9 @@ int main() {
      test_qbs_repack_buffer_tail();
      test_qbs_moe_repack();
      test_qbs_moe_repack_fallback();

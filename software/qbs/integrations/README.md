@@ -37,3 +37,17 @@ The natural-K matrix oracle follows the selected GGML activation quantizer,
 then independently dequantizes and calculates in FP64. It does not claim
 bit-identical reference/optimized quantization: compiler FMA contraction can
 change boundary cases. The source, ELF, runtime and tools are hashed per run.
+
+`--suite context` executes 48 native-QBS GGML graph cases; `--suite barrier`
+executes eight projection/MoE/projection cases. Both require `--native-qemu`
+pointing to an isolated QBS-enabled system emulator. First run
+`verification/qbs/qemu/attest_native_build.py --build /path/to/qemu-build`
+to incrementally build and create its new-only `native-model-manifest.json`.
+The runner rejects a stale executable, changed source/configuration or a build
+configured against a different source tree. These are functional instruction
+tests, not RTL performance measurements.
+
+The patch includes a scoped context-ownership fix: lookahead does not reserve
+across expert matmuls or identity-ineligible ordinary matmuls. It keeps adjacent
+compatible projection reuse. The reproduced self-wait, fixed tests and remaining
+in-place/alias safety gate are described in `qbs_segmented_r4.md`.

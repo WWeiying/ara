@@ -116,9 +116,9 @@ cover every output exactly once. Maximum error against the selected-input
 FP64 matrix oracle is 8.46385956e-5 for Q4_K and 1.54972076e-5 for Q8_0.
 These results establish natural split-K software integration, not native
 instruction execution, model-quality equivalence or RTL cycle improvement.
-Native cross-operator context admission/rejection remains a separate gate.
-Nineteen host checker tests cover the existing graph suite plus natural-K
-missing/wrong work, layout, tail, context, emulation, shape and digest evidence.
+Native cross-operator context admission/rejection is recorded below. The
+successor checker tests additionally reject wrong per-depth tiling and invalid
+context lifetimes; this does not change the archived natural-K simulation.
 
 ## Evidence
 
@@ -207,7 +207,7 @@ and execution-contract tests, not RTL arithmetic validation.
 The native real-capture application now additionally compares five views for
 each of its two segment lengths against the whole-matrix bit patterns. It
 checks 114 selected outputs per segment, all outside-view output guards, and
-aggregate `fflags`. This updated native test has not completed; the earlier
+aggregate `fflags`. Run02 below completed this updated native test; the earlier
 SoC result above predates the view API.
 
 The new test is owned by user service
@@ -229,6 +229,23 @@ ELF and image in a new evidence directory, with a bounded 5,400-second host
 budget. No RTL, binary, expected output, trace or checker condition was changed.
 This extension follows observed completed phases and continued instruction
 progress; it is not a timeout increase used to hide an unexplained stall.
+
+Run02 completed at 2026-10-23 09:33:09 UTC, after approximately 34 minutes
+of simulation. Both segment sizes pass all five views, 114 selected outputs,
+outside-view guards and flags. The complete paired tests report:
+
+| Forced segment blocks | Global R4 cycles | Segment-major cycles | Exact outputs |
+|---|---:|---:|---:|
+| 16 | 50288 | 18264 | 99/99 |
+| 3 | 271064 | 76411 | 99/99 |
+
+These pairs use the same accepted half-scale SoC image; do not subtract their
+cycles from the older split-issue table. The independent terminal checker
+reports 2,101 matching requests/responses, 1,524 backend allocations/completions,
+4,667 completed reads and 661 matched writes, with no exception, protocol
+error or pending transaction. The final source check confirms 458 files
+unchanged. The forced K limits still make this a functional/performance stress
+test, not a naturally long-K model speedup claim.
 
 GGML integration must bind packing and dispatch to the same immutable layout
 trait, preserve the complete base for GEMV/GEMM/tail/expert dispatch, and use
@@ -304,8 +321,76 @@ return address identifies that null callback. The test now calls the explicit
 reference Q8_K conversion functions, as the existing tests do. No hardware
 change or tolerance relaxation was made to pass this failure.
 
-Remaining acceptance gates are naturally long K beyond 256 blocks through a
-real GGML graph, native cross-operator context reuse/rejection, and real-model
-performance with preparation and weight packing costs separated. The existing
-direct K280 test does not substitute for the first gate. The switch stays
-opt-in until these gates and the pending native view test are resolved.
+Natural K beyond 256 blocks and native row views have now passed their stated
+gates. Native context admission/rejection and the new matrix-barrier regression
+are recorded below. Real-model performance with preparation and packing costs
+separated remains outstanding. The segmented switch stays opt-in.
+
+## Native GGML context and matrix barriers
+
+The `--suite context` gate executes custom QBS instructions in the QEMU model,
+not the GGML software-emulation callback. It checks 48 graphs: four policies,
+six shapes and two epochs that overwrite the same activation allocation with
+new values. Shapes cover K2/K7 blocks, M1/M3/M4, identical versus distinct
+tensor identities, and one/three software workers on one emulated hart. It
+is not a multihart coherency test or RTL timing measurement.
+
+The independent matrix oracle dequantizes the selected production preparation
+payload and evaluates in FP64. All projections and their sum must be finite
+and pass the existing tolerance. Command checks require every K partition,
+N32/N5 single-worker tiles, actual native execution and exact FILL/REUSE/RELEASE
+lifetimes. Split-K, multirow and the tested threaded chunks must use DIRECT.
+Distinct identities and disabled cross-op policy retain operation-local
+FILL/RELEASE; absence of CROSS_OP logs alone is not accepted as proof.
+
+| Segment / cross-op policy | Graphs | Quantization skips | Native commands |
+|---|---:|---:|---:|
+| 0 / enabled | 12 | 4 | 80 |
+| 3 / enabled | 12 | 2 | 224 |
+| 256 / enabled | 12 | 4 | 80 |
+| 256 / disabled | 12 | 0 | 80 |
+
+The initial run is `verification/out/qbs-ggml-context-20261023-01/`.
+After the matrix-barrier fix, `qbs-ggml-context-fixed-20261023-01/` passes
+the same 48 graphs, with the source manifest unchanged. These counts prove
+selection and reuse, not model speedup.
+
+### Reproduced graph self-wait and scoped repair
+
+A projection -> MoE -> projection graph exposed a software ownership bug.
+Lookahead skipped `MUL_MAT_ID`, retained the first projection's context for
+the last projection, and the intervening expert kernel waited for it to be
+released. The release could not execute until that expert kernel returned.
+
+The N4 expert control completed because it did not need a resident context.
+With N36, `qbs-ggml-barrier-probe-20261023-02/` timed out after the expert CALL.
+The discriminating `qbs-ggml-barrier-wait-20261023-01/` adds a wait-entry trace:
+
+```text
+GGML_RISCV_QBS_CONTEXT_WAIT graph_epoch=1 owner_epoch=1 generation=0 m=1 n=36 k_blocks=2
+```
+
+Lookahead now stops at `MUL_MAT_ID` and at identity-ineligible `MUL_MAT`
+nodes, which may acquire an operation-local context for a tail. Adjacent
+compatible projections retain reuse. There is no RTL, descriptor, numerical
+order or tolerance change. The trace is enabled only with lifetime tracing.
+
+`qbs-ggml-barrier-fixed-20261023-01/` passes all eight native graphs, across
+the same four policies and two input epochs. Each checks 111 projection/sum
+values plus 36 expert outputs and issues six native commands in exact
+projection/expert/projection order. Each operation independently fills and
+releases its context. No cross-op reservation or wait occurs across MoE.
+
+This is a scoped deadlock repair. Arbitrary intervening in-place/alias writes,
+batched-plane tails, graph cancellation and multihart operation are not proven
+by these graphs. In-place/alias safety must be closed before generalizing
+cross-op lookahead to arbitrary graphs.
+
+The native runner requires an incremental QEMU build receipt tying the binary
+to audited ABI/reference/model source hashes. It also checks the configured
+source root and the actual Ninja compile inputs for `qbs_ref.c` and
+`qbs_helper.c`. The original context run preceded receipt enforcement; the
+fixed runs include the receipt, and their unchanged build configuration was
+subsequently checked with the stronger source-association guard. No archived
+run is relabelled as a new simulation. The successor checks have 39 dispatch
+unit tests and eight build-receipt rejection tests.

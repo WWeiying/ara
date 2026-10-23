@@ -71,7 +71,7 @@ def natural_fixture():
                     output.append(f"QBS_MATRIX_BEGIN type={kind} m={m} n=37 k={k} threads={threads} segment={segment}\n")
                     output.append(f"GGML_RISCV_QBS_CALL type={kind} mode=gemm k={k} input_rows={m} output_rows=37 split_k=1\n")
                     for blocks in (256, 24):
-                        for n in (32, 5):
+                        for n in ((4,) * 9 + (1,) if segment == 0 and threads == 1 else (32, 5)):
                             output.append(f"GGML_RISCV_QBS_COMMAND seq=1 weight_type={kind} weight_profile=1 activation_profile=1 m={m} n={n} k_blocks={blocks} access=0 context_id=0 emulated=1\n")
                     output.append("QBS_NATURAL_DIGEST value=0123456789abcdef\n")
                     output.append("QBS MUL_MAT graph: PASS\n")
@@ -122,6 +122,137 @@ class NaturalDispatchEvidence(unittest.TestCase):
     def test_missing_outputs(self):
         with self.assertRaises(RuntimeError):
             MODULE.check_natural_dispatch(natural_fixture().replace("QBS_NATURAL_DIGEST", "MISSING"))
+
+    def test_tail_only_old_tiles(self):
+        text = natural_fixture()
+        marker = "QBS_GRAPH_RUN_BEGIN segment=256 wide=0"
+        head, tail = text.split(marker, 1)
+        line = "GGML_RISCV_QBS_COMMAND seq=1 weight_type=q4_K weight_profile=1 activation_profile=1 m=1 n=32 k_blocks=24 access=0 context_id=0 emulated=1\n"
+        tail = tail.replace(line, line.replace("n=32", "n=4") * 8, 1)
+        with self.assertRaises(RuntimeError):
+            MODULE.check_natural_dispatch(head + marker + tail)
+
+
+def context_fixture():
+    output = []
+    for segment, enabled in ((0, 1), (3, 1), (256, 1), (256, 0)):
+        output.append(f"QBS_GRAPH_RUN_BEGIN segment={segment} wide=0\nQBS_CONTEXT_POLICY enabled={enabled}\n")
+        graph_epoch = 0
+        for blocks, m, shared, threads in ((2, 1, 1, 1), (7, 1, 1, 1), (7, 1, 0, 1), (7, 1, 1, 3), (7, 3, 1, 1), (7, 4, 1, 1)):
+            split = segment == 3 and blocks > 3
+            eligible = enabled and shared and m == 1 and threads == 1 and not split
+            for epoch in (0, 1):
+                graph_epoch += 1
+                output.append(f"QBS_CONTEXT_BEGIN blocks={blocks} m={m} n=37 shared={shared} threads={threads} epoch={epoch} segment={segment}\n")
+                for projection in (0, 1):
+                    if eligible:
+                        action = "reuse_release" if projection else "fill_keep"
+                        output.append(f"GGML_RISCV_QBS_CROSS_OP graph_epoch={graph_epoch} action={action} source_id=0x123 activation_profile=1 m=1 k={blocks*256} generation=1 activation_seq=1 quantization_skipped={projection} next_same=0\n")
+                    output.append(f"GGML_RISCV_QBS_CALL type=q4_K mode=gemm k={blocks*256} input_rows={m} output_rows=37 split_k={int(split)}\n")
+                    for depth in ((3, 3, 1) if split else (blocks,)):
+                        for n in (32, 5):
+                            access = (1 if projection == 0 and n == 32 else 3 if projection == 1 and n == 5 else 2) if eligible else 0
+                            if not eligible and not split and m == 1 and threads == 1:
+                                access = 1 if n == 32 else 3
+                            output.append(f"GGML_RISCV_QBS_COMMAND seq=1 weight_type=q4_K weight_profile=1 activation_profile=1 m={m} n={n} k_blocks={depth} access={access} context_id=0 emulated=0\n")
+                output.append(f"QBS_CONTEXT_PASS outputs={3*m*37}\n")
+        output.append(f"QBS_GRAPH_RUN_END segment={segment} wide=0 exit=0\n")
+    return "".join(output)
+
+
+class ContextDispatchEvidence(unittest.TestCase):
+    def test_valid(self):
+        MODULE.check_context_dispatch(context_fixture())
+
+    def test_no_native_execution(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_context_dispatch(context_fixture().replace("emulated=0", "emulated=1"))
+
+    def test_no_reuse(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_context_dispatch(context_fixture().replace("reuse_release", "fill_keep"))
+
+    def test_no_quantization_skip(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_context_dispatch(context_fixture().replace("quantization_skipped=1", "quantization_skipped=0"))
+
+    def test_wrong_work(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_context_dispatch(context_fixture().replace("n=5 k_blocks", "n=4 k_blocks"))
+
+    def test_no_release(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_context_dispatch(context_fixture().replace("access=3", "access=2"))
+
+    def test_stale_epoch(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_context_dispatch(context_fixture().replace("graph_epoch=2 ", "graph_epoch=1 "))
+
+    def test_split_uses_context(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_context_dispatch(context_fixture().replace("k_blocks=3 access=0", "k_blocks=3 access=1"))
+
+    def test_policy_disabled(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_context_dispatch(context_fixture().replace("QBS_CONTEXT_POLICY enabled=1", "QBS_CONTEXT_POLICY enabled=0"))
+
+
+    def test_multirow_uses_context(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_context_dispatch(context_fixture().replace("m=3 n=32 k_blocks=7 access=0", "m=3 n=32 k_blocks=7 access=1"))
+
+    def test_operation_local_context_missing(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_context_dispatch(context_fixture().replace("k_blocks=7 access=3", "k_blocks=7 access=0"))
+
+    def test_split_depths_preserve_total_but_wrong_partitions(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_context_dispatch(context_fixture().replace("k_blocks=3", "k_blocks=2").replace("k_blocks=1", "k_blocks=3"))
+
+
+def barrier_fixture():
+    output = []
+    for segment, enabled in ((0, 1), (3, 1), (256, 1), (256, 0)):
+        output.append(f"QBS_GRAPH_RUN_BEGIN segment={segment} wide=0\nQBS_CONTEXT_POLICY enabled={enabled}\n")
+        for epoch in (0, 1):
+            output.append(f"QBS_CONTEXT_BEGIN blocks=2 m=1 n=37 shared=1 threads=1 epoch={epoch} segment={segment}\n")
+            output.append("QBS_CONTEXT_MOE_BARRIER expert=1 rows=36\n")
+            for n in (37, 36, 37):
+                output.append(f"GGML_RISCV_QBS_CALL type=q4_K mode=gemv k=512 input_rows=1 output_rows={n} split_k=0\n")
+                for cols, access in ((32, 1), (n - 32, 3)):
+                    output.append(f"GGML_RISCV_QBS_COMMAND seq=1 weight_type=q4_K weight_profile=1 activation_profile=1 m=1 n={cols} k_blocks=2 access={access} context_id=0 emulated=0\n")
+            output.append("QBS_CONTEXT_PASS outputs=111\nQBS_CONTEXT_MOE_PASS outputs=36\n")
+        output.append(f"QBS_GRAPH_RUN_END segment={segment} wide=0 exit=0\n")
+    return "".join(output)
+
+
+class BarrierDispatchEvidence(unittest.TestCase):
+    def test_valid(self):
+        MODULE.check_barrier_dispatch(barrier_fixture())
+
+    def test_missing_expert(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_barrier_dispatch(barrier_fixture().replace("QBS_CONTEXT_MOE_PASS", "MISSING"))
+
+    def test_missing_release(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_barrier_dispatch(barrier_fixture().replace("access=3", "access=2"))
+
+    def test_reservation(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_barrier_dispatch(barrier_fixture().replace("QBS_CONTEXT_MOE_BARRIER", "GGML_RISCV_QBS_CROSS_OP\nQBS_CONTEXT_MOE_BARRIER"))
+
+    def test_wait(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_barrier_dispatch(barrier_fixture().replace("QBS_CONTEXT_MOE_BARRIER", "GGML_RISCV_QBS_CONTEXT_WAIT\nQBS_CONTEXT_MOE_BARRIER"))
+
+    def test_wrong_expert_work(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_barrier_dispatch(barrier_fixture().replace("n=4 k_blocks", "n=3 k_blocks"))
+
+    def test_emulated(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.check_barrier_dispatch(barrier_fixture().replace("emulated=0", "emulated=1"))
 
 
 if __name__ == "__main__":
