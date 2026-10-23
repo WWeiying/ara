@@ -91,4 +91,23 @@ checking all 99 output bit patterns, `fflags`, and the captured GGML golden
 under the existing tolerance. Timed regions include runtime command setup,
 gather and partial summation, but exclude offline weight packing and activation
 quantization. Forced segmentation is a functional stress test, not evidence
-of speedup on a naturally long-K production model. Native results are pending.
+of speedup on a naturally long-K production model.
+
+Native VCS results are in
+`verification/out/qbs-segmented-soc-20261023-01/`. Both layouts ran in the same
+frozen split-issue SoC image, before the later half-scale candidate:
+
+| Forced segment blocks | Global R4 cycles | Segment-major cycles | Exact outputs |
+|---|---:|---:|---:|
+| 16 | 49499 | 18021 | 99/99 |
+| 3 | 246379 | 69996 | 99/99 |
+
+Both pairs report identical flags (`1`) and pass the captured golden check.
+The independent protocol/backend checker reports PASS: 1,741 accepted requests
+and responses, 1,284 completed backend allocations, 3,104 completed AXI reads,
+480 matched writes, no exceptions and no pending transactions at completion.
+The log's generic `[hw-cycles]` field is zero because this app uses its own
+paired timer; only the labelled `QBS_SEGMENTED` cycle fields above are timing
+evidence. These forced-split improvements establish a working implementation,
+not a production speedup estimate. Naturally long-K and GGML integration remain
+the next acceptance gates.

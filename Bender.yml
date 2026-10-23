@@ -68,6 +68,7 @@ sources:
     - hardware/src/vlsu/qbs/qbs_payload_buffer.sv
     - hardware/src/vlsu/qbs/qbs_block_adapter.sv
     - hardware/src/vlsu/qbs/qbs_profile_engine_int.sv
+    - hardware/src/vlsu/qbs/qbs_half_scale.sv
     - hardware/src/vlsu/qbs/qbs_fp_accumulator.sv
     - hardware/src/vlsu/qbs/qbs_compute_engine.sv
     - hardware/src/vlsu/qbs/qbs_commit.sv

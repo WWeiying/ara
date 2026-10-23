@@ -20,6 +20,7 @@ RTL_EXTRA_SOURCES ?=
 RTL_ENGINE_DEFINES ?=
 RTL_MACRO_VCS_FLAGS ?=
 RTL_FP_BUILD ?= rtl_fp_build
+RTL_HALF_BUILD ?= rtl_half_build
 RTL_BLOCK_ADAPTER_SOURCE ?= $(ROOT)/hardware/src/vlsu/qbs/qbs_block_adapter.sv
 RTL_VECTOR_FILE := $(abspath qbs_rtl_vectors.txt)
 RTL_COMMAND_VECTOR_FILE := $(abspath qbs_command_vectors.txt)
@@ -51,6 +52,7 @@ RTL_SOURCES := \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_payload_buffer.sv \
 	$(RTL_BLOCK_ADAPTER_SOURCE) \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_profile_engine_int.sv \
+	$(ROOT)/hardware/src/vlsu/qbs/qbs_half_scale.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_fp_accumulator.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_compute_engine.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_commit.sv \
@@ -207,6 +209,18 @@ rtl-fp-split-check: rtl-fp-split-compile
 	cd $(RTL_FP_BUILD) && timeout --foreground 120 ./simv -l run.log
 	grep -q "QBS FP split PASS:" $(RTL_FP_BUILD)/run.log
 	! grep -Eq "Fatal:|Error:" $(RTL_FP_BUILD)/run.log
+
+.PHONY: rtl-half-scale-compile rtl-half-scale-check
+rtl-half-scale-compile: $(RTL_SOURCES) qbs_half_scale_tb.sv
+	mkdir -p $(RTL_HALF_BUILD)
+	cd $(RTL_HALF_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
+		+lint=TFIPC-L -l compile.log $(RTL_INCLUDES) $(RTL_SOURCES) \
+		$(abspath qbs_half_scale_tb.sv) -top qbs_half_scale_tb -o simv
+
+rtl-half-scale-check: rtl-half-scale-compile
+	cd $(RTL_HALF_BUILD) && timeout --foreground 600 ./simv -l run.log
+	grep -q "QBS half scale PASS:" $(RTL_HALF_BUILD)/run.log
+	! grep -Eq "Fatal:|Error:" $(RTL_HALF_BUILD)/run.log
 
 rtl-context-compile: $(RTL_CONTEXT_SOURCES)
 	mkdir -p $(RTL_CONTEXT_BUILD)

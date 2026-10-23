@@ -7,7 +7,8 @@ module qbs_fp_accumulator
 #(
   parameter int unsigned NumAccumulators = QbsMaxResults,
   parameter int unsigned AccIndexWidth = $clog2(NumAccumulators),
-  parameter bit SplitIssue = 1'b1
+  parameter bit SplitIssue = 1'b1,
+  parameter bit HalfScaleIssue = 1'b1
 ) (
   input  logic                 clk_i,
   input  logic                 rst_ni,
@@ -120,6 +121,7 @@ module qbs_fp_accumulator
   logic [NumEntries-1:0] entry_valid_q;
   logic [NumEntries-1:0] entry_inflight_q;
   logic entry_affine_q [NumEntries];
+  logic entry_half_scale_q [NumEntries];
   logic entry_first_block_q [NumEntries];
   logic [AccIndexWidth-1:0] entry_accumulator_index_q [NumEntries];
   fp_state_e entry_state_q [NumEntries];
@@ -162,17 +164,32 @@ module qbs_fp_accumulator
   logic [31:0] cast_result;
   status_t cast_status;
   fp_tag_t cast_tag_out;
+  logic [3:0] half_rr_q, half_index, half_upper_index, half_lower_index;
+  logic [NumEntries-1:0] half_upper, half_lower;
+  logic half_upper_empty, half_lower_empty, half_found;
+  logic half_fire, half_out_valid, half_busy;
+  logic [31:0] half_result;
+  fp_tag_t half_tag_out;
+  wire request_half_scale = HalfScaleIssue &&
+      qbs_weight_scale_format(request_profile_i) == QBS_SCALE_FP16 &&
+      qbs_activation_scale_format(request_activation_profile_i) == QBS_SCALE_FP16 &&
+      qbs_weight_correction_mode(request_profile_i) != QBS_CORRECTION_AFFINE_MIN &&
+      request_weight_d_i[14:10] != 5'h1f && request_activation_d_i[14:10] != 5'h1f;
 
   for (genvar entry = 0; entry < NumEntries; entry++) begin : gen_schedule_mask
     wire is_cast = entry_state_q[entry] inside {FP_DOT_CONVERT, FP_AUX_CONVERT};
     wire ready_entry = entry_valid_q[entry] && !entry_inflight_q[entry];
-    wire eligible = ready_entry && (!SplitIssue || !is_cast);
+    wire is_half_scale = HalfScaleIssue && entry_half_scale_q[entry] &&
+                         entry_state_q[entry] == FP_SCALE_MULTIPLY;
+    wire eligible = ready_entry && (!SplitIssue || !is_cast) && !is_half_scale;
     assign schedule_upper[entry] = eligible && 4'(entry) >= schedule_rr_q;
     assign schedule_lower[entry] = eligible && 4'(entry) < schedule_rr_q;
     assign cast_upper[entry] = SplitIssue && ready_entry && is_cast &&
                                4'(entry) >= cast_rr_q;
     assign cast_lower[entry] = SplitIssue && ready_entry && is_cast &&
                                4'(entry) < cast_rr_q;
+    assign half_upper[entry] = ready_entry && is_half_scale && 4'(entry) >= half_rr_q;
+    assign half_lower[entry] = ready_entry && is_half_scale && 4'(entry) < half_rr_q;
   end
   lzc #(.WIDTH(NumEntries), .MODE(1'b0)) i_schedule_upper (
     .in_i(schedule_upper), .cnt_o(schedule_upper_index), .empty_o(schedule_upper_empty));
@@ -187,6 +204,13 @@ module qbs_fp_accumulator
   assign cast_found = !cast_upper_empty || !cast_lower_empty;
   assign cast_index = !cast_upper_empty ? cast_upper_index : cast_lower_index;
   assign cast_fire = cast_found && cast_ready;
+  lzc #(.WIDTH(NumEntries), .MODE(1'b0)) i_half_upper (
+    .in_i(half_upper), .cnt_o(half_upper_index), .empty_o(half_upper_empty));
+  lzc #(.WIDTH(NumEntries), .MODE(1'b0)) i_half_lower (
+    .in_i(half_lower), .cnt_o(half_lower_index), .empty_o(half_lower_empty));
+  assign half_found = !half_upper_empty || !half_lower_empty;
+  assign half_index = !half_upper_empty ? half_upper_index : half_lower_index;
+  assign half_fire = half_found;
   always_comb begin
     cast_operands = '0;
     if (cast_found)
@@ -258,7 +282,7 @@ module qbs_fp_accumulator
     end
   end
   assign fflags_o = fflags_q;
-  assign busy_o = (|entry_valid_q) || fp_busy || cast_busy;
+  assign busy_o = (|entry_valid_q) || fp_busy || cast_busy || half_busy;
   assign fp_fire = fp_in_valid && fp_in_ready;
 
   always_comb begin
@@ -381,6 +405,23 @@ module qbs_fp_accumulator
     assign cast_busy = 1'b0;
   end
 
+  if (HalfScaleIssue) begin : gen_half_scale_port
+    // Until this multiply completes, reuse the scale entry for the two raw
+    // halves. Their finite product is exactly representable in FP32.
+    qbs_half_scale #(.TagWidth(4)) i_half_scale (
+      .clk_i, .rst_ni, .valid_i(half_found),
+      .a_i(entry_scale_value_q[half_index][15:0]),
+      .b_i(entry_scale_value_q[half_index][31:16]), .tag_i(half_index),
+      .valid_o(half_out_valid), .result_o(half_result), .tag_o(half_tag_out),
+      .busy_o(half_busy)
+    );
+  end else begin : gen_no_half_scale_port
+    assign half_out_valid = 1'b0;
+    assign half_result = '0;
+    assign half_tag_out = '0;
+    assign half_busy = 1'b0;
+  end
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       accumulator_valid_q <= '0;
@@ -388,6 +429,7 @@ module qbs_fp_accumulator
       entry_inflight_q <= '0;
       schedule_rr_q <= '0;
       cast_rr_q <= '0;
+      half_rr_q <= '0;
       fflags_q <= '0;
       update_valid_o <= 1'b0;
       update_index_o <= '0;
@@ -406,6 +448,7 @@ module qbs_fp_accumulator
         entry_inflight_q <= '0;
         schedule_rr_q <= '0;
         cast_rr_q <= '0;
+        half_rr_q <= '0;
         fflags_q <= '0;
         fp_uop_issue_o <= '0;
         table_occupancy_sum_o <= '0;
@@ -428,13 +471,16 @@ module qbs_fp_accumulator
           entry_affine_q[request_slot_i] <=
               qbs_weight_correction_mode(request_profile_i) ==
                   QBS_CORRECTION_AFFINE_MIN;
+          entry_half_scale_q[request_slot_i] <= request_half_scale;
           entry_accumulator_index_q[request_slot_i] <=
               request_accumulator_index_i;
           entry_state_q[request_slot_i] <= FP_DOT_CONVERT;
           entry_dot_value_q[request_slot_i] <= request_dot_i;
           entry_aux_value_q[request_slot_i] <= request_aux_i;
           entry_scale_value_q[request_slot_i] <=
-              fp16_to_fp32(request_weight_d_i);
+              request_half_scale
+                  ? {request_activation_d_i[15:0], request_weight_d_i}
+                  : fp16_to_fp32(request_weight_d_i);
           entry_min_scale_value_q[request_slot_i] <=
               fp16_to_fp32(request_weight_dmin_i);
           entry_work_value_q[request_slot_i] <=
@@ -452,8 +498,12 @@ module qbs_fp_accumulator
           entry_inflight_q[cast_index] <= 1'b1;
           cast_rr_q <= cast_index + 1'b1;
         end
-        if (fp_fire || cast_fire)
-          fp_uop_issue_o <= fp_uop_issue_o + 32'(fp_fire) + 32'(cast_fire);
+        if (half_fire) begin
+          entry_inflight_q[half_index] <= 1'b1;
+          half_rr_q <= half_index + 1'b1;
+        end
+        if (fp_fire || cast_fire || half_fire)
+          fp_uop_issue_o <= fp_uop_issue_o + 32'(fp_fire) + 32'(cast_fire) + 32'(half_fire);
         if (fp_out_valid || cast_out_valid)
           fflags_q <= fflags_q |
               (fp_out_valid ? fflags_t'(fp_status) : 5'b0) |
@@ -469,6 +519,15 @@ module qbs_fp_accumulator
             entry_aux_value_q[cast_tag_out] <= cast_result;
             entry_state_q[cast_tag_out] <= FP_SCALE_MULTIPLY;
           end
+        end
+
+        if (half_out_valid) begin
+          entry_inflight_q[half_tag_out] <= 1'b0;
+          entry_scale_value_q[half_tag_out] <= half_result;
+          entry_work_value_q[half_tag_out] <= entry_first_block_q[half_tag_out]
+              ? '0 : accumulator_data_q[entry_accumulator_index_q[half_tag_out][2:0]]
+                                      [entry_accumulator_index_q[half_tag_out][6:3]];
+          entry_state_q[half_tag_out] <= FP_ACCUMULATE_DOT;
         end
 
         if (fp_out_valid) begin
@@ -533,6 +592,20 @@ module qbs_fp_accumulator
         issued_state_q[fp_tag_in] <= entry_state_q[fp_tag_in];
       if (cast_fire)
         issued_state_q[cast_index] <= entry_state_q[cast_index];
+      if (half_fire)
+        issued_state_q[half_index] <= entry_state_q[half_index];
+      if (half_fire) begin
+        assert ((!cast_fire || half_index != cast_index) &&
+                (!fp_fire || half_index != fp_tag_in));
+        assert (entry_half_scale_q[half_index] && !entry_affine_q[half_index]);
+      end
+      if (half_out_valid) begin
+        assert ((!cast_out_valid || half_tag_out != cast_tag_out) &&
+                (!fp_out_valid || half_tag_out != fp_tag_out));
+        assert (entry_valid_q[half_tag_out] && entry_inflight_q[half_tag_out]);
+        assert (entry_state_q[half_tag_out] == FP_SCALE_MULTIPLY &&
+                entry_state_q[half_tag_out] == issued_state_q[half_tag_out]);
+      end
       if (cast_fire && fp_fire)
         assert (cast_index != fp_tag_in)
           else $fatal(1, "QBS dual issue targets the same entry");

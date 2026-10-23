@@ -168,15 +168,18 @@ module qbs_engine_tb;
   string fp_probe_path;
   integer fp_probe_blocked, fp_probe_slot_sparse, fp_probe_conflict;
   integer fp_probe_issue, fp_probe_no_eligible, fp_probe_backpressure;
-  integer fp_probe_dual_issue, fp_probe_cast_issue;
+  integer fp_probe_dual_issue, fp_probe_cast_issue, fp_probe_half_issue;
 `ifdef QBS_SINGLE_FP_PORT
   defparam dut.i_compute_engine.i_fp_accumulator.SplitIssue = 1'b0;
+  defparam dut.i_compute_engine.i_fp_accumulator.HalfScaleIssue = 1'b0;
+`elsif QBS_NO_HALF_SCALE_PORT
+  defparam dut.i_compute_engine.i_fp_accumulator.HalfScaleIssue = 1'b0;
 `endif
   initial begin
     if ($value$plusargs("QBS_FP_TRACE=%s", fp_probe_path)) begin
       fp_probe_fd = $fopen(fp_probe_path, "w");
       if (fp_probe_fd == 0) $fatal(1, "Cannot open QBS FP probe");
-      $fdisplay(fp_probe_fd, "cycle,k,req_valid,req_ready,req_slot,req_acc,occ,valid_mask,inflight_mask,conflict,selected,state,issue_valid,issue_ready,fire,done,done_tag,cast_fire,cast_tag,cast_done,cast_done_tag");
+      $fdisplay(fp_probe_fd, "cycle,k,req_valid,req_ready,req_slot,req_acc,occ,valid_mask,inflight_mask,conflict,selected,state,issue_valid,issue_ready,fire,done,done_tag,cast_fire,cast_tag,cast_done,cast_done_tag,half_fire,half_tag,half_done,half_done_tag");
     end
     void'($value$plusargs("QBS_FP_TRACE_START=%d", fp_probe_start));
     void'($value$plusargs("QBS_FP_TRACE_END=%d", fp_probe_end));
@@ -192,6 +195,7 @@ module qbs_engine_tb;
       fp_probe_backpressure = 0;
       fp_probe_dual_issue = 0;
       fp_probe_cast_issue = 0;
+      fp_probe_half_issue = 0;
     end else if (dut.busy_o) begin
       if (`FP_PROBE.request_valid_i && !`FP_PROBE.request_ready_o) begin
         fp_probe_blocked++;
@@ -200,16 +204,18 @@ module qbs_engine_tb;
           fp_probe_slot_sparse++;
         if (`FP_PROBE.request_accumulator_conflict) fp_probe_conflict++;
       end
-      fp_probe_issue += int'(`FP_PROBE.fp_fire) + int'(`FP_PROBE.cast_fire);
+      fp_probe_issue += int'(`FP_PROBE.fp_fire) + int'(`FP_PROBE.cast_fire) + int'(`FP_PROBE.half_fire);
       if (`FP_PROBE.cast_fire) fp_probe_cast_issue++;
+      if (`FP_PROBE.half_fire) fp_probe_half_issue++;
       if (`FP_PROBE.cast_fire && `FP_PROBE.fp_fire) fp_probe_dual_issue++;
-      if (`FP_PROBE.busy_o && !`FP_PROBE.schedule_found && !`FP_PROBE.cast_found)
+      if (`FP_PROBE.busy_o && !`FP_PROBE.schedule_found && !`FP_PROBE.cast_found &&
+          !`FP_PROBE.half_found)
         fp_probe_no_eligible++;
       if ((`FP_PROBE.fp_in_valid && !`FP_PROBE.fp_in_ready) ||
           (`FP_PROBE.cast_found && !`FP_PROBE.cast_ready)) fp_probe_backpressure++;
       if (fp_probe_fd != 0 && command_cycles >= fp_probe_start &&
           command_cycles < fp_probe_end)
-        $fdisplay(fp_probe_fd, "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%h,%h,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
+        $fdisplay(fp_probe_fd, "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%h,%h,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
           command_cycles, dut.compute_expected_k,
           `FP_PROBE.request_valid_i, `FP_PROBE.request_ready_o,
           `FP_PROBE.request_slot_i, `FP_PROBE.request_accumulator_index_i,
@@ -219,7 +225,9 @@ module qbs_engine_tb;
           `FP_PROBE.fp_in_valid, `FP_PROBE.fp_in_ready, `FP_PROBE.fp_fire,
           `FP_PROBE.fp_out_valid, `FP_PROBE.fp_tag_out,
           `FP_PROBE.cast_fire, `FP_PROBE.cast_index,
-          `FP_PROBE.cast_out_valid, `FP_PROBE.cast_tag_out);
+          `FP_PROBE.cast_out_valid, `FP_PROBE.cast_tag_out,
+          `FP_PROBE.half_fire, `FP_PROBE.half_index,
+          `FP_PROBE.half_out_valid, `FP_PROBE.half_tag_out);
     end
   end
 `undef FP_PROBE
@@ -997,11 +1005,11 @@ module qbs_engine_tb;
                  activation_layout, command_cycles);
       if (case_errors == 0 && functional_only) begin
         if ($test$plusargs("QBS_FP_PROBE"))
-          $display("QBS FP probe case=%0d blocked=%0d sparse_slot=%0d conflict=%0d issued=%0d no_eligible=%0d backpressure=%0d occupancy_max=%0d full_cycles=%0d cast_issue=%0d dual_issue=%0d",
+          $display("QBS FP probe case=%0d blocked=%0d sparse_slot=%0d conflict=%0d issued=%0d no_eligible=%0d backpressure=%0d occupancy_max=%0d full_cycles=%0d cast_issue=%0d dual_issue=%0d half_issue=%0d",
                    case_id, fp_probe_blocked, fp_probe_slot_sparse, fp_probe_conflict,
                    fp_probe_issue, fp_probe_no_eligible, fp_probe_backpressure,
                    fp_table_occupancy_max, fp_table_full_cycles,
-                   fp_probe_cast_issue, fp_probe_dual_issue);
+                   fp_probe_cast_issue, fp_probe_dual_issue, fp_probe_half_issue);
         $display("QBS activation lookahead case=%0d ahead_beats=%0d overlap_beats=%0d ready_boundaries=%0d",
                  case_id, activation_ahead_beats, activation_overlap_beats, activation_ready_boundaries);
         if ($test$plusargs("QBS_REQUIRE_ACTIVATION_OVERLAP") && m <= 4 && k_blocks > 1)
