@@ -750,6 +750,21 @@ writes. Host execution, Clang ASan/UBSan execution and the existing runtime
 suite pass. The ordinary runtime suite also retains both M4 multiplication-
 overflow boundaries as fast regressions. The separately
 sealed `run_runtime_activation_pack.py` runs scalar and vector builds under
-Linux QEMU, with VLEN128/1024 and forced AVL7; its result is a functional gate,
-not a timing claim. Production-runtime projection timing and real GGML
-selection remain separate acceptance steps.
+Linux QEMU, with VLEN128/1024 and forced AVL7. All four configurations completed
+PASS: 43008 valid layout checks and 32 invalid-input checks. The independent
+audit verifies logs, executed ELFs, exact configuration coverage and unchanged
+input/tool hashes. Evidence is archived in
+`verification/qbs/results/runtime-activation-pack-native-20261023.json`.
+This is a functional gate, not a timing claim. Production-runtime projection
+timing and real GGML selection remain separate acceptance steps.
+
+`build_runtime_pack_projection.py` builds current forced-scalar and RVV runtime
+twins using the same nine frozen non-runtime objects from the real
+M4/N896/K896 projection. Only runtime.o is rebuilt. The old ELF and original
+passing application/protocol evidence remain intact; the historical wrapper
+status was failed by the old read-accounting checker and is explicitly
+reaudited, not rewritten. `run_runtime_pack_projection.py` runs the two current
+twins independently and combines only completed, identity-matched results.
+Compiler-generated symbol/section changes must be inspected before attributing
+all phase differences to packing. The old runtime object's source identity is
+not fully archived; current scalar versus vector is the primary controlled pair.

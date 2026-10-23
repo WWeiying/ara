@@ -1,0 +1,71 @@
+{
+  "cases": [
+    {
+      "avl_limit": 0,
+      "cases": 10752,
+      "elf_sha256": "db214cec6826c8ab40c1f6ae44f3330075452a0b3d681058bae8f69c2e1a7705",
+      "invalid_cases": 8,
+      "log_sha256": "d1a2e42653c17c5a87e6c6b81c8d719d050669ab94c23ab602686c87674c7084",
+      "mode": "scalar",
+      "vlen": 1024
+    },
+    {
+      "avl_limit": 0,
+      "cases": 10752,
+      "elf_sha256": "71f89eb83b9866eb119cc080b08765baee80b9478326683a3360beee162907dc",
+      "invalid_cases": 8,
+      "log_sha256": "48fcf678fbc92d637a0b93c535457c2619ee525809755d0c3770a8f616b0fc39",
+      "mode": "vector",
+      "vlen": 128
+    },
+    {
+      "avl_limit": 0,
+      "cases": 10752,
+      "elf_sha256": "71f89eb83b9866eb119cc080b08765baee80b9478326683a3360beee162907dc",
+      "invalid_cases": 8,
+      "log_sha256": "d6d59c552e622f4a625fb617145ff9dc6f6256d3a7bb643bebf5b541feccc0e6",
+      "mode": "vector",
+      "vlen": 1024
+    },
+    {
+      "avl_limit": 7,
+      "cases": 10752,
+      "elf_sha256": "0455235ced3546a1479a6f4b11cd2de2504d50030f66a25b5d05118fe150da3e",
+      "invalid_cases": 8,
+      "log_sha256": "0ec51955e82441b98baab6bea971bd14ce68858b03b5283aa74ad2054c565df4",
+      "mode": "vector",
+      "vlen": 1024
+    }
+  ],
+  "checked": [
+    "Q8_0 and Q8_K exact layout",
+    "M4 through M24 and padded tails",
+    "unaligned buffers",
+    "unchanged source and guards",
+    "short buffers",
+    "overflow rejection",
+    "fcsr/vcsr preservation",
+    "VLEN and short AVL"
+  ],
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-native-20261023-01/init-scalar-avl0": "db214cec6826c8ab40c1f6ae44f3330075452a0b3d681058bae8f69c2e1a7705",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-native-20261023-01/init-vector-avl0": "71f89eb83b9866eb119cc080b08765baee80b9478326683a3360beee162907dc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-native-20261023-01/init-vector-avl7": "0455235ced3546a1479a6f4b11cd2de2504d50030f66a25b5d05118fe150da3e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-native-20261023-01/manifest.json": "d8a5e0549d57ffc961635db0d94312e752a4e0630aadf5df5a0428868c2800de",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-native-20261023-01/status.json": "4a3b277975fc4b143db24281c7fc8f5855e6763df6e516c57965eafd28bc5d87",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-native-20261023-01/vlen1024-scalar-avl0.log": "d1a2e42653c17c5a87e6c6b81c8d719d050669ab94c23ab602686c87674c7084",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-native-20261023-01/vlen1024-vector-avl0.log": "d6d59c552e622f4a625fb617145ff9dc6f6256d3a7bb643bebf5b541feccc0e6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-native-20261023-01/vlen1024-vector-avl7.log": "0ec51955e82441b98baab6bea971bd14ce68858b03b5283aa74ad2054c565df4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-native-20261023-01/vlen128-vector-avl0.log": "48fcf678fbc92d637a0b93c535457c2619ee525809755d0c3770a8f616b0fc39"
+  },
+  "invalid_checks": 32,
+  "layout_checks": 43008,
+  "limitations": [
+    "No RTL timing or whole-model performance claim",
+    "No floating-point quantization is performed by these packers"
+  ],
+  "schema_version": 1,
+  "scope": "Public runtime packers; Linux QEMU functional evidence only",
+  "state": "PASS",
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-native-20261023-01"
+}
