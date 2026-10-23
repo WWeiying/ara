@@ -66,19 +66,29 @@ holding its response. Waiting for global idle while artificially retaining that
 VID creates a self-deadlock.
 
 Prefer extending the sequencer's existing WAIT/latched-ack path rather than
-introducing a second response buffer in the dispatcher. At REFILL allocation,
-capture the older live-VID set. While the fill is outstanding, clear entries
-only on full PE completion. Do not allocate younger work before returning the
-blocking response. Response becomes eligible only when both the existing
-acknowledgement/lane-acceptance/exception-drain conditions and the older-set
-completion condition hold. A terminal arriving first must remain latched;
-an older completion arriving first must not be forgotten.
+introducing a second response buffer in the dispatcher. The present WAIT
+branch holds `ara_req_ready_o=0`, retains `pe_req_o`, and does not allocate a
+younger VID. Under those invariants a separate older-VID snapshot is unnecessary:
+all live VIDs other than the stable current REFILL ID are older instructions.
+Use the registered all-PE running vector, excluding ONLY that ID, to delay the
+terminal response. This is conservative by one completion-observation cycle
+and avoids a new completion-to-response combinational path. The REFILL's own
+completion must still satisfy its existing VLSU conditions.
 
-This is a design choice pending RTL implementation and tests, not a statement
-that the present WAIT path already provides these guarantees. Check VID reuse,
-same-cycle completion/allocation, input registers and accepted-but-not-issued
-requests explicitly before deciding whether the snapshot needs an extra pending
-entry. Never infer request age from the numerical VID value.
+Assert no younger allocation throughout WAIT, stable current ID/op, and no
+response while another VID remains live. If later work permits younger
+allocation, this simplification becomes invalid and must be replaced by an
+explicit age/snapshot contract. A terminal arriving first remains in the
+existing acknowledgement/exception registers; older arithmetic finishing first
+is represented by the cleared all-PE running bits. Do not use lane 0 completion
+or the numerical ordering of VIDs as a substitute.
+
+This extension is pending implementation and tests. Admission must separately
+check the dispatcher register's pending older instruction: its contents may
+not yet have a running VID. Allocation is ordered, so after REFILL has entered
+WAIT, that older request must already have been allocated or completed. Test
+same-cycle completion/allocation and VID reuse rather than assuming this from
+the high-level software sequence.
 
 After a fault, report the original cause/tval once, with no younger execution
 and no outstanding AXI response left behind. Preserve the existing AKV context

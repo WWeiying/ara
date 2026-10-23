@@ -17,8 +17,9 @@ For each 256-element block and each of four input rows:
    comparison is strict; equal positive/negative maxima retain input order.
 2. Compute `iscale = -127 / signed_max` and `d = 1 / iscale`. All-zero blocks
    use zero scales. Preserve the actual M4 reference's zero behavior.
-3. Multiply each source by its row scale, then round using the reference's
-   binary32 addition of 12582912 and extraction of the fraction bits.
+3. Evaluate source times row scale plus 12582912, then extract fraction bits.
+   The pinned production compiler contracts the multiply and addition into
+   `fmadd.s`: the executable reference therefore rounds only once here.
 4. Write bytes with `qs[element * 4 + row]` ordering.
 5. Sum each consecutive group of 16 signed bytes and write
    `bsums[group * 4 + row]`. These sums are consumed by asymmetric profiles;
@@ -32,9 +33,10 @@ by itself establish a model correctness bug in that separate implementation.
 ## Candidate
 
 `verification/qbs/ggml_q8k_m4_prepare_candidate.h` preserves scalar scale and
-maximum selection, then uses RVV multiply, bias-add, bit extraction,
-nonsaturating integer narrowing, strided output stores and widening integer
-reductions. A compiler barrier prevents multiply/add contraction. Unlike the
+maximum selection, then uses explicit RVV FMA with the bias constant, bit
+extraction, nonsaturating integer narrowing, strided output stores and widening
+integer reductions. Production disassembly, not source spelling alone, fixes
+the contraction contract. Unlike the
 Q8_0 roundf candidate, it does not clear conversion flags: no FP-to-integer
 conversion is introduced, and the reference's bias-add can itself set NX.
 
@@ -60,7 +62,11 @@ non-aliasing and four complete rows remain the production preconditions.
   signed maxima in both orders, half-integer boundaries, zeros, extreme
   scales, rejected inputs and the complete rounding/sticky-flag matrix.
 - Execute VLEN128 and VLEN1024, caps 1/7/16; compare FCSR and VCSR. A separately
-  compiled helper gate does not substitute for production-TU checks.
+   compiled helper gate does not substitute for production-TU checks. Include
+   signed maximum bits `0x3f800001` and source bits `0xbda952a7`: the production
+   FMA quantizes to 11 whereas separated multiply/add quantizes to 10. Reject
+   a changed production contraction policy instead of silently assuming both
+   forms have identical bytes or floating-point flags.
 - After numerical acceptance, measure preparation and full projection with
   the same RTL, real input, layout and output oracle. Include preflight cost.
 - Only then integrate a shared helper behind opt-in selection in GGML and

@@ -1,7 +1,8 @@
 #pragma once
 
 // Isolated candidate. Not selected by production GGML.
-// Preserve the actual M4 generic's bias-add rounding, not q8_0's roundf.
+// Match the pinned production M4 generic's contracted bias-add rounding,
+// not q8_0's roundf. Revalidate contraction when the production compiler changes.
 #if !defined(__riscv_vector) || defined(__FAST_MATH__) || \
     (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__)
 #error "Requires RVV and strict floating-point compilation"
@@ -69,11 +70,11 @@ inline bool quantize(const float * GGML_RESTRICT x, void * GGML_RESTRICT vy, int
                     const size_t remaining = 16 - offset;
                     const size_t vl = __riscv_vsetvl_e32m1(remaining < MaxAVL ? remaining : MaxAVL);
                     const size_t element = group * 16 + offset;
-                    auto product = __riscv_vle32_v_f32m1(x + row*k + b*QK_K + element, vl);
-                    product = __riscv_vfmul_vf_f32m1(product, scales[row], vl);
-                    // Prevent contraction of mul and bias-add into FMA.
-                    asm volatile("" : "+vr"(product) : : "memory");
-                    const auto biased = __riscv_vfadd_vf_f32m1(product, 12582912.0f, vl);
+                    const auto input = __riscv_vle32_v_f32m1(x + row*k + b*QK_K + element, vl);
+                    const auto bias = __riscv_vfmv_v_f_f32m1(12582912.0f, vl);
+                    // The actual linked generic emits fmadd.s here. Explicit
+                    // FMA preserves its single rounding and exception flags.
+                    const auto biased = __riscv_vfmacc_vf_f32m1(bias, scales[row], input, vl);
                     auto bits = __riscv_vreinterpret_v_f32m1_i32m1(biased);
                     bits = __riscv_vand_vx_i32m1(bits, 0x007fffff, vl);
                     bits = __riscv_vsub_vx_i32m1(bits, 0x00400000, vl);

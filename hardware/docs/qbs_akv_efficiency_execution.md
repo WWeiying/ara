@@ -110,6 +110,11 @@ records are retained: the wrapper incorrectly expected `PASS` instead of the
 child's `passed`. The successor `audit_runtime_pack_twins.py` accepts only
 that exact failure, verifies pins and independently checks both raw results;
 its receipt is `verification/qbs/results/runtime-pack-projection-twins-20261023.json`.
+The successor `audit_runtime_pack_twins_v2.py` additionally binds the child
+simulator files to the parent's pinned image and compares the saved result hash
+and parsed projection with the independent raw-log audit. Its mutation tests
+pass and `runtime-pack-projection-twins-v2-20261023.json` confirms the same
+226244/211906 cycles. The earlier receipt is retained, not overwritten.
 
 The canonical fused GGML Q8_0 M4 helper is integrated behind an explicit
 opt-in, still disabled by default. Strict offline audit accepts 6840 native
