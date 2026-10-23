@@ -48,6 +48,8 @@ SHAPES = (
 )
 RUNS = ((0, 0, 1), (1, 0, 1), (0, 1, 1),
         (1, 1, 1), (0, 1, 3), (1, 1, 3))
+# EXEC uses trace_type_name(); CALL/COMMAND use ggml_type_name().
+EXEC_TYPES = {"Q4_K": "q4_K", "Q8_0": "q8_0"}
 COMMAND_FIELDS = (
     "seq graph_epoch activation_seq linked weight_type weight_profile "
     "activation_profile m n k_blocks access context_id context_generation "
@@ -251,7 +253,7 @@ def _check_summaries(run):
     _require(len(run["summaries"]) == len(expected), "Missing or duplicate EXEC summary")
     seen = set()
     for summary in run["summaries"]:
-        kind = summary["type"]
+        kind = EXEC_TYPES.get(summary["type"])
         _require(kind in expected and kind not in seen, "Unexpected or duplicate EXEC type")
         seen.add(kind)
         _require(set(summary) == {"type", *fields}, "EXEC summary fields differ")

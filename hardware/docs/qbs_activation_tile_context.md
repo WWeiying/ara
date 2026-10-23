@@ -348,12 +348,13 @@ is not justified by the low-wait performance result. Checked log SHA256 values:
 Host validation at this checkpoint: seven context/projection checker tests,
 eight SoC-runner tests, five isolation tests, and the earlier
 `make -C verification/qbs check` pass. Long-K partial sums, production GGML
-admission and new-capability Spike integration remain separate gates. The
-new-capability QEMU instruction contract has since passed as described below.
+admission and new-capability Spike integration were separate gates. The
+new-capability QEMU instruction contract and GGML native-QEMU integration have
+since passed as described below; new-capability Spike integration remains open.
 
 This closes the admitted engine/storage/runtime unit gates. Full-N native SoC
-execution with preparation has also completed as recorded below; matching
-QEMU/GGML integration remains a separate gate. Long-K striped residency and
+execution with preparation and matching QEMU/GGML integration have also
+completed as recorded below. Long-K striped residency and
 partial-output lifetime remain separate design work. No FPGA, synthesis or
 physical result is claimed for this stage.
 
@@ -378,6 +379,11 @@ Context saves 102816 logical bytes but increases total time by 209 cycles
 Packing alone takes about 24.3% of DIRECT total time; it uses the shared
 runtime's scalar byte-interleaving helper. This makes packing an independently
 measured preparation target, rather than a reason to enlarge context storage.
+The standalone M4 benchmark separates row quantization and packing; GGML's
+M4 path instead invokes its four-row quantize-and-pack helper. Its wide-M path
+does call the shared runtime packer after row quantization. Therefore the
+24.3% is not a measured GGML M4 packing fraction: both production paths must
+be evaluated before attributing a model-level preparation speedup.
 
 The logical-read field includes 14336 bytes of FP32 quantization input,
 448 descriptor bytes, 852992 weight bytes, and either 106624 or 3808
@@ -393,6 +399,45 @@ The independent image/ELF/oracle re-audit is archived in
 `verification/qbs/results/context-projection-soc-20261023.json`; reproduce it
 using `verification/qbs/audit_projection_soc_pair.py` with a new output path.
 The context worker finished normally, including its final source-manifest gate.
+
+### GGML multirow native-QEMU integration
+
+The independent sidecar `verification/qbs/ggml_tile_context/` builds the actual
+external GGML sources with this worktree's runtime, without changing that
+checkout. It executes 16 shapes, two changed-input epochs at the same allocation,
+and six configurations: 192 checked MUL_MAT graphs. Every output is checked
+against an independent scalar byte decoder and FP64 dot oracle; quantized bytes
+are separately checked. Context-on/off pairs require exact output digests.
+
+| Run | Context | Wide-M allowed | Threads | Graphs | Native commands | Context-eligible graphs |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 0 | 0 | 1 | 32 | 100 | 0 |
+| 1 | 1 | 0 | 1 | 32 | 100 | 26 |
+| 2 | 0 | 1 | 1 | 32 | 84 | 0 |
+| 3 | 1 | 1 | 1 | 32 | 84 | 20 |
+| 4 | 0 | 1 | 3 | 32 | 340 | 0 |
+| 5 | 1 | 1 | 3 | 32 | 340 | 0 |
+
+Each run checks 6216 outputs and 4354752 logical dot elements. No command uses
+software QBS emulation. Width selection, output work, command sequence,
+context FILL/REUSE/RELEASE, capacity fallback, input epochs and summary counts
+are checked against the pinned runtime policy. The three-thread N37 schedule
+partitions output into N4/N1 chunks, so it correctly uses DIRECT and does not
+demonstrate concurrent resident-context reuse. All threads share one guest
+hart; this does not validate migration or OS context save/restore.
+
+The guest completed with exit zero. Initial host rejection was an EXEC trace
+name mismatch (`Q4_K`/`Q8_0`, versus lowercase CALL/COMMAND names). The checker
+now accepts only the two explicit production EXEC spellings; no dispatch,
+lifecycle or numerical condition was relaxed. The original worker record is
+preserved and the existing log re-audited without rerunning the guest. All
+non-checker source/image pins remained unchanged. Evidence is
+`verification/qbs/results/ggml-tile-context-20261023.json`; the corrected
+checker passes 23 host tests, including real EXEC fixtures and mutations.
+
+These results establish functional GGML integration, not a whole-model
+speedup or RTL throughput measurement. The full-projection native result
+above remains the performance decision for the low-wait configuration.
 
 ## Distinct-input DIRECT isolation gate
 

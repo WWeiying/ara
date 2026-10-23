@@ -6,6 +6,23 @@ from collections import Counter
 from check_ggml_tile_context import RUNS, SHAPES, Shape, check_output, expected_dispatch
 
 
+# Exact run-0 EXEC records from worker01; independent of fixture counters.
+PRODUCTION_EXEC = (
+    "GGML_RISCV_QBS_EXEC type=Q4_K gemv_calls=0 gemm_calls=10 "
+    "input_rows=56 output_rows=370 activation_elements=43008 output_elements=2072 "
+    "dot_elements=1591296 split_calls=0 commands_m1=0 commands_m2=0 commands_m3=0 "
+    "commands_m4=28 commands_m5=0 commands_m6=0 commands_m7=0 commands_m8=0 "
+    "native_qbexec=28 emulated_commands=0 command_dot_elements=1591296 "
+    "segmented_commands=0 context_fill=0 context_reuse=0 context_release=0",
+    "GGML_RISCV_QBS_EXEC type=Q8_0 gemv_calls=2 gemm_calls=20 "
+    "input_rows=112 output_rows=814 activation_elements=74688 output_elements=4144 "
+    "dot_elements=2763456 split_calls=0 commands_m1=20 commands_m2=0 commands_m3=4 "
+    "commands_m4=48 commands_m5=0 commands_m6=0 commands_m7=0 commands_m8=0 "
+    "native_qbexec=72 emulated_commands=0 command_dot_elements=2763456 "
+    "segmented_commands=0 context_fill=0 context_reuse=0 context_release=0",
+)
+
+
 def record(label, **fields):
     return label + " " + " ".join(f"{key}={value}" for key, value in fields.items())
 
@@ -82,7 +99,8 @@ def fixture(force_direct_runs=(), reverse_parallel=False):
             fields += [f"commands_m{m}" for m in range(1, 9)]
             fields += ("native_qbexec emulated_commands command_dot_elements segmented_commands "
                        "context_fill context_reuse context_release").split()
-            lines.append(record("GGML_RISCV_QBS_EXEC", type=kind, **{key: counts[key] for key in fields}))
+            summary_type = {"q4_K": "Q4_K", "q8_0": "Q8_0"}[kind]
+            lines.append(record("GGML_RISCV_QBS_EXEC", type=summary_type, **{key: counts[key] for key in fields}))
         lines.append(record("QBS_TILE_RUN_END", run=run, exit=0))
     lines.append("GUEST_TEST_EXIT=0")
     return "\n".join(lines) + "\n"
@@ -257,6 +275,37 @@ class OutputCheckerTests(unittest.TestCase):
         self.reject(self.good.replace("graph_epochs=32", "graph_epochs=31", 1))
         self.reject("\n".join(line for line in self.good.splitlines()
                               if not line.startswith("GGML_RISCV_QBS_EXEC")))
+
+    def test_exact_production_exec_records(self):
+        log = self.good
+        for line in PRODUCTION_EXEC:
+            kind = line.split()[1]
+            log = re.sub(r"^GGML_RISCV_QBS_EXEC " + kind + r" .*?$",
+                         lambda _: line, log, count=1, flags=re.M)
+        result = check_output(log)
+        self.assertEqual(result["runs"][0]["native_commands"], 100)
+        self.assertEqual(result["runs"][0]["command_dot_elements"], 4354752)
+        self.assertEqual(result["runs"][0]["outputs"], 6216)
+        for old, new in (("native_qbexec=28", "native_qbexec=29"),
+                         ("output_elements=2072", "output_elements=2073"),
+                         ("emulated_commands=0", "emulated_commands=1")):
+            with self.subTest(field=old):
+                self.reject(log.replace(PRODUCTION_EXEC[0], PRODUCTION_EXEC[0].replace(old, new), 1))
+
+    def test_exec_type_mapping_is_exact_and_duplicates_rejected(self):
+        for original, alternatives in (
+                ("Q4_K", ("q4_K", "q4_k", "Q4_k", "Q4_0", "Q8_0", "UNKNOWN")),
+                ("Q8_0", ("q8_0", "q8_0x", "Q8_K", "Q4_K"))):
+            for changed in alternatives:
+                with self.subTest(original=original, changed=changed):
+                    self.reject(self.good.replace("GGML_RISCV_QBS_EXEC type=" + original,
+                                                  "GGML_RISCV_QBS_EXEC type=" + changed, 1))
+
+    def test_exec_normalization_does_not_apply_to_commands_or_calls(self):
+        self.reject(mutate_line(self.good, "GGML_RISCV_QBS_CALL",
+                                lambda line: line.replace("type=q8_0", "type=Q8_0")))
+        self.reject(mutate_line(self.good, "GGML_RISCV_QBS_COMMAND",
+                                lambda line: line.replace("weight_type=q8_0", "weight_type=Q8_0")))
 
     def test_failures_anywhere_are_rejected(self):
         for marker in ("QBS_TILE_GRAPH_FAIL reason=numerical_mismatch", "Fatal: failed",
