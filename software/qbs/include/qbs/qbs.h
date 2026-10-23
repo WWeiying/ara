@@ -137,6 +137,10 @@ typedef struct {
   size_t workspace_bytes;
   /* Software storage metadata only; zero means the original global R4 layout. */
   uint16_t weight_segment_k_blocks;
+  /* Segmented views keep the complete storage base; output coordinates remain
+     local. Zero storage rows denotes the original whole-matrix contract. */
+  uint32_t weight_storage_rows;
+  uint32_t weight_row_start;
 } qbs_plan_t;
 
 typedef struct {
@@ -263,6 +267,14 @@ qbs_status_t qbs_plan_create(const qbs_device_t *device,
 qbs_status_t qbs_plan_create_segmented_r4(
     const qbs_device_t *device, const qbs_problem_t *problem,
     unsigned segment_k_blocks, qbs_plan_t *plan);
+/* A contiguous output-row view of a complete segment-major weight matrix.
+   row_start must be R4-aligned; problem->n rows must fit storage_rows.
+   qbs_execute receives the FULL packed weight base/capacity, but local
+   activations, output and workspace. Segment size belongs to stored data. */
+qbs_status_t qbs_plan_create_segmented_r4_view(
+    const qbs_device_t *device, const qbs_problem_t *problem,
+    unsigned segment_k_blocks, uint32_t storage_rows, uint32_t row_start,
+    qbs_plan_t *plan);
 void qbs_plan_cursor_reset(qbs_plan_cursor_t *cursor);
 qbs_status_t qbs_plan_next(const qbs_plan_t *plan,
                            qbs_plan_cursor_t *cursor,

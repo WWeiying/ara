@@ -9,8 +9,8 @@ arithmetic port, but scale MUL and FMA still share it. Enlarging the entry
 table cannot remove that issue-throughput bound.
 
 The candidate adds a narrow multiplier, not another dot array or general FMA.
-It is under verification; no native application, model-level performance or
-physical result is established by the code alone. The frozen full-SoC image
+It has passed unit, paired-command and focused native SoC checks below;
+model-level performance and physical results are not established. The frozen full-SoC image
 used for segmented-layout testing predates this candidate and cannot validate
 it. Main and FPGA RTL are unchanged.
 
@@ -124,12 +124,48 @@ operations. This removes port contention without changing dot throughput or
 the accumulation order. M1 barely changes, so the multirow gain must not be
 generalized to all Decode work.
 
-Rebuilt full-SoC acceptance is still required. The new application
+The rebuilt full-SoC acceptance completed successfully. The new application
 `llama_qwen25_q8_0_prefill_tile_qbs` selects M4/N32 with full K896 from the
 real Prefill capture and uses the existing production benchmark/runtime
 implementation. Its native timing includes activation quantization and command
 execution, unlike the command-only measurements above. Main/FPGA acceptance
 and whole-model speedup remain unclaimed.
+
+## Native SoC acceptance
+
+Both owning services exited successfully. The current-RTL campaign
+`verification/out/qbs-half-scale-soc-20261023-01/` passed all four gates:
+QBS/AKV handoff, ordinary RVV FMA, real Q8_0 Decode, and real Q8_0 Prefill.
+The source-manifest final check reports 458 files unchanged. Its compiled image
+SHA256 is `381b3b62f969c755597e4562938021226ffc3dc92b6bca4fa698a0ed8a1a007c`.
+The launch revision predates the half-scale commit because the build included
+then-uncommitted sources; the source manifest, not that revision alone, defines
+the tested RTL.
+
+The baseline replay in `verification/out/qbs-half-scale-baseline-soc-20261023-01/`
+uses the accepted split-issue image and passes its 457-file final manifest check.
+Both runs use the identical Prefill ELF SHA256
+`eb73f7586d187ee7d6428dce168d4b4ba810535e8e09f03dae05f787ae568482`.
+
+| Native M4/N32/K896 phase | Split issue | With half scale | Fewer cycles |
+|---|---:|---:|---:|
+| Activation quantization | 21228 | 21228 | 0% |
+| Matrix execution including command setup/stores | 7516 | 6315 | 15.98% |
+| Complete timed region | 28744 | 27543 | 4.18% |
+
+These are `QBS_REAL_BENCH` application timers, not the slightly different
+testbench/performance-counter windows. Both runs check all 128 outputs with zero
+mismatches, checksum `0xeaeda76d5b589928`, and identical logical reads of 48,624
+bytes. Their protocol checkers each see 1,241 matching requests/responses,
+1,013 backend allocations/completions, 457 completed reads, 117 matched writes,
+no exceptions/errors and no pending transactions.
+
+This small N slice deliberately bounds simulation time. Its quantization cost
+is not amortized across all output channels of a full projection. The 21.90%
+command-only reduction and the 4.18% application-region reduction therefore
+answer different questions; neither is a whole-model speedup. The evidence
+supports keeping this arithmetic optimization and prioritizing activation
+preparation/reuse and complete-operator scheduling next.
 
 The native acceptance worker is `verification/qbs/run_half_scale_soc.py`.
 It separates `--tools-root` from `--elf-dir`, freezes binary/script/image

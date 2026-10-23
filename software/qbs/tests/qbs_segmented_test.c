@@ -50,8 +50,11 @@ static qbs_status_t inspect_command(void *opaque,
       for (unsigned lane = 0; lane < 4; ++lane) {
         const unsigned col = group + lane;
         for (unsigned b = 0; b < wb; ++b) {
-          const unsigned char expected = col < n
-              ? pattern(o->column + col, o->block + k, b) : 0;
+          const unsigned global_col = p->weight_row_start + o->column + col;
+          const unsigned storage_rows = p->weight_storage_rows
+              ? p->weight_storage_rows : p->problem.n;
+          const unsigned char expected = global_col < storage_rows
+              ? pattern(global_col, o->block + k, b) : 0;
           if (*w++ != expected) return QBS_STATUS_EXECUTION;
         }
       }
@@ -94,8 +97,9 @@ static qbs_status_t inspect_command(void *opaque,
   return QBS_STATUS_OK;
 }
 
-static int run_shape(unsigned profile, unsigned m, unsigned n, unsigned k,
-                     unsigned segment, unsigned storage) {
+static int run_view(unsigned profile, unsigned m, unsigned n, unsigned k,
+                    unsigned segment, unsigned storage,
+                    unsigned storage_rows, unsigned row_start, int view) {
   qbs_device_t device;
   CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
   const unsigned act = qbs_default_activation_profile(profile);
@@ -108,10 +112,15 @@ static int run_shape(unsigned profile, unsigned m, unsigned n, unsigned k,
       .k_elements = k * qbs_weight_block_elements(profile),
   };
   qbs_plan_t plan;
-  CHECK(qbs_plan_create_segmented_r4(&device, &problem, segment, &plan) == QBS_STATUS_OK);
+  if (view)
+    CHECK(qbs_plan_create_segmented_r4_view(&device, &problem, segment,
+        storage_rows, row_start, &plan) == QBS_STATUS_OK);
+  else
+    CHECK(qbs_plan_create_segmented_r4(&device, &problem, segment, &plan) == QBS_STATUS_OK);
+  CHECK(plan.weight_storage_rows == storage_rows && plan.weight_row_start == row_start);
   CHECK(plan.command_n == 32 && plan.command_k_blocks == segment);
-  const size_t source_bytes = (size_t)n * k * wb;
-  const size_t packed_bytes = qbs_weight_storage_bytes(profile, problem.weight_layout, n, k);
+  const size_t source_bytes = (size_t)storage_rows * k * wb;
+  const size_t packed_bytes = qbs_weight_storage_bytes(profile, problem.weight_layout, storage_rows, k);
   const size_t act_bytes = (size_t)m * k * ab;
   unsigned char *source = malloc(source_bytes);
   unsigned char *weights = malloc(packed_bytes);
@@ -121,7 +130,7 @@ static int run_shape(unsigned profile, unsigned m, unsigned n, unsigned k,
   const size_t stride = n + 3;
   float *output = malloc(m * stride * sizeof(float));
   CHECK(source && weights && activation && packed_act && workspace && output);
-  for (unsigned row = 0; row < n; ++row)
+  for (unsigned row = 0; row < storage_rows; ++row)
     for (unsigned block = 0; block < k; ++block)
       for (unsigned b = 0; b < wb; ++b)
         source[((size_t)row * k + block) * wb + b] = pattern(row, block, b);
@@ -135,12 +144,17 @@ static int run_shape(unsigned profile, unsigned m, unsigned n, unsigned k,
       CHECK(qbs_pack_activation_m4(act, activation + (size_t)row * k * ab,
           (size_t)4 * k * ab, k, packed_act + (size_t)row * k * ab,
           (size_t)4 * k * ab) == QBS_STATUS_OK);
-  CHECK(qbs_repack_weight_r4_segmented(profile, source, source_bytes, n, k,
+  CHECK(qbs_repack_weight_r4_segmented(profile, source, source_bytes, storage_rows, k,
       segment, weights, packed_bytes) == QBS_STATUS_OK);
-  CHECK(qbs_repack_weight_r4_segmented(profile, source, source_bytes - 1, n, k,
+  CHECK(qbs_repack_weight_r4_segmented(profile, source, source_bytes - 1, storage_rows, k,
       segment, weights, packed_bytes) == QBS_STATUS_BUFFER_TOO_SMALL);
   for (size_t i = 0; i < m * stride; ++i) output[i] = -123;
   observer_t observed = {.plan = &plan};
+  CHECK(qbs_execute(&plan, weights, packed_bytes - 1, packed_act, act_bytes,
+      output, m * stride, stride, workspace, plan.workspace_bytes,
+      inspect_command, &observed) == QBS_STATUS_BUFFER_TOO_SMALL);
+  CHECK(observed.calls == 0);
+  for (size_t i = 0; i < m * stride; ++i) CHECK(output[i] == -123);
   CHECK(qbs_execute(&plan, weights, packed_bytes, packed_act, act_bytes,
       output, m * stride, stride, workspace, plan.workspace_bytes,
       inspect_command, &observed) == QBS_STATUS_OK);
@@ -155,7 +169,7 @@ static int run_shape(unsigned profile, unsigned m, unsigned n, unsigned k,
       CHECK(output[row * stride + col] == expected);
     }
   }
-  if (profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT && m == 4 && n == 32 && k == 280 &&
+  if (!view && profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT && m == 4 && n == 32 && k == 280 &&
       storage == QBS_ACTIVATION_STORAGE_ROW_MAJOR) {
     printf("Q8_0 M4/N32/K8960: segmented commands=%u activation_bytes=%zu\n",
            observed.calls, observed.activation_bytes);
@@ -179,6 +193,11 @@ static int run_shape(unsigned profile, unsigned m, unsigned n, unsigned k,
   return 0;
 }
 
+static int run_shape(unsigned profile, unsigned m, unsigned n, unsigned k,
+                     unsigned segment, unsigned storage) {
+  return run_view(profile, m, n, k, segment, storage, n, 0, 0);
+}
+
 static int invalid_contracts(void) {
   qbs_device_t device;
   CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
@@ -188,6 +207,15 @@ static int invalid_contracts(void) {
       .activation_storage = QBS_ACTIVATION_STORAGE_ROW_MAJOR,
       .m = 1, .n = 33, .k_elements = 8960};
   qbs_plan_t plan;
+  CHECK(qbs_plan_create_segmented_r4_view(NULL, &p, 256, 37, 4, &plan) == QBS_STATUS_BAD_ARGUMENT);
+  CHECK(qbs_plan_create_segmented_r4_view(&device, NULL, 256, 37, 4, &plan) == QBS_STATUS_BAD_ARGUMENT);
+  CHECK(qbs_plan_create_segmented_r4_view(&device, &p, 256, 37, 4, NULL) == QBS_STATUS_BAD_ARGUMENT);
+  CHECK(qbs_plan_create_segmented_r4_view(&device, &p, 256, 0, 0, &plan) == QBS_STATUS_SHAPE);
+  CHECK(qbs_plan_create_segmented_r4_view(&device, &p, 256, 37, 2, &plan) == QBS_STATUS_SHAPE);
+  CHECK(qbs_plan_create_segmented_r4_view(&device, &p, 256, 37, 8, &plan) == QBS_STATUS_SHAPE);
+  CHECK(qbs_plan_create_segmented_r4_view(&device, &p, 256, 37, 40, &plan) == QBS_STATUS_SHAPE);
+  CHECK(qbs_plan_create_segmented_r4_view(&device, &p, 256, UINT32_MAX,
+      UINT32_MAX - 3, &plan) == QBS_STATUS_SHAPE);
   CHECK(qbs_plan_create_segmented_r4(&device, &p, 0, &plan) != QBS_STATUS_OK);
   CHECK(qbs_plan_create_segmented_r4(&device, &p, 257, &plan) != QBS_STATUS_OK);
   device.capabilities.max_k_blocks = 16;
@@ -211,6 +239,7 @@ int main(void) {
   const unsigned blocks[] = {1, 3, 255, 256, 257, 280, 513};
   const unsigned inputs[] = {1, 3, 4, 5};
   unsigned count = 0;
+  unsigned views = 0;
   CHECK(invalid_contracts() == 0);
   for (unsigned p = 0; p < sizeof(profiles) / sizeof(profiles[0]); ++p) {
     for (unsigned n = 0; n < sizeof(rows) / sizeof(rows[0]); ++n)
@@ -223,7 +252,25 @@ int main(void) {
     CHECK(run_shape(profiles[p], 5, 33, 17, 3, QBS_ACTIVATION_STORAGE_ROW_MAJOR) == 0);
     CHECK(run_shape(profiles[p], 5, 33, 257, 256, QBS_ACTIVATION_STORAGE_M4_GROUPED) == 0);
     count += 2;
+    const unsigned starts[] = {0, 4, 8, 32, 36};
+    const unsigned lengths[] = {4, 4, 27, 5, 1};
+    const unsigned view_blocks[] = {1, 17, 257, 280, 513};
+    for (unsigned v = 0; v < sizeof(starts) / sizeof(starts[0]); ++v)
+      for (unsigned k = 0; k < sizeof(view_blocks) / sizeof(view_blocks[0]); ++k)
+        for (unsigned m = 0; m < sizeof(inputs) / sizeof(inputs[0]); ++m)
+          for (unsigned grouped = 0; grouped < 2; ++grouped) {
+            CHECK(run_view(profiles[p], inputs[m], lengths[v], view_blocks[k],
+                k == 1 ? 3 : 256, grouped ? QBS_ACTIVATION_STORAGE_M4_GROUPED
+                                         : QBS_ACTIVATION_STORAGE_ROW_MAJOR,
+                37, starts[v], 1) == 0);
+            ++views;
+          }
+    /* A row view spanning two hardware N tiles, with a nonzero R4 offset. */
+    CHECK(run_view(profiles[p], 5, 65, 257, 256,
+        QBS_ACTIVATION_STORAGE_M4_GROUPED, 73, 4, 1) == 0);
+    ++views;
   }
   printf("QBS segmented R4 byte addressing and execution: %u shapes PASS\n", count);
+  printf("QBS segmented R4 full-storage views: %u shapes PASS\n", views);
   return 0;
 }

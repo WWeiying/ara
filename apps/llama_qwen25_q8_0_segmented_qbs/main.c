@@ -72,6 +72,37 @@ int main(void) {
     printf("QBS_SEGMENTED PASS segment=%u m=%u n=%u k=%u old_cycles=%lu new_cycles=%lu flags=%u exact_outputs=%u forced_split=1\n",
            segment, BENCH_INPUTS, BENCH_ROWS, BENCH_K,
            (unsigned long)cycles[0], (unsigned long)cycles[1], status_flags[0], BENCH_OUTPUTS);
+    // Match GGML's R4-aligned row slicing without advancing the packed base.
+    // The last view deliberately ends inside a group containing other rows.
+    const unsigned starts[] = {0, 4, 8, 32, 4};
+    const unsigned lengths[] = {4, 4, 24, 1, 5};
+    unsigned exact_outputs = 0;
+    asm volatile("csrw fflags, zero" ::: "memory");
+    for (unsigned v = 0; v < sizeof(starts) / sizeof(starts[0]); ++v) {
+      qbs_problem_t local = problem;
+      local.n = lengths[v];
+      qbs_plan_t view;
+      if (qbs_plan_create_segmented_r4_view(&limited, &local, segment,
+          BENCH_ROWS, starts[v], &view) != QBS_STATUS_OK ||
+          view.workspace_bytes > sizeof(work)) return 8;
+      for (unsigned i = 0; i < BENCH_OUTPUTS; ++i) benchmark_output[i] = -123.0f;
+      if (qbs_execute(&view, segment_weights, sizeof(segment_weights),
+          quantized_activation, sizeof(quantized_activation),
+          benchmark_output + starts[v], BENCH_OUTPUTS - starts[v], BENCH_ROWS,
+          work, sizeof(work), qbs_native_execute_command, NULL) != QBS_STATUS_OK)
+        return 9;
+      for (unsigned row = 0; row < BENCH_INPUTS; ++row)
+        for (unsigned col = 0; col < BENCH_ROWS; ++col) {
+          const unsigned index = row * BENCH_ROWS + col;
+          if (col >= starts[v] && col < starts[v] + lengths[v]) {
+            if (memcmp(&benchmark_output[index], &original[index], sizeof(float))) return 10;
+            ++exact_outputs;
+          } else if (benchmark_output[index] != -123.0f) return 11;
+        }
+    }
+    if (flags() != status_flags[1]) return 12;
+    printf("QBS_SEGMENTED_VIEW PASS segment=%u views=5 exact_outputs=%u guards=PASS flags=%u\n",
+           segment, exact_outputs, flags());
   }
   return 0;
 }

@@ -25,6 +25,7 @@ CASES = (
     'rv64uv-ara-vfmacc',
     'llama_qwen25_q8_0_decode_attn_q_qbs',
     'llama_qwen25_q8_0_prefill_tile_qbs',
+    'llama_qwen25_q8_0_segmented_qbs',
 )
 
 

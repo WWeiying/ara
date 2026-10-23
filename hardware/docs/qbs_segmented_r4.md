@@ -28,10 +28,12 @@ Within that command, hardware still sees an ordinary contiguous R4 tensor.
 The storage byte count is unchanged. Formats, descriptor version, instruction
 encoding, arithmetic pipelines and hardware capacity are unchanged.
 
-Two explicit APIs opt into this representation:
+Explicit APIs opt into this representation:
 
 - `qbs_repack_weight_r4_segmented`: pack row-major weights once.
 - `qbs_plan_create_segmented_r4`: plan commands for the same fixed segment size.
+- `qbs_plan_create_segmented_r4_view`: execute an R4-aligned output-row view
+  while keeping the complete matrix's packed base and segment stride.
 
 The segment size is software storage metadata, not a descriptor field. It must
 fit the queried device and cannot be silently reduced without repacking. The
@@ -111,3 +113,55 @@ paired timer; only the labelled `QBS_SEGMENTED` cycle fields above are timing
 evidence. These forced-split improvements establish a working implementation,
 not a production speedup estimate. Naturally long-K and GGML integration remain
 the next acceptance gates.
+
+## Thread/expert row views
+
+Ordinary GGML row slicing advances the weight pointer by `start * row_bytes`.
+That does not work for segment-major weights: each K segment contains all
+storage rows. The view constructor therefore receives `storage_rows` and an
+R4-aligned `row_start`, while `problem.n` describes only the local output count.
+The executor receives the complete packed base and capacity. Activation,
+output, stride and workspace coordinates remain local to the call.
+
+For padded storage rows `P`, K-block offset `s`, current segment length `L`
+and local output offset `r`, the descriptor's weight-block offset is:
+
+```text
+s * P + (row_start + r) * L
+```
+
+The range check uses subtraction to reject overflowing/end-outside-storage
+views. Construction and execution validate the full storage footprint, not
+just the local chunk. An interior view's inactive R4 lanes may contain valid
+neighboring rows; only the end of the complete storage has zero padding.
+Hardware's existing logical N must prevent those lanes from changing outputs.
+The whole-matrix constructor delegates to this view with start zero. Ordinary
+global-R4 plans retain their previous behavior. Callers must rebuild against
+the enlarged software `qbs_plan_t`; hardware descriptor ABI is unchanged.
+
+`make -C software/qbs check` passes the existing 1,530 whole-matrix tests plus
+1,809 row-view shapes, covering all nine profiles, nonzero starts, adjacent and
+interior views, final padding, multi-N-command views, K tails, row-major/M4
+activations and invalid ranges. Every case rejects a full-storage-minus-one-byte
+buffer before any executor call or output write. These are host addressing
+and execution-contract tests, not RTL arithmetic validation.
+
+The native real-capture application now additionally compares five views for
+each of its two segment lengths against the whole-matrix bit patterns. It
+checks 114 selected outputs per segment, all outside-view output guards, and
+aggregate `fflags`. This updated native test is pending execution; the earlier
+SoC result above predates the view API.
+
+The new test is owned by user service
+`qbs-segmented-view-soc-20261023-01.service`, with evidence in
+`verification/out/qbs-segmented-view-soc-20261023-01/`. It reuses the checked
+half-scale SoC image and freezes ELF SHA256
+`563bfe60b1f9b619e5acc6918af563bbc0aad013ef4c1678c3861cf25587c024`.
+An independent source review found no blocking issue in the view addressing,
+range checks or local output coordinates. The native result remains pending.
+
+GGML integration must bind packing and dispatch to the same immutable layout
+trait, preserve the complete base for GEMV/GEMM/tail/expert dispatch, and use
+global row coordinates when packing experts together. A fallback after packing
+must understand this layout; ordinary RVV kernels cannot consume these bytes
+as if they were their original packed format. Integration is not yet enabled.
