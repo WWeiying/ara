@@ -185,8 +185,12 @@ introduce a different scale selection, FMA rounding or bsums algorithm.
 in the original native harness. The same production generic archive, 50-case
 matrix, expected paths, byte comparisons, CSR checks and parser are reused.
 The original harness and sealed sources are not edited. The successor native
-worker is `qbs-q8k-vla-native-20261023-01.service`; its full numerical result
-is separate from the already passed preflight-only result.
+worker `qbs-q8k-vla-native-20261023-01.service` completed PASS: 12000 full
+quantizer comparisons at VLEN128/1024. Independent raw-log checks also confirm
+that all per-case output digests match the original candidate. The receipt is
+`verification/qbs/results/q8k-vla-native-20261023.json`. This closes the
+isolated full-quantizer numerical gate, not its RTL performance or actual
+production-TU integration gate.
 
 For subsequent RTL measurement, `build_q8k_vla_soc.py` first creates a fresh
 private baseline build using the unchanged preparation or projection builder.
