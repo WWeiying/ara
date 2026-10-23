@@ -19,7 +19,7 @@ mechanism in a separate commit; integrate only reviewed, tested changes.
 |---|---|---|---|
 | 1 | Short-block QBS conversion/scale/accumulation throughput | Current-image cycle probes; real Q8_0 and neighboring format inputs; bit/fflags checks; paired cycles and traffic; multi-profile fault regression | Command-level and focused SoC integration passed; no model/PPA claim |
 | 2 | QBS activation overlap and Prefill scheduling | Existing M1/M4 overlap plus M5..8 comparison; include activation preparation and traffic; shared runtime selection if software changes | Direct M1..4 overlap validated; remaining scope open |
-| 3 | AKV fill/replay/RVV compute overlap | Lifecycle and single-port conflict analysis; real Attention tile; matched QK/PV/numerical checks; shape and fault regression | Pending |
+| 3 | AKV fill/replay/RVV compute overlap | Lifecycle and single-port conflict analysis; real Attention tile; matched QK/PV/numerical checks; shape and fault regression | Restricted SoC REFILL/FMA gate passed; shared runtime Attention pair pending |
 | Parallel resource work | Shared QBS/AKV reader; unified legacy/v2 AKV storage | Ownership/drain invariants; unchanged outstanding capacity and context lifetime; matched latency/fault tests | Pending |
 | Subsequent coverage work | Quantized KV | One common llama.cpp format first; explicit decode/view contract; native RTL and model numerical validation; F16 fallback preserved | Pending |
 

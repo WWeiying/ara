@@ -232,6 +232,41 @@ The new schedule remains disabled by default until real Attention output/flags,
 tile counts, numerical fallback, whole-interval latency and recovery are checked.
 It is not yet enabled in the production GGML backend or in Linux workloads.
 
+### Integrated probe and real Attention gate
+
+The integrated SoC probe has completed PASS. Independent raw-log and
+architectural-order/uop joins are recorded in
+`verification/akv/results/refill-integration-20261023.json`. The software ELF
+is identical to the accepted serialized baseline. Immediate REFILL reduces
+the joint arithmetic/fill window from 756 to 707 cycles (6.48%). Its first
+accepted payload AR is cycle 121457 and older arithmetic finishes at 121498:
+41 cycles of actual read/arithmetic overlap, not just early presentation.
+REFILL completes at 121721, after older arithmetic. The serial control remains
+756 cycles and has zero accepted-read overlap. All 54 commands, replay data,
+sticky flags, canaries and protocol checks pass. This is a small controlled
+window, not a complete Attention performance result.
+
+The next gate uses `build_refill_attention_soc.py` and
+`run_refill_attention_soc.py` in `verification/akv/`. It calls the existing
+captured-operator adapter and shared AKV runtime rather than a private PV
+implementation. The real llama.cpp capture has D128, twelve Query heads, two
+KV heads, one Decode query and an active causal prefix of 128 tokens within
+the original 256-entry physical cache. Neither inputs nor golden are trimmed
+or regenerated. Two isolated GNU ELFs differ in the compile-time schedule
+switch; both use the same accepted candidate VCS image and strict FP options.
+
+The interval includes Query conversion, plan creation, QK, online softmax, PV,
+tile management and final output stores. All 1536 outputs must meet the
+unchanged capture tolerance, and paired output hashes/FCSR/VCSR must match.
+Expected hardware work is 774 successful commands: two FULL, two REFILL, two
+RELEASE, 512 K-column loads and 256 V-row loads. Expected Q/KV read bytes are
+3072/131072; total payload including descriptors is 134272 bytes over 526
+logical ranges. Per-command counters must agree with the summary. Independent
+UVM boundary checks and image/ELF/source hashes are required. Each simulation
+has a three-hour bound. The first build directory preserves a rejected static
+check: both assembly entries share a section, so symbol presence was not a
+valid proxy for a call; the accepted builder checks linked call sites instead.
+
 ## Acceptance matrix
 
 | Gate | Required evidence |
