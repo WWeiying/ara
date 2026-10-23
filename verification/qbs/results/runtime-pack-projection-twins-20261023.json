@@ -1,0 +1,175 @@
+{
+  "comparison": {
+    "deployment_approved": false,
+    "performance": "improved",
+    "phases": {
+      "matmul_cycles": {
+        "after": 168451,
+        "before": 168462
+      },
+      "pack_cycles": {
+        "after": 17388,
+        "before": 31720
+      },
+      "quantize_cycles": {
+        "after": 26067,
+        "before": 26062
+      },
+      "timed_cycles": {
+        "after": 211906,
+        "before": 226244
+      }
+    },
+    "state": "PASS",
+    "total_cycle_change_percent": -6.337405632856562
+  },
+  "deployment_approved": false,
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-projection-scalar-20261023-01/manifest.json": "9b7b196c0c61a4f1653d7b7be1cab38861af7d47f37e89f10e4415db67529cc1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-projection-scalar-20261023-01/scalar/llama_qwen25_q8_0_prefill_m4_direct_qbs/uvm_result.json": "6615eedc836c71d167ad46be0019d762f49bfe3e71bd2f42351f0b398f016926",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-projection-scalar-20261023-01/scalar/llama_qwen25_q8_0_prefill_m4_direct_qbs/work/run.vcs.log": "265cf585c2d1dc32ba141d63eac39eb6a55aacbce6af7aa9b7f05250896d6b55",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-projection-scalar-20261023-01/scalar/status.json": "dc0f8051f6eec75b3fdc3d03b3f5507894161503eabaa961e9311c169583fea6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-projection-scalar-20261023-01/status.json": "5c29afac6a7ad5320bf583e25f7ff64e241f067ec2633887a4581fa309f28bed",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-projection-vector-20261023-01/manifest.json": "9b7b196c0c61a4f1653d7b7be1cab38861af7d47f37e89f10e4415db67529cc1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-projection-vector-20261023-01/status.json": "997598322f25a28e262fc12f68bd7d80bc9e2fd07feedd28b060b2aee527cfb2",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-projection-vector-20261023-01/vector/llama_qwen25_q8_0_prefill_m4_direct_qbs/uvm_result.json": "7f97e878cbf685a021621195cb42b8fcaf7650bf7cc7158031bd74cbb8fee724",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-projection-vector-20261023-01/vector/llama_qwen25_q8_0_prefill_m4_direct_qbs/work/run.vcs.log": "c3b62bc6e7f59bec15df3a84f31001d9a9945c579fa53e2eb6ecb60a5268af90",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-projection-vector-20261023-01/vector/status.json": "d089e31f1336edb65831ce097e6a48edbc280c21c1465dfb0a841c2810190a0f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/qbs/audit_runtime_pack_twins.py": "6f62d74394540999c60754d8a975c6fef95eb41357c2d51abc1c3ab30e098cc6"
+  },
+  "recovery": "Parent expected PASS but child records passed; original FAIL records retained",
+  "scalar": {
+    "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-projection-scalar-20261023-01/scalar",
+    "elf_sha256": "bd5e7a0c29fca55343ee537629ae95ae736b467e8bf64fb01ef260e24705c099",
+    "image_pins_sha256": "d8cc082d9acda56b9877b4a13c65d792e86c2a3c412cde6475c73b2bdab2f858",
+    "input_pins_sha256": "e1d47a4a9bfc6434401f5d7230397a68156ef2f0bbced40553d98d7ddd7a611b",
+    "log_sha256": "265cf585c2d1dc32ba141d63eac39eb6a55aacbce6af7aa9b7f05250896d6b55",
+    "original_worker_state": "passed",
+    "projection": {
+      "logical_read_components": {
+        "activations": 106624,
+        "descriptors": 448,
+        "quantization_input": 14336,
+        "weights": 852992
+      },
+      "oracle": {
+        "kind": "scalar_fp64_offline",
+        "max_abs_bits": "0x35400000",
+        "mismatches": "0",
+        "outputs": "3584",
+        "quant_byte_mismatches": "0"
+      },
+      "preflight": {
+        "context_capacity": "4672",
+        "layout": "2",
+        "packed_bytes": "3808",
+        "planned_direct": "28",
+        "planned_fill": "0",
+        "planned_release": "0",
+        "planned_reuse": "0",
+        "tiles": "28"
+      },
+      "result": {
+        "activation_context": "0",
+        "checksum": "0xa6e8082b37dbf573",
+        "compute_cycles": "226244",
+        "context_generation": "0",
+        "cross_op_reuse": "0",
+        "cycles_per_output_x1000": "63126",
+        "descriptor_setup_cycles": "0",
+        "descriptor_setup_cycles_valid": "0",
+        "inputs": "4",
+        "k": "896",
+        "logical_read_bytes": "974400",
+        "matmul_cycles": "168462",
+        "max_abs_bits": "0x35800000",
+        "max_rel_bits": "0x39ba2c01",
+        "mismatches": "0",
+        "operations": "1",
+        "outputs": "3584",
+        "outputs_per_operation": "3584",
+        "pack_cycles": "31720",
+        "qbs_status": "0",
+        "quantizations": "1",
+        "quantize_cycles": "26062",
+        "result": "PASS",
+        "result_count": "3584",
+        "rows": "896",
+        "setup_included": "1",
+        "tiles": "28",
+        "timed_cycles": "226244",
+        "timed_cycles_per_output_x1000": "63126",
+        "timing_scope": "production_command"
+      }
+    },
+    "report_sha256": "6615eedc836c71d167ad46be0019d762f49bfe3e71bd2f42351f0b398f016926"
+  },
+  "scope": "Current-runtime scalar/vector packing; M4/N896/K896; not fused GGML or model timing",
+  "state": "PASS",
+  "vector": {
+    "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-runtime-pack-projection-vector-20261023-01/vector",
+    "elf_sha256": "3a3e6e4379e9fc3bacc7180b1b9ba04d06145a68478a0dde9e9e68558b5b2461",
+    "image_pins_sha256": "d8cc082d9acda56b9877b4a13c65d792e86c2a3c412cde6475c73b2bdab2f858",
+    "input_pins_sha256": "32ba2aea82127128c2791a011d940f1c97b3e655569f39e8cc4fa9e6dd0939c9",
+    "log_sha256": "c3b62bc6e7f59bec15df3a84f31001d9a9945c579fa53e2eb6ecb60a5268af90",
+    "original_worker_state": "passed",
+    "projection": {
+      "logical_read_components": {
+        "activations": 106624,
+        "descriptors": 448,
+        "quantization_input": 14336,
+        "weights": 852992
+      },
+      "oracle": {
+        "kind": "scalar_fp64_offline",
+        "max_abs_bits": "0x35400000",
+        "mismatches": "0",
+        "outputs": "3584",
+        "quant_byte_mismatches": "0"
+      },
+      "preflight": {
+        "context_capacity": "4672",
+        "layout": "2",
+        "packed_bytes": "3808",
+        "planned_direct": "28",
+        "planned_fill": "0",
+        "planned_release": "0",
+        "planned_reuse": "0",
+        "tiles": "28"
+      },
+      "result": {
+        "activation_context": "0",
+        "checksum": "0xa6e8082b37dbf573",
+        "compute_cycles": "211906",
+        "context_generation": "0",
+        "cross_op_reuse": "0",
+        "cycles_per_output_x1000": "59125",
+        "descriptor_setup_cycles": "0",
+        "descriptor_setup_cycles_valid": "0",
+        "inputs": "4",
+        "k": "896",
+        "logical_read_bytes": "974400",
+        "matmul_cycles": "168451",
+        "max_abs_bits": "0x35800000",
+        "max_rel_bits": "0x39ba2c01",
+        "mismatches": "0",
+        "operations": "1",
+        "outputs": "3584",
+        "outputs_per_operation": "3584",
+        "pack_cycles": "17388",
+        "qbs_status": "0",
+        "quantizations": "1",
+        "quantize_cycles": "26067",
+        "result": "PASS",
+        "result_count": "3584",
+        "rows": "896",
+        "setup_included": "1",
+        "tiles": "28",
+        "timed_cycles": "211906",
+        "timed_cycles_per_output_x1000": "59125",
+        "timing_scope": "production_command"
+      }
+    },
+    "report_sha256": "7f97e878cbf685a021621195cb42b8fcaf7650bf7cc7158031bd74cbb8fee724"
+  }
+}

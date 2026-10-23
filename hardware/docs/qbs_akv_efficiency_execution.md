@@ -99,10 +99,27 @@ without changing its output. The separate fused GGML Q8_0 M4 candidate passes
 gate: 416467 generic versus 278230 vector cycles (two calls per path).
 Neither result is a whole-model speedup. Shared public runtime packing passed
 43008 layout and 32 invalid-input native checks. Current-runtime forced-scalar
-and RVV full-projection twins now run independently on the unchanged image;
-their results are not yet accepted. The canonical fused GGML Q8_0 M4 helper
-is being integrated behind an explicit opt-in, with production path tracing
-and separate byte/CSR and graph gates. Q8_K fused preparation remains open:
+and RVV full-projection twins completed on the unchanged image. Independent
+raw-log and provenance reaudit accepts 226244 scalar versus 211906 vector
+cycles, a 6.3374% reduction for the matched current-runtime pair. Packing
+falls from 31720 to 17388 cycles; quantization is 26062/26067 and matrix
+execution 168462/168451. All 3584 outputs pass the independent oracle and
+both output checksums match. This is not the larger improvement measured
+against the older private-runtime baseline. Original outer worker FAIL
+records are retained: the wrapper incorrectly expected `PASS` instead of the
+child's `passed`. The successor `audit_runtime_pack_twins.py` accepts only
+that exact failure, verifies pins and independently checks both raw results;
+its receipt is `verification/qbs/results/runtime-pack-projection-twins-20261023.json`.
+
+The canonical fused GGML Q8_0 M4 helper is integrated behind an explicit
+opt-in, still disabled by default. Strict offline audit accepts 6840 native
+helper byte/CSR checks and 384 actual GGML graphs at the recorded VLENs and
+configuration matrix. The archived receipt is
+`verification/qbs/results/m4-production-native-20261023.json`.
+The production marker checker requires exact markers, not prefix matching.
+Native helper CSR checks use a separate translation unit; actual production
+repack translation-unit CSR equivalence and canonical-helper RTL performance
+remain separate open gates. Q8_K fused preparation remains open:
 the Q8_0 preparation result must not be generalized to K-quant model weights.
 
 The independent AKV refill-overlap probe completed PASS under
