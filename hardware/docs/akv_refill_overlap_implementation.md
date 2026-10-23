@@ -275,6 +275,52 @@ has a three-hour bound. The first build directory preserves a rejected static
 check: both assembly entries share a section, so symbol presence was not a
 valid proxy for a call; the accepted builder checks linked call sites instead.
 
+### Real Attention result and controlled follow-up
+
+The separate-ELF Attention pair completed functional PASS: all 1536 output
+words satisfy the original captured golden; exact paired output hash is
+`a7bc111334389dea`, FCSR is 3 and VCSR is 5. All 774 commands per path succeed.
+However, total cycles change from 106641 to 108664, a 1.897% increase. This
+result does not pass the performance gate and the scheduling option stays off.
+
+The candidate has 558 payload AXI AR transactions versus 526, despite the same
+134272 payload bytes and 526 logical ranges. GNU symbols and reader RTL explain
+this particular traffic difference:
+
+| Address | Baseline ELF | Candidate ELF |
+| --- | --- | --- |
+| K base | `0x80007a00` | `0x80007cc0` |
+| V base | `0x80027a00` | `0x80027cc0` |
+| Row start modulo 256 | 0 | 192 |
+
+Each stream reads 128 D128/F16 rows for each of two KV heads. Candidate rows
+cross a 4 KiB boundary eight times per stream/head, predicting exactly 32
+additional bursts. `qbs_read_engine.sv` splits ranges at that boundary. This
+proves the burst-count cause, **not** the entire 2023-cycle latency difference;
+code layout and the candidate's extra admission/alias checks remain possible
+contributors. The audited result is
+`verification/akv/results/refill-attention-layout-diagnosis-20261023.json`.
+
+The discriminating follow-up is `build_refill_attention_abba.py` with
+`run_refill_attention_abba.py`. Both original shared-runtime translation units
+are compiled with identical options except the scheduling switch and export
+names, then linked into one ELF. GNU linker wrapping selects the two public
+native entries in ABBA order. Source tensors, software workspace, outputs and
+caller code therefore have identical addresses across trials. Reused baseline
+objects must reproduce the previous baseline ELF hash before they are accepted.
+The candidate is compiled as the same complete runtime TU, not a separately
+compiled fragment with different inlining visibility.
+
+Every trial resets the output sentinel and FP/vector status, runs the complete
+Attention call, checks the unchanged golden and hashes every output byte.
+The validator requires four complete 774-command groups, matching FCSR/VCSR
+and hashes, identical per-trial AR/beats/payload and raw final-summary agreement.
+Per-trial counter subtotals are derived from raw command records, not claimed
+as additional hardware summaries. The actual final core success is checked
+once. Commit and vector traces provide cycle-level evidence for any remaining
+admission-check or scheduling cost. The whole simulation is bounded to three
+hours; no RTL, capture, golden or ongoing QBS worker is changed by this test.
+
 ## Acceptance matrix
 
 | Gate | Required evidence |

@@ -1,0 +1,19 @@
+{
+  "checked_output_words": 74592,
+  "context_wide_and_three_thread_checks": "PASS",
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-graphs-20261023-01/manifest.json": "f8be0197a853d39bfe6308f961952e96f2a32ab4d3fbd8d845399979d9edaeac",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-graphs-20261023-01/pins-after.json": "f8be0197a853d39bfe6308f961952e96f2a32ab4d3fbd8d845399979d9edaeac",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-graphs-20261023-01/qemu.log": "32711784f3a8109f50f1bb4f98fe969ff374e9bd3af7f625c78170718ea8f73c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-graphs-20261023-01/result.json": "c0a6de89925091c2a3c459a99dc8d1f3199466cfe77fa674559783188d2b8148",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-graphs-20261023-01/status.json": "966625c5dbdfef1f0b2f4c6ac2855421fe1e60d120e2e43244eec6c07746a0a4"
+  },
+  "graphs": 384,
+  "live_ggml_modified": false,
+  "paired_outputs_exact": true,
+  "q8_0_prepare_calls_per_mode": 72,
+  "q8k_prepare_calls_per_mode": 52,
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-graphs-20261023-01",
+  "scope": "Private full-TU native QEMU graph selection/numerics, not RTL performance",
+  "state": "PASS"
+}

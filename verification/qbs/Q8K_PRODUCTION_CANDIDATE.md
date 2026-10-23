@@ -114,3 +114,10 @@ No existing worker, helper, live runtime source, archive or ELF is overwritten.
 The graph boot is bounded to 900 seconds. A passing result is functional QEMU
 evidence only; full-projection RTL performance and eventual live runtime
 integration remain separate requirements.
+
+The graph worker completed PASS on 2026-10-23. Independent rechecking accepts
+384 graphs and 74592 checked output words, with exact OFF/ON digests. Each mode
+contains 52 Q8_K M4 preparation calls and 72 Q8_0 preparation calls. Context,
+wide-M, tail and three-thread dispatch checks all pass. The receipt is
+`results/q8k-production-graphs-20261023.json`. This closes the private graph
+selection gate; the candidate has not been enabled in live llama.cpp.

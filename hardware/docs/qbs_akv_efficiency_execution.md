@@ -200,3 +200,19 @@ two KV heads and an active KV prefix of 128. Its output is
 share the accepted new RTL image; only software scheduling differs. The worker
 checks the complete 1536-output call, exact paired hash/CSR status and 774
 successful AKV commands, with each simulation bounded to three hours.
+
+That real Attention pair has completed functional PASS but does not pass the
+performance gate: 106641 baseline versus 108664 candidate cycles. The separate
+ELFs place K/V at different page offsets, exactly explaining 32 additional
+candidate AXI bursts, but not proving the entire slowdown's cause. The shared
+schedule remains disabled. The next discriminating run uses one fixed-address
+ELF with both full runtime TUs and ABBA selection; its design and evidence are
+recorded in `akv_refill_overlap_implementation.md`. No default enablement is
+based on the earlier small probe's gain.
+
+Q8_K private full-production-TU numerical checks and actual GGML graph
+OFF/ON selection have passed. The receipts are
+`verification/qbs/results/q8k-production-candidate-native-20261023.json` and
+`verification/qbs/results/q8k-production-graphs-20261023.json`. These establish
+the private candidate's functional integration, not a change to the source
+pinned by ongoing projection workers or a model-level performance result.
