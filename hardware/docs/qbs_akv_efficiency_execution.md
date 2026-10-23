@@ -81,3 +81,12 @@ true concurrent next-tile fill/current-tile replay. Bank ownership, single-port
 conflicts and command completion must be proved before introducing concurrency.
 Activation preparation and quantized-KV work remain part of the objective;
 the short-block improvement does not replace these later milestones.
+
+The next cross-N reuse storage stage is recorded in
+`qbs_activation_tile_context.md`: an opt-in multirow/Q8_0 primitive retains the
+4672-byte budget and passes legacy plus 198-case extended VCS suites with both
+generic and macro-functional SRAM. It is not enabled in the production engine
+or advertised in capability words yet. Descriptor/runtime/reference integration
+and real-model paired performance remain required. Oversized long-K matrices
+still need the separate bounded-residency/partial-output design described in
+`qbs_matrix_reuse_audit.md`; passing the primitive does not close that objective.

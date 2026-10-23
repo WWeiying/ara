@@ -15,6 +15,10 @@ RTL_COMMIT_BUILD := rtl_commit_build
 RTL_ENGINE_BUILD := rtl_engine_build
 RTL_CONTEXT_BUILD := rtl_context_build
 RTL_CONTEXT_MACRO_BUILD := rtl_context_macro_build
+RTL_TILE_CONTEXT_BUILD ?= rtl_tile_context_build
+RTL_TILE_CONTEXT_MACRO_BUILD ?= rtl_tile_context_macro_build
+RTL_TILE_CONTEXT_COMPILE_TIMEOUT ?= 300
+RTL_TILE_CONTEXT_RUN_TIMEOUT ?= 120
 RTL_RUN_TIMEOUT ?= 10800
 RTL_EXTRA_SOURCES ?=
 RTL_ENGINE_DEFINES ?=
@@ -74,6 +78,16 @@ RTL_CONTEXT_MACRO_SOURCES := \
 	$(abspath qbs_context_sram_macro_model.sv) \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_activation_context.sv \
 	$(abspath qbs_activation_context_tb.sv)
+RTL_TILE_CONTEXT_SOURCES := \
+	$(ROOT)/hardware/include/qbs_pkg.sv \
+	$(ROOT)/hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv \
+	$(ROOT)/hardware/src/vlsu/qbs/qbs_activation_context.sv \
+	$(abspath qbs_activation_tile_context_tb.sv)
+RTL_TILE_CONTEXT_MACRO_SOURCES := \
+	$(ROOT)/hardware/include/qbs_pkg.sv \
+	$(abspath qbs_context_sram_macro_model.sv) \
+	$(ROOT)/hardware/src/vlsu/qbs/qbs_activation_context.sv \
+	$(abspath qbs_activation_tile_context_tb.sv)
 
 .PHONY: all clean check generated-check real-check activation-context-evidence-check
 
@@ -244,6 +258,33 @@ rtl-context-macro-check: rtl-context-macro-compile
 	cd $(RTL_CONTEXT_MACRO_BUILD) && timeout --foreground $(RTL_RUN_TIMEOUT) ./simv -l run.log
 	grep -q "QBS activation context PASS" $(RTL_CONTEXT_MACRO_BUILD)/run.log
 	! grep -Eq "Fatal:|Error:" $(RTL_CONTEXT_MACRO_BUILD)/run.log
+
+.PHONY: rtl-tile-context-compile rtl-tile-context-check \
+	rtl-tile-context-macro-compile rtl-tile-context-macro-check
+rtl-tile-context-compile: $(RTL_TILE_CONTEXT_SOURCES)
+	mkdir -p $(RTL_TILE_CONTEXT_BUILD)
+	cd $(RTL_TILE_CONTEXT_BUILD) && timeout --foreground $(RTL_TILE_CONTEXT_COMPILE_TIMEOUT) \
+		vcs -full64 -sverilog -timescale=1ns/1ps +lint=TFIPC-L -l compile.log \
+		$(RTL_TILE_CONTEXT_SOURCES) -top qbs_activation_tile_context_tb -o simv
+	! grep -Ei '(^|[^[:alnum:]_])(fatal|error)([^[:alnum:]_]|$$)' $(RTL_TILE_CONTEXT_BUILD)/compile.log
+
+rtl-tile-context-check: rtl-tile-context-compile
+	cd $(RTL_TILE_CONTEXT_BUILD) && timeout --foreground $(RTL_TILE_CONTEXT_RUN_TIMEOUT) ./simv -l run.log
+	grep -Eq '^QBS activation tile context PASS: cases=198 ' $(RTL_TILE_CONTEXT_BUILD)/run.log
+	! grep -Ei '(^|[^[:alnum:]_])(fatal|error)([^[:alnum:]_]|$$)' $(RTL_TILE_CONTEXT_BUILD)/run.log
+
+rtl-tile-context-macro-compile: $(RTL_TILE_CONTEXT_MACRO_SOURCES)
+	mkdir -p $(RTL_TILE_CONTEXT_MACRO_BUILD)
+	cd $(RTL_TILE_CONTEXT_MACRO_BUILD) && timeout --foreground $(RTL_TILE_CONTEXT_COMPILE_TIMEOUT) \
+		vcs -full64 -sverilog -timescale=1ns/1ps +define+TARGET_SRAM_MC \
+		$(RTL_MACRO_VCS_FLAGS) +lint=TFIPC-L -l compile.log \
+		$(RTL_TILE_CONTEXT_MACRO_SOURCES) -top qbs_activation_tile_context_tb -o simv
+	! grep -Ei '(^|[^[:alnum:]_])(fatal|error)([^[:alnum:]_]|$$)' $(RTL_TILE_CONTEXT_MACRO_BUILD)/compile.log
+
+rtl-tile-context-macro-check: rtl-tile-context-macro-compile
+	cd $(RTL_TILE_CONTEXT_MACRO_BUILD) && timeout --foreground $(RTL_TILE_CONTEXT_RUN_TIMEOUT) ./simv -l run.log
+	grep -Eq '^QBS activation tile context PASS: cases=198 ' $(RTL_TILE_CONTEXT_MACRO_BUILD)/run.log
+	! grep -Ei '(^|[^[:alnum:]_])(fatal|error)([^[:alnum:]_]|$$)' $(RTL_TILE_CONTEXT_MACRO_BUILD)/run.log
 
 rtl-check: rtl-profile-check rtl-command-check rtl-descriptor-check \
 	rtl-read-check rtl-commit-check rtl-context-check rtl-context-macro-check \

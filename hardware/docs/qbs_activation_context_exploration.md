@@ -191,9 +191,13 @@ block adapter，后续 profile decoder、整数 dot、FP accumulation 和 atomic
 
 写入 steering 以四个 32-bit word 为单位，而不是展开成 16 条逐 byte 地址路径；这是由
 read engine 的 strobe 契约保证的。generic 仿真使用两个 `146x128` `tc_sram`。TSMC SRAM
-实现使用四个现有 `64x256` macro：每个 parity bank 使用两个 macro，每个 256-bit word
-承载两个逻辑 128-bit row。物理容量为 65536 bit（8 KiB），逻辑 payload 仍为 37376 bit；
+当前实现使用两个 `76x256` macro：每个 parity bank 使用一个 macro，每个 256-bit word
+承载两个逻辑 128-bit row。物理容量为 38912 bit（4864 B），逻辑 payload 仍为 37376 bit；
 容量差来自可用 macro 粒度，不是额外可寻址 context。
+
+多行/Q8_0 的 opt-in 存储扩展见 `qbs_activation_tile_context.md`。在完成端到端
+准入与执行验证之前，默认硬件 capability 和本节前述 M1 软件契约保持不变。
+后文四个 `64x256` 宏的 DC 数字属于早期映射实验，不是当前宏组织的 PPA 结果。
 
 ## 6. 正确性与故障规则
 
