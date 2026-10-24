@@ -1,0 +1,18 @@
+{
+  "state": "ACTUAL_GGML_COMBINED_RUNTIME_COMPILED_NOT_EXECUTED",
+  "build": "verification/out/akv-combined-ggml-candidate-20261024-03",
+  "result_sha256": "06f008445246b7013f2b09b542afec33c21ca9efada4d7305abb7dacadb7882c",
+  "source_pins_sha256": "5d9c982858ba2b431a4b6338b3bbc01cf1a5151f241461ee46a1c67ce7ec663c",
+  "independent_pins_artifacts_and_compile_policy": "PASS",
+  "translation_units": 33,
+  "pinned_input_files": 654,
+  "host_source_and_policy_tests": 3,
+  "canonical_modified": false,
+  "external_llama_modified": false,
+  "isa": "rv64gcv_zfh_zvfh",
+  "floating_point": "fno-fast-math; ffp-contract=off",
+  "refill_overlap": false,
+  "native_execution_accepted": false,
+  "ggml_deployed": false,
+  "performance_claim": false
+}

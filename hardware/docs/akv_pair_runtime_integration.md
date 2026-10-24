@@ -8,8 +8,11 @@
 
 目前 `software/akv/experimental/paired_heads/native_bench.c` 只用于单线程
 对照，其 `bench_active` 和 `bench_pair_enabled` 是全局可变状态。
-不得直接把这个入口接入 GGML 多线程执行。当前三方完整算子测试和六头
-PANEL4 测试仍在运行；以下是接入要求，不代表生产接入已经验收。
+不得直接把这个入口接入 GGML 多线程执行。六头 PANEL4、KV128 与 KV256
+三方完整算子测试已经独立复核通过；这些仍是算子证据，不代表生产 GGML
+接入已经验收。三方收据分别见
+`verification/akv/results/paired-heads-threeway-20261024.json` 和
+`verification/akv/results/paired-heads-kv256-threeway-20261024.json`。
 
 ## 从现有调用链修改
 
@@ -78,3 +81,31 @@ token-axis 启用、64-token tile、row view、token tail、column PANEL4，
 
 以上完成后才能接受生产选择。完整模型收益仍需单独测量；减少片上 replay
 不是减少 DDR 读取，命令 busy 和指令退休也不是浮点单元利用率。
+
+## Decode 与 Prefill 的同源组合
+
+`verification/akv/paired_heads/build_combined_candidate.py` 将已定向验证的
+Decode 调度和 Prefill PV 调度组合到一份候选 native C 中，并将原汇编、
+F16 配对叶函数和 F32 配对叶函数部分链接。两个转换的调用点互不覆盖，
+选择仍在各次调用第一次 FULL 之前完成；两种 opt-in 相互独立。
+两项组合检查与 GNU Linux C/汇编部分链接已通过。符号检查要求原 generic、
+六头特化、features、Prefill API 和三个新增共享叶函数同时存在，不允许
+`bench_active` / `bench_pair_enabled` 混入运行时。此处只是编译证据。
+
+`build_ggml_candidate.py` 用独立 runtime overlay 交给现有生产 CMake：
+实际 `arch/riscv/akv.cpp` 不重写，原有互斥和 GGML worker 协作不改变。
+overlay 仅替换候选 C 与汇编入口，其余运行时源码和头文件指向当前规范
+来源；不修改原运行时、外部 llama.cpp 或在跑测试的封存输入。
+
+构建必须明确关闭默认启用、但本轮未纳入硬件契约的 `Zicbop`、
+`Zihintpause` 与 BF16 扩展，实际命令仅允许 `rv64gcv_zfh_zvfh`。
+C/C++ 固定 `-fno-fast-math -ffp-contract=off`，REFILL overlap 仍关闭。
+每个 compile command 都重新核查，不能只看 CMake 选项显示已关闭。
+当前33个 GGML 编译单元全部通过，654个输入文件及产物哈希已经独立复核。
+收据为 `verification/akv/results/combined-ggml-candidate-20261024.json`；
+复现入口为上述两个 builder，必须指定独立新目录，不能覆盖已有测试构建。
+
+生产 CPU 静态库编译成功只能证明接线和编译兼容，不能证明 native 数值、
+多线程执行或完整模型通过。实际 native 路径继续由独立 VCS/UVM 验收；
+现有 QBS QEMU 镜像未实现这些 AKV 自定义指令，不得用它的普通 RVV 或
+软件 emulation 通过记录冒充 AKV native 执行。
