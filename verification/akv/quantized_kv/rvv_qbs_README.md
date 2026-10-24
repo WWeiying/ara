@@ -56,11 +56,42 @@ Host sanity/rejection tests:
 python3 -B verification/akv/quantized_kv/test_rvv_qbs_check.py
 ```
 
-Three tests currently pass: exact known Q8_0/Q4_0 dot products and zero
+Three numerical-checker tests pass: exact known Q8_0/Q4_0 dot products and zero
 activations; explicit baseline-difference reporting; and rejection of fourteen
 transcript mutations plus changed K operands. These synthetic checker tests do
 not establish numerical acceptance of the real-model RTL test, which has not
 yet executed.
+
+## Bounded native execution
+
+`run_rvv_qbs.py` consumes the sealed build without rebuilding RTL or ELF. It
+rechecks source/capture/artifact hashes, the accepted image and source manifest,
+then builds the independent host oracle. Each score must follow exactly one
+successful QBS command. The 16 commands must read 4096 logical payload bytes:
+16 descriptors, four Q8_0 Query blocks per command, and four unchanged K blocks.
+Each command has nine logical read ranges; AXI burst counts may exceed nine
+because alignment can split a range. DIRECT must not report context reuse.
+The expected total is not inferred from successful software return values.
+
+After simulation exits normally, the worker requires independent UVM backend,
+AXI read and write checks, checks their exact log/trace/ELF/image identities,
+and rechecks all pins. An inquiry PASS means host QBS arithmetic, hardware and
+protocol agree; it does not require original RVV and QBS bit equivalence and
+does not approve deploying the quantized Attention path.
+
+```sh
+python3 -B -m unittest discover -s verification/akv/quantized_kv \
+  -p 'test_rvv_qbs*.py' -v
+python3 -B verification/akv/quantized_kv/run_rvv_qbs.py \
+  --build verification/out/akv-quantkv-rvv-qbs-build-20261024-01 \
+  --output <FRESH_OUTPUT_DIRECTORY> --preflight-only
+```
+
+Five host tests pass, including twelve work-record mutation rejections and
+worker fail-closed checks. For execution omit `--preflight-only` and let a
+direct-owned transient service run the worker; the default hard bound is three
+hours. Never reuse an existing output directory or edit pinned helpers while
+the worker is consuming them. No Verilator, URG or synthesis is involved.
 
 ## Reproduce preparation
 

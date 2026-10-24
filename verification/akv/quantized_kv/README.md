@@ -1,7 +1,8 @@
 # Quantized KV capture admission preparation
 
-This directory currently contains a read-only layout inspector, not an
-accelerated Attention implementation. Q4_K_M model weights do not identify the
+This directory contains capture/layout inspection and a bounded QBS-versus-RVV
+numerical inquiry, not a deployed accelerated Attention implementation.
+Q4_K_M model weights do not identify the
 actual KV type. Inspect the original quantized tensor metadata and binary.
 
 ```sh
@@ -40,7 +41,7 @@ requires F16 and reconstructs tight F16 strides. Do not use it for quantized KV.
 Preserve the original view bytes/strides instead of silently applying that
 normalizer or relabelling a F16 capture.
 
-Still required: actual model capture, production-RVV Query Q8_0 bytes and dot
+Still required: target-produced Query Q8_0 bytes and dot
 scores, numerical-order comparison with QBS, and original quantized-V F32 PV
 plus complete Attention timing. There is no QBS/AKV native quantized-KV or
 GGML deployment acceptance from this inspector alone.
@@ -62,12 +63,14 @@ python3 -B verification/akv/quantized_kv/capture_host.py \
 ```
 
 Two synthetic validation tests pass, including actual-type mismatch and
-nonfinite golden rejection. The current independent background service is
-`akv-quantkv-host-capture-20261024-01.service`; its output directory is
-`verification/out/akv-quantkv-host-capture-20261024-01`. Actual C++ compiler
-children were confirmed in its service group. At this checkpoint it is still
-BUILDING, not a completed capture. It will run both bounded model captures and
-validate original bytes/layouts automatically after the build succeeds.
+nonfinite golden rejection. The independent worker completed both real model
+captures in `verification/out/akv-quantkv-host-capture-20261024-01`.
+Source, executable, shared-library and tensor hashes were independently
+rechecked. Both captures have D128, twelve Query heads, two KV heads,
+128 visible tokens and capacity256. Actual K token strides are136B forQ8_0
+and72B forQ4_0, so these captures admit direct rows without a gather copy.
+This does not establish the layout of every model/cache configuration.
+Receipt: `verification/akv/results/quantized-kv-real-capture-20261024.json`.
 
 This is host reference-data collection, never a substitute for VCS cycle
 measurements. Even a successful capture does not provide production-RVV
@@ -96,7 +99,9 @@ python3 -B verification/akv/quantized_kv/build_rvv_primitives.py \
   --output <FRESH_PRIMITIVE_BUILD_DIRECTORY>
 ```
 
-No native execution, Query byte export, QBS comparison or numerical PASS is
-claimed yet. The next ELF must call these exact compiled primitives, keep
-actual captured K bytes and mask visibility, and independently check QBS
-outputs against its own numerical contract before assessing baseline drift.
+The linked numerical ELF now calls those exact compiled primitives with each
+capture's own real Query/K bytes, at heads0/6 and tokens0/63/64/127. Its worker
+and host replay are described in `rvv_qbs_README.md`. Native execution and
+numerical acceptance remain separate from successful preparation. Query byte
+exports must pass independent host QBS replay before assessing baseline drift;
+neither this inquiry nor its host tests prove complete Attention performance.

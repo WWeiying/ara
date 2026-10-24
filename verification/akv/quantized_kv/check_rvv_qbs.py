@@ -94,3 +94,48 @@ def check_transcript(text, key_data, oracle):
     return dict(state='HOST_NUMERICAL_REPLAY_PASS', queries=queries, scores=scores,
                 differences=dict(q8_0=differences[0], q4_0=differences[1]),
                 deployment_approved=False, performance_measured=False)
+
+
+def check_work(text, rtl_source):
+    """Require each score to follow its actual successful DIRECT M1/N1 command."""
+    formats = re.findall(r'\$display\("\[QBS_PERF\] ([^"\n]+)"', rtl_source)
+    require(len(formats) == 1, 'Unknown QBS PERF source schema')
+    fields = re.findall(r'([a-z][a-z0-9_]*)=%0d', formats[0])
+    require(len(fields) == len(set(fields)) and 'weight_bytes' in fields, 'Malformed source schema')
+    records, scores = [], 0
+    for line in text.splitlines():
+        if line.startswith('QUANT_KV_SCORE '):
+            require(len(records) == scores + 1, 'Missing/extra or misordered QBS work')
+            scores += 1
+        if 'AKV_PERF' in line:
+            raise ValueError('Unexpected AKV workload')
+        if 'QBS_PERF' not in line or line.startswith('Command:'):
+            continue
+        require(re.fullmatch(r'\[QBS_PERF\](?: [a-z][a-z0-9_]*=[0-9]+)+', line) is not None,
+                'Malformed QBS work record')
+        tokens = re.findall(r'([a-z][a-z0-9_]*)=([0-9]+)', line)
+        require([key for key, _ in tokens] == fields, 'Missing/extra/duplicate QBS fields')
+        row = {key:int(value) for key,value in tokens}
+        index = len(records)
+        require(index < 16 and scores == index, 'QBS work outside score sequence')
+        weight = 136 if index < 8 else 72
+        expected = dict(seq=index+1, m=1, n=1, vlen=1024, lanes=4, success=1,
+            fault=0, validation_fault=0, validation_error=0, read_fault=0,
+            translations=0, read_ranges=9, payload_bytes=16+136+weight,
+            weight_bytes=weight, activation_bytes=136, useful_pairs=128,
+            activation_access=0, context_fill_count=0, context_reuse_count=0,
+            context_reuse_block_count=0, context_read_bytes=0,
+            activation_axi_bytes_saved=0, context_replay_cycles=0,
+            context_replay_compute_overlap_cycles=0, context_validation_fault_count=0)
+        require(all(row.get(key) == value for key,value in expected.items()),
+                'QBS geometry/bytes/context/fault mismatch')
+        require(row['id'] < 8 and row['busy_cycles'] > 0 and
+                row['ar'] >= 9 and row['r_beats'] >= row['ar'] and
+                0 < row['read_outstanding_max'] <= 2 and row['commit_groups'] > 0,
+                'Missing actual memory/completion activity')
+        records.append(row)
+    require(len(records) == scores == 16, 'Incomplete QBS command work')
+    return dict(commands=16, records=records,
+                summed_payload_bytes=sum(row['payload_bytes'] for row in records),
+                summed_weight_bytes=sum(row['weight_bytes'] for row in records),
+                summed_activation_bytes=sum(row['activation_bytes'] for row in records))
