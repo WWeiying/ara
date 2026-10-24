@@ -13,6 +13,34 @@ now belong to `ara_dsa_signoff_integration`. Main's unrelated uncommitted
 files and FPGA copies are not experimental outputs. Record each accepted
 mechanism in a separate commit; integrate only reviewed, tested changes.
 
+## Current decisions
+
+The detailed ledger below includes earlier experiment states. The current
+decisions are:
+
+| Path | Current evidence | Decision |
+| --- | --- | --- |
+| Shared Q8_0 preparation/packing | Complete matched projection 226244 to 211906 cycles, 6.3374% reduction | Retain capability/shape selection and fallback; not a model-level claim |
+| Shared Q8_K M4 preparation | Same-ELF complete projection ABBA 1219006 to 1076923 summed cycles, 1.131934x; live GGML graph gate passed | Retain explicit opt-in; see `qbs_q8k_preparation.md` and Q8_K receipts |
+| REFILL/older-RVV overlap | Fixed-address whole Attention ABBA is about 1.55% slower despite the focused overlap opportunity | Keep software scheduling OFF; see `akv_refill_overlap_implementation.md` |
+| Long-K VRF continuation | Real M4/N64/K8960 matrix ABBA passes numerically but is 8.885649% slower | Keep experimental QBACC OFF; see `qbs_vrf_continuation_design.md` |
+| One-query GQA6 QK PANEL4 | Shared opt-in implementation; focused real-RTL numerical gate and dependent whole-Attention ABBA queued | No numerical or performance acceptance yet; see `../../verification/akv/qk_panel4_rtl_workflow.md` |
+
+The next static candidate is reuse across heads in generic Decode. Current
+`akv_v2_compute_scores_f16_generic` loops over heads outside dimensions, so
+H heads issue H*D column commands per token tile. The generic PV helper also
+reloads each V row per head. For H=2/D128/T64 this is 256 columns and 128 V-row
+commands. Pairing heads and using four-column delivery could reduce those
+counts to 32 and 64 respectively without reducing arithmetic work or changing
+the accumulation order within any output. This is a design hypothesis, not an
+implemented path or a cycle estimate. Preserve the existing specialized GQA6
+path and odd-head fallback, and do not edit sources sealed by the active gate.
+
+Local Qwen3 Prefill tensor metadata has 16 Query heads and 8 KV heads (GQA2),
+but that capture is Prefill, not a genuine Decode measurement. Its presence
+does not prove a Decode model-level benefit. Any successor needs actual
+mode/shape selection, unchanged output/flag checks and complete-operator timing.
+
 ## Milestones and acceptance
 
 | Priority | Work | Evidence required | State |
