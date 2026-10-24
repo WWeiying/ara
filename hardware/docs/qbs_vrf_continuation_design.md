@@ -315,6 +315,62 @@ checks actual command allocation, fixed source geometry, four source words
 per row per lane, no VSTU-valid leakage and ordinary RVV/QBS-AKV neighbors.
 Its SoC result is pending, not inferred from controller acceptance.
 
+### SoC integration finding: implicit one-bit store handshake
+
+The first SoC image exposed a connection-level regression not represented by
+the controller fixture. `normal_stu_operand_valid` and `normal_stu_operand_ready`
+were referenced at the VSTU instance before their packed declarations. VCS
+created implicit scalar wires and ignored the later declarations (`IPDW`),
+then reported four one-bit/four-bit port mismatches. Seed routing itself still
+completed, but the next ordinary vector store could not receive all lanes.
+The failed run is retained in `verification/out/qbacc-soc-20261023-01/` and its
+pre-fix RTL is committed as `b720a69c`. It is not passing evidence.
+
+The fix moves both declarations above their first instance connection, with
+no change to queue depth or scheduling. An initial `$bits` assertion checks
+the two actual internal signals, and the SoC runner rejects implicit declaration
+and VLSU port-width diagnostics before simulation. The only explicit inherited
+IPDW allowance is CVA6 shared-TLB's repeated genvar `i`; an unrelated repeated
+signal declaration is not allowed by that exception. The source-width issue
+must not be papered over by normalizing `store_valid=0` to a four-bit string.
+The provisional trace-normalization auditor was therefore removed unused;
+no passing result was issued by it. The corrected test retains the original
+ELF, exact four-bit source-mask checks and all numerical/CSR/padding checks.
+
+### Equal-work real long-K benchmark
+
+The experimental `software/qbs/experimental/vrf_panel/` driver keeps two M4
+result groups in v8--v11 and v16--v19 inside one leaf assembly routine. Both
+the full-K DIRECT API and continuation API use the same compiled C preflight,
+capability queries, assembly leaf, final eight stores and drain. The first
+stripe uses two QBEXEC commands; later stripes use two QBACC commands. Each
+stripe FILLs its first output tile and reuses its activation for the second;
+only the final second-tile compute performs RELEASE. There are no intervening
+C calls, partial-sum spills, software FP additions or changes of global K order.
+The shared preflight accepts up to 256 K blocks for DIRECT, but applies the
+4672-byte budget and 32-block tag limit to resident stripes. GNU object and
+2130 mock-backed parameter checks pass; these are not instruction execution.
+
+`verification/qbs/vrf_panel_data/` prepares real Qwen2.5 FFN-down M4/N64/K8960
+data, selecting four captured input rows and 64 genuine output channels.
+Both panels' monolithic reference outputs agree exactly with all 256 captured
+llama output bits on this data, with flags `[1,1]`. Every one of the 470400
+weight bytes is checked after stripe-local R4 repacking. Activation bytes match
+the previously accepted full-K vector, but are reference-quantized rather
+than claimed to be the production GGML preparation result.
+
+`build_vrf_panel_bench.py` links one ELF for DIRECT/striped/striped/DIRECT.
+The benchmark times descriptor and record construction, validation, capability
+queries, command submission, seed reads, intermediate commits and final stores.
+It excludes activation quantization/packing and offline weight-layout creation.
+All 256 raw result bits, flags and guards must agree on every call. Hardware
+records must account for 40 commands, 20480 VRF result bytes and 16384 seed
+bytes over the four calls. Per call, DIRECT reads 552192 logical payload bytes;
+striped reads 511568, including the additional descriptors. No measured gain
+is implied by those byte budgets. A performance run is queued only behind
+successful corrected SoC instruction and neighbor gates, with a three-hour
+bound and no periodic status polling.
+
 ## Next gates
 
 1. Complete the actual SoC test of the optional instruction, source layout,

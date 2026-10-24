@@ -20,6 +20,18 @@ from run_half_scale_soc import (ROOT, atomic_json, build_command, check_result,
 from run_tile_context_engine import run_command
 
 
+def check_compile_log(text):
+    for block in text.split("\n\n"):
+        legacy_genvar=("hardware/deps/cva6/core/cva6_mmu/cva6_shared_tlb.sv" in block and
+            "Second declaration for identifier 'i' ignored" in block and
+            "Identifier 'i' previously declared as genvar." in block)
+        if (("Warning-[IPDW]" in block and not legacy_genvar) or
+            ("PCWM-L" in block and
+             ("qbs_seed_stream_router" in block or "normal_stu_operand" in block or
+              "hardware/src/vlsu/vlsu.sv" in block))):
+            raise ValueError("Implicit declaration or VLSU port-width diagnostic: " + block)
+
+
 def check_probe(log, trace):
     markers = [line for line in log.splitlines() if line.startswith("QBACC_")]
     if markers != ["QBACC_SOC_PASS cases=13 computed=12 validation_faults=1 "
@@ -85,6 +97,7 @@ def main():
     p.add_argument("--output",type=Path,required=True)
     p.add_argument("--tools-root",type=Path,default=Path("/home/wangwy/openproject/ara"))
     p.add_argument("--simv",type=Path,help="Reuse a complete source-matching optional QBACC image")
+    p.add_argument("--compile-log",type=Path,help="Required original compile log when reusing an image")
     args=p.parse_args();out=args.output.resolve();out.mkdir(parents=True,exist_ok=False)
     state=dict(state="PREPARING",pid=os.getpid(),child_pid=None,started=now(),cases={})
     def save():state["updated"]=now();atomic_json(out/"status.json",state)
@@ -123,13 +136,20 @@ def main():
             pins[str(target)]=sha;state["cases"][name]=dict(state="PENDING",elf_sha256=sha)
         atomic_json(out/"source-pins.json",pins)
         if args.simv:
+            if args.compile_log is None:raise ValueError("Reused image requires original compile diagnostics")
             simv=args.simv.resolve(strict=True)
+            compile_log=args.compile_log.resolve(strict=True)
         else:
             state["state"]="BUILDING";save()
             command=build_command(args.tools_root.resolve(strict=True),out/"build",16)
             command.append("REAL_UVM_QBS_VRF_CONTINUATION=1")
             run(command,out/"build.log",7200)
             simv=out/"build/sim/simv"
+            compile_log=out/"build.log"
+        check_compile_log(compile_log.read_text())
+        pins[str(compile_log)]=digest(compile_log)
+        atomic_json(out/"source-pins.json",pins)
+        state.update(simv=str(simv),compile_log=str(compile_log));save()
         image=hashes(image_files(simv));atomic_json(out/"image-pins.json",image)
         config=dict(line.split("=",1) for line in (simv.parent/"simulator.conf").read_text().splitlines() if "=" in line)
         if config.get("qbs_vrf_continuation")!="1" or config.get("sim_l2_mb")!="16":

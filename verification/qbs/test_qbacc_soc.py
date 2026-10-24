@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from run_qbacc_soc import check_probe
+from run_qbacc_soc import check_compile_log, check_probe
 
 
 class ProbeChecker(unittest.TestCase):
@@ -30,6 +30,19 @@ class ProbeChecker(unittest.TestCase):
 
     def test_valid(self):
         self.assertEqual(check_probe(self.log,self.trace)["source_words_per_lane"],248)
+
+    def test_compile_implicit_or_vlsu_width_rejected(self):
+        for text in ("Warning-[IPDW] Identifier previously declared\nnormal_stu_operand_valid",
+                     "Lint-[PCWM-L] Port connection width mismatch\nhardware/src/vlsu/vlsu.sv, 350",
+                     "Lint-[PCWM-L]\nqbs_seed_stream_router normal_stu_operand_ready"):
+            with self.assertRaises(ValueError):check_compile_log(text)
+        check_compile_log("Warning-[SIOB] existing unrelated diagnostic")
+        legacy=("Warning-[IPDW] Identifier previously declared\n"
+                "hardware/deps/cva6/core/cva6_mmu/cva6_shared_tlb.sv, 458\n"
+                "Second declaration for identifier 'i' ignored\n"
+                "Identifier 'i' previously declared as genvar.")
+        check_compile_log(legacy)
+        with self.assertRaises(ValueError):check_compile_log(legacy.replace("'i'","'address'"))
 
     def test_missing_source_word(self):
         text=self.log.replace("[QBACC_SEED] seq=1 fire=1111 owner=1 store_valid=0000\n","",1)

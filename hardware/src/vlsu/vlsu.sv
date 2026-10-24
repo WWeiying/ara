@@ -335,6 +335,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   /////////////////////////
 
   logic vstu_idle;
+  logic [NrLanes-1:0] normal_stu_operand_valid, normal_stu_operand_ready;
 
   vstu #(
     .AxiAddrWidth(AxiAddrWidth),
@@ -398,7 +399,6 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   logic qbs_active_d, qbs_active_q;
   logic qbs_seed_owner_q, qbs_seed_owner;
-  logic [NrLanes-1:0] normal_stu_operand_valid, normal_stu_operand_ready;
   logic [NrLanes-1:0] qbs_seed_lane_valid, qbs_seed_lane_ready;
   logic [63:0] qbs_seed_lane_data [NrLanes];
   logic qbs_clk, qbs_clk_en;
@@ -1241,6 +1241,11 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   //////////////////
 
 `ifndef SYNTHESIS
+  initial begin
+    assert ($bits(normal_stu_operand_valid) == NrLanes &&
+            $bits(normal_stu_operand_ready) == NrLanes)
+      else $fatal(1, "QBS routing truncated the normal store lane handshake");
+  end
   if (QbsEnable) begin : gen_qbs_integration_assertions
     longint unsigned qbs_command_sequence_q;
 
