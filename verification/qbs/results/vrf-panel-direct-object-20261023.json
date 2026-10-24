@@ -1,0 +1,9 @@
+{
+  "state": "PASS",
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/software/qbs/experimental/vrf_panel/build-gnu-02",
+  "result_sha256": "c95fc7644240fbf3d3b50dfd5c83d18d67659c11405a0e0f4ab28e150a7c6806",
+  "preflight_cases": 2130,
+  "scope": "Shared DIRECT/continuation preflight and assembly, GNU host mocks/object gate only",
+  "isa_execution_accepted": false,
+  "performance_accepted": false
+}

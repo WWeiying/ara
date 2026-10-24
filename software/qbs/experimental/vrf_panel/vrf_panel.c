@@ -25,9 +25,10 @@ static int overlap(uintptr_t a, size_t na, uintptr_t b, size_t nb) {
   return a <= b ? b - a < na : a - b < nb;
 }
 
-qbs_vrf_panel_status_t qbs_vrf_panel_run(
+/* Keep both public APIs on one compiled core, without mode-specialized clones. */
+static __attribute__((noinline, noclone)) qbs_vrf_panel_status_t panel_run(
     const qbs_vrf_panel_record_t *records, size_t count,
-    float *out0, float *out1, size_t stride, size_t n0, size_t n1) {
+    float *out0, float *out1, size_t stride, size_t n0, size_t n1, int direct) {
   if (count < 1 || count > 256 || n0 < 1 || n0 > 32 || n1 < 1 || n1 > 32 ||
       stride < n0 || stride < n1 || stride > (SIZE_MAX / 4 - 32) / 3 ||
       !address_ok(records, _Alignof(qbs_vrf_panel_record_t), count * sizeof(*records)) ||
@@ -60,17 +61,26 @@ qbs_vrf_panel_status_t qbs_vrf_panel_run(
         b.activation_layout != a.activation_layout ||
         b.weight_profile != a.weight_profile || b.activation_profile != a.activation_profile ||
         b.weight_layout != a.weight_layout || a.n != n0 || b.n != n1 ||
-        a.k_blocks != b.k_blocks || a.k_blocks > 32 || block_bytes == 0 ||
-        (size_t)a.k_blocks * 4 * block_bytes > QBS_ACTIVATION_CONTEXT_CAPACITY_BYTES ||
+        a.k_blocks != b.k_blocks || a.k_blocks > QBS_MAX_K_BLOCKS || block_bytes == 0 ||
         a.context_id != 0 || b.context_id != 0 ||
         a.context_generation != b.context_generation ||
-        a.activation_access != QBS_ACTIVATION_ACCESS_FILL ||
-        b.activation_access != (i + 1 == count ? QBS_ACTIVATION_ACCESS_RELEASE :
-                                                QBS_ACTIVATION_ACCESS_REUSE) ||
         record->tile0->weight_base == 0 || record->tile1->weight_base == 0 ||
         (record->tile0->weight_base & 1) || (record->tile1->weight_base & 1) ||
         record->tile0->weight_base == record->tile1->weight_base)
       return QBS_VRF_PANEL_BAD_DESCRIPTOR;
+    if (direct) {
+      if (a.activation_access != QBS_ACTIVATION_ACCESS_DIRECT ||
+          b.activation_access != QBS_ACTIVATION_ACCESS_DIRECT ||
+          a.context_generation != 0)
+        return QBS_VRF_PANEL_BAD_DESCRIPTOR;
+    } else {
+      if (a.k_blocks > 32 ||
+          (size_t)a.k_blocks * 4 * block_bytes > QBS_ACTIVATION_CONTEXT_CAPACITY_BYTES ||
+          a.activation_access != QBS_ACTIVATION_ACCESS_FILL ||
+          b.activation_access != (i + 1 == count ? QBS_ACTIVATION_ACCESS_RELEASE :
+                                                  QBS_ACTIVATION_ACCESS_REUSE))
+        return QBS_VRF_PANEL_BAD_DESCRIPTOR;
+    }
     if (i != 0 && (weight_profile != a.weight_profile ||
                    activation_profile != a.activation_profile || weight_layout != a.weight_layout))
       return QBS_VRF_PANEL_BAD_DESCRIPTOR;
@@ -92,4 +102,16 @@ qbs_vrf_panel_status_t qbs_vrf_panel_run(
     return QBS_VRF_PANEL_UNSUPPORTED;
   qbs_vrf_panel_asm(records, count, out0, out1, stride, n0, n1);
   return QBS_VRF_PANEL_OK;
+}
+
+qbs_vrf_panel_status_t qbs_vrf_panel_run(
+    const qbs_vrf_panel_record_t *records, size_t count,
+    float *out0, float *out1, size_t stride, size_t n0, size_t n1) {
+  return panel_run(records, count, out0, out1, stride, n0, n1, 0);
+}
+
+qbs_vrf_panel_status_t qbs_vrf_panel_direct_run(
+    const qbs_vrf_panel_record_t *record, float *out0, float *out1,
+    size_t stride, size_t n0, size_t n1) {
+  return panel_run(record, 1, out0, out1, stride, n0, n1, 1);
 }

@@ -10,7 +10,7 @@
 
 static qbs_descriptor_t descriptors[256][2];
 static qbs_vrf_panel_record_t records[256];
-static _Alignas(16) unsigned char activation[4672];
+static _Alignas(16) unsigned char activation[4 * 292 * 256];
 static _Alignas(16) float outputs[4 * 80];
 static size_t mock_vlenb = 128;
 static int bad_cap = -1;
@@ -59,14 +59,34 @@ static void prepare(size_t count, size_t n0, size_t n1, unsigned profile) {
   }
 }
 
-static void expect(qbs_vrf_panel_status_t status) {
-  CHECK(qbs_vrf_panel_run(records, expected_count, outputs, outputs + 32, 80,
-                         expected_n0, expected_n1) == status);
+static void check_result(qbs_vrf_panel_status_t got, qbs_vrf_panel_status_t status) {
+  CHECK(got == status);
   CHECK(issues == (status == QBS_VRF_PANEL_OK ? 1u : 0u));
   if (status == QBS_VRF_PANEL_BAD_ARGUMENT || status == QBS_VRF_PANEL_BAD_DESCRIPTOR)
     CHECK(info_reads == 0 && vlen_reads == 0);
   if (status == QBS_VRF_PANEL_OK) CHECK(info_reads == 5 && vlen_reads == 1);
   ++cases;
+}
+
+static void expect(qbs_vrf_panel_status_t status) {
+  check_result(qbs_vrf_panel_run(records, expected_count, outputs, outputs + 32, 80,
+                                expected_n0, expected_n1), status);
+}
+
+static void prepare_direct(unsigned k, unsigned profile) {
+  prepare(1, 32, 32, profile);
+  for (unsigned tile = 0; tile < 2; ++tile) {
+    qbs_descriptor_fields_t f = qbs_unpack_descriptor_header(descriptors[0][tile].header);
+    f.k_blocks = (uint16_t)k;
+    f.activation_access = QBS_ACTIVATION_ACCESS_DIRECT;
+    f.context_generation = 0;
+    descriptors[0][tile].header = qbs_pack_descriptor_header(&f);
+  }
+}
+
+static void expect_direct(qbs_vrf_panel_status_t status) {
+  check_result(qbs_vrf_panel_direct_run(records, outputs, outputs + 32, 80,
+                                       expected_n0, expected_n1), status);
 }
 
 int main(void) {
@@ -146,6 +166,83 @@ int main(void) {
   }
   prepare(2, 32, 5, QBS_WEIGHT_PROFILE_Q6_K);
   mock_vlenb = 64; expect(QBS_VRF_PANEL_UNSUPPORTED);
+  CHECK(info_reads == 0);
+
+  const unsigned profiles[] = {QBS_WEIGHT_PROFILE_Q6_K, QBS_WEIGHT_PROFILE_Q8_0_WEIGHT};
+  for (unsigned p = 0; p < 2; ++p) {
+    for (unsigned k = 1; k <= 256; ++k) {
+      prepare_direct(k, profiles[p]); expect_direct(QBS_VRF_PANEL_OK);
+    }
+    // Same large payload remains ineligible for the resident API.
+    const unsigned large_k[] = {35, 256};
+    for (unsigned j = 0; j < 2; ++j) {
+      prepare_direct(large_k[j], profiles[p]);
+      for (unsigned tile = 0; tile < 2; ++tile) {
+        qbs_descriptor_fields_t f = qbs_unpack_descriptor_header(descriptors[0][tile].header);
+        f.activation_access = tile ? QBS_ACTIVATION_ACCESS_RELEASE : QBS_ACTIVATION_ACCESS_FILL;
+        descriptors[0][tile].header = qbs_pack_descriptor_header(&f);
+      }
+      expect(QBS_VRF_PANEL_BAD_DESCRIPTOR);
+    }
+  }
+  for (unsigned mutation = 0; mutation < 20; ++mutation) {
+    prepare_direct(35, QBS_WEIGHT_PROFILE_Q6_K);
+    qbs_descriptor_fields_t a = qbs_unpack_descriptor_header(descriptors[0][0].header);
+    qbs_descriptor_fields_t b = qbs_unpack_descriptor_header(descriptors[0][1].header);
+    if (mutation < 3) a.activation_access = (uint8_t)(mutation + 1);
+    else if (mutation < 6) b.activation_access = (uint8_t)(mutation - 2);
+    else switch (mutation) {
+      case 6: a.context_generation = b.context_generation = 1; break;
+      case 7: a.context_generation = 1; break;
+      case 8: b.context_generation = 1; break;
+      case 9: a.context_id = b.context_id = 1; break;
+      case 10: a.n = 31; break;
+      case 11: b.k_blocks = 34; break;
+      case 12: a.activation_profile = b.activation_profile = 0; break;
+      case 13: b.weight_profile = QBS_WEIGHT_PROFILE_Q4_K; break;
+      case 14: a.weight_layout = b.weight_layout = 0; break;
+      case 15: a.activation_layout = b.activation_layout = QBS_ACTIVATION_LAYOUT_ROW_MAJOR; break;
+      case 18: a.descriptor_version = 1; break;
+      default: break;
+    }
+    descriptors[0][0].header = qbs_pack_descriptor_header(&a);
+    descriptors[0][1].header = qbs_pack_descriptor_header(&b);
+    if (mutation == 16) descriptors[0][1].header |= UINT64_C(1) << 63;
+    if (mutation == 17) descriptors[0][1].weight_base = descriptors[0][0].weight_base;
+    if (mutation == 19) descriptors[0][0].weight_base |= 1;
+    expect_direct(QBS_VRF_PANEL_BAD_DESCRIPTOR);
+  }
+  prepare_direct(35, QBS_WEIGHT_PROFILE_Q6_K);
+#define DIRECT_BAD(r, o0, o1, s, n0, n1) do { \
+  CHECK(qbs_vrf_panel_direct_run(r, o0, o1, s, n0, n1) == QBS_VRF_PANEL_BAD_ARGUMENT); \
+  CHECK(issues == 0 && info_reads == 0 && vlen_reads == 0); ++cases; \
+} while (0)
+  DIRECT_BAD(NULL, outputs, outputs + 32, 80, 32, 32);
+  DIRECT_BAD(records, NULL, outputs + 32, 80, 32, 32);
+  DIRECT_BAD(records, outputs, outputs, 80, 32, 32);
+  DIRECT_BAD(records, outputs, outputs + 80, 80, 32, 32);
+  DIRECT_BAD(records, outputs, outputs + 32, 31, 32, 32);
+  DIRECT_BAD(records, outputs, outputs + 32, SIZE_MAX, 32, 32);
+  DIRECT_BAD(records, outputs, outputs + 32, 80, 0, 32);
+  DIRECT_BAD(records, outputs, outputs + 32, 80, 33, 32);
+  DIRECT_BAD(records, outputs, outputs + 32, 80, 32, SIZE_MAX);
+  DIRECT_BAD(records, (float *)(UINTPTR_MAX - 3), outputs + 32, 80, 32, 32);
+  DIRECT_BAD(records, outputs, (float *)((uintptr_t)(outputs + 32) + 1), 80, 32, 32);
+  DIRECT_BAD((const qbs_vrf_panel_record_t *)((uintptr_t)records + 1),
+             outputs, outputs + 32, 80, 32, 32);
+  prepare_direct(256, QBS_WEIGHT_PROFILE_Q6_K);
+  records[0].tile1 = (const qbs_descriptor_t *)((uintptr_t)&descriptors[0][1] + 1);
+  expect_direct(QBS_VRF_PANEL_BAD_ARGUMENT);
+  prepare_direct(256, QBS_WEIGHT_PROFILE_Q6_K);
+  records[0].activation = NULL; expect_direct(QBS_VRF_PANEL_BAD_ARGUMENT);
+  prepare_direct(256, QBS_WEIGHT_PROFILE_Q6_K);
+  records[0].activation = (void *)(UINTPTR_MAX - 3); expect_direct(QBS_VRF_PANEL_BAD_ARGUMENT);
+  for (int cap = 0; cap <= 4; ++cap) {
+    prepare_direct(35, QBS_WEIGHT_PROFILE_Q6_K);
+    bad_cap = cap; expect_direct(QBS_VRF_PANEL_UNSUPPORTED);
+  }
+  prepare_direct(35, QBS_WEIGHT_PROFILE_Q6_K);
+  mock_vlenb = 64; expect_direct(QBS_VRF_PANEL_UNSUPPORTED);
   CHECK(info_reads == 0);
   printf("QBS_VRF_PANEL_PREFLIGHT_PASS cases=%u\n", cases);
   return 0;

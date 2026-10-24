@@ -27,6 +27,12 @@ qbs_vrf_panel_status_t qbs_vrf_panel_run(
     const qbs_vrf_panel_record_t *records, size_t stripe_count,
     float *out0, float *out1, size_t stride_elements, size_t n0, size_t n1);
 
+/* Full-K baseline: exactly one record, two DIRECT descriptors, K<=256.
+ * Uses the same preflight, capability queries and assembly leaf as run(). */
+qbs_vrf_panel_status_t qbs_vrf_panel_direct_run(
+    const qbs_vrf_panel_record_t *record, float *out0, float *out1,
+    size_t stride_elements, size_t n0, size_t n1);
+
 #ifdef __cplusplus
 }
 #endif
