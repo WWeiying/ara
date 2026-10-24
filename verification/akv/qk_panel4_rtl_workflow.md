@@ -6,6 +6,13 @@ native helper only for supported F16/D128/six-query-head plans after real
 capability discovery. Missing environment support and all other plans retain
 the existing path. REFILL overlap remains OFF.
 
+The focused run has now completed PASS: eight pairs/sixteen executions, 3240
+active outputs, 2904 tail words, 1312 successful native commands, unchanged
+status/guards and independent protocol checks. Its tracked receipt is
+`verification/akv/results/qk-panel4-rtl-20261024.json`. This establishes the
+finite-input score gate only. The dependent complete Attention ABBA started
+automatically; its numerical and performance acceptance remains separate.
+
 ## Why VCS is the numerical gate
 
 The available QBS-capable QEMU raises illegal instruction on native AKVINFO;
