@@ -1272,3 +1272,6 @@ akv_d256_outputs_reference:
     mv              t4, a4
     j               .Lakv_v2_d256_output_head
 #endif
+
+#include "../experimental/paired_heads/attention_rvv.S"
+#include "../experimental/paired_heads/f32_pv/attention_rvv.S"

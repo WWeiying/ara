@@ -2,7 +2,8 @@
 
 The leaf has actual RTL acceptance in
 `verification/akv/results/paired-f32-pv-rtl-20261024.json`. This directory now
-also prepares a full-runtime candidate, still not canonical deployment.
+also supplies the admitted runtime implementation now included by canonical
+`akv_v2_native_riscv.c`. `AKV_PREFILL_PAIR_PV=1` is still explicitly opt-in.
 
 `runtime.h` supplies stateless admission and pair/odd-head routing. F32 output
 row stride is4*D, score stride256B and scale stride4B. Admission requires actual
@@ -25,8 +26,8 @@ gcc -std=c11 -Wall -Wextra -Werror -O2 -I. -Isoftware/akv/include \
 /tmp/akv-f32-runtime
 python3 -B -m unittest discover -s verification/akv/paired_heads/f32_pv \
   -p test_prefill_candidate.py -v
-python3 -B verification/akv/paired_heads/f32_pv/prepare_prefill_candidate.py \
-  --output <FRESH_CANDIDATE_DIRECTORY>
+python3 -B verification/akv/paired_heads/build_live_ggml_runtime.py \
+  --output <FRESH_BUILD_DIRECTORY> --jobs 8
 ```
 
 Actual preparation:3072 host routing schedules PASS; mandatory/dimension
@@ -35,9 +36,13 @@ scope/mutation guards PASS. Fresh GNU candidate compilation succeeded in
 `verification/out/akv-prefill-pv-candidate-20261024-01`. Its three substitutions
 are visible in `candidate.patch`; canonical Decode is unchanged except the
 new private include, and original QK/softmax/mask/normalization code is retained.
-This is `PREFILL_CANDIDATE_COMPILED_NOT_EXECUTED`, not whole-operator acceptance.
+That candidate-generation receipt is historical. Its source-scope tests now
+use the exact pre-promotion Git fixture; the generator deliberately rejects
+reapplying the transformation to current integrated source. Current canonical
+source/object equivalence and actual combined QBS+AKV GGML compilation have
+separate receipts. No new post-promotion native ELF or model run is claimed.
 
-## Next real-operator measurement
+## Real-operator measurement
 
 The genuine SmolLM2 M64/D64/GQA3 capture exists at
 `/home/wangwy/llama/captures/smollm2-135m-q4_k_m-prefill-m64-20260901`.
@@ -45,13 +50,18 @@ Its metadata has9 Query heads,3 KV heads,64 Query tokens and256 physical KV
 capacity. The causal visible prefix increases from1 to64. This exercises pair
 plus odd-tail routing without replacing an already efficient six-head path.
 
-A bounded representative tile can select original Query positions32--35 and
-one actual KV group, preserving their original K/V and causal mask columns and
-matching golden outputs. It must be labelled a real Prefill slice, not a full
-M64 run or proof that GGML's M>=64 dispatch selected a sliced M4 input. Include
-packing/selection, original QK, softmax, PV and output in OFF/ON timing. Each
-output's token order and F32 scale/FMA semantics must stay unchanged. Use
-actual counter semantics for resident versus active tokens.
+The completed representative slice selects original Query positions32--35,
+all9 Query heads and all3 KV groups, preserving original K/V, causal masks and
+matching golden outputs. The whole native API ABBA sums are403898 generic and
+380395 paired cycles, a5.819% reduction. Each call's2304 outputs meets original
+tolerance and generic/paired bits/CSRs are exact. Original QK, softmax, PV and
+output completion are timed, not only the PV leaf. Independent raw-log, work,
+image/source pins and UVM rechecking passed. Receipt:
+`verification/akv/results/paired-f32-pv-prefill-slice-20261024.json`.
+
+This is a real Prefill slice, not full M64 or proof that GGML's M>=64 admission
+selected a sliced M4 input. Resident-versus-active-token counters are checked
+against each actual command rather than inferred from timing.
 
 Full-M64 GGML admission/integration and performance remain separate work. Do
 not extrapolate a slice's cycles into measured full-model latency or silently

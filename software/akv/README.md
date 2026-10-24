@@ -143,8 +143,8 @@ deployment.
   its original CPU Attention on RVV QEMU, using the **AKV software oracle**;
   18 combinations, two concurrent graphs, fallback and default-path checks.
 - `bash verification/akv/run_portability_rtl.sh`: fresh isolated VCS image,
-  native feature smoke followed by QBS/AKV/ordinary-RVV handoff. Launch long
-  runs in tmux instead of polling continuously.
+  native feature smoke followed by QBS/AKV/ordinary-RVV handoff. Long workers
+  should be directly owned by a transient service, without continuous polling.
 - `verification/akv/run_portability_stage2.py`: pinned model preparation,
   isolated QEMU model checks and same-capture RVV/original-AKV/portable-AKV
   VCS tests. Each VCS run is limited to three hours, without overwriting an
@@ -154,3 +154,34 @@ deployment.
 CMake consumers can use `akv::runtime` through add-subdirectory or the
 installed `find_package(akv_runtime CONFIG REQUIRED)` package.
 See `hardware/docs/qbs_akv_portability_work.md` for scope and evidence.
+
+## Opt-In Shared-Head Native Scheduling
+
+The canonical v2 native API includes stateless shared-head selection. Both
+options are off unless their exact value is `1`:
+
+```sh
+export GGML_RISCV_AKV=1
+export GGML_RISCV_AKV_KERNEL=v2
+export AKV_PAIR_HEADS=1
+export AKV_PREFILL_PAIR_PV=1
+```
+
+`AKV_PAIR_HEADS` shares K-column and V-row delivery between two Decode heads;
+`AKV_PREFILL_PAIR_PV` shares V-row delivery between two Prefill heads. The
+original generic path handles an odd tail. D128/GQA6 keeps its existing shared
+six-head implementation. Unsupported dimensions/capabilities retain original
+execution. Selection is local to each call and occurs before its first FULL;
+the GGML whole-context mutex is unchanged. These flags neither broaden GGML
+type/feature admission nor add an instruction, storage bank or arithmetic unit.
+
+The standalone CMake/Make targets and the private GGML adapter enforce the tested
+AKV per-source FP contract, `-fno-fast-math -ffp-contract=off`. The small GGML
+build integration is recorded in `integrations/llama-cpp-fp-contract.patch`.
+Normal GGML/RVV and QBS source options are not globally changed.
+
+Native real slices and routing tests establish scoped correctness/benefit;
+the source promotion and live QBS+AKV GGML build do not constitute a fresh
+post-promotion RTL run or whole-model performance measurement. See
+`hardware/docs/akv_pair_runtime_integration.md` for receipts and remaining gates.
+Standard RVV QEMU/software-oracle tests do not execute these native AKV leaves.

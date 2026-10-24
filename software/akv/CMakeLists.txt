@@ -17,6 +17,11 @@ target_include_directories(akv_runtime PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_compile_features(akv_runtime PUBLIC c_std_11)
+if (CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(akv_runtime PRIVATE
+        "$<$<COMPILE_LANGUAGE:C>:-fno-fast-math>"
+        "$<$<COMPILE_LANGUAGE:C>:-ffp-contract=off>")
+endif()
 target_link_libraries(akv_runtime PUBLIC m)
 set_target_properties(akv_runtime PROPERTIES
     EXPORT_NAME runtime

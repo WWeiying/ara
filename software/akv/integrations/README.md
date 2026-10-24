@@ -71,3 +71,30 @@ Set `AKV_MODEL_D256=1` in `run-qemu-model-check.sh` to pass the option to the
 guest's combined run. Its RVV and QBS-only variants explicitly clear the flag.
 `verification/akv/run_d256_admission.py` runs the fixed real-model cohort with
 per-case deadlines and preserves binaries, hashes, output and selection evidence.
+
+## Native Floating-Point Contract
+
+`llama-cpp-fp-contract.patch` is an additional small build patch for the private
+adapter. It applies to the existing AKV CMake block and fixes only AKV runtime
+C sources to `-fno-fast-math -ffp-contract=off`, matching native numerical tests.
+It does not rewrite the GGML operator, alter QBS/ordinary-RVV compile flags or
+relax admission. Check the patch against the actual external checkout first:
+
+```sh
+git apply --check /path/to/ara_dsa/software/akv/integrations/llama-cpp-fp-contract.patch
+git apply /path/to/ara_dsa/software/akv/integrations/llama-cpp-fp-contract.patch
+```
+
+The local external checkout already contains this change; reverse-check it
+instead of applying twice. Its unrelated local changes are preserved. No
+external commit/push is performed. The live combined build can be reproduced
+without a private runtime overlay using:
+
+```sh
+python3 -B verification/akv/paired_heads/build_live_ggml_runtime.py \
+  --output /absolute/fresh/output --jobs 8
+```
+
+This verifies actual compile commands, native symbols and source/artifact
+identity. It is compilation evidence, not native model execution. Native
+shared-head options and remaining gates are documented in the runtime README.

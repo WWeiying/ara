@@ -2,11 +2,12 @@
 """Source composition checks only; do not claim native runtime acceptance."""
 import unittest
 import build_combined_candidate as c
+from pre_promotion_fixture import source
 
 
 class CombinedTests(unittest.TestCase):
     def test_preserves_production_entries_and_both_optins(self):
-        original = c.SOURCE.read_text()
+        original = source()
         value = c.transform(original)
         self.assertEqual(value.count('const int paired_heads ='),1)
         self.assertEqual(value.count('const int paired_pv ='),1)
@@ -22,11 +23,14 @@ class CombinedTests(unittest.TestCase):
         self.assertNotIn('bench_active',value)
 
     def test_source_drift_and_double_application_fail_closed(self):
-        original = c.SOURCE.read_text()
+        original = source()
         with self.assertRaises(ValueError):
             c.transform(original.replace('const int qk_panel4 =','const int changed =',1))
         with self.assertRaises(ValueError):
             c.transform(c.transform(original))
+
+    def test_promoted_source_is_exact_composed_candidate(self):
+        self.assertEqual(c.SOURCE.read_text(),c.transform(source()))
 
 
 if __name__ == '__main__':

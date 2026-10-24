@@ -1,0 +1,15 @@
+{
+  "state": "PASS",
+  "run": "verification/out/akv-prefill-pv-slice-20261024-01",
+  "result_sha256": "92e28a75bc151590e2f733785b62b2f46002cb01215e76b91c633f577fc78d45",
+  "independent_raw_pins_uvm_recheck": "PASS",
+  "summed_cycles": {"generic": 403898, "paired": 380395},
+  "cycles_abba": [202128, 190146, 190249, 201770],
+  "speedup": 1.0617857753125042,
+  "cycle_reduction_percent": 5.8190434218540315,
+  "outputs_per_call": 2304,
+  "original_golden_tolerance": {"atol": 0.004, "rtol": 0.002},
+  "generic_paired_bits_and_csr_exact": true,
+  "scope": "Complete real SmolLM2 Prefill slice, original positions32--35, all9 Query/3 KV heads, not full M64 or model timing",
+  "whole_model_claim": false
+}

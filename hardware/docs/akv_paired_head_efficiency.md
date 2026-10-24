@@ -120,8 +120,11 @@ paired 逐位及 CSR 一致。普通 RVV 与 AKV 的位模式不同，但均通�
 此处仍为真实捕获派生的 GQA2 子集，不是整模型或新模型 Decode 数据。
 收据为 `verification/akv/results/paired-heads-threeway-20261024.json`。
 
-正式 runtime 和 GGML selector 尚未接入；当前实现仍位于
-`software/akv/experimental/paired_heads/`，其测试入口不是线程安全的生产 API。
+两头共享现已接入规范 native API 的调用内选择，`AKV_PAIR_HEADS=1` 显式
+开启，默认关闭；GGML 继续调用同一规范入口。单线程 `native_bench.c`
+仍只是评测控制器，不能用于多线程生产调用。实际 QBS+AKV GGML 已使用
+规范源码编译通过，而不是私有 overlay；接入后新 ELF 的 RTL 与整模型
+回归仍待执行。此前的切片周期不能直接当作完整生产路径或整模型周期。
 
 真实 KV256 上下文的六次同 ELF 对照现已通过原始日志、输入/执行哈希、
 实际命令计数和 UVM 的独立复核。两次调用合计：普通 RVV 980328 周期、
@@ -133,6 +136,7 @@ payload 同为 263296 字节，命令由 3082 降为 778，片上 replay 由
 据此宣称新模型或整模型加速；收据为
 `verification/akv/results/paired-heads-kv256-threeway-20261024.json`。
 
-下一项准入是用无共享全局可变状态的正式选择逻辑接入，保留不支持形状的
-fallback；该候选的独立 RTL 回归已由 KV256 验收队列启动。奇数头、
-更多实际模型及 Prefill/F32 路径不能由当前两头 F16 Decode 结果直接推断。
+正式候选的奇数头、GQA6保持及 OFF/ON/OFF 功能已有独立证据；原 worker 的
+文档漂移 FAIL 与单独功能审计仍分开保留。Prefill/F32 另有完整真实切片
+PASS，ABBA减少5.819%，不能由 F16 Decode 的结果代替。具体接入约束和
+剩余验收项见 `akv_pair_runtime_integration.md`。

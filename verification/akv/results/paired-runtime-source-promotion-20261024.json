@@ -1,0 +1,22 @@
+{
+  "state": "SOURCE_INTEGRATED_DEFAULT_OFF",
+  "canonical_native_sha256": "aff613518b3495df363209beacf0940ef6d8b6c734f4851f63a7aa820d4f692c",
+  "object_proof": "verification/out/akv-promoted-object-proof-20261024-02",
+  "object_proof_result_sha256": "7563c5fd6d33d160d7cf75d97e18bc2a57a125f79e07f8690c633ac9447d6d3a",
+  "object_proof_scope": "Linux GNU instructions and relocations equal reviewed combined candidate; not a fresh VCS run",
+  "live_ggml_build": "verification/out/akv-promoted-live-ggml-20261024-02",
+  "live_ggml_result_sha256": "16e6ad6575bbfa74bea88dfd66c8fa1200f88bf562224b332272d132b43de925",
+  "independent_build_recheck": "PASS",
+  "live_ggml_translation_units": 36,
+  "live_ggml_source_pins": 1006,
+  "private_runtime_overlay": false,
+  "host_runtime_ctest": {"passed": 3, "failed": 0},
+  "host_make_check": {"passed": 4, "failed": 0},
+  "decode_optin": "AKV_PAIR_HEADS=1",
+  "prefill_optin": "AKV_PREFILL_PAIR_PV=1",
+  "default_enabled": false,
+  "post_promotion_rtl_executed": false,
+  "whole_model_performance_measured": false,
+  "external_llama_changes_committed": false,
+  "external_integration_patch": "software/akv/integrations/llama-cpp-fp-contract.patch"
+}

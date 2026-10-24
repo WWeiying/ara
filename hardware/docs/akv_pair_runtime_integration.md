@@ -6,9 +6,11 @@
 而不是增加另一个仅供测试的后端。复用原有 AKV 指令、存储和 RVV 运算，
 保留每个输出的累加顺序、状态标志、异常处理和普通 RVV fallback。
 
-目前 `software/akv/experimental/paired_heads/native_bench.c` 只用于单线程
-对照，其 `bench_active` 和 `bench_pair_enabled` 是全局可变状态。
-不得直接把这个入口接入 GGML 多线程执行。六头 PANEL4、KV128 与 KV256
+正式 native 入口现在包含调用内选择的 Decode 两头共享与 Prefill PV 调度，
+分别以 `AKV_PAIR_HEADS=1` 和 `AKV_PREFILL_PAIR_PV=1` 显式开启，默认关闭。
+`software/akv/experimental/paired_heads/native_bench.c` 仍只用于单线程
+对照，其 `bench_active` 和 `bench_pair_enabled` 不能接入 GGML 多线程执行。
+正式路径不引用这两个全局变量。六头 PANEL4、KV128 与 KV256
 三方完整算子测试已经独立复核通过；这些仍是算子证据，不代表生产 GGML
 接入已经验收。三方收据分别见
 `verification/akv/results/paired-heads-threeway-20261024.json` 和
@@ -19,7 +21,7 @@
 正式入口继续使用 `akv_attention_execute_v2_native` 及其 features 路径，
 不新增独立的 GGML 算子实现。现有计划和工作区检查通过后、第一次 FULL
 之前，为本次调用选择 QK/PV 函数或局部调度模式。选择结果只存在于调用栈，
-不得通过全局开关在不同调用间传递。
+不得用全局可变的执行状态在不同调用间传递本次选择。
 
 两头叶函数处理真实存在的两个 Query heads。包装函数按两头递进，奇数
 尾头调用原 generic 函数。Decode 的 score 行距为 64 个 FP32，F16 部分和
@@ -101,11 +103,43 @@ overlay 仅替换候选 C 与汇编入口，其余运行时源码和头文件指
 `Zihintpause` 与 BF16 扩展，实际命令仅允许 `rv64gcv_zfh_zvfh`。
 C/C++ 固定 `-fno-fast-math -ffp-contract=off`，REFILL overlap 仍关闭。
 每个 compile command 都重新核查，不能只看 CMake 选项显示已关闭。
-当前33个 GGML 编译单元全部通过，654个输入文件及产物哈希已经独立复核。
+接入前的候选构建有33个 GGML 编译单元通过，654个输入文件及产物哈希独立复核。
 收据为 `verification/akv/results/combined-ggml-candidate-20261024.json`；
-复现入口为上述两个 builder，必须指定独立新目录，不能覆盖已有测试构建。
+这些是接入前的候选记录；当前正式源码应使用下节的 live builder，不能
+对已接入源码再次应用旧转换器。
 
 生产 CPU 静态库编译成功只能证明接线和编译兼容，不能证明 native 数值、
 多线程执行或完整模型通过。实际 native 路径继续由独立 VCS/UVM 验收；
 现有 QBS QEMU 镜像未实现这些 AKV 自定义指令，不得用它的普通 RVV 或
 软件 emulation 通过记录冒充 AKV native 执行。
+
+## 正式源码接入与验收范围
+
+规范 `src/akv_v2_native_riscv.c` 与已审查的组合候选逐字节一致；规范汇编
+包含相同的两个已验证叶函数源文件，不另抄一份实现。新入口位于正常构建
+范围，不依赖 D256 测试宏。GNU Linux 对象的指令及重定位记录与组合候选
+相同。Standalone CMake 的3项宿主测试通过，实际 QBS+AKV GGML 的36个
+编译单元也已通过，并独立复核了1006个输入文件及产物哈希。
+
+Standalone 与 GGML 按源文件约束 AKV 的 `-fno-fast-math -ffp-contract=off`；
+没有全局更改普通 GGML/RVV 或 QBS 的浮点选项。外部 GGML 的小补丁保存在
+`software/akv/integrations/llama-cpp-fp-contract.patch`。当前外部源码修改
+尚未提交，不代表已推送到其远程仓库。
+
+Decode 正式候选的4种形状、12次 OFF/ON/OFF 调用，原始数值、标志、命令及
+UVM 证据已经复核。其原 worker 因接入说明文档在运行期间被修改，最终
+身份门禁仍为 FAIL；独立审计证明唯一变化不是编译输入，原报告没有改写。
+这属于有明确限定的功能证据，而不是一次干净的原 worker PASS，详见
+`verification/akv/results/native-pair-runtime-document-audit-20261024.json`。
+
+Prefill 完整真实切片则有独立的正常 PASS：原位置32--35、全部9个 Query /
+3个 KV heads、每次2304个输出，generic/paired 位模式及 CSR 一致，均满足
+原 golden 容差。ABBA 总周期403898降至380395，减少5.819%，收据为
+`verification/akv/results/paired-f32-pv-prefill-slice-20261024.json`。
+
+源码接入收据为 `verification/akv/results/paired-runtime-source-promotion-20261024.json`。
+本次接入之后尚未重新执行新 ELF 的 RTL 回归或完整模型；上述源码和对象
+等价检查不能冒充这一项。原候选生成器现在只用于固定接入前源码的测试，
+会拒绝对已经接入的源码二次转换；当前 live 构建入口是
+`verification/akv/paired_heads/build_live_ggml_runtime.py`，不是私有 runtime
+overlay。后续仍须完成接入后代表性回归、实际 GGML 调用及整模型测量。
