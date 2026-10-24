@@ -106,6 +106,25 @@ V-decoder calls from 768 to 128 per call without changing the decoder itself.
 Receipt: `verification/akv/results/quantized-attention-q4-20261024.json`.
 This is the complete specified six-head group, not whole-model performance or
 the public-entry result. It does not include per-call GGML mapping/admission.
-The public-entry Q4 successor is executing separately; the Q8 inquiry remains
-pending at the time this result is recorded. The separately accepted RVV V
+The public-entry successors execute separately. Both internal-schedule inquiries
+are now accepted. The separately accepted RVV V
 decoder is not substituted into these sealed experiments.
+
+## Accepted Q8_0 K / Q8_0 V Result
+
+The Q8 run also passed the complete four-trial numerical, protocol, image and
+source gates. The downstream worker independently replayed its original raw
+outputs, timing/work records and prerequisite evidence before starting VCS.
+
+| Trial | Schedule | Cycles | FCSR | VCSR | Words differing from first ordinary call |
+|---|---|---:|---:|---:|---:|
+| 0 | Ordinary RVV QK, head-major | 2,080,153 | 1 | 5 | 0 |
+| 1 | QBS QK, shared-head | 539,290 | 1 | 5 | 0 |
+| 2 | QBS QK, shared-head | 538,569 | 1 | 5 | 0 |
+| 3 | Ordinary RVV QK, head-major | 2,079,152 | 1 | 5 | 0 |
+
+Paired sums are 4,159,305 versus 1,077,859 cycles: **3.858858x** speedup,
+**74.085598%** cycle reduction, with all 768 output words identical across all
+four calls and matching CSR values. This has the same specified scope and
+unchanged scalar V decoder as the Q4 inquiry, not an end-to-end model claim.
+Receipt: `verification/akv/results/quantized-attention-q8-20261024.json`.
