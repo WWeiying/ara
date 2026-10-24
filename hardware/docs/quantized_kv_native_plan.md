@@ -5,7 +5,10 @@
 当前 AKV 原生路径仍读取 F16 K/V；PANEL4 只改变列递送方式，不增加量化
 格式。GGML 对 Q8_0/Q4_0 KV 有正常的原始执行路径，但这不等于 AKV 硬件
 已经加速这些缓存。当前已通过独立 VCS 的完整量化 Attention 切片对照，
-尚未完成计入公共入口准入成本后的评估和实际 GGML 派发接入。
+并完成默认关闭的 GGML 原生派发及真实数据图验证。计入公共入口准入成本
+的 VCS 评估仍在进行；完整模型验证尚未完成。量化路径复用 QBS DIRECT、
+标准 RVV 与原 online softmax，不把它描述为 F16 AKV 数据通路直接读取
+量化 V。
 
 权重格式与 KV 格式不是同一件事。模型使用 Q4_K_M 权重，不表示 KV 缓存也
 使用 Q4_K；必须读取实际 K/V tensor 的类型、步长和当前有效位置。
@@ -132,8 +135,8 @@ score、片内参考和主机参考的位模式及 fflags 必须一致。实际�
 这一结果只适用于所测位置，不能由此消除不同舍入顺序的潜在影响。
 原生执行入口为
 `verification/akv/quantized_kv/run_rvv_qbs.py`，独立运行目录为
-`verification/out/akv-quantkv-rvv-qbs-20261024-01`。尚不宣称量化 KV
-Attention 已接通。生产编译后的 Q4_0 为先乘第一 scale
+`verification/out/akv-quantkv-rvv-qbs-20261024-01`。这项16点测试本身不代表
+完整量化 Attention 接通。生产编译后的 Q4_0 为先乘第一 scale
 再融合第二 scale；Q8_0 为先乘两个 scale 再融合 dot。因此必须分别报告
 其与 QBS 的位模式及标志差异，不以改变既有容差来取得通过。保留这一
 准入条件，再接回原 quantized-V F32 PV；不以“已有真实捕获”替代验收。
@@ -216,10 +219,26 @@ V 共享。数据不是整个模型的加速比，也不包含每次 GGML 调用
 自身的结果，不能与完整 Attention 的加速比直接相乘；目前未替换上述封存
 实验的 V 回调，也未修改生产选择。精度约束与收据见
 `verification/akv/quantized_kv/value_decode_fast_README.md`。
-只有整段受益并通过原模型容差及回退检查后，才接入 GGML；当前未新增
-RTL、指令、SRAM 或默认开启的生产快速路径。
+默认生产选择仍须以完整入口收益、原模型容差及回退检查为门槛；当前的
+GGML 接入是显式开启的测试分支，未新增 RTL、指令、SRAM 或默认开启的
+生产快速路径。
 
-## 实际 GGML 接入还需完成什么
+## 实际 GGML 接入与剩余门槛
+
+默认关闭的 `GGML_RISCV_AKV_QUANT_KV` 已接入现有 Attention 派发入口，
+运行时还需显式开启量化路径及正常内存声明。实际 GGML 图通过原生 QBS
+Linux QEMU：两种 K 格式各重复两次，全部12个 Query heads、两个 KV
+heads、每次1536个输出；共64条 QBS 命令，六项 mask、线程和内存策略
+回退均通过。它使用共享 C 入口和已验证的 RVV V 解码器，不是测试程序
+绕过 GGML 直接调用内核。原始日志及714项输入身份已独立复核，收据为
+`verification/akv/results/quantized-kv-ggml-live-20261024.json`。
+
+新分支保持三态结果：完成、执行前回退、开始执行后失败。最后一种直接
+报错，不能透明重跑普通路径。普通 RVV 和已有 F16 AKV 路径未被替换。
+此处 QEMU 只证明原生指令功能和实际派发，不提供 RTL 周期或完整模型
+性能。外部私有 llama.cpp 未自动提交；已将可复现源码补丁和基准提交归档
+在 `verification/akv/quantized_kv/llama_integration_20261024/`，其中明确
+保留了已有私有修改，不能将所有补丁行都归因于本轮接入。
 
 `ggml_decode.h` 已使用真实 `ggml_tensor` 定义完成元数据映射。Query 的
 head 步长是 `nb[2]`，输出的 head 步长是 `nb[1]`；量化 K/V 的 `nb[0]`
@@ -254,6 +273,17 @@ context写入/提交/中止，仅在 RELEASE 模式产生context释放；DIRECT
 使用普通读路径，不产生这些持久状态操作。`qbs_activation_context.sv`
 的 committed有效位也不因普通DIRECT请求而改变。因此当前静态逻辑支持
 保留既有投影的 AQ 数据，而不是为了接入 Attention 强制废弃其复用收益。
-该结论只说明 DIRECT 的持久 context 状态行为，不替代同一运行时中的
-跨算子交错、错误恢复、线程/任务切换及实际模型回归；正式接入前仍需
-验证这些组合。不能将指令级硬件仲裁直接等同于完整软件生命周期保证。
+软件桥在整个量化 Attention 调用期间持有 QBS 执行互斥锁，但不等待跨算子
+reservation 释放，不修改其 owner、generation 或 resident 状态；外层
+固定先取得 AKV 锁，再取得 QBS 锁。受限执行回调只允许 DIRECT，不能
+借此发送 FILL/RELEASE。这个区别保证前后两个投影之间的 Attention
+不会等待后面的投影先释放资源。
+
+实际 GGML 三节点图已验证这一交错：投影 FILL/REUSE，量化 Attention，
+投影 REUSE/RELEASE。两种真实 K 格式共四次原生生命周期，24条投影命令
+和64条 Attention 命令；后续投影确实跳过量化，generation 和 activation
+sequence 保持一致，投影输出逐位匹配，Attention 输出满足原容差且重复
+一致。源码、原始轨迹及727项身份已独立复核，见
+`verification/akv/quantized_kv/ggml_interleave/README.md`。
+它仍不替代任意并发图、错误恢复、OS线程迁移或完整模型回归；不能将
+单指令仲裁或这一受控图测试扩大解释为所有生命周期组合均已验证。

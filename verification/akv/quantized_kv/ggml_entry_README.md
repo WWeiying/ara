@@ -107,4 +107,13 @@ public-entry experiments independently measure the original six-head group
 including mapping/admission. They do not include these newly added backend
 allocation-query calls. Actual backend deployment must account for that wrapper
 overhead too, retain ordinary RVV/F16 AKV paths and pass model execution before
-being described as integrated or enabled.
+being promoted for model use.
+
+A separate default-OFF private backend hook now passes actual native-QBS Linux
+QEMU graph dispatch, rather than this host test's direct helper call. Both real
+formats pass all12 heads/two KV heads and ordinary fallbacks; a further actual
+GGML projection/Attention/projection graph passes persistent-AQ interleaving.
+See `ggml_live/README.md` and `ggml_interleave/README.md`. These are functional
+integration results, not whole-model or RTL performance evidence. The archived
+external source snapshot preserves the existing private checkout changes and
+does not automatically commit or push that checkout.
