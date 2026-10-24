@@ -71,3 +71,23 @@ Evaluate reader sharing and payload sharing separately, with matched success,
 page-boundary, backpressure, fault-drain, reset and resident-context reuse
 tests. Compare command cycles and complete operators before accepting either.
 No synthesis, PPA claim or RTL modification is part of this static audit.
+
+## Existing Evidence and Next Discriminating Test
+
+The archived `qbs_read_axi_20260908/fixed/run.log` exercises a stalled AR and
+fault drain inside an independent reader. The accepted
+`qbacc-soc-accept-20261023-02/neighbors/qbs_akv_handoff_smoke` checks successful
+SoC handoffs with matched log, trace and ELF hashes. Neither artifact provides
+one continuous cycle-level record combining owner transfer, injected delay or
+fault, internal reader drain, storage write drain and resident-context identity.
+Do not combine these independent PASS results into a claim that this boundary
+has already been measured.
+
+The smallest successor should retain the real VLSU and registered AXI cut,
+start from `apps/qbs_akv_handoff_smoke/main.c`, and exercise a resident-context
+reuse across a success handoff and a fault-to-other-owner-to-retry sequence.
+Capture `command_fire`, `terminal`, both readers' range/burst occupancy,
+planner state, held AR, pending completion, context write-busy, registered cut
+state and resident context identity in the same bounded window. Check the
+events before changing the physical reader organization. A validation-only
+descriptor fault must not be substituted for an in-flight read fault.
