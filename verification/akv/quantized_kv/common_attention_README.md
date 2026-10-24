@@ -84,3 +84,37 @@ is launched by this preparation. First accept the original complete Attention
 results and assess the measured benefit, then run this public-entry paired
 comparison with independent protocol checks before live GGML integration.
 Existing full-Attention and V-decode tasks retain their sealed source inputs.
+
+## Event-Gated Execution
+
+`queue_common_attention.py` pins the prepared build, new worker/checker/tests,
+and the predecessor's sealed input inventory. It verifies the actual predecessor
+PID and owner script, waits on its Linux pidfd rather than repeatedly reading
+simulation logs, and refuses dispatch unless the owner ends with checked PASS.
+After the wait, identities are checked again and `exec` transfers the same
+systemd-owned process to `run_common_attention.py`. A short-lived launcher never
+owns orphan simulator children.
+
+The public-entry worker performs an independent raw replay via
+`audit_attention.checked_attention`: original numerical output and flags, QBS
+work and timings, independent protocol inputs, image/ELF/source receipts, and
+the already accepted multi-head QK prerequisite. It must match the prepared
+build's exact original inquiry and profile. A green summary alone is insufficient.
+
+If that checked internal inquiry is not faster than its paired ordinary path,
+the successor records `NO_BENEFIT_NOT_RUN`, preserving the predecessor's
+functional success and measured cycles without spending another long simulation
+on an unpromising promotion. This is not a numerical failure or a filtered-out
+measurement. Any failed prerequisite or identity check prevents downstream VCS.
+
+When launched, the public-entry inquiry retains the three-hour VCS bound and
+requires actual zero simulator exit, complete numerical/native-entry/QBS work
+records, independent CVXIF/backend/AXI read/write checks, and matching source and
+image identities after execution. A public-entry functional PASS can still show
+a slowdown; the worker records it and does not enable GGML dispatch automatically.
+
+`test_common_attention_run.py` tests typed-build rejection, unchecked-predecessor
+rejection and the no-benefit/no-simulator path. `test_queue_common_attention.py`
+tests failed-owner blocking and direct exec ownership. Together with the four
+numerical/work checker tests, nine host tests pass. These tests exercise worker
+control logic with mocks/synthetic transcripts, not additional RTL workloads.
