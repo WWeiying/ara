@@ -136,13 +136,20 @@ Attention 已接通。生产编译后的 Q4_0 为先乘第一 scale
 其与 QBS 的位模式及标志差异，不以改变既有容差来取得通过。保留这一
 准入条件，再接回原 quantized-V F32 PV；不以“已有真实捕获”替代验收。
 
-多输出后续 ELF 已构建，使用两个捕获的全部12个 Query heads，M4+M2
+多输出原生测试现已通过：两个捕获的全部12个 Query heads，以 M4+M2
 计算各自完整12x128 score 矩阵，另加 M2/N31 与 M4/N1 的有效位置尾块。
-共40条命令、3336个输出、24份目标量化 Query。严格批量检查器与独立
-执行入口已经补齐，执行前检查及5项批量 host 测试通过。每个硬件输出
-及每条命令的累计异常标志均需通过主机参考；实际计数还必须满足136768
-字节 payload、5128个逻辑读取范围。它不是逐输出的原 RVV 对照，且不能
-把当前16点的通过记录外推为全部 Query heads 或多输出已通过。
+共40条命令、3336个输出、24份目标量化 Query。每个硬件输出及每条命令
+的累计异常标志均与独立主机 QBS 参考一致；实际工作量满足136768字节
+payload、5128个逻辑读取范围，原始 UVM/AXI 与前后身份检查通过。
+运行目录为 `verification/out/akv-quantkv-batch-qk-20261024-02`。
+它不是全部输出的原 RVV 对照；不能把 QBS 与其参考模型的一致性写成
+全部原 RVV score 均逐位一致，也不代表完整 Attention 或模型性能通过。
+
+原批次因测试辅助函数读取未初始化向量尾部、随后被 printf 保存到栈而触发
+缓存断言，其 FAIL 未改写。短对照仿真确认相同量化结果下断言由8次降至0次；
+仅修正测试的无用标量读数，再以未放宽的完整检查重新执行得到上述 PASS。
+没有为此修改 RTL、生产量化器或实际输入，详见
+`verification/akv/quantized_kv/drain_probe_README.md`。
 
 ## 量化 V 与完整 Attention 的软件调度候选
 
@@ -175,8 +182,22 @@ VL 的 RVV F32 运算。该反汇编事实只属于本次编译配置，不代�
 回调计数确认 V 解码从 `heads*tokens` 减到 `tokens`；还检查错误传播、
 步长溢出及 signaling-NaN scale 的无副作用拒绝。
 
-这些是调度和编译证据，不是量化模型或目标 RTL 的完整 Attention 验收。
-下一步应把同一头文件与上述生产原语、真实 K/V/Query/mask/golden 连接，
-完整计时包含 Query 量化、描述符、QK、V 解码、softmax、PV 与结果落存。
+完整 Attention 的两个真实数据 ELF 已连接上述原语并进入独立 VCS 仿真。
+各自使用实际 KV head 0、其全部6个 Query heads、D128和128个有效 token，
+按 generic/shared/shared/generic 对照；完整计时包含 Query 量化、描述符、
+QK、V 解码、softmax、PV 与结果落存。缩放值按固定 Qwen2 源码表达式
+恢复精确 FP32 位模式，不把仅有六位有效数字的捕获 JSON 当作精确参数。
+目前尚未验收完成，详见 `verification/akv/quantized_kv/attention_README.md`。
+
+为避免日后 benchmark 与 GGML 各抄一套，另已封装共享 C ABI；全操作准入
+在任何指令/输出修改之前完成，执行中失败不得静默重跑 fallback。其96项
+主机连接测试、sanitizer与实际 RISC-V 编译不替代原生或模型验收。接入之前
+仍要用同一入口重测真实数据并计入准入成本，详见
+`verification/akv/quantized_kv/native_README.md`。
+
+量化 V 解码另有标准 RVV 的 VLA 候选，只替换有限 Q8_0 解码，不改 Query
+量化、QK或PV顺序。其3584个有限浮点边界组合已经在目标RTL中通过，真实
+V数据的完整对照仍在运行；没有据此宣称实际加速或修改生产选择。实验入口
+和精度约束见 `verification/akv/quantized_kv/value_decode_README.md`。
 只有整段受益并通过原模型容差及回退检查后，才接入 GGML；当前未新增
 RTL、指令、SRAM 或默认开启的生产快速路径。
