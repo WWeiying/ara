@@ -1,0 +1,15 @@
+{
+  "state": "PASS",
+  "run": "verification/out/akv-context-kv256-threeway-20261024-01",
+  "result_sha256": "e448885801a079fc282496687f23e7114a2cd507a2d0ee15afe26d83a7850e89",
+  "independent_raw_log_and_pins_recheck": "PASS",
+  "summed_cycles": {"rvv": 980328, "generic": 303767, "paired": 210254},
+  "paired_speedup_vs_ordinary_rvv": 4.6625890589477486,
+  "paired_speedup_vs_generic": 1.4447620497113016,
+  "outputs_per_call": 512,
+  "generic_paired_exact": true,
+  "rvv_original_golden_tolerance": "PASS",
+  "scope": "Complete same-ELF Attention, derived real Qwen2.5 KV256 heads0,1,6,7; ordinary RVV not strong tiled RVV",
+  "whole_model_claim": false,
+  "production_deployment_accepted": false
+}

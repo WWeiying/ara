@@ -123,6 +123,16 @@ paired 逐位及 CSR 一致。普通 RVV 与 AKV 的位模式不同，但均通�
 正式 runtime 和 GGML selector 尚未接入；当前实现仍位于
 `software/akv/experimental/paired_heads/`，其测试入口不是线程安全的生产 API。
 
-下一项准入是真实 KV256 上下文重复对照，再用无共享全局可变状态的正式
-选择逻辑接入，保留不支持形状的 fallback。奇数头、
+真实 KV256 上下文的六次同 ELF 对照现已通过原始日志、输入/执行哈希、
+实际命令计数和 UVM 的独立复核。两次调用合计：普通 RVV 980328 周期、
+generic AKV 303767 周期、两头共享 210254 周期；两头共享相对普通 RVV
+为 4.662589 倍，相对 generic 为 1.444762 倍。全部 512 个输出通过原始
+容差，generic 与 paired 逐位及 CSR 一致。每次 native 调用的外部读取
+payload 同为 263296 字节，命令由 3082 降为 778，片上 replay 由
+524288 降为 262144 字节。数据仍是 Qwen2.5 的派生 GQA2 子集，不能
+据此宣称新模型或整模型加速；收据为
+`verification/akv/results/paired-heads-kv256-threeway-20261024.json`。
+
+下一项准入是用无共享全局可变状态的正式选择逻辑接入，保留不支持形状的
+fallback；该候选的独立 RTL 回归已由 KV256 验收队列启动。奇数头、
 更多实际模型及 Prefill/F32 路径不能由当前两头 F16 Decode 结果直接推断。

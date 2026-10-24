@@ -41,9 +41,26 @@ Initial FRM=RNE and VCSR5 are set independently for quantization, original dot
 and QBS. Drained snapshots precede comparison. Output/activation guards,
 inactive destination memory, allocator bounds/ownership and finite scores are
 checked. The original reference's flags are recorded independently of the
-baseline dot's flags. Future offline checking should additionally replay the
-exported bytes through a host reference; an on-chip scalar reference shares
-the target FP resources and is not alone a fully independent FP implementation.
+baseline dot's flags. The offline checker `check_rvv_qbs.py` replays exported
+bytes through `host_score.c`, linked against the unmodified QBS reference and
+host libm. This supplies an independent FP implementation of the same QBS
+arithmetic specification, not an independent GGML quantizer. It checks all
+16 scores and flags, Query/score order, finite outputs, reported baseline
+differences, suite completion and UVM severity summaries. Actual QBS work,
+image identity and UVM transactions still need the bounded execution worker;
+transcript acceptance alone is not RTL acceptance.
+
+Host sanity/rejection tests:
+
+```sh
+python3 -B verification/akv/quantized_kv/test_rvv_qbs_check.py
+```
+
+Three tests currently pass: exact known Q8_0/Q4_0 dot products and zero
+activations; explicit baseline-difference reporting; and rejection of fourteen
+transcript mutations plus changed K operands. These synthetic checker tests do
+not establish numerical acceptance of the real-model RTL test, which has not
+yet executed.
 
 ## Reproduce preparation
 
