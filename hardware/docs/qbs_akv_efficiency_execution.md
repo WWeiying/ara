@@ -25,6 +25,7 @@ decisions are:
 | REFILL/older-RVV overlap | Fixed-address whole Attention ABBA is about 1.55% slower despite the focused overlap opportunity | Keep software scheduling OFF; see `akv_refill_overlap_implementation.md` |
 | Long-K VRF continuation | Real M4/N64/K8960 matrix ABBA passes numerically but is 8.885649% slower | Keep experimental QBACC OFF; see `qbs_vrf_continuation_design.md` |
 | One-query GQA6 QK PANEL4 | Shared opt-in implementation; focused real-RTL numerical gate and dependent whole-Attention ABBA queued | No numerical or performance acceptance yet; see `../../verification/akv/qk_panel4_rtl_workflow.md` |
+| Generic paired-head QK/PV | D64/D96/D128 focused RTL gate passes all six runs, 1044 commands and independent protocol checks | Complete Attention ABBA is running; no production deployment or cycle gain accepted yet |
 
 The next static candidate is reuse across heads in generic Decode. Current
 `akv_v2_compute_scores_f16_generic` loops over heads outside dimensions, so
@@ -32,9 +33,15 @@ H heads issue H*D column commands per token tile. The generic PV helper also
 reloads each V row per head. For H=2/D128/T64 this is 256 columns and 128 V-row
 commands. Pairing heads and using four-column delivery could reduce those
 counts to 32 and 64 respectively without reducing arithmetic work or changing
-the accumulation order within any output. This is a design hypothesis, not an
-implemented path or a cycle estimate. Preserve the existing specialized GQA6
-path and odd-head fallback, and do not edit sources sealed by the active gate.
+the accumulation order within any output. The isolated implementation is in
+`software/akv/experimental/paired_heads/`; its accepted focused receipt is
+`verification/akv/results/paired-heads-rtl-20261024.json`. QK uses an independent
+finite-input scalar FMA oracle; PV is an exact regression against canonical
+assembly, not an independent FP16 oracle. Production selection is unchanged.
+The complete derived-GQA2 Attention comparison is separate from ordinary RVV
+and deployment acceptance. Preserve the existing specialized GQA6 path and
+odd-head fallback; actual odd-head runtime acceptance remains open. Do not edit
+sources sealed by active gates.
 
 Local Qwen3 Prefill tensor metadata has 16 Query heads and 8 KV heads (GQA2),
 but that capture is Prefill, not a genuine Decode measurement. Its presence
