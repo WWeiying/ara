@@ -1,0 +1,22 @@
+{
+  "state": "BOUNDED_WAVE_CAPABILITY_CHECKED",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-handoff-wave-profile-20261024-01",
+  "required_signals": 134,
+  "exported_signals": 134,
+  "samples": 10,
+  "begin": "0ns",
+  "end": "20ns",
+  "sampling": "negedge",
+  "functional_execution": false,
+  "owner_transfer_verified": false,
+  "new_rtl": false,
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-handoff-wave-profile-20261024-01/probe.tcl": "f3f037c3e661240c2777cc48cdf5244f1176a5c75a86acfecd8f3259538d3b8f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-handoff-wave-profile-20261024-01/profile.json": "690e4abbe3280b9b061690041c3ca81901887cdf046e487e5fc391b48a3c3611",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-handoff-wave-profile-20261024-01/probe.log": "502c726d17c4c1cc903e796634ec365e072c337b993ad93b655d38f85f3a1af4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-handoff-wave-profile-20261024-01/reader.fsdb": "6ceaba331c03900c24a461f386cdfae172380e52ca16765a267e9ec485cd3685",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-handoff-wave-profile-20261024-01/cycles/cycles.csv": "91ea1a2b0f486d039ef64a3a8cbd4d310012d1b870a065c46ef16782c0f9b9ab",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-handoff-wave-profile-20261024-01/cycles/metadata.json": "2d4b98b309c4f85065812490369a7308c3fec5450bb7e2181d671f98d2418e88",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/reader_handoff/wave_profile.py": "19f5d6785a8abcbaef8faac64f214af1121009bf313c4e34218d3392ab05bff1"
+  }
+}
