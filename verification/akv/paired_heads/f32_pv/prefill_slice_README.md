@@ -57,6 +57,31 @@ Actual prepared build:
 `verification/out/akv-prefill-pv-slice-build-20261024-01`,
 `BUILT_NOT_EXECUTED`. Fresh GNU objects, candidate scope, original feature/
 Prefill validation code, libm, source/capture pins, real symbols and ELF bounds
-are checked. A strict raw-record checker and independently checked bounded
-worker must be finished before VCS execution. Existing leaf PASS does not
-substitute for this complete-call gate. Full-M64 integration remains separate.
+are checked. The strict raw-record checker now passes synthetic count,
+corruption, missing/extra-record and neutral/negative-performance tests. The
+bounded worker independently rechecks the accepted F32 PV leaf result, its
+original oracle log, typed build/image, UVM and all source/artifact hashes.
+
+Actual preflight02 passed in
+`verification/out/akv-prefill-pv-slice-preflight-20261024-02`. Preflight01
+stopped before simulation because Python imported a parent-directory namesake
+runner; explicit file-path loading and a module-identity test now guard this.
+No old accepted checker or build was altered to make preflight pass.
+
+```sh
+python3 -B -m unittest discover -s verification/akv/paired_heads/f32_pv \
+  -p test_prefill_slice_check.py -v
+python3 -B -m unittest discover -s verification/akv/paired_heads/f32_pv \
+  -p test_run_prefill_slice.py -v
+python3 -B verification/akv/paired_heads/f32_pv/run_prefill_slice.py \
+  --build verification/out/akv-prefill-pv-slice-build-20261024-01 \
+  --prerequisite verification/out/akv-paired-f32-pv-rtl-20261024-01 \
+  --output <FRESH_RUN_DIRECTORY>
+```
+
+Use direct systemd ownership and a10800-second simulator bound. The worker
+requires actual simulator exit0, original independent UVM/AXI checks and
+pre/post inventory/hash identity after numerical/raw-work checks; it does not
+accept partial logs or require positive speedup to label functionality PASS.
+Freeze all pinned helpers while running. Existing leaf PASS does not substitute
+for this complete-call gate. Full-M64 integration remains separate.
