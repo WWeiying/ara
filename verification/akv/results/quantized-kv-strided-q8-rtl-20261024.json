@@ -1,0 +1,79 @@
+{
+  "auditor_sha256": "ba5b5659c36be4d1c58e30a5dcef2a3d799ca145568f33e3a7ef4a9080a02dd7",
+  "copied_key_bytes": 34816,
+  "current_inputs_match": true,
+  "cycle_reduction_percent": 55.53065660994657,
+  "deployment_approved": false,
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-strided-attention-q8-20261024-01/image-contract.log": "5fc8a9be01e73221dc44d1643663723f057a8e155767bb9b426de1de53099cdf",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-strided-attention-q8-20261024-01/manifest-after.log": "c6a72d5e6f123ed23bfba178fdc19d4e0fd52a6d0e56a1c5d06263d53b4fd2ed",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-strided-attention-q8-20261024-01/manifest-before.log": "c6a72d5e6f123ed23bfba178fdc19d4e0fd52a6d0e56a1c5d06263d53b4fd2ed",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-strided-attention-q8-20261024-01/model-prerequisite.json": "73daf5ed7d27c713c35647607d8f0e6161fde24a81c1679e8410f873ad9edfd0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-strided-attention-q8-20261024-01/source-pins.json": "6b1be97335452c14929e70bf4a249f3d28952cc5a4ceb4697474cfe2cc17e58b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-strided-attention-q8-20261024-01/work/run.vcs.log": "cac928c583c0e650529560c32c4c9ef134567753e1536fc7273e4dede73ac62a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-strided-attention-q8-20261024-01/work/uvm_result.json": "5baca1e24f82b42e63c16f6cc68ac780b998ac4f36d0cb3bb16dd2feb0a1f497",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-strided-attention-q8-20261024-01/work/vector_trace.csv": "4d96a8f8a07029cf88a61819117d8d678536caa26f55f33f63fc08415b16bfea"
+  },
+  "golden_sha256": "7f6a8d18047bcbdacf7130110d78f258c161081c85a231d4e1e8f8c59e0636ff",
+  "hardware_only": false,
+  "image_checked": true,
+  "independent_protocol_checked": true,
+  "kind": "q8_0",
+  "qbs_busy_cycles": 18635,
+  "qbs_commands": 16,
+  "result_sha256": "02185ec2075057e855e6c6cf8fb5b9ffd0c3d96008945244d069ffed38f3019d",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-strided-attention-q8-20261024-01",
+  "scope": "One real six-Query-head KV-head-0 group in a two-KV-head physical cache; candidate includes mapping, admission and bounded K gathering; not model execution",
+  "source_pins_sha256": "6b1be97335452c14929e70bf4a249f3d28952cc5a4ceb4697474cfe2cc17e58b",
+  "speedup": 2.248740196653483,
+  "state": "RAW_STRIDED_VCS_RECHECKED",
+  "status_sha256": "ca04e07e3c3080f1b6ef4305313a3bc9489a4e566f58bcca8fe05c436ff167d2",
+  "sums": {
+    "0": 2626171,
+    "1": 1167841
+  },
+  "trials": [
+    {
+      "cycles": 1319619,
+      "fcsr": 1,
+      "max_abs": 1.4007091522216797e-06,
+      "pair_bits_differ": 0,
+      "pair_max_abs": 0.0,
+      "shared": 0,
+      "trial": 0,
+      "vcsr": 5
+    },
+    {
+      "cycles": 584225,
+      "fcsr": 1,
+      "max_abs": 1.4007091522216797e-06,
+      "pair_bits_differ": 0,
+      "pair_max_abs": 0.0,
+      "shared": 1,
+      "trial": 1,
+      "vcsr": 5
+    },
+    {
+      "cycles": 583616,
+      "fcsr": 1,
+      "max_abs": 1.4007091522216797e-06,
+      "pair_bits_differ": 0,
+      "pair_max_abs": 0.0,
+      "shared": 1,
+      "trial": 2,
+      "vcsr": 5
+    },
+    {
+      "cycles": 1306552,
+      "fcsr": 1,
+      "max_abs": 1.4007091522216797e-06,
+      "pair_bits_differ": 0,
+      "pair_max_abs": 0.0,
+      "shared": 0,
+      "trial": 3,
+      "vcsr": 5
+    }
+  ],
+  "whole_model": false,
+  "workspace_bytes": 13120
+}
