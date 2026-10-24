@@ -26,7 +26,7 @@ Q4_0/Q8_0 K 与 Q8_0 Query 做整数点积，不是与 F16 Query 做浮点乘加
 
 ```text
 实际 Query F32 -> 原 GGML 的 Q8_0 Query
-实际量化 K    -> 受控 gather 或正确维护的 R4 视图
+实际量化 K    -> 已核实的连续行直接使用；其他布局另行准入
                     |
           QBS：Query x K^T -> F32 score
                     |
@@ -143,3 +143,40 @@ Attention 已接通。生产编译后的 Q4_0 为先乘第一 scale
 及每条命令的累计异常标志均需通过主机参考；实际计数还必须满足136768
 字节 payload、5128个逻辑读取范围。它不是逐输出的原 RVV 对照，且不能
 把当前16点的通过记录外推为全部 Query heads 或多输出已通过。
+
+## 量化 V 与完整 Attention 的软件调度候选
+
+生产 `ops.cpp` 的 quantized-V 分支把一行 V 解码为 F32，再调用
+`ggml_vec_mad_f32` 累加到 F32 分子。它不是现有 F16 AKV 分子路径，不能
+先转为 F16 再声称数值等价。Decode 的 M=1 不满足原 tiled 路径的 Query
+长度条件；量化 K 也不满足原 F16/F32 split-KV 的类型条件。本候选需要
+与这条真实生产分支比较，不人为关闭一个本来可用的快速路径。
+
+实际 `ggml-quants.c` 已整文件编译，保留原 `dequantize_row_q8_0`；薄包装
+只调用生产 `vec.h` 中的 F32 scale/mad，不复制或重写其 RVV 实现。当前
+GNU 配置下 V 解码循环是标量 `fcvt.s.w/fmul.s/fsw`，scale/mad 是动态
+VL 的 RVV F32 运算。该反汇编事实只属于本次编译配置，不代表所有工具链。
+编译收据为 `verification/akv/results/quantized-kv-pv-primitives-20261024.json`。
+
+共享候选位于 `software/akv/experimental/quantized_kv/online.h`：
+
+1. 原调度按 head、token 递进，每个 head 都重新加载和解码 V。
+2. 共享调度每次只暂存32个 token 的 score，用4/2/1个 head 的 QK 分组，
+   每个 token 的 V 只解码一次，再分别更新这些真实 head 的 F32 分子。
+3. 每个 head 内仍按原 token 顺序执行最大值更新、必要的分子缩放、FMA、
+   `S=S*ms+vs` 及最终归一化。没有合并归约、丢弃尾头或额外转换成 F16。
+4. 只为已完成 admission 的有限值、共享零 mask 有效前缀提供调度；softcap、
+   ALiBi、sinks、mask 空洞和其他布局不因此取得准入。回调错误向上返回，
+   已执行部分不能透明重跑 fallback。
+
+两种调度共用逐 head 的数值步骤，并提供独立的完整 double softmax 参考。
+320项 host 组合涵盖 D32/64/96/128/256、1--8个 head、token长度
+1/31/32/33/63/64/65/128，输出与累计浮点标志逐位一致，padding未改写。
+回调计数确认 V 解码从 `heads*tokens` 减到 `tokens`；还检查错误传播、
+步长溢出及 signaling-NaN scale 的无副作用拒绝。
+
+这些是调度和编译证据，不是量化模型或目标 RTL 的完整 Attention 验收。
+下一步应把同一头文件与上述生产原语、真实 K/V/Query/mask/golden 连接，
+完整计时包含 Query 量化、描述符、QK、V 解码、softmax、PV 与结果落存。
+只有整段受益并通过原模型容差及回退检查后，才接入 GGML；当前未新增
+RTL、指令、SRAM 或默认开启的生产快速路径。
