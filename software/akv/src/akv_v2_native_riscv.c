@@ -54,6 +54,9 @@ static inline int common_v2_plan_is_valid(
 extern void akv_v2_compute_scores_f16_d128_gqa6(
     const uint16_t *query, float *score, uint32_t tile_tokens,
     size_t q_row_stride_bytes);
+extern void akv_v2_compute_scores_f16_d128_gqa6_panel4(
+    const uint16_t *query, float *score, uint32_t tile_tokens,
+    size_t q_row_stride_bytes);
 extern void akv_v2_compute_scores_f16_d128_gqa6_q2(
     const uint16_t *query0, const uint16_t *query1, float *score,
     uint32_t tile_tokens);
@@ -96,6 +99,28 @@ extern void akv_v2_update_outputs_f16_d256_generic(
 extern void akv_v2_update_outputs_f16_d256_online(
     const float *score, uint16_t *accumulator, const float *token_scale,
     uint32_t tile_tokens, uint32_t q_rows);
+
+/* Optional on freestanding targets: no environment provider means OFF. */
+extern char *getenv(const char *name) __attribute__((weak));
+
+static int qk_panel4_enabled_for_plan(const akv_attention_plan_t *plan) {
+  if (plan->descriptor.element_format != AKV_ELEMENT_FORMAT_F16 ||
+      plan->descriptor.q_rows != AKV_ATTENTION_KERNEL_Q_ROWS ||
+      plan->descriptor.head_dim != AKV_HEAD_DIM_128 || getenv == NULL)
+    return 0;
+  const char *const value = getenv("AKV_QK_PANEL4");
+  if (value == NULL || value[0] != '1' || value[1] != '\0')
+    return 0;
+  akv_device_t device;
+  if (akv_device_query(akv_native_info, NULL, &device) != AKV_STATUS_OK)
+    return 0;
+  return device.capabilities.valid && device.capabilities.f16_payload &&
+         device.capabilities.head_dim_128 &&
+         device.capabilities.max_q_rows >= AKV_ATTENTION_KERNEL_Q_ROWS &&
+         device.capabilities.token_axis_valid &&
+         device.capabilities.token_axis_tail &&
+         device.capabilities.token_axis_column_panel4;
+}
 
 static inline float negative_infinity_f32(void) {
   const uint32_t bits = UINT32_C(0xff800000);
@@ -583,6 +608,10 @@ akv_status_t akv_attention_execute_v2_with_features_native(
 
   const int overlap_refill = AKV_REFILL_OVERLAP &&
       akv_refill_workspace_disjoint(&plan->descriptor, workspace, sizeof(*workspace));
+  const int qk_panel4 = qk_panel4_enabled_for_plan(plan);
+  void (*const compute_scores_d128_gqa6)(const uint16_t *, float *, uint32_t, size_t) =
+      qk_panel4 ? akv_v2_compute_scores_f16_d128_gqa6_panel4
+                : akv_v2_compute_scores_f16_d128_gqa6;
   initialize_workspace(workspace, q_rows, head_dim);
   if (features != NULL && features->sinks_enabled) {
     for (uint32_t head = 0; head < q_rows; ++head) {
@@ -601,7 +630,7 @@ akv_status_t akv_attention_execute_v2_with_features_native(
 
     if (q_rows == AKV_ATTENTION_KERNEL_Q_ROWS &&
         head_dim == AKV_HEAD_DIM_128) {
-      akv_v2_compute_scores_f16_d128_gqa6(
+      compute_scores_d128_gqa6(
           query, &workspace->score[0][0], tile_tokens,
           query_row_stride_bytes);
     } else {

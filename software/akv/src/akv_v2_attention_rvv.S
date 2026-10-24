@@ -100,6 +100,88 @@ akv_v2_compute_scores_f16_d128_gqa6:
     .size akv_v2_compute_scores_f16_d128_gqa6, \
           .-akv_v2_compute_scores_f16_d128_gqa6
 
+    .globl  akv_v2_compute_scores_f16_d128_gqa6_panel4
+    .type   akv_v2_compute_scores_f16_d128_gqa6_panel4,@function
+
+// One Query position, six GQA heads. Same arguments/score layout as singles.
+// EW32/m2 accumulators occupy v0-v7 and v10-v13. PANEL4 destinations must
+// therefore NOT start at v8; use disjoint aligned v16-v19 and v20-v23.
+    .macro AKV_QK_GQA6_PANEL_COLUMN vreg
+    flh             ft0, 0(a4)
+    flh             ft1, 0(a5)
+    flh             ft2, 0(a6)
+    flh             ft3, 0(a7)
+    flh             ft4, 0(t5)
+    flh             ft5, 0(t6)
+    vfwmacc.vf      v0, ft0, \vreg
+    vfwmacc.vf      v2, ft1, \vreg
+    vfwmacc.vf      v4, ft2, \vreg
+    vfwmacc.vf      v6, ft3, \vreg
+    vfwmacc.vf      v10, ft4, \vreg
+    vfwmacc.vf      v12, ft5, \vreg
+    addi            a4, a4, 2
+    addi            a5, a5, 2
+    addi            a6, a6, 2
+    addi            a7, a7, 2
+    addi            t5, t5, 2
+    addi            t6, t6, 2
+    .endm
+
+akv_v2_compute_scores_f16_d128_gqa6_panel4:
+    mv              a4, a0
+    add             a5, a4, a3
+    add             a6, a5, a3
+    add             a7, a6, a3
+    add             t5, a7, a3
+    add             t6, t5, a3
+    mv              t0, a1
+    mv              t1, a2
+
+    vsetvli         zero, t1, e32, m2, ta, ma
+    vmv.v.i         v0, 0
+    vmv.v.i         v2, 0
+    vmv.v.i         v4, 0
+    vmv.v.i         v6, 0
+    vmv.v.i         v10, 0
+    vmv.v.i         v12, 0
+    vsetvli         zero, t1, e16, m1, ta, ma
+    li              t2, 0
+    li              t3, 128
+.Lakv_v2_qk_gqa6_panel_pair:
+    mv              a0, t2
+    .word           0x0205785b  // vakv2kpanel4 v16-v19, dimension(a0)
+    AKV_QK_GQA6_PANEL_COLUMN v16
+    AKV_QK_GQA6_PANEL_COLUMN v17
+    AKV_QK_GQA6_PANEL_COLUMN v18
+    AKV_QK_GQA6_PANEL_COLUMN v19
+    addi            t2, t2, 4
+
+    mv              a0, t2
+    .word           0x02057a5b  // vakv2kpanel4 v20-v23, dimension(a0)
+    AKV_QK_GQA6_PANEL_COLUMN v20
+    AKV_QK_GQA6_PANEL_COLUMN v21
+    AKV_QK_GQA6_PANEL_COLUMN v22
+    AKV_QK_GQA6_PANEL_COLUMN v23
+    addi            t2, t2, 4
+    bltu            t2, t3, .Lakv_v2_qk_gqa6_panel_pair
+
+    vsetvli         zero, t1, e32, m2, ta, ma
+    vse32.v         v0, (t0)
+    addi            t0, t0, 256
+    vse32.v         v2, (t0)
+    addi            t0, t0, 256
+    vse32.v         v4, (t0)
+    addi            t0, t0, 256
+    vse32.v         v6, (t0)
+    addi            t0, t0, 256
+    vse32.v         v10, (t0)
+    addi            t0, t0, 256
+    vse32.v         v12, (t0)
+    ret
+    .size akv_v2_compute_scores_f16_d128_gqa6_panel4, \
+          .-akv_v2_compute_scores_f16_d128_gqa6_panel4
+    .purgem AKV_QK_GQA6_PANEL_COLUMN
+
     .globl  akv_v2_compute_scores_f16_d128_gqa6_q2
     .type   akv_v2_compute_scores_f16_d128_gqa6_q2,@function
 
