@@ -50,6 +50,15 @@ QBS descriptor 没有独立的 weight-row byte stride；行主序地址使用
 `Kblocks * block_bytes`。实际 llama KV cache 的同 head 相邻 token 可能
 跨过其他 heads 的存储，不能未经 tensor stride 核查就零拷贝接入。
 
+现在已有两组新构建、完整来源固定的真实 Qwen2.5 Decode 捕获：K=Q8_0/
+V=Q8_0 和 K=Q4_0/V=Q8_0。独立重验确认 D128、12 Query heads、2 KV
+heads、可见 KV128；实际 K token stride 分别为136 B和72 B，恰好等于
+四个量化块的行宽。同 head 的行已连续，因此这两组可以先直接以原缓存
+基址做 QBS DIRECT，不必预先 gather。收据为
+`../../verification/akv/results/quantized-kv-real-capture-20261024.json`。
+这不是所有模型/布局的通用结论；仍按实际 strides 决定，不能默认创建
+mirror 或把下表的可能搬运成本强加给已连续的缓存。
+
 | D128、两 KV heads | Q8_0 K | Q4_0 K |
 | --- | ---: | ---: |
 | KV128 的有效压缩数据 | 34816 B | 18432 B |
@@ -96,3 +105,16 @@ K dot 或 V 读取。因此不能批量计算原本被屏蔽、可能尚未初�
 
 本计划不修改 RTL 或当前封存中的 Attention 实验，也不宣称新模型/量化 KV
 已经通过。优先完成当前 F16 列递送和跨头共享的完整算子评估，再推进此项。
+
+## 当前数据闭环的位置
+
+真实量化 K/V、F32 Query、F16 mask 和 Attention 输出已采集且独立核对。
+捕获使用独立新建的 host binary/shared libraries，源文件、模型、输入、
+二进制及张量哈希固定；没有改写旧捕获或使用 F16 normalizer。它完成的是
+数据来源与布局检查，不是 RVV 或 QBS 计算验收。
+
+接下来必须用目标 RVV 的原始 `quantize_row_q8_0` 得到 Query 编码，核对
+`ggml_vec_dot_q4_0_q8_0` / `ggml_vec_dot_q8_0_q8_0` 与 QBS 的 score 和
+浮点标志。当前源码中前者按 `sumi*dw*dq`，后者按 `sumi*(dw*dq)` 写出，
+不能假设它们与 QBS 的 scale/FMA 顺序逐位相同。保留这一数值准入条件，
+再接回原 quantized-V F32 PV；不以“已有真实捕获”替代后续验收。

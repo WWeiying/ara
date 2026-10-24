@@ -1,0 +1,24 @@
+{
+  "state": "REAL_HOST_CAPTURE_INDEPENDENTLY_RECHECKED",
+  "run": "verification/out/akv-quantkv-host-capture-20261024-01",
+  "result_sha256": "0c1624402652b0047c93adcbeaa8ece7549abe0940a5ff9e9453d820b4885d16",
+  "binary_sha256": "5802d4feaaf3b4afff1bd67f9b76896c54813f6a8a572a86b266824cdae4a2b5",
+  "independent_source_artifact_and_tensor_recheck": "PASS",
+  "model": "Qwen2.5-1.5B-Instruct-Q4_K_M",
+  "head_dim": 128,
+  "query_heads": 12,
+  "kv_heads": 2,
+  "visible_tokens": 128,
+  "physical_capacity": 256,
+  "profiles": [
+    {"key":"q8_0","value":"q8_0","key_token_stride":136,"key_head_stride":34816,"key_visible_bytes":34816},
+    {"key":"q4_0","value":"q8_0","key_token_stride":72,"key_head_stride":18432,"key_visible_bytes":18432}
+  ],
+  "tight_key_rows_per_head": true,
+  "required_next_action": "Evaluate original contiguous K via QBS DIRECT before adding any gather or cache mirror",
+  "rvv_query_quantization_bytes_collected": false,
+  "qbs_numerical_accepted": false,
+  "native_quantized_kv_accepted": false,
+  "rtl_performance": false,
+  "scope": "Fresh pinned host reference inference and actual cached bytes/output, not hardware acceleration evidence"
+}
