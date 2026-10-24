@@ -5,8 +5,8 @@
 当前 AKV 原生路径仍读取 F16 K/V；PANEL4 只改变列递送方式，不增加量化
 格式。GGML 对 Q8_0/Q4_0 KV 有正常的原始执行路径，但这不等于 AKV 硬件
 已经加速这些缓存。当前已通过独立 VCS 的完整量化 Attention 切片对照，
-并完成默认关闭的 GGML 原生派发及真实数据图验证。计入公共入口准入成本
-的 VCS 评估仍在进行；完整模型验证尚未完成。量化路径复用 QBS DIRECT、
+并完成默认关闭的 GGML 原生派发、真实缓存步长适配和短序列完整模型功能
+验证。包含准入与 K 整理成本的配对 VCS 评估仍在进行。量化路径复用 QBS DIRECT、
 标准 RVV 与原 online softmax，不把它描述为 F16 AKV 数据通路直接读取
 量化 V。
 
@@ -30,7 +30,7 @@ Q4_0/Q8_0 K 与 Q8_0 Query 做整数点积，不是与 F16 Query 做浮点乘加
 
 ```text
 实际 Query F32 -> 原 GGML 的 Q8_0 Query
-实际量化 K    -> 已核实的连续行直接使用；其他布局另行准入
+实际量化 K    -> 连续行直接使用；已准入的交错布局按至多32行整理
                     |
           QBS：Query x K^T -> F32 score
                     |
@@ -56,12 +56,21 @@ QBS descriptor 没有独立的 weight-row byte stride；行主序地址使用
 
 现在已有两组新构建、完整来源固定的真实 Qwen2.5 Decode 捕获：K=Q8_0/
 V=Q8_0 和 K=Q4_0/V=Q8_0。独立重验确认 D128、12 Query heads、2 KV
-heads、可见 KV128；实际 K token stride 分别为136 B和72 B，恰好等于
-四个量化块的行宽。同 head 的行已连续，因此这两组可以先直接以原缓存
-基址做 QBS DIRECT，不必预先 gather。收据为
+heads、可见 KV128；导出张量的 K token stride 分别为136 B和72 B，恰好
+等于四个量化块的行宽。但抽取图在导出前对 Q/K/V 执行了 `ggml_dup`，
+因此这些步长描述的是整理后的张量，不能推断模型中的 KV cache 连续。
+这两份整理后的数据可直接做 QBS DIRECT，其数据来源收据为
 `../../verification/akv/results/quantized-kv-real-capture-20261024.json`。
-这不是所有模型/布局的通用结论；仍按实际 strides 决定，不能默认创建
-mirror 或把下表的可能搬运成本强加给已连续的缓存。
+当前 llama.cpp 的真实两-head KV cache 按 token 存放各 head；D128 时，
+Q8_0 K 的 token/head stride 是272/136 B，Q4_0 则是144/72 B。共享 C
+入口会检查非重叠、范围和实际步长，不能只删除连续行检查再直接发出
+没有 stride 字段的 QBS descriptor。
+
+已实现的接法对每个 KV head、每个至多32-token 面板整理原始量化字节，
+供其 M4/M2/M1 Query 分组共用。仅复制可见行，不解码或重新量化 K，也不
+保留跨调用 mirror。每次调用使面板缓存失效；连续行仍走零复制分支。
+面板容量最大为 `32 * (256/32) * 34 = 8704 B`，与上下文长度无关；连同
+原执行工作区及标签共13120 B，属于软件 scratch，不是新增硬件 SRAM。
 
 | D128、两 KV heads | Q8_0 K | Q4_0 K |
 | --- | ---: | ---: |
@@ -69,9 +78,11 @@ mirror 或把下表的可能搬运成本强加给已连续的缓存。
 | 每次完整 gather 的额外读加写 | 69632 B | 36864 B |
 | 每个新增 token 的两-head 编码数据 | 272 B | 144 B |
 
+表中额外读写是有效 K 全部整理时的静态字节量，不是实测 AXI 流量。
 最后一行不是已经实现的增量更新成本。R4 mirror 若跨调用保留，需要绑定
 cache slot、generation、覆盖/清除/搬移；现有整矩阵 repacker 不能直接当作
-append helper。第一版可先使用有界 gather，完整计入成本，收益不足则不部署。
+append helper。当前采用上述有界 gather，其成本纳入新的 VCS 询证；不能
+把连续捕获切片的周期直接当成真实交错 cache 的周期。
 
 ### 2. 点积数值顺序
 
@@ -109,7 +120,8 @@ K dot 或 V 读取。因此不能批量计算原本被屏蔽、可能尚未初�
    剩余计算。只有完整算子实际受益且数值准入通过后才接入正式 GGML 选择。
 
 本计划不修改 RTL 或已封存的 Attention 实验。已通过的范围以下列实际
-捕获、数值及完整切片证据为准，不宣称完整量化 KV 模型执行已经闭环。
+捕获、数值、完整切片和下文短序列模型证据为准；不以功能通过推断完整
+模型加速比或长序列质量。
 
 ## 当前数据闭环的位置
 
@@ -217,7 +229,7 @@ V 共享。数据不是整个模型的加速比，也不包含每次 GGML 调用
 262144个真实输出精确一致，独立协议和原始证据重放通过。两份捕获的解码
 配对加速比分别为3.741763x和3.742391x，周期降低约73.28%。这是解码器
 自身的结果，不能与完整 Attention 的加速比直接相乘；目前未替换上述封存
-实验的 V 回调，也未修改生产选择。精度约束与收据见
+实验的 V 回调。当前显式开启的 GGML 接入口已使用该 RVV 解码器；精度约束与收据见
 `verification/akv/quantized_kv/value_decode_fast_README.md`。
 默认生产选择仍须以完整入口收益、原模型容差及回退检查为门槛；当前的
 GGML 接入是显式开启的测试分支，未新增 RTL、指令、SRAM 或默认开启的
@@ -233,11 +245,18 @@ heads、每次1536个输出；共64条 QBS 命令，六项 mask、线程和内�
 绕过 GGML 直接调用内核。原始日志及714项输入身份已独立复核，收据为
 `verification/akv/results/quantized-kv-ggml-live-20261024.json`。
 
+上述受控图使用连续张量。真实缓存布局的后续验收同时覆盖连续和
+token-major 交错视图、128/5 两个可见前缀、两种 K 格式及重复调用。
+16次原生调用实际发出160条命令，整理40个面板，复制110656 B；全部
+1536个输出、重复位模式、配对 FCSR/VCSR、输入保持和六项回退检查通过。
+此处复制字节不是外部总流量；收据为
+`verification/akv/results/quantized-kv-ggml-strided-20261024.json`。
+
 新分支保持三态结果：完成、执行前回退、开始执行后失败。最后一种直接
 报错，不能透明重跑普通路径。普通 RVV 和已有 F16 AKV 路径未被替换。
 此处 QEMU 只证明原生指令功能和实际派发，不提供 RTL 周期或完整模型
 性能。外部私有 llama.cpp 未自动提交；已将可复现源码补丁和基准提交归档
-在 `verification/akv/quantized_kv/llama_integration_20261024/`，其中明确
+在 `verification/akv/quantized_kv/llama_integration_strided_20261024/`，其中明确
 保留了已有私有修改，不能将所有补丁行都归因于本轮接入。
 
 `ggml_decode.h` 已使用真实 `ggml_tensor` 定义完成元数据映射。Query 的
@@ -257,8 +276,27 @@ Query量化、命令、Softmax、PV和完成排空；不把只测内部循环的
 确认是可由处理器访问的正常内存，而不是仅凭形状推算更大的分配范围。
 初始映射只接收 `nth=1、ith=0`；`use_ref`、批量、多 Query token、不同
 mask及未准入格式继续原路径。执行已开始后发生错误必须上报，不能让另一个
-CPU worker透明重试并覆盖部分输出。完整模型验证与线程间一致准入仍是
-后续验收项，不能因单组切片通过而省略。
+CPU worker透明重试并覆盖部分输出。线程间一致准入、多序列和不符合
+有限值/零 mask 前缀要求的场景仍回退，不因模型短序列通过而扩大准入。
+
+完整 Qwen2.5-1.5B-Instruct Q4_K_M 已通过原生 QBS QEMU 的短生成对照：
+全部28层，四个 prompt tokens，每个独立 context 生成三个 tokens；
+K=Q8_0/Q4_0、V=Q8_0 各有普通与候选一组。请求 context128，实际 runtime
+向上取整为256。候选的112次 Decode Attention 调用全部原生完成，共448条
+QBS 命令、224个 K 面板和128128 B 复制；多 token Prefill 的56次回退符合
+当前范围。两种模式均输出 ` jumps over the`，六次 logits 对照的最大差、
+RMSE、KL 均为0；投影也实际使用 Q4_K/Q6_K 原生命令而非软件模拟。
+收据为 `verification/akv/results/quantized-kv-model-strided-20261024.json`。
+这只证明该短序列的功能、布局和派发闭环，不是长文本质量或 RTL 性能。
+
+当前共享实现为 `runtime_strided.c/.h` 和 `ggml_entry_strided.h`，保留
+相同量化器、DIRECT 回调及逐 head token 顺序。完整切片的公开入口 VCS
+对照现已另加真实交错布局，并让两条路径共用同一个 RVV V 解码器；计时
+包含映射、准入和 K 整理。它不计 GGML 图调度及 backend host-extent 查询，
+也不能将 QBS 加共享调度的收益写成纯硬件收益。已构建的尾块 RTL 测试另
+包含5与33个可见 token，并导出实际 Query/QK score 逐位重放，避免只用
+最终输出容差掩盖面板复用错误；其 RTL 结果仍待验收，不能预先记为通过。运行和验收范围见
+`verification/akv/quantized_kv/strided_attention_README.md`。
 
 ### DIRECT 与既有 activation context 的关系
 
