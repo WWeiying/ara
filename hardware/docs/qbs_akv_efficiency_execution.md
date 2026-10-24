@@ -24,7 +24,7 @@ decisions are:
 | Shared Q8_K M4 preparation | Same-ELF complete projection ABBA 1219006 to 1076923 summed cycles, 1.131934x; live GGML graph gate passed | Retain explicit opt-in; see `qbs_q8k_preparation.md` and Q8_K receipts |
 | REFILL/older-RVV overlap | Fixed-address whole Attention ABBA is about 1.55% slower despite the focused overlap opportunity | Keep software scheduling OFF; see `akv_refill_overlap_implementation.md` |
 | Long-K VRF continuation | Real M4/N64/K8960 matrix ABBA passes numerically but is 8.885649% slower | Keep experimental QBACC OFF; see `qbs_vrf_continuation_design.md` |
-| One-query GQA6 QK PANEL4 | Eight-pair/sixteen-run focused RTL score gate passes; dependent complete Attention ABBA is running | No complete-operator performance acceptance yet; see `../../verification/akv/qk_panel4_rtl_workflow.md` |
+| One-query GQA6 QK PANEL4 | Focused RTL gate and complete Attention ABBA pass; 215259 to 207062 summed cycles, 1.039587x | Retain explicit opt-in; unchanged output/CSR/traffic, no whole-model claim; see `../../verification/akv/results/qk-panel4-attention-20261024.json` |
 | Generic paired-head QK/PV | Focused RTL and complete derived-GQA2 Attention ABBA pass; 161778 to 116768 summed cycles, 1.385465x versus generic AKV | Ordinary RVV comparison and production selection remain open; see `akv_paired_head_efficiency.md` |
 
 The next static candidate is reuse across heads in generic Decode. Current
