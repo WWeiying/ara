@@ -1,0 +1,20 @@
+{
+  "state": "HOST_OBJECT_MAPPING_PASS",
+  "scope": "Experimental paired-head F32 PV leaf; no production caller or native execution",
+  "source": "software/akv/experimental/paired_heads/f32_pv/attention_rvv.S",
+  "source_sha256": "9bd40149dcf40ef5d730905e8b5c7b8cd5e9d48d4d99547c36e735459d8d3b55",
+  "parent_independent_build": "verification/out/akv-f32-pv-object-parent-20261024-01",
+  "parent_result_sha256": "45272871e1bf1318410809bd0cb08e0bf03a629fd73ef928206a4c6c833ee849",
+  "agent_build": "verification/out/akv-f32-pv-object-20261024-03",
+  "mapped_cases": 228,
+  "sticky_cases": 12,
+  "exhaustive_shapes": 192,
+  "dimensions": [64, 96, 128],
+  "tokens": "Every integer 1 through 64",
+  "rejected_machine_word_mutations": 13,
+  "oracle": "Independent head-major C fmaf/fenv versus integer RNE machine-word mapper",
+  "rtl_accepted": false,
+  "performance_accepted": false,
+  "deployment_accepted": false,
+  "limits": "Finite F16 V, RNE; not actual CSR/trap/reset, odd-head caller, full Attention or model evidence"
+}
