@@ -25,7 +25,7 @@ decisions are:
 | REFILL/older-RVV overlap | Fixed-address whole Attention ABBA is about 1.55% slower despite the focused overlap opportunity | Keep software scheduling OFF; see `akv_refill_overlap_implementation.md` |
 | Long-K VRF continuation | Real M4/N64/K8960 matrix ABBA passes numerically but is 8.885649% slower | Keep experimental QBACC OFF; see `qbs_vrf_continuation_design.md` |
 | One-query GQA6 QK PANEL4 | Focused RTL gate and complete Attention ABBA pass; 215259 to 207062 summed cycles, 1.039587x | Retain explicit opt-in; unchanged output/CSR/traffic, no whole-model claim; see `../../verification/akv/results/qk-panel4-attention-20261024.json` |
-| Generic paired-head QK/PV | Focused RTL and complete derived-GQA2 Attention ABBA pass; 161778 to 116768 summed cycles, 1.385465x versus generic AKV | Ordinary RVV comparison and production selection remain open; see `akv_paired_head_efficiency.md` |
+| Generic paired-head QK/PV | Focused RTL and complete Attention pass; independently rechecked three-way sums: ordinary RVV 490585, generic AKV 161570, paired AKV 116651 | 1.385072x versus generic, 4.205579x versus ordinary RVV on the derived real KV128 subset; KV256 and production selection remain open |
 
 The next static candidate is reuse across heads in generic Decode. Current
 `akv_v2_compute_scores_f16_generic` loops over heads outside dimensions, so
@@ -63,6 +63,32 @@ Do not represent lower traffic as lower cycles or SRAM capacity reduction as
 measured area reduction. Do not replace the requested mechanisms with smaller
 test-only variants. A rejected candidate needs evidence and an explicit next
 design decision, not a claim that the milestone is complete.
+
+### Current next gates
+
+The real KV256 three-way successor is built and its bounded worker passed host
+phase/failure checks plus actual preflight. It is scheduled under
+`akv-context-kv256-threeway-20261024-01.service`, using independent output
+`verification/out/akv-context-kv256-threeway-20261024-01`. A submitted service
+is not proof that the simulator has started; confirm its actual child and
+terminal checker before accepting any result. No production integration is
+implied. The same-capture KV128 receipts cannot supply a KV256 checksum.
+
+The F32 paired PV leaf has independently reproduced host object-mapping
+acceptance in `verification/akv/results/paired-f32-pv-object-20261024.json`.
+Actual RTL preparation files are incomplete and not accepted. Do not launch
+them or describe them as tested until their builder, oracle layout, original
+generic reference, checker mutations and pins have been reviewed together.
+
+Offline grouping of the accepted six-head PANEL4 trial shows QK command busy
+falling from 24055 to 15524 cycles over two calls; all command busy falls from
+54340 to 45842. Complete cycles fall from 215259 to 207062, while measured
+cycles minus busy remain close (160919 versus 161220). Thus PANEL4 removes a
+measured delivery cost but does not eliminate the other work in the operator.
+The residual is not a disjoint compute/stall breakdown. Use
+`verification/akv/analyze_qk_panel4_busy.py` and the accepted result hash to
+reproduce grouping; do not infer a need for more arithmetic hardware from
+this residual alone.
 
 ## Stage 1 hypotheses
 
