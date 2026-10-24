@@ -1,7 +1,10 @@
 # Actual RVV Query / QBS score numerical inquiry
 
-Prepared build: `verification/out/akv-quantkv-rvv-qbs-build-20261024-01`,
-`BUILT_NOT_EXECUTED`. No simulator or numerical acceptance yet.
+Sealed build: `verification/out/akv-quantkv-rvv-qbs-build-20261024-01`.
+Its independent run `verification/out/akv-quantkv-rvv-qbs-20261024-01` is PASS:
+raw log, host replay, actual work and UVM were independently rechecked. All16
+scores and flags match original RVV, QBS hardware and both reference executions.
+Receipt: `verification/akv/results/quantized-kv-qk-numeric-20261024.json`.
 
 ## Exact code and real operands
 
@@ -58,9 +61,9 @@ python3 -B verification/akv/quantized_kv/test_rvv_qbs_check.py
 
 Three numerical-checker tests pass: exact known Q8_0/Q4_0 dot products and zero
 activations; explicit baseline-difference reporting; and rejection of fourteen
-transcript mutations plus changed K operands. These synthetic checker tests do
-not establish numerical acceptance of the real-model RTL test, which has not
-yet executed.
+transcript mutations plus changed K operands. These synthetic checker tests
+are not additional real-model RTL coverage. The executed
+sixteen-score inquiry is accepted separately by its run receipt above.
 
 ## Bounded native execution
 
@@ -107,3 +110,21 @@ modified. A reviewed strict transcript/work checker plus independent UVM and
 bounded worker are required before execution and acceptance. It does not yet
 prove complete quantized-KV Attention, quantized-V PV, runtime selection, model
 quality or speedup.
+
+## Multioutput follow-up
+
+`batch_qk_main.c` and `build_batch_qk.py` prepare a separate ELF with all12
+real Query heads from both captures, not duplicated heads0/6. Each profile
+computes the complete12x128 score matrix with M4+M2/N32 DIRECT calls; extra
+M2/N31 and M4/N1 calls check token62/64 boundaries without reading hidden
+cache rows. Total:40 commands,3336 outputs and24 actual Query exports.
+Independent geometry tests verify complete coordinate coverage, head
+ownership, valid weight alignment and absence of hidden-row reads.
+
+Build: `verification/out/akv-quantkv-batch-qk-build-20261024-01` is
+`BUILT_NOT_EXECUTED`. Only the new main is compiled; original primitive,
+startup, runtime and real-data objects are reused after checking sealed hashes.
+No on-target scalar score reference is linked: acceptance must replay exported
+Query/score bytes with the independent host oracle. The old sixteen-score PASS
+does not accept this multioutput ELF. A strict batch transcript/work checker
+and bounded worker are still required before launch.

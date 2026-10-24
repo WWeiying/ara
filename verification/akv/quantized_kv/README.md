@@ -101,7 +101,9 @@ python3 -B verification/akv/quantized_kv/build_rvv_primitives.py \
 
 The linked numerical ELF now calls those exact compiled primitives with each
 capture's own real Query/K bytes, at heads0/6 and tokens0/63/64/127. Its worker
-and host replay are described in `rvv_qbs_README.md`. Native execution and
-numerical acceptance remain separate from successful preparation. Query byte
-exports must pass independent host QBS replay before assessing baseline drift;
-neither this inquiry nor its host tests prove complete Attention performance.
+and host replay are described in `rvv_qbs_README.md`. The sixteen-score inquiry
+passed native execution and independent raw-log, host QBS replay, work and UVM
+rechecking. No score/flag differences appeared in those samples. This is not
+all-head, multioutput or complete Attention acceptance; the separate40-command
+all-head follow-up ELF has only been built. Neither the inquiry nor its host
+tests prove complete Attention performance.

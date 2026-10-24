@@ -1,0 +1,20 @@
+{
+  "state": "PASS",
+  "run": "verification/out/akv-quantkv-rvv-qbs-20261024-01",
+  "result_sha256": "81e97adbae7a7a3afbb6f59f1c56655c67f4658f5d30397e19c03c3630760a9a",
+  "independent_raw_host_work_and_uvm_recheck": "PASS",
+  "scores": 16,
+  "query_exports": 4,
+  "query_bytes_per_export": 136,
+  "actual_query_heads": [0, 6],
+  "actual_tokens": [0, 63, 64, 127],
+  "profiles": ["q8_0", "q4_0"],
+  "rvv_qbs_bit_or_flag_differences": {"q8_0": 0, "q4_0": 0},
+  "qbs_commands": 16,
+  "logical_payload_bytes": 4096,
+  "scope": "Real captured K and target production RVV quantizer, M1/N1 QK samples; independent host QBS reference",
+  "all_shapes_numerically_accepted": false,
+  "complete_attention_accepted": false,
+  "deployment_approved": false,
+  "performance_measured": false
+}

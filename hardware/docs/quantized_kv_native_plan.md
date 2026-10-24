@@ -124,10 +124,20 @@ score、片内参考和主机参考的位模式及 fflags 必须一致。实际�
 后端/AXI 读写检查、前后输入哈希与执行镜像核对。检查器及执行入口的
 10项 host 测试已通过；它们不是实际 RTL 的计算结果。
 
-执行前检查已通过，后台入口为
+16点原生数值测试已通过，独立复核了原始日志、实际 Query 导出、主机参考、
+硬件工作量和 UVM。两种格式各8个 score 的位模式及浮点标志均与原 RVV
+一致。收据为 `verification/akv/results/quantized-kv-qk-numeric-20261024.json`。
+这一结果只适用于所测位置，不能由此消除不同舍入顺序的潜在影响。
+原生执行入口为
 `verification/akv/quantized_kv/run_rvv_qbs.py`，独立运行目录为
-`verification/out/akv-quantkv-rvv-qbs-20261024-01`。当前仍待实际数值验收，
-不宣称量化 KV Attention 已接通。生产编译后的 Q4_0 为先乘第一 scale
+`verification/out/akv-quantkv-rvv-qbs-20261024-01`。尚不宣称量化 KV
+Attention 已接通。生产编译后的 Q4_0 为先乘第一 scale
 再融合第二 scale；Q8_0 为先乘两个 scale 再融合 dot。因此必须分别报告
 其与 QBS 的位模式及标志差异，不以改变既有容差来取得通过。保留这一
 准入条件，再接回原 quantized-V F32 PV；不以“已有真实捕获”替代验收。
+
+多输出后续 ELF 已构建，使用两个捕获的全部12个 Query heads，M4+M2
+计算各自完整12x128 score 矩阵，另加 M2/N31 与 M4/N1 的有效位置尾块。
+共40条命令、3336个输出、24份目标量化 Query。该 ELF 还未执行，下一步
+必须先补严格的批量日志与工作量检查器，再做独立 VCS/UVM 验收；不能
+把当前16点的通过记录外推为全部 Query heads 或多输出已通过。
