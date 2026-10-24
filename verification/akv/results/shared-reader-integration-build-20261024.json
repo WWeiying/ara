@@ -1,0 +1,32 @@
+{
+  "state": "SOC_BUILT_NOT_EXECUTED",
+  "production_promoted": false,
+  "functional_acceptance": false,
+  "ppa_measured": false,
+  "snapshot": "verification/akv/shared_reader_integration/snapshot-02",
+  "snapshot_manifest_sha256": "609eac8e5e689121b11d382f6e4606505efd74cf2202597cd02d805c22862483",
+  "vlsu_compile": "verification/out/shared-reader-integration-compile-20261024-02",
+  "vlsu_result_sha256": "af6f721dd7690808eea93888b319c28db53d46edb5d38ef7d81f7d2170caf4a2",
+  "soc_build": "verification/out/shared-reader-integration-soc-build-20261024-01",
+  "soc_result_sha256": "4da87cd22ec03847c2035309144e2bbe846a350ae618c0a7247d6df006d04889",
+  "source_pins_sha256": "c143de23f14348afdc40ec03be04353cadc215ec568120d471a05a688165d976",
+  "compile_log_sha256": "e1dce63fcd37e1e6aadcc2da447c396c0c89b3cb16a2a0682adc6d9741107577",
+  "source_change_scope": [
+    "Typed reader interfaces extracted from complete QBS and AKV engines",
+    "One physical reader in VLSU with unchanged two-range/two-burst capacity",
+    "OR enables before one shared clock gate",
+    "Existing command ownership, registered AXI cut, MMU and computation retained",
+    "Full QBS tag16, explicit AKV tag8 extension/truncation and migrated metrics"
+  ],
+  "configuration": {"lanes": 4, "vlen": 1024, "sim_l2_bytes": 16777216},
+  "warnings": {
+    "comparison": "Full warning blocks equal to accepted qbacc-soc-20261023-02 after normalizing the copied source-root prefix",
+    "new_normalized_blocks": 0,
+    "baseline_and_candidate_counts": {
+      "SIOB": 101, "UII-L": 10, "ENUMASSIGN": 7, "OPD": 3,
+      "LCA_FEATURES_ENABLED": 1, "IPDW": 1, "SV-LCM-RIPI": 1
+    },
+    "not_a_warning_waiver": true
+  },
+  "next_gate": "Actual 71-command mixed SoC fixture with one-reader waveform, exact numerical/context/traffic checks and independent protocol checking"
+}
