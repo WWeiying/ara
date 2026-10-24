@@ -25,7 +25,7 @@ decisions are:
 | REFILL/older-RVV overlap | Fixed-address whole Attention ABBA is about 1.55% slower despite the focused overlap opportunity | Keep software scheduling OFF; see `akv_refill_overlap_implementation.md` |
 | Long-K VRF continuation | Real M4/N64/K8960 matrix ABBA passes numerically but is 8.885649% slower | Keep experimental QBACC OFF; see `qbs_vrf_continuation_design.md` |
 | One-query GQA6 QK PANEL4 | Shared opt-in implementation; focused real-RTL numerical gate and dependent whole-Attention ABBA queued | No numerical or performance acceptance yet; see `../../verification/akv/qk_panel4_rtl_workflow.md` |
-| Generic paired-head QK/PV | D64/D96/D128 focused RTL gate passes all six runs, 1044 commands and independent protocol checks | Complete Attention ABBA is running; no production deployment or cycle gain accepted yet |
+| Generic paired-head QK/PV | Focused RTL and complete derived-GQA2 Attention ABBA pass; 161778 to 116768 summed cycles, 1.385465x versus generic AKV | Ordinary RVV comparison and production selection remain open; see `akv_paired_head_efficiency.md` |
 
 The next static candidate is reuse across heads in generic Decode. Current
 `akv_v2_compute_scores_f16_generic` loops over heads outside dimensions, so
@@ -38,8 +38,9 @@ the accumulation order within any output. The isolated implementation is in
 `verification/akv/results/paired-heads-rtl-20261024.json`. QK uses an independent
 finite-input scalar FMA oracle; PV is an exact regression against canonical
 assembly, not an independent FP16 oracle. Production selection is unchanged.
-The complete derived-GQA2 Attention comparison is separate from ordinary RVV
-and deployment acceptance. Preserve the existing specialized GQA6 path and
+The complete derived-GQA2 Attention result is archived in
+`verification/akv/results/paired-heads-attention-20261024.json`; this comparison
+is separate from ordinary RVV and deployment acceptance. Preserve the specialized GQA6 path and
 odd-head fallback; actual odd-head runtime acceptance remains open. Do not edit
 sources sealed by active gates.
 
