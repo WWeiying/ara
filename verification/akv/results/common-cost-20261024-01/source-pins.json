@@ -1,0 +1,10 @@
+{
+  "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/summarize_common_attention.py": "9ee8bdec4f6b3da787a3a67ea4069f6d85ed16d9e31c8a03342273b218a53107",
+  "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/test_summarize_common_attention.py": "745b43a611790d65f8122c72b0abcd3b931a8e336f547939cd7f157e37271aa1",
+  "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-common-attention-q4-audit-20261024-01/result.json": "22cdedfc973e46e6027630b4a3900e49272aa71d8d9251320d8e4d51cfe5bc91",
+  "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-common-attention-q4-audit-20261024-01/source-pins.json": "6ce77786e465b3cfc5c754bc3863fec1e4ceeb06976dad03ec9013160194b6f6",
+  "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-common-attention-q8-audit-20261024-01/result.json": "6dc10b86055af9f8b3af781236e8fc320a4bd96152f95f7ee2e1264bde871fa9",
+  "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-common-attention-q8-audit-20261024-01/source-pins.json": "1c4ed9120b62597e8e0746f0f31f5a21017da1f0260f4d81c5357cf46ec9b8cd",
+  "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-rvv-baseline-attention-q8-audit-20261024-01/result.json": "a02a797ced1bb300d1278bfaf425d20e44dbc5db971108adfa5d162638185e93",
+  "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-rvv-baseline-attention-q8-audit-20261024-01/source-pins.json": "c30d6833ea71d1de205a0045ed0ad2a08c42b7034eb7057ba24d5c5862e717ea"
+}
