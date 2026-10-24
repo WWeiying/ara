@@ -1,0 +1,27 @@
+{
+  "state": "FUNCTIONAL_ACCEPTED_DOCUMENT_ONLY_DRIFT",
+  "audit": "verification/out/akv-native-pair-document-audit-20261024-01",
+  "result_sha256": "e92c296827c4033b519f38ba4ef74f65853b9a41022ada5eea1bd0af0e0d732f",
+  "execution_pins_sha256": "a696ba788a6df9dfca5cdf50d2448abe6d59d850228ce961b861a072f35f1bcd",
+  "original_run": "verification/out/akv-native-pair-runtime-20261024-01",
+  "original_worker_state": "FAIL",
+  "original_failure": "Integration document edited during sealed execution; final identity gate rejected it",
+  "original_reports_unchanged": true,
+  "execution_inputs_match": true,
+  "post_pins_match": false,
+  "changed_nonexecutable_file": "hardware/docs/akv_pair_runtime_integration.md",
+  "compiler_dependency_files_checked": 14,
+  "cases": [
+    {"d": 64, "heads": 3, "kv": 1},
+    {"d": 96, "heads": 3, "kv": 65},
+    {"d": 128, "heads": 6, "kv": 7},
+    {"d": 128, "heads": 2, "kv": 64}
+  ],
+  "calls": 12,
+  "call_order_per_case": "OFF/ON/OFF",
+  "commands": 3680,
+  "raw_numerical_work_and_uvm_recheck": "PASS",
+  "independent_full_attention_oracle": false,
+  "production_deployment_accepted": false,
+  "performance_measured": false
+}

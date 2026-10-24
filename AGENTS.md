@@ -19,6 +19,13 @@
   stop editing them until the consumer finishes. Use a successor file for later
   changes; never alter a sealed helper while another agent is preparing or
   collecting its evidence. Use agent-owned output names to avoid collisions.
+- Before editing any file during a campaign, inspect the running workers'
+  `source-pins.json` inventories, including inherited documentation pins. A
+  Markdown file can be a sealed input even when it is not executable. Do not
+  assume that documentation edits are exempt from the consumer's identity gate.
+  Preserve a failed worker's original reports. A proven documentation-only
+  drift may have a separate, explicitly scoped functional audit; it must never
+  be relabeled as a clean original-worker PASS or used to relax code/image pins.
 - A transient systemd service must own the long-running worker directly.
   `start_new_session=True` does not escape a service control group: the default
   `KillMode=control-group` can kill spawned background children when the short
