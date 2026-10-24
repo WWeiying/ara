@@ -1,0 +1,21 @@
+{
+  "state": "PASS",
+  "run": "verification/out/akv-paired-f32-pv-rtl-20261024-01",
+  "result_sha256": "0650ed15d4819b6f9029d2997045de4795229f8768e8a5c38cac9b044df0929a",
+  "elf_sha256": "1957d9384cf30938f9a1bf3185e5df1512090d0fad9e0bfd4a1eaf647bebb278",
+  "independent_raw_log_and_source_evidence_recheck": "PASS",
+  "runs": 6,
+  "active_outputs": 1152,
+  "shapes": [{"d":64,"tokens":1},{"d":96,"tokens":63},{"d":128,"tokens":64}],
+  "reference": "Independent scalar C fmaf/fenv and original generic F32 PV; all output bytes/flags checked on chip",
+  "hardware_commands": 396,
+  "row_load_commands": 384,
+  "resident_replay_bytes": 85824,
+  "external_payload_bytes": 150144,
+  "fault_records": 0,
+  "simulator_exit_code": 0,
+  "post_pins_match": true,
+  "scope": "Isolated F32 paired PV with real captured V and directed scores/scales; not full Prefill Attention or model timing",
+  "production_deployed": false,
+  "performance_accepted": false
+}
