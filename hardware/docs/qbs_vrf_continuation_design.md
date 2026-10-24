@@ -5,9 +5,9 @@ decode and actual Lane/StA/VLSU route are implemented behind default-disabled
 controls. Controller-level source ownership/fault drainage and the real SoC
 instruction/CSR/layout/descriptor-fault test pass the focused gates below,
 including two ordinary-path neighbor regressions. Shared production runtime
-selection, independent instruction-model support and equal-work long-K
-performance remain unproven. Do not enable this feature in normal model
-execution yet.
+selection and independent instruction-model support remain unproven. The
+equal-work real long-K matrix test passes numerically but is 8.89% slower;
+this prototype stays disabled in normal model execution.
 
 ## Why this alternative is being examined
 
@@ -399,9 +399,39 @@ All 256 raw result bits, flags and guards must agree on every call. Hardware
 records must account for 40 commands, 20480 VRF result bytes and 16384 seed
 bytes over the four calls. Per call, DIRECT reads 552192 logical payload bytes;
 striped reads 511568, including the additional descriptors. No measured gain
-is implied by those byte budgets. A performance run is queued only behind
-successful corrected SoC instruction and neighbor gates, with a three-hour
-bound and no periodic status polling.
+is implied by those byte budgets. The performance run completed after the
+corrected SoC instruction and neighbor gates, within its three-hour bound.
+
+### Measured outcome and deployment decision
+
+The fixed-address, same-ELF ABBA run in
+`verification/out/qbs-vrf-panel-bench-20261023-02/` passes all numerical,
+status, guard and independent protocol checks. Its `result.json` records:
+
+| Trial | Matrix path | Complete matrix cycles | Engine busy cycles |
+| --- | --- | ---: | ---: |
+| 0 | Full-K DIRECT | 82865 | 80548 |
+| 1 | Resident stripes | 89804 | 85154 |
+| 2 | Resident stripes | 89449 | 85154 |
+| 3 | Full-K DIRECT | 81760 | 80544 |
+
+DIRECT totals 164625 cycles versus 179253 for stripes: 0.918395x speedup,
+or an 8.885649% slowdown. All four calls produce the same 256 FP32 words,
+checksum `90924b7e574c4d19` and flags 1. These are matrix-phase results, not
+full-model performance and not production activation-preparation timings.
+
+Logical read payload falls from 552192 to 511568 bytes per call, about 7.36%,
+while weight bytes remain 470400. This saving is outweighed by eighteen
+commands instead of two, 288 commit groups instead of 32, VRF seed reads,
+and activation replay that does not retain the DIRECT path's lookahead.
+Across both calls of each mode, engine busy time grows by 9216 cycles and
+the measured time outside engine busy grows by 5412 cycles. The latter is
+an accounting residual, not an exclusive CPU-stall classification.
+
+The experiment therefore does not justify enabling QBACC or adding its
+selection to GGML. Keep the feature default OFF. A successor requires a
+quantified plan to remove the repeated scheduling/commit and activation
+serialization costs; reduced AXI bytes alone are not an acceptance criterion.
 
 ## Next gates
 
@@ -409,6 +439,6 @@ bound and no periodic status polling.
    to real page/AXI conditions rather than claiming controller fault injection
    covers the entire CPU/MMU path.
 2. Add the bounded shared runtime panel driver and independent model contract.
-3. Measure an equal-output real long-K projection with unchanged FP order,
-   including preparation, all seed/commit traffic, spills and command overhead.
-   Do not deploy solely because activation traffic decreases.
+3. Before any deployment, demonstrate an equal-output whole-projection gain
+   including production preparation and all seed/commit/command overhead.
+   The completed matrix-phase experiment above does not meet that gate.
