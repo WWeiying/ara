@@ -74,3 +74,29 @@ measurements. Even a successful capture does not provide production-RVV
 quantized Query bytes or prove QBS numerical compatibility; those remain
 separate steps. The current F16 native experiments remain frozen and are not
 silently extended to these quantized cache types.
+
+## Actual target primitives
+
+`build_rvv_primitives.py` compiles the whole untouched current production
+`arch/riscv/quants.c`, rather than copying/reimplementing three functions.
+The GNU bare-metal RV64GCV/Zfh/Zvfh object and the actual disassembly for
+`quantize_row_q8_0`, `ggml_vec_dot_q4_0_q8_0` and `ggml_vec_dot_q8_0_q8_0`
+are archived under `verification/out/akv-quantkv-rvv-primitives-20261024-01`.
+All three contain actual RVV instructions, not generic fallback.
+
+With the explicit O3/no-fast-math/ffp-contract=fast contract, Q8_0 executes a
+scale multiply then fused integer-dot accumulation. Q4_0 executes integer-dot
+times the first scale, then a fused second-scale accumulation. These are
+different rounding orders; inspect actual code rather than assuming all K
+formats match QBS. Changing compiler contraction may change this observation.
+Receipt: `verification/akv/results/quantized-kv-rvv-primitives-20261024.json`.
+
+```sh
+python3 -B verification/akv/quantized_kv/build_rvv_primitives.py \
+  --output <FRESH_PRIMITIVE_BUILD_DIRECTORY>
+```
+
+No native execution, Query byte export, QBS comparison or numerical PASS is
+claimed yet. The next ELF must call these exact compiled primitives, keep
+actual captured K bytes and mask visibility, and independently check QBS
+outputs against its own numerical contract before assessing baseline drift.
