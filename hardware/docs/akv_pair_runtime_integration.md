@@ -45,6 +45,13 @@ token-axis 启用、64-token tile、row view、token tail、column PANEL4，
 结果，恢复必须沿原有生命周期和错误契约处理。函数选择不得改变 context
 获取、释放和并发串行化规则；无全局开关不等于硬件天然支持并行 context。
 
+当前外部 llama.cpp 的 `ggml/src/ggml-cpu/arch/riscv/akv.cpp` 已由 worker 0
+执行完整节点，其他 workers 在节点屏障等待；不同 graph 的 worker 0 则由
+`context_mutex()` 保护整个 FULL/REFILL/compute/RELEASE 生命周期。这一锁
+不能缩短到单条命令，也不能因为引入调用内选择就移除。其 CMake 通过
+`GGML_RISCV_AKV_RUNTIME_DIR` 编译共享的 native C 和汇编；正式接入应沿用
+这条源文件路径，而不是在 `akv.cpp` 内另写一份配对内核。
+
 ## 数值契约
 
 - QK 保持每个输出按 dimension 的原始 FP32 widening-FMA 顺序。
