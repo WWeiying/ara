@@ -75,3 +75,41 @@ Use a fresh output directory for every invocation. The execution bound remains
 three hours; timeout or interruption is not a numerical failure or a PASS.
 No RTL, QBS descriptor, Attention schedule, tolerance, GGML default selection,
 or running full-Attention experiment is changed by this harness.
+
+## Accepted Full Result
+
+The successor run `verification/out/akv-quantkv-value-decode-fast-20261024-01`
+completed all eight trials with simulator exit zero. Numerical, guard,
+FCSR/VCSR, source/image identity and independent CVXIF/backend/AXI read/write
+checks passed. A separate raw replay is accepted at
+`verification/out/akv-quantkv-value-decode-fast-audit-20261024-01`.
+
+| Real capture | Original two-trial cycle sum | RVV two-trial cycle sum | Speedup | Cycle reduction |
+|---|---:|---:|---:|---:|
+| K=Q8_0, V=Q8_0 | 832,097 | 222,381 | 3.741763x | 73.274630% |
+| K=Q4_0, V=Q8_0 | 832,057 | 222,333 | 3.742391x | 73.279114% |
+
+Both experiments decode Q8_0 V; the K label identifies the original capture,
+not a different V encoding. All 262,144 real-data output words and 3,584 directed
+boundary outputs passed exact checks, FCSR remained zero and VCSR remained five.
+The original production decoder object was compiled from the whole unchanged
+`ggml-quants.c` at O3 with no fast-math and explicit contraction-fast; its build
+does not disable auto-vectorization. Its pinned disassembly is scalar in this
+GNU configuration. The separate checking harness disables auto-vectorization;
+that does not change the already compiled production decoder object. This
+result is not a claim about every compiler's upstream GGML performance.
+The independent reference word hashes are `45e3fad1de9a62e5` and
+`f6df292f1e8773e5`. This is a complete decoder result, not a full Attention or
+model speedup. The old interrupted byte-hash run remains a separate partial
+record and is not relabeled as accepted.
+
+Receipt: `verification/akv/results/quantized-kv-value-decode-20261024.json`.
+`audit_value_decode_fast.py` verifies terminal status, original build/source
+and simulator identity, replays the raw numerical/timing transcript, verifies
+the independent protocol inputs, and compares all replayed fields with the
+original report before recording acceptance. No tolerances were introduced.
+
+Promotion still requires a complete Attention measurement with the RVV callback
+and runtime admission cost included. The currently sealed internal-schedule
+and public-entry experiments retain the original scalar V callback; this
+decoder result does not modify their implementations or results retrospectively.

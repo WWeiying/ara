@@ -1,5 +1,12 @@
 # Finite Q8_0 V Decoding Inquiry
 
+The accepted full-workload successor is documented in
+`value_decode_fast_README.md`: eight actual VCS trials, exact checks and
+independent protocol acceptance, approximately 3.742x decoder speedup on each
+real capture. The original byte-hash worker described below was interrupted
+after its measured verification overhead was isolated; its partial records are
+retained and must not be treated as a completed experiment.
+
 ## Purpose And Unchanged Contract
 
 The frozen production `ggml-quants.c` object decodes Q8_0 V with scalar
@@ -65,14 +72,14 @@ hidden-row omission, malformed/mutated transcripts and wrong build metadata.
 
 ## Artifacts And Promotion Gate
 
-- Current build: `verification/out/akv-quantkv-value-decode-build-20261024-02`
-- Run: `verification/out/akv-quantkv-value-decode-20261024-01`
-- Worker: `run_value_decode.py`
-- Checker: `check_value_decode.py`
-- Service: `akv-quantkv-value-decode-20261024-01.service`
+- Archived byte-hash build: `verification/out/akv-quantkv-value-decode-build-20261024-02`
+- Interrupted run: `verification/out/akv-quantkv-value-decode-20261024-01`
+- Original worker: `run_value_decode.py`
+- Original checker: `check_value_decode.py`
+- Stopped service: `akv-quantkv-value-decode-20261024-01.service`
 
 Build 01 preceded the added first-error diagnostics and is not the run input.
-The frozen run has a three-hour execution bound and owns independent outputs.
+The original run had a three-hour execution bound and independent outputs.
 The other QK and Attention workers do not consume this new candidate.
 
 No production GGML source, existing F16 AKV runtime, RTL, ABI or default selection
