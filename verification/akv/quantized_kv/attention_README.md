@@ -63,8 +63,9 @@ numerical assessment, and a reproducible benefit.
 
 ## Current Artifacts
 
-- Q8 successor build: `verification/out/akv-quantkv-attention-q8-build-20261024-02`
-- Q4 successor build: `verification/out/akv-quantkv-attention-q4-build-20261024-02`
+- Q8 successor build: `verification/out/akv-quantkv-attention-q8-build-20261024-03`
+- Q4 successor build: `verification/out/akv-quantkv-attention-q4-build-20261024-03`
+- Complete inquiry runs: `verification/out/akv-quantkv-attention-{q8,q4}-20261024-03`
 - Prerequisite successor: `verification/out/akv-quantkv-batch-qk-20261024-02`
 - Worker: `run_attention.py`; raw checker: `check_attention.py`.
 
@@ -76,3 +77,35 @@ queues correctly refused to start and are preserved as failed gate attempts.
 Each actual worker is bounded to three hours and owns independent output files.
 The queue may event-wait on the prerequisite process; waiting is not execution.
 If the prerequisite fails, downstream execution must not start.
+
+Builds/runs 02 lacked initial vtype configuration before the measurement-only
+drain and were interrupted, not accepted. The initialized entry and its bounded
+VCS/protocol proof are documented in `attention_startup_README.md`. No RTL or
+production primitive was changed by that test-entry correction.
+
+## Accepted Q4_0 K / Q8_0 V Result
+
+The Q4 run completed all four ABBA trials with zero simulator exit, source/image
+checks and independent CVXIF/backend/AXI read/write acceptance. Raw results were
+then independently replayed by the event-gated public-entry worker before it
+started its own VCS execution.
+
+| Trial | Schedule | Cycles | FCSR | VCSR | Words differing from first ordinary call |
+|---|---|---:|---:|---:|---:|
+| 0 | Ordinary RVV QK, head-major | 2,107,594 | 3 | 5 | 0 |
+| 1 | QBS QK, shared-head | 537,059 | 3 | 5 | 0 |
+| 2 | QBS QK, shared-head | 536,410 | 3 | 5 | 0 |
+| 3 | Ordinary RVV QK, head-major | 2,107,097 | 3 | 5 | 0 |
+
+Paired cycle sums are 4,214,691 versus 1,073,469: **3.926234x** speedup and
+**74.530304%** cycle reduction. Every exported output word matches across all
+four calls; original model golden checks also pass under the stated tolerance.
+Both native calls execute the required eight QBS commands, reducing software
+V-decoder calls from 768 to 128 per call without changing the decoder itself.
+
+Receipt: `verification/akv/results/quantized-attention-q4-20261024.json`.
+This is the complete specified six-head group, not whole-model performance or
+the public-entry result. It does not include per-call GGML mapping/admission.
+The public-entry Q4 successor is executing separately; the Q8 inquiry remains
+pending at the time this result is recorded. The separately accepted RVV V
+decoder is not substituted into these sealed experiments.
