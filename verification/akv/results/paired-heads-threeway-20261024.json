@@ -1,0 +1,15 @@
+{
+  "state": "PASS",
+  "run": "verification/out/akv-paired-heads-threeway-20261024-01",
+  "result_sha256": "84907a3e110636a9a71e3b057efaedcd5f4107a4831ec2355103c5f5a2cc721d",
+  "independent_raw_log_and_pins_recheck": "PASS",
+  "summed_cycles": {"rvv": 490585, "generic": 161570, "paired": 116651},
+  "paired_speedup_vs_ordinary_rvv": 4.205579034898972,
+  "paired_speedup_vs_generic": 1.3850717096295788,
+  "outputs_per_call": 512,
+  "generic_paired_exact": true,
+  "rvv_original_golden_tolerance": "PASS",
+  "scope": "Complete same-ELF Attention, derived real Qwen2.5 KV128 heads0,1,6,7; ordinary RVV not strong tiled RVV",
+  "whole_model_claim": false,
+  "production_deployment_accepted": false
+}

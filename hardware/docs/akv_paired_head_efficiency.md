@@ -111,11 +111,18 @@ INFO。额外的能力查询已计入实际指令与周期，没有从开启路�
 
 ## 当前部署边界
 
-本结果证明相对原 generic AKV 的机制收益，不证明相对普通 RVV 的收益，也不
-代表整模型加速。正式 runtime 和 GGML selector 尚未接入；当前实现仍位于
+另一次完整同 ELF 三方对照已通过原始日志和执行哈希的独立复核。两次调用
+合计：普通 RVV 490585 周期、generic AKV 161570 周期、两头共享 AKV
+116651 周期；两头共享相对普通 RVV 为 4.205579 倍，相对 generic 为
+1.385072 倍。普通 RVV 是实际 `run_attention_rvv`，不是强化 tiled RVV。
+全部 512 个输出满足原 golden 容差，各实现自身重复逐位一致；generic 与
+paired 逐位及 CSR 一致。普通 RVV 与 AKV 的位模式不同，但均通过原容差。
+此处仍为真实捕获派生的 GQA2 子集，不是整模型或新模型 Decode 数据。
+收据为 `verification/akv/results/paired-heads-threeway-20261024.json`。
+
+正式 runtime 和 GGML selector 尚未接入；当前实现仍位于
 `software/akv/experimental/paired_heads/`，其测试入口不是线程安全的生产 API。
 
-下一项准入是相同输入下的普通 RVV / generic AKV / 两头共享三方比较：每个
-实现均须满足原 golden 容差，generic 与两头共享还须逐位一致。通过后再用
-无共享全局可变状态的正式选择逻辑接入，保留不支持形状的 fallback。奇数头、
+下一项准入是真实 KV256 上下文重复对照，再用无共享全局可变状态的正式
+选择逻辑接入，保留不支持形状的 fallback。奇数头、
 更多实际模型及 Prefill/F32 路径不能由当前两头 F16 Decode 结果直接推断。
