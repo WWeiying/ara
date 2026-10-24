@@ -44,8 +44,24 @@ input hashes, accepted image inventory and source manifest pins. Build01 is
 retained as a failed preparation attempt: missing repository include path for
 the existing lifecycle wrapper, fixed before build02. No simulator ran in01.
 
-The future worker must independently check simulator exit, original UVM
-backend/AXI reads/writes, source inventory before/after, all source/artifact
-pins and actual-log numerical/work checks. There is no actual RTL PASS,
+The bounded `rtl_run.py` worker independently checks simulator exit, original
+UVM backend/AXI reads/writes, source inventory before/after, all source/artifact
+pins and actual-log numerical/work checks. Its host error/phase tests and actual
+preflight02 passed. Preflight01 failed before simulator launch because the
+sealed checker's unused receipt helper passed a JSON string to `digest(Path)`.
+The worker now explicitly validates the typed build, source/artifact and ELF
+identity itself; the sealed build and checker were not rewritten.
+
+```sh
+python3 -B -m unittest discover \
+  -s verification/akv/paired_heads/f32_pv -p rtl_run_test.py -v
+python3 -B verification/akv/paired_heads/f32_pv/rtl_run.py \
+  --build verification/out/akv-f32-pv-rtl-build-20261024-02 \
+  --output <FRESH_RUN_DIRECTORY>
+```
+
+Use direct systemd ownership for the long worker. Do not infer an actual
+simulator from submission alone; inspect its child once after preflight.
+There is no actual RTL PASS,
 performance result, odd-head caller test or complete Attention acceptance yet.
 Do not infer those from the host object-mapping result or the ELF build.
