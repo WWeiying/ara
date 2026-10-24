@@ -63,10 +63,15 @@ numerical assessment, and a reproducible benefit.
 
 ## Current Artifacts
 
-- Q8 build: `verification/out/akv-quantkv-attention-q8-build-20261024-01`
-- Q4 build: `verification/out/akv-quantkv-attention-q4-build-20261024-01`
-- Prerequisite: `verification/out/akv-quantkv-batch-qk-20261024-01`
+- Q8 successor build: `verification/out/akv-quantkv-attention-q8-build-20261024-02`
+- Q4 successor build: `verification/out/akv-quantkv-attention-q4-build-20261024-02`
+- Prerequisite successor: `verification/out/akv-quantkv-batch-qk-20261024-02`
 - Worker: `run_attention.py`; raw checker: `check_attention.py`.
+
+The original QK worker was rejected on a test-helper-induced cache assertion;
+its original FAIL is retained. See `drain_probe_README.md` for the discriminating
+two-ELF evidence and the exact helper-only correction. The original downstream
+queues correctly refused to start and are preserved as failed gate attempts.
 
 Each actual worker is bounded to three hours and owns independent output files.
 The queue may event-wait on the prerequisite process; waiting is not execution.

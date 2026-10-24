@@ -47,8 +47,7 @@ static uint64_t cycles(void) {
 }
 
 static void drain(void) {
-  uintptr_t ignored;
-  __asm__ volatile("vmv.x.s %0,v12\nfence rw,rw" : "=r"(ignored) : : "memory");
+  __asm__ volatile("vmv.x.s zero,v8\nfence rw,rw" : : : "memory");
 }
 
 static int qk(void *opaque, unsigned first_head, unsigned heads,
