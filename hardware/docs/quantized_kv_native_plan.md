@@ -113,8 +113,21 @@ K dot 或 V 读取。因此不能批量计算原本被屏蔽、可能尚未初�
 二进制及张量哈希固定；没有改写旧捕获或使用 F16 normalizer。它完成的是
 数据来源与布局检查，不是 RVV 或 QBS 计算验收。
 
-接下来必须用目标 RVV 的原始 `quantize_row_q8_0` 得到 Query 编码，核对
-`ggml_vec_dot_q4_0_q8_0` / `ggml_vec_dot_q8_0_q8_0` 与 QBS 的 score 和
-浮点标志。当前源码中前者按 `sumi*dw*dq`，后者按 `sumi*(dw*dq)` 写出，
-不能假设它们与 QBS 的 scale/FMA 顺序逐位相同。保留这一数值准入条件，
-再接回原 quantized-V F32 PV；不以“已有真实捕获”替代后续验收。
+当前数值测试已将完整、未改写的生产 RVV `quants.c` 目标文件与原始捕获
+Query/K、QBS 原生执行和原始 QBS 参考模型链接在同一 ELF 中。它选择
+Query heads0/6、各自 KV head 的 token0/63/64/127，共执行16条 QBS
+DIRECT 命令，并导出目标量化器实际生成的四份136字节 Query。
+
+主机检查直接读取这些导出字节，用主机浮点实现重新执行 QBS 参考；硬件
+score、片内参考和主机参考的位模式及 fflags 必须一致。实际硬件记录还需
+满足16条命令、144个逻辑读取范围和4096字节 payload，并通过独立 UVM
+后端/AXI 读写检查、前后输入哈希与执行镜像核对。检查器及执行入口的
+10项 host 测试已通过；它们不是实际 RTL 的计算结果。
+
+执行前检查已通过，后台入口为
+`verification/akv/quantized_kv/run_rvv_qbs.py`，独立运行目录为
+`verification/out/akv-quantkv-rvv-qbs-20261024-01`。当前仍待实际数值验收，
+不宣称量化 KV Attention 已接通。生产编译后的 Q4_0 为先乘第一 scale
+再融合第二 scale；Q8_0 为先乘两个 scale 再融合 dot。因此必须分别报告
+其与 QBS 的位模式及标志差异，不以改变既有容差来取得通过。保留这一
+准入条件，再接回原 quantized-V F32 PV；不以“已有真实捕获”替代验收。
