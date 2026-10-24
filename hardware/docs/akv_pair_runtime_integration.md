@@ -126,20 +126,24 @@ Standalone 与 GGML 按源文件约束 AKV 的 `-fno-fast-math -ffp-contract=off
 `software/akv/integrations/llama-cpp-fp-contract.patch`。当前外部源码修改
 尚未提交，不代表已推送到其远程仓库。
 
-Decode 正式候选的4种形状、12次 OFF/ON/OFF 调用，原始数值、标志、命令及
-UVM 证据已经复核。其原 worker 因接入说明文档在运行期间被修改，最终
-身份门禁仍为 FAIL；独立审计证明唯一变化不是编译输入，原报告没有改写。
-这属于有明确限定的功能证据，而不是一次干净的原 worker PASS，详见
-`verification/akv/results/native-pair-runtime-document-audit-20261024.json`。
+规范源码接入后已重新编译并执行 Decode 的4种形状、12次 OFF/ON/OFF 调用，
+不复用旧运行时对象。当前 worker 为正常 PASS；独立审计重新核对原始数值、
+CSR、3680条命令、UVM/AXI及源码和镜像身份，并确认输出与接入前候选一致。
+收据为 `verification/akv/results/canonical-decode-runtime-20261024.json`。
+早期候选 worker 的文档漂移 FAIL 及其限定审计仍保留，没有改写为 PASS；
+它不再是当前规范源码执行验收的替代证据。
 
-Prefill 完整真实切片则有独立的正常 PASS：原位置32--35、全部9个 Query /
-3个 KV heads、每次2304个输出，generic/paired 位模式及 CSR 一致，均满足
-原 golden 容差。ABBA 总周期403898降至380395，减少5.819%，收据为
-`verification/akv/results/paired-f32-pv-prefill-slice-20261024.json`。
+规范 Prefill 也已重新执行并独立验收通过：原位置32--35、全部9个 Query /
+3个 KV heads、D64、每次2304个输出，generic/paired 位模式及 CSR 一致，
+均满足原 golden 容差。当前 ABBA 总周期404094降至380421，减少5.858%，
+收据为 `verification/akv/results/canonical-prefill-runtime-20261024.json`。
+这是同一完整切片内 generic AKV 与配对 PV 的对照，不是普通 RVV 基线或
+模型级加速比，也不代表完整 M64 GGML 形状已经执行。
 
 源码接入收据为 `verification/akv/results/paired-runtime-source-promotion-20261024.json`。
-本次接入之后尚未重新执行新 ELF 的 RTL 回归或完整模型；上述源码和对象
-等价检查不能冒充这一项。原候选生成器现在只用于固定接入前源码的测试，
+接入后的 Decode/Prefill 新 ELF 代表性 RTL 回归已闭合，完整 GGML 图与
+模型级执行/测量仍须另行验收；不能用源码等价或切片通过冒充。原候选
+生成器现在只用于固定接入前源码的测试，
 会拒绝对已经接入的源码二次转换；当前 live 构建入口是
 `verification/akv/paired_heads/build_live_ggml_runtime.py`，不是私有 runtime
-overlay。后续仍须完成接入后代表性回归、实际 GGML 调用及整模型测量。
+overlay。后续重点是实际 GGML 调用和整模型测量，而不是重复旧候选转换。

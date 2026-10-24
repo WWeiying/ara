@@ -41,10 +41,28 @@ Tracked receipt:
 `verification/akv/results/canonical-decode-runtime-20261024.json`.
 Audit entry point: `audit_live_regression.py`.
 
+## Independently Accepted Prefill
+
+`verification/out/akv-live-prefill-20261024-01` also completed with clean PASS;
+the automatically event-gated independent audit completed in
+`verification/out/akv-live-prefill-audit-20261024-01`.
+
+This is the real SmolLM2-135M capture slice at original Query positions32--35,
+all nine Query heads/three KV heads, D64, 2,304 outputs per call. ABBA cycles
+were 202,315 / 190,069 / 190,352 / 201,779: generic canonical AKV totals404,094
+and paired F32 PV totals380,421, a5.8583% cycle reduction (1.06223x).
+This ratio compares generic and paired AKV, not ordinary RVV or full models.
+
+All four calls, 13,380 AKV commands, original golden tolerance, exact
+generic/paired output bits and CSR state, source/image pins, actual exit and
+independent backend/AXI checks passed. Numerical signatures also match the
+fixed pre-promotion candidate. Tracked receipt:
+`verification/akv/results/canonical-prefill-runtime-20261024.json`.
+
 ## Remaining Boundaries
 
-- The canonical Prefill runtime has a separate running regression and requires
-  its own terminal execution and independent audit. Decode PASS does not cover it.
+- Decode and Prefill were checked independently; neither acceptance substitutes
+  for the other's data, layout, numerical or protocol checks.
 - These Decode functional tests do not print a task-cycle performance result.
   Earlier accepted speedups remain separate experiments, not fresh measurements
   attributed to this regression.
