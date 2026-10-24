@@ -277,6 +277,11 @@ MMU, AXI, PMA and interrupted context replay checks are retained. The receipt is
 unchanged default QBS controller behavior/cycles for that gate, not ordinary
 RVV whole-SoC signoff or new-instruction acceptance.
 
+After optional Lane/VLSU integration, the controller was rebuilt and the same
+four groups rerun in `verification/out/qbs-seed-default-engine-20261023-02/`.
+They again match every checked pre-extension direct/FILL/REUSE cycle and output.
+Receipt: `verification/qbs/results/seed-default-engine-lane-route-20261023.json`.
+
 ### Controller ownership acceptance
 
 The optional real controller now starts the mapper after descriptor validation,
