@@ -2,10 +2,12 @@
 
 Status: the raw accumulator restore, compute seed phase, optional instruction
 decode and actual Lane/StA/VLSU route are implemented behind default-disabled
-controls. Controller-level source ownership and fault drainage pass the focused
-gate below. A fresh full-SoC instruction test is pending; shared production
-runtime selection and equal-work long-K performance remain unproven. Do not
-enable this feature in normal model execution yet.
+controls. Controller-level source ownership/fault drainage and the real SoC
+instruction/CSR/layout/descriptor-fault test pass the focused gates below,
+including two ordinary-path neighbor regressions. Shared production runtime
+selection, independent instruction-model support and equal-work long-K
+performance remain unproven. Do not enable this feature in normal model
+execution yet.
 
 ## Why this alternative is being examined
 
@@ -313,7 +315,8 @@ bad-descriptor command must trap once and leave all previous destination bytes
 available to an immediate ordinary store. `run_qbacc_soc.py` additionally
 checks actual command allocation, fixed source geometry, four source words
 per row per lane, no VSTU-valid leakage and ordinary RVV/QBS-AKV neighbors.
-Its SoC result is pending, not inferred from controller acceptance.
+Its SoC acceptance is recorded separately below, not inferred from controller
+acceptance.
 
 ### SoC integration finding: implicit one-bit store handshake
 
@@ -336,6 +339,35 @@ must not be papered over by normalizing `store_valid=0` to a four-bit string.
 The provisional trace-normalization auditor was therefore removed unused;
 no passing result was issued by it. The corrected test retains the original
 ELF, exact four-bit source-mask checks and all numerical/CSR/padding checks.
+
+### Corrected SoC acceptance
+
+The corrected image executes the original thirteen-command ELF successfully in
+`verification/out/qbacc-soc-20261023-03/`, with one expected descriptor exception
+and zero independent UVM protocol/backend/AXI issues. All software raw outputs,
+CSR values, tail policies and padded registers pass. The original automation
+then rejects its simplistic allocation count: mixed-EEW maintenance micro-ops
+carry the originating QBACC instruction bits too. That rejection is preserved.
+
+`qbacc_probe_maintenance.py` does not discard arbitrary duplicates. It requires
+each mixed-layout request to contain exactly M single-register EW32 repairs,
+followed by its M-register command. Repairs must write exactly the expected
+register-word/lane pairs through SLDU source 3; QBS commits use LDU source 4.
+It checks all 33 maintenance allocations and 4224 repair bytes independently
+of the thirteen actual VLSU starts/ends, 248 source words per lane and 4312
+committed result bytes. The faulting command must write no LDU result bytes.
+Source indices are taken from `operand_requester.sv`, not guessed from opcode
+labels. Negative host tests reject missing/duplicate allocations and repairs,
+wrong writers, faulting writes and missing source words.
+
+`accept_qbacc_soc.py` re-audits that completed trace without replay or modifying
+the original status/log. It then runs the original QBS/AKV handoff and RVV FMA
+ELFs on the same corrected image. Both pass in
+`verification/out/qbacc-soc-accept-20261023-02/`. Its source/image/ELF identities
+and the receipt `verification/qbs/results/qbacc-soc-20261023.json` distinguish
+this accepted assessment from the original counter-classification rejection.
+This covers one real descriptor trap, not a claim that all SoC page/AXI faults,
+OS context switches or arbitrary RVV programs have been signed off.
 
 ### Equal-work real long-K benchmark
 
@@ -373,9 +405,8 @@ bound and no periodic status polling.
 
 ## Next gates
 
-1. Complete the actual SoC test of the optional instruction, source layout,
-   invalid descriptor and subsequent ordinary store. Extend fault evidence to
-   real page/AXI conditions rather than claiming controller fault injection
+1. Extend the accepted SoC instruction/layout/descriptor test's fault evidence
+   to real page/AXI conditions rather than claiming controller fault injection
    covers the entire CPU/MMU path.
 2. Add the bounded shared runtime panel driver and independent model contract.
 3. Measure an equal-output real long-K projection with unchanged FP order,
