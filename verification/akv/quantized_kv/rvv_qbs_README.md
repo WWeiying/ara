@@ -126,5 +126,34 @@ Build: `verification/out/akv-quantkv-batch-qk-build-20261024-01` is
 startup, runtime and real-data objects are reused after checking sealed hashes.
 No on-target scalar score reference is linked: acceptance must replay exported
 Query/score bytes with the independent host oracle. The old sixteen-score PASS
-does not accept this multioutput ELF. A strict batch transcript/work checker
-and bounded worker are still required before launch.
+does not accept this multioutput ELF.
+
+`check_batch_qk.py` now checks exact Query/command/score order, all3336 outputs
+against the independent host oracle, and the OR of individual exception flags
+against each command's architectural FCSR. Heads0/6 must reproduce their prior
+actual Query exports. It requires40 successful commands,136768 logical payload
+bytes and5128 logical read ranges, including exact M/N geometry and no context
+reuse. The tests reject18 transcript mutations plus changed K and missing
+prior Query bytes. This batch compares hardware against the QBS numerical
+contract; it does not execute an original-RVV score for every output.
+
+`run_batch_qk.py` first independently rechecks the terminal sixteen-score
+inquiry, including raw numerical/work evidence and exact UVM input identities.
+It then checks the new sealed build, source/image/memory identities and the
+actual exit status, replays all exported outputs on the host and runs its own
+UVM backend/AXI read/write checks. Preflight has passed in
+`verification/out/akv-quantkv-batch-qk-preflight-20261024-01`.
+
+```sh
+python3 -B -m unittest discover -s verification/akv/quantized_kv \
+  -p 'test_batch*.py' -v
+python3 -B verification/akv/quantized_kv/run_batch_qk.py \
+  --build verification/out/akv-quantkv-batch-qk-build-20261024-01 \
+  --output <FRESH_OUTPUT_DIRECTORY>
+```
+
+Run the worker directly under a transient service, not a short launcher. The
+hard bound is three hours. Inputs/helpers are sealed while it runs. Report the
+result only after numerical, actual-work, UVM and post-pin checks finish; no
+end-to-end Attention or performance acceptance follows from compilation or
+successful preflight.
