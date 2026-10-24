@@ -76,9 +76,12 @@ implied. The same-capture KV128 receipts cannot supply a KV256 checksum.
 
 The F32 paired PV leaf has independently reproduced host object-mapping
 acceptance in `verification/akv/results/paired-f32-pv-object-20261024.json`.
-Actual RTL preparation files are incomplete and not accepted. Do not launch
-them or describe them as tested until their builder, oracle layout, original
-generic reference, checker mutations and pins have been reviewed together.
+The focused native ELF is now built under
+`verification/out/akv-f32-pv-rtl-build-20261024-02`, with independent scalar
+oracle, original generic comparator and strict command/flag/guard checker.
+Its state is BUILT_NOT_EXECUTED, not RTL PASS. A reviewed bounded worker,
+independent UVM and pre/post inventory checks are still required before
+acceptance; see `../../verification/akv/paired_heads/f32_pv/RTL_README.md`.
 
 Offline grouping of the accepted six-head PANEL4 trial shows QK command busy
 falling from 24055 to 15524 cycles over two calls; all command busy falls from
