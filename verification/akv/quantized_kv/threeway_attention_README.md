@@ -52,10 +52,12 @@ profile, useful work and success contracts. DUT guard failures are rejected.
 Mutation tests check missing/duplicated work, wrong order, unsupported layout,
 flags, numerical mismatch, false status and incomplete termination.
 
-The transcript checker alone is not sufficient acceptance. A future worker
-must also verify source/build/image identity before and after execution and
-run the independent UVM/AXI/trace checker, as the sealed strided worker does.
-No execution or performance result is claimed by a successful build.
+The transcript checker alone is not sufficient acceptance.
+`run_threeway_attention.py` verifies source/build/image identity before and
+after execution and runs the independent UVM/AXI/trace checker. It first
+replays the terminal strided-cache and 5/33-token tail prerequisites, including
+the tail QK oracle and their protocol-input hashes. A PASS label alone is not
+accepted. No execution or performance result is claimed by a successful build.
 
 Derived ratios use only cycle sums from this ELF:
 
@@ -94,5 +96,25 @@ is not a valid executable. Its evidence is retained. Q8 `...-02` and Q4
 `...-01` were compile checks before all loaded repository Python helpers were
 added to the pin inventory. Use Q8 `...-03` and Q4 `...-02` for subsequent
 execution gates; do not substitute the earlier receipts.
-No extra VCS campaign is launched by these commands. Finish and review the
-existing strided/tail gates before scheduling this successor.
+No VCS campaign is launched by these build commands. The successor must not
+execute before the existing strided/tail gates finish and pass raw rechecking.
+
+For completed prerequisites, the worker interface is:
+
+```bash
+python3 -B verification/akv/quantized_kv/run_threeway_attention.py \
+  --build verification/out/akv-quantkv-threeway-attention-q8-build-20261024-03 \
+  --prerequisite verification/out/akv-quantkv-strided-attention-q8-20261024-01 \
+  --tail verification/out/akv-quantkv-tail-attention-q8-20261024-01 \
+  --output verification/out/akv-quantkv-threeway-attention-q8-20261024-01 \
+  --timeout 10800
+```
+
+An independent user service may own this worker directly. When prerequisites
+are still executing, `--strided-owner-pid` and `--tail-owner-pid` enable kernel
+pidfd event waits on the exact original worker identity. These are not periodic
+polls and do not start another simulator during the wait. All loaded repository
+helpers and build inputs are frozen before waiting, then rechecked afterward.
+A failed, timed-out, incomplete or mismatched prerequisite stops the successor.
+Its `WAITING_GATE` status is not an executing simulator or a measured result.
+The VCS execution itself remains bounded to three hours per format.
