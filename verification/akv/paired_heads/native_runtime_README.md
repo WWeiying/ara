@@ -51,8 +51,17 @@ intentional corruption. Build01 retained a link failure because the original
 leaf-only build did not need features/libm; the complete-call successor does.
 Build02 linked successfully;03 adds independently checked ELF memory bounds.
 
-No VCS worker has executed this ELF. Before running, require the pending real
-KV256 gate, preserve build/source pins and check the accepted image. The worker
-must additionally enforce actual simulator exit, original independent UVM/AXI
-checks, complete numerical/work logs and pre/post source/image identity. A
-synthetic checker PASS or successful link must never be called RTL acceptance.
+The new `run_native_runtime.py` worker requires the pending real KV256 gate,
+including actual simulator exit0, independent UVM, original typed build and
+raw-log replay. Its host fail-closed tests pass; actual build-only preflight
+also passes in `verification/out/akv-native-pair-runtime-preflight-20261024-01`.
+That preflight explicitly does NOT claim the still-running prerequisite passed.
+
+The event-driven handoff can wait on the original KV256 owner's pidfd and exec
+this worker under the same service after terminal PASS. It does not poll logs,
+retry failures or edit any source. The downstream worker still revalidates all
+typed prerequisite evidence itself; the handoff's PASS check alone is not
+enough. Freeze these helpers after queuing them. Each downstream simulation
+also enforces actual exit, original independent UVM/AXI checks, complete
+numerical/work logs and pre/post source/image identity. A synthetic checker
+PASS or successful link must never be called RTL acceptance.
