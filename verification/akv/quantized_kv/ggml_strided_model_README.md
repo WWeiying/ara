@@ -74,3 +74,11 @@ K gathering costs before deployment performance is claimed.
 
 The prior model run remains FAIL: its text matched because quantized Attention
 fell back. Its archived results are not overwritten or promoted by this gate.
+
+The successor run completed with terminal PASS and accepted all 112 native
+Decode calls and 448 commands. All four contexts generated token IDs
+`34208, 916, 279` (` jumps over the`). The six paired logit comparisons had
+maximum absolute difference, RMSE and KL equal to zero. This is a three-token
+functional result for this prompt, not evidence of long-context quality or an
+end-to-end speedup. The compact receipt is
+`verification/akv/results/quantized-kv-model-strided-20261024.json`.
