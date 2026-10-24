@@ -19,6 +19,10 @@
 #define QBS_QBEXEC_FUNCT3 0u
 #define QBS_QBINFO_FUNCT3 1u
 #define QBS_M_MINUS_ONE_BITS 3u
+#define QBS_QBACC_FUNCT7_BIT 3u
+#define QBS_VRF_CONTINUATION_CAPABILITY_INDEX 4u
+#define QBS_VRF_CONTINUATION_CAPABILITY_BIT 0u
+#define QBS_VRF_CONTINUATION_VLEN_BITS 1024u
 
 #define QBS_MAX_M 8u
 #define QBS_MAX_N 32u
@@ -571,6 +575,13 @@ static inline uint64_t qbs_capability_word(unsigned index,
     return (uint64_t)QBS_ACTIVATION_CONTEXT_CAPACITY_BYTES |
            ((uint64_t)QBS_ACTIVATION_CONTEXT_STORAGE_VERSION << 32);
   }
+  if (index == QBS_VRF_CONTINUATION_CAPABILITY_INDEX) {
+#ifdef ARA_QBS_VRF_CONTINUATION
+    if (vlen_bits == QBS_VRF_CONTINUATION_VLEN_BITS)
+      return UINT64_C(1) << QBS_VRF_CONTINUATION_CAPABILITY_BIT;
+#endif
+    return 0;
+  }
   if (index == 0x11u)
     return (UINT64_C(1) << QBS_ACTIVATION_PROFILE_Q8_K);
   if (index == 0x21u)
@@ -676,6 +687,13 @@ static inline uint32_t qbs_encode_qbexec(unsigned vd, unsigned rs1,
   return (funct7 << 25) | ((uint32_t)(rs2 & 0x1fu) << 20) |
          ((uint32_t)(rs1 & 0x1fu) << 15) | (QBS_QBEXEC_FUNCT3 << 12) |
          ((uint32_t)(vd & 0x1fu) << 7) | QBS_OPCODE_CUSTOM2;
+}
+
+/* Encoding only: callers must query optional capability before execution. */
+static inline uint32_t qbs_encode_qbacc(unsigned vd, unsigned rs1,
+                                      unsigned rs2, unsigned m) {
+  return qbs_encode_qbexec(vd, rs1, rs2, m) |
+         (UINT32_C(1) << (25u + QBS_QBACC_FUNCT7_BIT));
 }
 
 static inline uint32_t qbs_encode_qbinfo(unsigned rd, unsigned rs1) {

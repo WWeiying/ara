@@ -73,6 +73,8 @@ sources:
     - hardware/src/vlsu/qbs/qbs_fp_accumulator.sv
     - hardware/src/vlsu/qbs/qbs_compute_engine.sv
     - hardware/src/vlsu/qbs/qbs_commit.sv
+    - hardware/src/vlsu/qbs/qbs_vrf_seed_mapper.sv
+    - hardware/src/vlsu/qbs/qbs_seed_stream_router.sv
     - hardware/src/vlsu/qbs/qbs_engine.sv
     - hardware/src/vlsu/akv/akv_context.sv
     - hardware/src/vlsu/akv/akv_v2_context.sv

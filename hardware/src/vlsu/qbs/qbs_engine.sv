@@ -17,6 +17,7 @@ module qbs_engine
     parameter int unsigned NrLanes = 4,
     parameter int unsigned VLEN = 1024,
     parameter bit ActivationLookahead = 1'b1,
+    parameter bit SeedRestoreEnable = 1'b0,
     parameter type         vid_t = logic,
     parameter type         vaddr_t = logic,
     parameter type         axi_ar_t = logic,
@@ -31,6 +32,10 @@ module qbs_engine
     input  vid_t                         command_id_i,
     input  logic [4:0]                   command_vd_i,
     input  logic [3:0]                   command_m_i,
+    input  logic                         command_seed_i,
+    input  logic [NrLanes-1:0]           seed_lane_valid_i,
+    output logic [NrLanes-1:0]           seed_lane_ready_o,
+    input  logic [63:0]                  seed_lane_data_i [NrLanes],
     input  logic [VAddrWidth-1:0]        command_descriptor_address_i,
     input  logic [VAddrWidth-1:0]        command_activation_base_i,
     input  axi_pkg::cache_t              command_cache_i,
@@ -172,6 +177,14 @@ module qbs_engine
   vid_t id_q;
   logic [4:0] vd_q;
   logic [3:0] m_q;
+  logic seeded_q, seed_started_q;
+  logic seed_start_valid, seed_start_ready;
+  logic seed_done, seed_aborted, seed_terminal_ready;
+  logic seed_valid, seed_ready;
+  logic [3:0] seed_row;
+  logic [7:0] seed_mask;
+  logic [31:0] seed_data [8];
+  logic source_drained;
   logic [VAddrWidth-1:0] descriptor_address_q;
   logic [VAddrWidth-1:0] activation_base_q;
   axi_pkg::cache_t cache_q;
@@ -392,8 +405,9 @@ module qbs_engine
   assign command_ready_o = state_q == QBS_ENGINE_IDLE;
   assign command_fire = command_valid_i && command_ready_o;
   assign busy_o = state_q != QBS_ENGINE_IDLE;
-  assign success_valid_o = state_q == QBS_ENGINE_SUCCESS;
-  assign fault_valid_o = state_q == QBS_ENGINE_FAULT;
+  assign source_drained = !seeded_q || (seed_started_q && seed_done);
+  assign success_valid_o = state_q == QBS_ENGINE_SUCCESS && source_drained;
+  assign fault_valid_o = state_q == QBS_ENGINE_FAULT && source_drained;
   assign result_fflags_o = result_fflags_q;
   assign activation_access_o = activation_access_q;
   assign fault_is_validation_o = fault_is_validation_q;
@@ -450,8 +464,9 @@ module qbs_engine
       end
       QBS_ENGINE_COMPUTE_FAULT_DRAIN: command_phase = QBS_PHASE_FAULT;
       QBS_ENGINE_COMMIT: command_phase = QBS_PHASE_COMMIT;
-      QBS_ENGINE_SUCCESS,
-      QBS_ENGINE_FAULT: command_phase = QBS_PHASE_TERMINAL;
+      QBS_ENGINE_SUCCESS: command_phase = QBS_PHASE_TERMINAL;
+      QBS_ENGINE_FAULT: command_phase = source_drained
+          ? QBS_PHASE_TERMINAL : QBS_PHASE_FAULT;
       default: ;
     endcase
   end
@@ -1000,7 +1015,41 @@ module qbs_engine
   assign compute_fault = state_q == QBS_ENGINE_COMPUTE_FAULT_DRAIN ||
       (state_q == QBS_ENGINE_RUN && read_fault_valid);
 
-  qbs_compute_engine i_compute_engine (
+  assign seed_start_valid = seeded_q && !seed_started_q &&
+      state_q inside {QBS_ENGINE_COMPUTE_START, QBS_ENGINE_FAULT};
+  assign seed_terminal_ready = terminal_ready_i &&
+      state_q inside {QBS_ENGINE_SUCCESS, QBS_ENGINE_FAULT};
+
+  if (SeedRestoreEnable) begin : gen_seed_route
+    qbs_vrf_seed_mapper i_seed_mapper (
+      .clk_i, .rst_ni,
+      .start_valid_i(seed_start_valid), .start_ready_o(seed_start_ready),
+      .start_m_i(m_q),
+      .start_n_i(state_q == QBS_ENGINE_FAULT ? 6'd1 : n_q),
+      .start_discard_i(state_q == QBS_ENGINE_FAULT),
+      .abort_i(state_q inside {QBS_ENGINE_COMPUTE_FAULT_DRAIN, QBS_ENGINE_FAULT}),
+      .lane_valid_i(seed_lane_valid_i), .lane_ready_o(seed_lane_ready_o), .lane_data_i(seed_lane_data_i),
+      .seed_valid_o(seed_valid), .seed_ready_i(seed_ready), .seed_row_o(seed_row),
+      .seed_mask_o(seed_mask), .seed_data_o(seed_data),
+      .done_valid_o(seed_done), .done_ready_i(seed_terminal_ready),
+      .done_aborted_o(seed_aborted), .busy_o()
+    );
+`ifndef SYNTHESIS
+    initial assert (NrLanes == 4 && VLEN == 1024)
+      else $fatal(1, "QBS continuation requires four lanes and VLEN1024");
+`endif
+  end else begin : gen_no_seed_route
+    assign seed_lane_ready_o = '0;
+    assign seed_start_ready = 1'b0;
+    assign seed_valid = 1'b0;
+    assign seed_done = 1'b0;
+    assign seed_aborted = 1'b0;
+    assign seed_row = '0;
+    assign seed_mask = '0;
+    for (genvar b = 0; b < 8; b++) assign seed_data[b] = '0;
+  end
+
+  qbs_compute_engine #(.SeedRestoreEnable(SeedRestoreEnable)) i_compute_engine (
     .clk_i,
     .rst_ni,
     .command_valid_i                (compute_command_valid),
@@ -1014,13 +1063,13 @@ module qbs_engine
     .command_k_blocks_i             (k_blocks_q),
     .command_activation_lookahead_i  (ActivationLookahead &&
                                      activation_access_q == QBS_ACTIVATION_ACCESS_DIRECT),
-    .command_seed_i                 (1'b0),
-    .seed_valid_i                   (1'b0),
-    .seed_ready_o                   (),
-    .seed_row_i                     ('0),
-    .seed_mask_i                    ('0),
-    .seed_data_i                    ('{default:'0}),
-    .seed_done_i                    (1'b0),
+    .command_seed_i                 (seeded_q),
+    .seed_valid_i                   (seed_valid),
+    .seed_ready_o                   (seed_ready),
+    .seed_row_i                     (seed_row),
+    .seed_mask_i                    (seed_mask),
+    .seed_data_i                    (seed_data),
+    .seed_done_i                    (seed_done && !seed_aborted),
     .fault_i                        (compute_fault),
     .fault_done_o                   (compute_fault_done),
     .weight_write_valid_i           (compute_weight_write_valid),
@@ -1262,12 +1311,12 @@ module qbs_engine
       end
 
       QBS_ENGINE_SUCCESS: begin
-        if (terminal_ready_i)
+        if (terminal_ready_i && source_drained)
           state_d = QBS_ENGINE_IDLE;
       end
 
       QBS_ENGINE_FAULT: begin
-        if (terminal_ready_i)
+        if (terminal_ready_i && source_drained)
           state_d = QBS_ENGINE_IDLE;
       end
 
@@ -1281,6 +1330,8 @@ module qbs_engine
       id_q <= '0;
       vd_q <= '0;
       m_q <= '0;
+      seeded_q <= 1'b0;
+      seed_started_q <= 1'b0;
       descriptor_address_q <= '0;
       activation_base_q <= '0;
       cache_q <= '0;
@@ -1338,6 +1389,8 @@ module qbs_engine
         id_q <= command_id_i;
         vd_q <= command_vd_i;
         m_q <= command_m_i;
+        seeded_q <= SeedRestoreEnable && command_seed_i;
+        seed_started_q <= 1'b0;
         descriptor_address_q <= command_descriptor_address_i;
         activation_base_q <= command_activation_base_i;
         cache_q <= command_cache_i;
@@ -1369,6 +1422,9 @@ module qbs_engine
       end else if (busy_o) begin
         command_cycles_o <= command_cycles_o + 1'b1;
       end
+
+      if (seed_start_valid && seed_start_ready)
+        seed_started_q <= 1'b1;
 
       if (state_q == QBS_ENGINE_DESCRIPTOR_REQUEST) begin
         descriptor_q <= '0;
@@ -1529,6 +1585,12 @@ module qbs_engine
       end
       assert (!(success_valid_o && fault_valid_o))
         else $fatal(1, "QBS command cannot succeed and fault together");
+      if (SeedRestoreEnable && command_fire && command_seed_i)
+        assert (command_m_i inside {[1:QbsMaxM]})
+          else $fatal(1, "QBS seed stream needs a valid command M");
+      if (seeded_q && (success_valid_o || fault_valid_o))
+        assert (seed_started_q && seed_done)
+          else $fatal(1, "QBS returned before its owned lane stream drained");
       if (state_q inside {QBS_ENGINE_DESCRIPTOR_REQUEST,
                           QBS_ENGINE_DESCRIPTOR_WAIT,
                           QBS_ENGINE_VALIDATE,

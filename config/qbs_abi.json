@@ -25,7 +25,13 @@
     "opcode": 91,
     "qbexec_funct3": 0,
     "qbinfo_funct3": 1,
-    "m_minus_one_bits": 3
+    "m_minus_one_bits": 3,
+    "qbacc_funct7_bit": 3
+  },
+  "vrf_continuation": {
+    "capability_index": 4,
+    "capability_bit": 0,
+    "vlen_bits": 1024
   },
   "limits": {
     "max_m": 8,

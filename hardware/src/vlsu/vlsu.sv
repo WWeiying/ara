@@ -386,8 +386,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .mask_first_element_o   (stu_mask_first_element     ),
     // Interface with the lanes
     .stu_operand_i          (stu_operand_i              ),
-    .stu_operand_valid_i    (stu_operand_valid_i        ),
-    .stu_operand_ready_o    (stu_operand_ready_o        ),
+    .stu_operand_valid_i    (normal_stu_operand_valid   ),
+    .stu_operand_ready_o    (normal_stu_operand_ready   ),
     .lsu_ex_flush_i         (lsu_ex_flush_i             ),
     .idle_o                 (vstu_idle                  )
   );
@@ -397,6 +397,10 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   //////////////////////////////////////
 
   logic qbs_active_d, qbs_active_q;
+  logic qbs_seed_owner_q, qbs_seed_owner;
+  logic [NrLanes-1:0] normal_stu_operand_valid, normal_stu_operand_ready;
+  logic [NrLanes-1:0] qbs_seed_lane_valid, qbs_seed_lane_ready;
+  logic [63:0] qbs_seed_lane_data [NrLanes];
   logic qbs_clk, qbs_clk_en;
   logic qbs_command_valid, qbs_command_ready, qbs_command_fire;
   logic [3:0] qbs_command_m;
@@ -722,6 +726,25 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       (qbs_success_valid || qbs_fault_valid);
   assign qbs_clk_en = qbs_command_valid || qbs_active_q;
 
+  assign qbs_seed_owner = QbsVrfContinuationEnable && NrLanes == 4 && VLEN == 1024 &&
+      (qbs_seed_owner_q ||
+       (pe_req_valid_i && pe_req_i.op == VQBEXEC && pe_req_i.use_vs1));
+  qbs_seed_stream_router #(.NrLanes(NrLanes)) i_seed_stream_router (
+    .seed_owner_i(qbs_seed_owner),
+    .lane_valid_i(stu_operand_valid_i), .lane_ready_o(stu_operand_ready_o),
+    .store_valid_o(normal_stu_operand_valid), .store_ready_i(normal_stu_operand_ready),
+    .seed_valid_o(qbs_seed_lane_valid), .seed_ready_i(qbs_seed_lane_ready)
+  );
+  for (genvar lane = 0; lane < NrLanes; lane++)
+    assign qbs_seed_lane_data[lane] = stu_operand_i[lane];
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) qbs_seed_owner_q <= 1'b0;
+    else if (qbs_terminal) qbs_seed_owner_q <= 1'b0;
+    else if (qbs_command_fire)
+      qbs_seed_owner_q <= QbsVrfContinuationEnable && pe_req_i.use_vs1;
+  end
+
   always_comb begin
     akv_command = AKV_COMMAND_FULL;
     unique case (pe_req_i.op)
@@ -1007,6 +1030,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   assign qbs_fflags_o = qbs_result_fflags;
 
   qbs_engine #(
+    .SeedRestoreEnable(QbsVrfContinuationEnable && NrLanes == 4 && VLEN == 1024),
     .AxiDataWidth(AxiDataWidth),
     .AxiAddrWidth(AxiAddrWidth),
     .VAddrWidth(CVA6Cfg.VLEN),
@@ -1026,6 +1050,10 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .command_id_i(pe_req_i.id),
     .command_vd_i(pe_req_i.vd),
     .command_m_i(qbs_command_m),
+    .command_seed_i(QbsVrfContinuationEnable && pe_req_i.use_vs1),
+    .seed_lane_valid_i(qbs_seed_lane_valid),
+    .seed_lane_ready_o(qbs_seed_lane_ready),
+    .seed_lane_data_i(qbs_seed_lane_data),
     .command_descriptor_address_i(pe_req_i.scalar_op),
     .command_activation_base_i(pe_req_i.stride),
     .command_cache_i(axi_pkg::CACHE_MODIFIABLE),
@@ -1222,6 +1250,21 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       end else begin
         if (qbs_command_fire)
           qbs_command_sequence_q <= qbs_command_sequence_q + 1'b1;
+
+        if ($test$plusargs("QBACC_TRACE") && QbsVrfContinuationEnable) begin
+          if (qbs_command_fire && pe_req_i.use_vs1)
+            $display("[QBACC_START] seq=%0d id=%0d m=%0d vd=%0d vl=%0d sew=%0d",
+                     qbs_command_sequence_q + 1, pe_req_i.id, qbs_command_m,
+                     pe_req_i.vd, pe_req_i.vl, pe_req_i.eew_vs1);
+          if (|(qbs_seed_lane_valid & qbs_seed_lane_ready))
+            $display("[QBACC_SEED] seq=%0d fire=%b owner=%0b store_valid=%b",
+                     qbs_command_sequence_q,
+                     qbs_seed_lane_valid & qbs_seed_lane_ready,
+                     qbs_seed_owner, normal_stu_operand_valid);
+          if (qbs_terminal && qbs_seed_owner_q)
+            $display("[QBACC_END] seq=%0d success=%0b fault=%0b",
+                     qbs_command_sequence_q, qbs_success_valid, qbs_fault_valid);
+        end
 
         assert (!(qbs_success_valid && qbs_fault_valid))
           else $fatal(1, "QBS command cannot succeed and fault together");

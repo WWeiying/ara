@@ -381,8 +381,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   // Determine if the request does not need source operands from the VRF
   function automatic logic no_src_vrf(pe_req_t pe_req);
     no_src_vrf = (((pe_req.op == VLE || pe_req.op == VLSE) && pe_req.vm) ||
+                  (pe_req.op == VQBEXEC && (!qbs_pkg::QbsVrfContinuationEnable || !pe_req.use_vs1)) ||
                   pe_req.op inside {
-                    VQBEXEC, VAKVFILL, VAKVLOAD, VAKVRELEASE
+                    VAKVFILL, VAKVLOAD, VAKVRELEASE
                   });
   endfunction
 

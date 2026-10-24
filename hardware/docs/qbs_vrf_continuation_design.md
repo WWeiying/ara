@@ -1,10 +1,11 @@
 # QBS long-K continuation through architectural vector registers
 
-Status: the raw accumulator restore port and compute seed phase are implemented
-behind default-disabled parameters and pass unit-level acceptance. Commit/VRF
-mapping also passes. The instruction, actual lane operand route and production
-runtime described below are not implemented. This is not yet a supported ISA
-feature or a demonstrated full-projection speedup.
+Status: the raw accumulator restore, compute seed phase, optional instruction
+decode and actual Lane/StA/VLSU route are implemented behind default-disabled
+controls. Controller-level source ownership and fault drainage pass the focused
+gate below. A fresh full-SoC instruction test is pending; shared production
+runtime selection and equal-work long-K performance remain unproven. Do not
+enable this feature in normal model execution yet.
 
 ## Why this alternative is being examined
 
@@ -32,18 +33,45 @@ the sequential answer without executing an extra floating-point add.
 
 | Boundary | Actual current behavior | Required extension |
 | --- | --- | --- |
-| Dispatcher | `VQBEXEC` writes `vd`, forces EW32 and M-dependent destination EMUL, and waits for older Ara work | A distinct capability-gated accumulate form must also declare the old `vd` as a vector source |
-| Sequencer | `no_src_vrf()` treats all current QBS requests as source-free | The seeded form must participate in source readiness and ordinary RAW/WAR/WAW checks |
-| Lane sequencer | Store operands use the existing StA queue; LoadUnit does not request StA for QBS | Add a targeted seeded-QBS StA request under LoadUnit; do not invent a real store transaction |
-| VLSU | QBS excludes normal memory clients and consumes no store operands | Route the owned StA payload to a seed consumer and gate it away from VSTU |
-| Compute engine | Default-disabled `SeedRestoreEnable` adds an initialized seed phase and suppresses first-block zeroing for continuation | Connect the owned lane stream and hold fault completion until that external stream drains |
-| FP accumulator | Default-disabled `RawSeedEnable` adds idle-only raw restore into the existing eight banks of sixteen FP32 words | No new checkpoint array or second FP arithmetic pipeline; real source dependencies still need integration |
+| Dispatcher | Ordinary `VQBEXEC` remains source-free; optional QBACC also reads old `vd`, repairs old EEW to EW32, forces M-dependent geometry and waits for older work | Verify actual instruction/CSR/reshuffle behavior in the SoC |
+| Sequencer | QBACC is no longer classified as source-free and must receive Lane acceptance | Verify real source requests and ordinary dependency handling |
+| Lane sequencer | Only QBACC under LoadUnit requests the existing StA queue; it is not a real store transaction | Verify exactly four aggregate words per input row, including inactive N tails |
+| VLSU | Pending or active QBACC routes StA valid/ready away from VSTU; ownership persists through source drain | Verify early descriptor failure followed by an ordinary vector store |
+| Compute engine | Default-disabled `SeedRestoreEnable` adds an initialized seed phase and suppresses first-block zeroing for continuation | Real Lane source and full-K numerical/traffic comparison |
+| FP accumulator | Default-disabled `RawSeedEnable` adds idle-only raw restore into the existing eight banks of sixteen FP32 words | No new checkpoint array or second FP arithmetic pipeline |
 | Commit | Final arithmetic values pass through the existing LDU result writer | Retain existing fault-before-write and completion behavior for each instruction |
 
-No encoding is allocated by this prototype. Current qbexec funct7 bits[6:3]
-are reserved and checked. Reusing a reserved bit requires an explicit new
-capability, decoder validation, model support and fallback selection; it must
-not silently change the meaning of existing binaries.
+### Optional instruction encoding
+
+The generated ABI now reserves funct7 bit 3 for QBACC, an accumulating form of
+QBEXEC. Opcode CUSTOM-2 (`0x5b`) and funct3 zero are unchanged. Existing QBEXEC
+encodings have bit 3 clear and retain their old meaning.
+
+| Field | QBACC meaning |
+| --- | --- |
+| funct7[6:4] | Reserved zero |
+| funct7[3] | One: restore old destination before ordered accumulation |
+| funct7[2:0] | M minus one, covering M1--M8 |
+| rs1 | Scalar register holding the 16-byte descriptor address |
+| rs2 | Scalar register holding the activation base address |
+| rd | Both the old FP32 vector source group and result destination group |
+
+`QBINFO` index 4 bit 0 advertises this optional feature only when enabled and
+VLEN is 1024. The supported build also requires four lanes. Normal builds keep
+`qbs_vrf_continuation=0`, return zero at index 4 and reject the new encoding.
+Enable a dedicated experimental VCS build with
+`REAL_UVM_QBS=1 REAL_UVM_QBS_VRF_CONTINUATION=1 nr_lanes=4 vlen=1024`.
+Existing capability indices, descriptor versions and numerical contracts are
+unchanged. Encoding helpers do not perform runtime capability discovery;
+software must query before execution. QEMU/independent reference integration
+and production fallback selection are still required before deployment.
+
+The instruction uses `VL=M*32`, EW32, and a destination group rounded up to
+LMUL1/2/4/8; it does not use the caller's current `vl` or `vtype` for geometry.
+Architectural `vl`, `vtype` and `vcsr` are not configuration outputs of QBACC.
+M3 and M5 read only three and five actual source registers, not their rounded
+four/eight-register reservations. As with current QBS, nonzero `vstart` is
+rejected; this is not a promise of element-wise restart support.
 
 ## Architectural and software contract
 
@@ -131,8 +159,9 @@ from a raw dense M4/N32 bank-copy test.
 adds no private checkpoint array and executes no floating-point operation for
 a restore. `run_seed_restore.py` derives a separately named instance by changing
 only the module name and the enable parameter when the production port is
-present; anchor checks reject drift. The production QBS controller still ties
-off the new compute inputs and does not enable this feature.
+present; anchor checks reject drift. The controller now connects those inputs
+only in its optional enabled configuration; normal builds retain the disabled
+path.
 
 VCS run `verification/out/qbs-seed-restore-production-20261023-02/` passed:
 
@@ -159,16 +188,17 @@ new instruction or a full-projection performance gain.
 ### Commit/VRF mapping acceptance
 
 `qbs_vrf_seed_mapper.sv` now implements the inverse mapping as an independent
-four-lane, VLEN1024 building block. It is deliberately not in Bender and has
-no effect on the current instruction decoder or execution path. It owns no
+four-lane, VLEN1024 building block included in Bender for the optional route.
+Its instance is eliminated from the default-disabled configuration. It owns no
 checkpoint storage: eight combinational bank outputs feed the idle restore
 port. Lane words are consumed together only when all four are present and
 the active bank write is accepted. Empty N-tail words are drained without
 waiting for an accumulator write. Abort suppresses the seed write immediately,
 latches discard mode and drains every remaining owned word before completion.
 The completion handshake retains ownership until accepted. This is not an
-untagged-interface arbiter: the future VLSU owner must exclude VSTU valid as
-well as ready and must arrange source queue flushing on reset.
+untagged-interface arbiter: VLSU's separate `qbs_seed_stream_router` excludes
+VSTU valid as well as ready. Source queue flushing on a whole-SoC reset remains
+the responsibility of the shared reset domain.
 
 `run_vrf_seed_mapper.py` compiles the actual `qbs_commit`, the new mapper and
 the raw-restore accumulator prototype. The test models only the VRF storage
@@ -202,8 +232,11 @@ an actual Lane, operand requester, VLSU arbitration or SoC test.
 
 `qbs_compute_engine` captures `command_seed_i` only when its default-disabled
 `SeedRestoreEnable` parameter is set. Initialization still clears working state.
-A seeded command then waits in `QBS_SEED`; no activation/weight work is requested
-until all active accumulator values have arrived. Its first local K-block is
+A seeded command then waits in `QBS_SEED`; the compute engine itself requests
+no activation/weight work until all active accumulator values have arrived.
+The parent controller's independent weight lookahead can still fetch payload
+while seeding, and its faults must also cancel computation and drain the source.
+The command's first local K-block is
 not marked as a global first block, so the existing integer/FP scheduler follows
 the same ordered accumulation path as a later block in an unsplit command.
 
@@ -214,8 +247,8 @@ rows and incomplete active masks, and prove every active accumulator is present
 before computation starts. Completion may accompany the last accepted row or
 follow on the next cycle. Fault in the seed phase suppresses new seed writes,
 drains any existing internal work, clears working state and exposes no result.
-Draining the external lane stream remains the responsibility of the future
-parent integration, not the compute engine.
+Draining the external lane stream is performed by the parent controller and
+mapper, not by the compute engine alone.
 
 `run_compute_continuation.py` derives its fixture from the ordinary compute
 bench, retaining the independent C command-vector reference. It executes the
@@ -244,11 +277,45 @@ MMU, AXI, PMA and interrupted context replay checks are retained. The receipt is
 unchanged default QBS controller behavior/cycles for that gate, not ordinary
 RVV whole-SoC signoff or new-instruction acceptance.
 
+### Controller ownership acceptance
+
+The optional real controller now starts the mapper after descriptor validation,
+or in discard mode for an earlier descriptor/read failure. A fault during seed
+or weight lookahead suppresses restoration and drains remaining owned words.
+Both terminal valid and controller retirement wait for source completion.
+VLSU takes ownership while the request is still pending: Lane acceptance may
+precede VLSU acceptance, so claiming the stream only after command fire would
+allow VSTU's input cut to capture seed words incorrectly.
+
+`run_seed_owner_engine.py` uses the actual controller, reader, compute engine,
+mapper and commit path. Only Lane/StA delivery is modeled. Run
+`verification/out/qbs-seed-owner-engine-20261023-03/` passes 63 functional
+scenarios, eight fault classes, one mid-source reset/replay and 8192 router
+valid/ready combinations. Faults include descriptor version/MMU/AXI/PMA,
+activation MMU/AXI/PMA after restoration, and an M1/R4 weight-lookahead MMU
+failure while source delivery is still incomplete. Each fault is followed by
+a fresh ordinary unseeded command. Staggered lanes, inactive-tail sNaN poison,
+and delayed final VRF grants are included. This does not prove real Lane or
+instruction-level behavior.
+
+`qbacc_probe/build_probe.py` builds a separate GNU bare-metal image; no linked
+vector value is assumed to survive a C call. The probe initializes, executes
+and stores its vector group inside one assembly entry. Its expected values
+are seed plus an exact Q8_0 dot product of 32, with the existing narrow-M-zero
+and wide-M-preserve tail policies. Twelve successful commands cover M1/3/4/5/8,
+EW8/EW32 old layouts, N tails and unrelated caller RVV configuration. A final
+bad-descriptor command must trap once and leave all previous destination bytes
+available to an immediate ordinary store. `run_qbacc_soc.py` additionally
+checks actual command allocation, fixed source geometry, four source words
+per row per lane, no VSTU-valid leakage and ordinary RVV/QBS-AKV neighbors.
+Its SoC result is pending, not inferred from controller acceptance.
+
 ## Next gates
 
-1. Wire a capability-gated instruction and real lane/VLSU source route, then
-   test old-vd dependencies, layout repair, invalid descriptors and page/AXI
-   faults on the actual SoC.
+1. Complete the actual SoC test of the optional instruction, source layout,
+   invalid descriptor and subsequent ordinary store. Extend fault evidence to
+   real page/AXI conditions rather than claiming controller fault injection
+   covers the entire CPU/MMU path.
 2. Add the bounded shared runtime panel driver and independent model contract.
 3. Measure an equal-output real long-K projection with unchanged FP order,
    including preparation, all seed/commit traffic, spills and command overhead.

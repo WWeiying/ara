@@ -35,6 +35,7 @@ REAL_UVM_TRACE_LIMIT ?= 100000
 REAL_UVM_AXI_DELAY ?= 0
 REAL_UVM_SIM_L2_MB ?= 1
 REAL_UVM_QBS ?= 0
+REAL_UVM_QBS_VRF_CONTINUATION ?= 0
 REAL_UVM_AKV_V2 ?= 0
 FAST_GATE_SIMV ?=
 FAST_GATE_OUT ?= $(OUT)/fast-rtl-gate
@@ -240,6 +241,7 @@ real-ara-uvm-compile:
 		sim_dir=$(REAL_UVM_OUT)/sim \
 		sim_l2_mb=$(REAL_UVM_SIM_L2_MB) \
 		qbs=$(REAL_UVM_QBS) akv_v2=$(REAL_UVM_AKV_V2) \
+		qbs_vrf_continuation=$(REAL_UVM_QBS_VRF_CONTINUATION) \
 		verify_uvm_cvxif=1 verify_axi_delay=$(REAL_UVM_AXI_DELAY) \
 		fail_on_assert=1 no_fsdb=1 verify_source_manifest=1 \
 		verify_extra_sources='$(CURDIR)/uvm/ara_cvxif_if.sv $(CURDIR)/uvm/ara_cvxif_uvm_pkg.sv $(CURDIR)/uvm/ara_acc_contract_monitor.sv $(CURDIR)/uvm/ara_cvxif_dut_bind.sv'

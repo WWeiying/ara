@@ -24,6 +24,7 @@ include $(ARA_DIR)/config/sram.mk
 # intentionally separate from the synthesized 1 MiB L2 and SRAM-macro flow.
 mc ?= 0
 qbs ?= 0
+qbs_vrf_continuation ?= 0
 akv ?= 0
 akv_v2 ?= 0
 qbs_perf ?= 0
@@ -128,6 +129,15 @@ endif
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
 ifeq ($(qbs),1)
 bender_defs += --define ARA_QBS_ENABLE=1
+endif
+ifeq ($(qbs_vrf_continuation),1)
+ifneq ($(qbs),1)
+$(error qbs_vrf_continuation=1 requires qbs=1)
+endif
+ifneq ($(nr_lanes)/$(vlen),4/1024)
+$(error QBS VRF continuation currently requires nr_lanes=4 vlen=1024)
+endif
+bender_defs += --define ARA_QBS_VRF_CONTINUATION=1
 endif
 ifeq ($(akv),1)
 bender_defs += --define ARA_AKV_ENABLE=1
@@ -263,6 +273,7 @@ compile: bender dpi ../Bender.yml
 		'nr_lanes=$(nr_lanes)' \
 		'vlen=$(vlen)' \
 		'qbs=$(qbs)' \
+		'qbs_vrf_continuation=$(qbs_vrf_continuation)' \
 		'akv=$(akv)' \
 		'akv_v2=$(akv_v2)' \
 		'qbs_enabled=$(qbs)' \

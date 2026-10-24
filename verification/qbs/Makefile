@@ -60,6 +60,8 @@ RTL_SOURCES := \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_fp_accumulator.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_compute_engine.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_commit.sv \
+	$(ROOT)/hardware/src/vlsu/qbs/qbs_vrf_seed_mapper.sv \
+	$(ROOT)/hardware/src/vlsu/qbs/qbs_seed_stream_router.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_engine.sv
 RTL_SOURCES += $(RTL_EXTRA_SOURCES)
 RTL_PROFILE_SOURCES := $(RTL_SOURCES) $(abspath qbs_profile_engine_tb.sv)

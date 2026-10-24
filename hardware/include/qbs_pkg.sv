@@ -7,6 +7,12 @@ package qbs_pkg;
   localparam bit QbsEnable = 1'b0;
 `endif
 
+`ifdef ARA_QBS_VRF_CONTINUATION
+  localparam bit QbsVrfContinuationEnable = QbsEnable;
+`else
+  localparam bit QbsVrfContinuationEnable = 1'b0;
+`endif
+
   localparam int unsigned QbsArchitectureVersion = 3;
   localparam int unsigned QbsNumericalContractVersion = 1;
   localparam logic [2:0] QbsRoundingModeRne = 3'd0;
@@ -22,6 +28,10 @@ package qbs_pkg;
   localparam logic [2:0] QbsQbexecFunct3 = 3'd0;
   localparam logic [2:0] QbsQbinfoFunct3 = 3'd1;
   localparam int unsigned QbsMMinusOneBits = 3;
+  localparam int unsigned QbsQbaccFunct7Bit = 3;
+  localparam int unsigned QbsVrfContinuationCapabilityIndex = 4;
+  localparam int unsigned QbsVrfContinuationCapabilityBit = 0;
+  localparam int unsigned QbsVrfContinuationVlenBits = 1024;
 
   localparam int unsigned QbsMaxM = 8;
   localparam int unsigned QbsMaxN = 32;
@@ -537,6 +547,10 @@ package qbs_pkg;
       64'h03: begin
         result[31:0] = 32'(QbsActivationContextCapacityBytes);
         result[39:32] = 8'(QbsActivationContextStorageVersion);
+      end
+      64'(QbsVrfContinuationCapabilityIndex): begin
+        if (QbsVrfContinuationEnable && vlen_bits == QbsVrfContinuationVlenBits)
+          result[QbsVrfContinuationCapabilityBit] = 1'b1;
       end
       64'h11: begin
         result[QBS_ACTIVATION_PROFILE_Q8_K] = 1'b1;

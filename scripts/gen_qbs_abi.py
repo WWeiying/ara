@@ -77,8 +77,20 @@ def validate_spec(spec: dict) -> None:
         raise ValueError(
             "QBS numerical-contract v1 must not depend on dynamic frm")
     m_bits = spec["instruction"].get("m_minus_one_bits", 2)
-    if not 1 <= m_bits <= 5:
+    if type(m_bits) is not int or not 1 <= m_bits <= 5:
         raise ValueError("instruction.m_minus_one_bits must be in [1,5]")
+    acc_bit = spec["instruction"]["qbacc_funct7_bit"]
+    if type(acc_bit) is not int or not 0 <= acc_bit < 7:
+        raise ValueError("instruction.qbacc_funct7_bit must be in [0,6]")
+    if acc_bit < m_bits:
+        raise ValueError("instruction.qbacc_funct7_bit overlaps M-minus-one")
+    if m_bits != 3 or acc_bit != 3:
+        raise ValueError("QBACC reserves funct7 bit 3 above the 3-bit M field")
+    continuation = spec["vrf_continuation"]
+    for field, value in (("capability_index", 4), ("capability_bit", 0),
+                         ("vlen_bits", 1024)):
+        if type(continuation[field]) is not int or continuation[field] != value:
+            raise ValueError(f"vrf_continuation.{field} must be {value}")
     if not 1 <= limits["max_m"] <= (1 << m_bits):
         raise ValueError("limits.max_m does not fit the M-minus-one field")
     if not 1 <= limits["max_n"] <= 32:
@@ -436,6 +448,7 @@ def c_header(spec: dict) -> str:
     limits = spec["limits"]
     numerical_contract = spec["numerical_contract"]
     context = spec["activation_context"]
+    continuation = spec["vrf_continuation"]
     weight_layout_mask = " |\n        ".join(
         f"(UINT64_C(1) << QBS_WEIGHT_LAYOUT_{name})"
         for name in spec["weight_layouts"])
@@ -469,6 +482,10 @@ def c_header(spec: dict) -> str:
 #define QBS_QBEXEC_FUNCT3 {insn['qbexec_funct3']}u
 #define QBS_QBINFO_FUNCT3 {insn['qbinfo_funct3']}u
 #define QBS_M_MINUS_ONE_BITS {insn['m_minus_one_bits']}u
+#define QBS_QBACC_FUNCT7_BIT {insn['qbacc_funct7_bit']}u
+#define QBS_VRF_CONTINUATION_CAPABILITY_INDEX {continuation['capability_index']}u
+#define QBS_VRF_CONTINUATION_CAPABILITY_BIT {continuation['capability_bit']}u
+#define QBS_VRF_CONTINUATION_VLEN_BITS {continuation['vlen_bits']}u
 
 #define QBS_MAX_M {limits['max_m']}u
 #define QBS_MAX_N {limits['max_n']}u
@@ -728,6 +745,13 @@ static inline uint64_t qbs_capability_word(unsigned index,
     return (uint64_t)QBS_ACTIVATION_CONTEXT_CAPACITY_BYTES |
            ((uint64_t)QBS_ACTIVATION_CONTEXT_STORAGE_VERSION << 32);
   }}
+  if (index == QBS_VRF_CONTINUATION_CAPABILITY_INDEX) {{
+#ifdef ARA_QBS_VRF_CONTINUATION
+    if (vlen_bits == QBS_VRF_CONTINUATION_VLEN_BITS)
+      return UINT64_C(1) << QBS_VRF_CONTINUATION_CAPABILITY_BIT;
+#endif
+    return 0;
+  }}
 {c_capability_cases(spec)}
   return 0;
 }}
@@ -739,6 +763,13 @@ static inline uint32_t qbs_encode_qbexec(unsigned vd, unsigned rs1,
   return (funct7 << 25) | ((uint32_t)(rs2 & 0x1fu) << 20) |
          ((uint32_t)(rs1 & 0x1fu) << 15) | (QBS_QBEXEC_FUNCT3 << 12) |
          ((uint32_t)(vd & 0x1fu) << 7) | QBS_OPCODE_CUSTOM2;
+}}
+
+/* Encoding only: callers must query optional capability before execution. */
+static inline uint32_t qbs_encode_qbacc(unsigned vd, unsigned rs1,
+                                      unsigned rs2, unsigned m) {{
+  return qbs_encode_qbexec(vd, rs1, rs2, m) |
+         (UINT32_C(1) << (25u + QBS_QBACC_FUNCT7_BIT));
 }}
 
 static inline uint32_t qbs_encode_qbinfo(unsigned rd, unsigned rs1) {{
@@ -944,6 +975,7 @@ def sv_package(spec: dict) -> str:
     limits = spec["limits"]
     numerical_contract = spec["numerical_contract"]
     context = spec["activation_context"]
+    continuation = spec["vrf_continuation"]
     layout_lines = []
     for name in spec["weight_layouts"]:
         layout_lines.append(
@@ -958,6 +990,12 @@ package qbs_pkg;
   localparam bit QbsEnable = 1'b1;
 `else
   localparam bit QbsEnable = 1'b0;
+`endif
+
+`ifdef ARA_QBS_VRF_CONTINUATION
+  localparam bit QbsVrfContinuationEnable = QbsEnable;
+`else
+  localparam bit QbsVrfContinuationEnable = 1'b0;
 `endif
 
   localparam int unsigned QbsArchitectureVersion = {spec['architecture_version']};
@@ -975,6 +1013,10 @@ package qbs_pkg;
   localparam logic [2:0] QbsQbexecFunct3 = 3'd{insn['qbexec_funct3']};
   localparam logic [2:0] QbsQbinfoFunct3 = 3'd{insn['qbinfo_funct3']};
   localparam int unsigned QbsMMinusOneBits = {insn['m_minus_one_bits']};
+  localparam int unsigned QbsQbaccFunct7Bit = {insn['qbacc_funct7_bit']};
+  localparam int unsigned QbsVrfContinuationCapabilityIndex = {continuation['capability_index']};
+  localparam int unsigned QbsVrfContinuationCapabilityBit = {continuation['capability_bit']};
+  localparam int unsigned QbsVrfContinuationVlenBits = {continuation['vlen_bits']};
 
   localparam int unsigned QbsMaxM = {limits['max_m']};
   localparam int unsigned QbsMaxN = {limits['max_n']};
@@ -1204,6 +1246,10 @@ package qbs_pkg;
       64'h03: begin
         result[31:0] = 32'(QbsActivationContextCapacityBytes);
         result[39:32] = 8'(QbsActivationContextStorageVersion);
+      end
+      64'(QbsVrfContinuationCapabilityIndex): begin
+        if (QbsVrfContinuationEnable && vlen_bits == QbsVrfContinuationVlenBits)
+          result[QbsVrfContinuationCapabilityBit] = 1'b1;
       end
 {sv_capability_cases(spec)}
       default: ;
