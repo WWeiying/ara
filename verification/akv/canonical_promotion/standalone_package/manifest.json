@@ -1,0 +1,21 @@
+{
+  "after": {
+    "verification/akv/Makefile": "ab460f4e066a05ec6975e0b9e3cac61ad0f3b5dbfd9adf3dadbc809a31047170",
+    "verification/qbs/Makefile": "bf5be972235c06ed7576b8a702871cfb5c780d8c9ee54521130ca693f362c561"
+  },
+  "compiler_invoked": false,
+  "helper_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/STANDALONE_PACKAGING.md": "9e81e03fe21a6dd8a2be1ca450eea7bed39de58c6ff0034bea53cb2af895ead1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/generate_standalone.py": "2f8aa3774234f1fe950bd8ab7d13e9ba51ce79f666b92f4f5466238069e3606f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/standalone_makefiles.py": "49f4eea0de69d6ec68c5e16b211ad6df68756bfca28b8b9473f7f4e8f25d5186",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/test_standalone_makefiles.py": "226c735c5ebe5c0cd3ffafb5384438c523bbcedb3838489b573607d5de58e9c6"
+  },
+  "inputs": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/Makefile": "cfc831111b2e7f90ece883213113ed1c5e8618e2803d983134f6f91b9a8a8ac6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/qbs/Makefile": "c5a255746fe5bd9b9369ef6c6268fc1283139b8f7c3913c48b5d23e4c472244d"
+  },
+  "patch_sha256": "c959569f165cafed8810d3ed06a4d7c053962a2505b20041585e9ef31a3be00a",
+  "production_promoted": false,
+  "simulator_invoked": false,
+  "state": "STANDALONE_MAKEFILE_PATCH_NOT_APPLIED"
+}
