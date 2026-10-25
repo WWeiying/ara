@@ -1,0 +1,28 @@
+{
+  "composer_sha256": "52d24b16ba9cd0f78a0b6ba3aa5463ab5cd354d2e5e3c7d9470e124998d66d49",
+  "headers": {
+    "akv": {
+      "file": "akv_engine_legacy_header.svh",
+      "origin_result": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-standalone-akv-20261025-01/result.json",
+      "origin_result_sha256": "8706f74d63c4ab5c2dc26602f8d63a4f9eab878b34c1e8d0d573eb89483a81a0",
+      "origin_source_pins_sha256": "f1dcafb6586dff0b14d2008cbe67efdb3cdd4b14a79e524b1026154ca791d231",
+      "origin_wrapper": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-standalone-akv-20261025-01/composed_engine.sv",
+      "origin_wrapper_sha256": "b091860dc39f031c0ba592d4b1b6f36ff85a8cbd095295b97685b95e8fc8f155",
+      "sha256": "c3ce0b4424091689a94f9ddbaa702d35ce043a16e2ced19c6d877b72888b0160",
+      "tb_sha256": "e8596cb7affacdf353e416fb424e44562bf49184125f98bdae3ad766a246d799"
+    },
+    "qbs": {
+      "file": "qbs_engine_legacy_header.svh",
+      "origin_result": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-standalone-qbs-20261025-01/result.json",
+      "origin_result_sha256": "7f331316d7c20b0782d11e45d1491be6d754a18616f4a57754fd9badac82ce6d",
+      "origin_source_pins_sha256": "3ef653e7e233325ebfe45b971559c7ede5bf8866e3aa211daaadb2f8794374f6",
+      "origin_wrapper": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-standalone-qbs-20261025-01/composed_engine.sv",
+      "origin_wrapper_sha256": "ef0836ad1dcb7eb4bef02bb893915be756b6f92d7782987cc56fe39397cc0a28",
+      "sha256": "0b832a35a477ca1656134642cdbe1515a486c9c4b0243fe16712a5924f51499b",
+      "tb_sha256": "e80016e5bae2b63350163ea6d9f59ae009c212d57412ba6cddd0949bedd7c91c",
+      "vectors_sha256": "0df880f9f7d4e08ac1a3549caa913430254fd35eecabd38d7fad428a7ad0947f"
+    }
+  },
+  "schema_version": 1,
+  "scope": "Immutable legacy engine parameter/port headers only; not SV compilation units"
+}
