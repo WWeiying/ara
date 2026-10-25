@@ -1,0 +1,65 @@
+{
+  "compiler_invoked": false,
+  "full_source_graph_checked": false,
+  "production_promoted": false,
+  "reports": [
+    {
+      "artifact_pins": {
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-generator-parent-20261025-01/qbs/composed_engine.sv": "ef0836ad1dcb7eb4bef02bb893915be756b6f92d7782987cc56fe39397cc0a28",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-generator-parent-20261025-01/qbs/original_suite.sv": "b30a53009f1f39de9a032a292514f9cb6339db3549305baa695d32cdf380c781"
+      },
+      "input_pins": {
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/generate_standalone.py": "2f8aa3774234f1fe950bd8ab7d13e9ba51ce79f666b92f4f5466238069e3606f",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/compose_canonical_standalone.py": "40efd646a000c60439dbeb186fef10f8223bc4bc7058e93ac1e6c029b3131576",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/compose_standalone.py": "52d24b16ba9cd0f78a0b6ba3aa5463ab5cd354d2e5e3c7d9470e124998d66d49",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/standalone_port_contracts/manifest.json": "2b430234d9da812635bedd34be053e656564ba63288c158f3cbef987332e1347",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/standalone_port_contracts/qbs_engine_legacy_header.svh": "0b832a35a477ca1656134642cdbe1515a486c9c4b0243fe16712a5924f51499b",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-layout-20261025-02/hardware/include/shared_reader_types.svh": "a99d5531502637d17c9709923c418c2a3c8d0d16b5ca8b43f38d2d8a7f595101",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-layout-20261025-02/hardware/src/vlsu/qbs/qbs_engine.sv": "b61461807afa3942b5078c63543cd2a6c948aa415f9b0e50cba6864f1eeb099e",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-layout-20261025-02/hardware/src/vlsu/qbs/qbs_read_engine.sv": "690e3d956628da22c7dac102ae06f66b56907420f835e8258d06553be00d4968",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-layout-20261025-02/hardware/src/vlsu/qbs_akv_shared_reader.sv": "3151e11d1f1abc175af1d6cbea85b2b5858aed0f9b59196c43604fccbdf169d6",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/qbs/qbs_engine_tb.sv": "e80016e5bae2b63350163ea6d9f59ae009c212d57412ba6cddd0949bedd7c91c",
+        "/usr/bin/python3.9": "63520974d589373fbc041a60f199c4d7ad4fae96727da8fda4a5d21455f6acef"
+      },
+      "kind": "qbs",
+      "original_tb_assertions_preserved": true,
+      "original_wrapper_sha256": "ef0836ad1dcb7eb4bef02bb893915be756b6f92d7782987cc56fe39397cc0a28",
+      "receipt": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-generator-parent-20261025-01/qbs/generation.json",
+      "receipt_sha256": "76675c0e7e780c6de2d2977a420ac5a299a5bf59f8291602d8374d56625729df",
+      "source_root": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-layout-20261025-02"
+    },
+    {
+      "artifact_pins": {
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-generator-parent-20261025-01/akv/composed_engine.sv": "b091860dc39f031c0ba592d4b1b6f36ff85a8cbd095295b97685b95e8fc8f155",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-generator-parent-20261025-01/akv/original_suite.sv": "3fcd918a5b0d397638202e397604a4a7af67f575fb0623089b1f7667cec83acb"
+      },
+      "input_pins": {
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/akv_engine_tb.sv": "e8596cb7affacdf353e416fb424e44562bf49184125f98bdae3ad766a246d799",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/generate_standalone.py": "2f8aa3774234f1fe950bd8ab7d13e9ba51ce79f666b92f4f5466238069e3606f",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/compose_canonical_standalone.py": "40efd646a000c60439dbeb186fef10f8223bc4bc7058e93ac1e6c029b3131576",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/compose_standalone.py": "52d24b16ba9cd0f78a0b6ba3aa5463ab5cd354d2e5e3c7d9470e124998d66d49",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/standalone_port_contracts/akv_engine_legacy_header.svh": "c3ce0b4424091689a94f9ddbaa702d35ce043a16e2ced19c6d877b72888b0160",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/standalone_port_contracts/manifest.json": "2b430234d9da812635bedd34be053e656564ba63288c158f3cbef987332e1347",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-layout-20261025-02/hardware/include/shared_reader_types.svh": "a99d5531502637d17c9709923c418c2a3c8d0d16b5ca8b43f38d2d8a7f595101",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-layout-20261025-02/hardware/src/vlsu/akv/akv_engine.sv": "3d3d56c70a4929cee9041a1f10e7d869616e44ca7d191f34371a9fd25bd0a723",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-layout-20261025-02/hardware/src/vlsu/akv/akv_legacy_repacker.sv": "78ce01557cfdc226b1d6102f88e47afbfef45f54b7735206b88f73e3f45f0a3b",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-layout-20261025-02/hardware/src/vlsu/akv/akv_q_store.sv": "537717ae9a91c18322b32382d93d63427e8d427dc424443a34ce406395662334",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-layout-20261025-02/hardware/src/vlsu/akv/akv_unified_context.sv": "fb7554adb8a6366c5b0a50a4151c96936f6ad0974d7bbcd4c471dc8531aac033",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-layout-20261025-02/hardware/src/vlsu/akv/akv_v2_context.sv": "ff8987bb4d25d3779e60c411c959fb5e8b88d96cf42947c142cae7ead0483ae1",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-layout-20261025-02/hardware/src/vlsu/qbs/qbs_read_engine.sv": "690e3d956628da22c7dac102ae06f66b56907420f835e8258d06553be00d4968",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-layout-20261025-02/hardware/src/vlsu/qbs_akv_shared_reader.sv": "3151e11d1f1abc175af1d6cbea85b2b5858aed0f9b59196c43604fccbdf169d6",
+        "/usr/bin/python3.9": "63520974d589373fbc041a60f199c4d7ad4fae96727da8fda4a5d21455f6acef"
+      },
+      "kind": "akv",
+      "original_tb_assertions_preserved": true,
+      "original_wrapper_sha256": "b091860dc39f031c0ba592d4b1b6f36ff85a8cbd095295b97685b95e8fc8f155",
+      "receipt": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-generator-parent-20261025-01/akv/generation.json",
+      "receipt_sha256": "0358200169a1be440413734a39a1a3e1131dcaf44d740520f76e3b35ed73a8a1",
+      "source_root": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-layout-20261025-02"
+    }
+  ],
+  "schema": "canonical_standalone_real_generator_v1",
+  "scope": "Actual archived future-canonical engine/support sources and original TBs; generated compositions match accepted wrapper hashes. This copied layout retains old Bender metadata and does not prove actual canonical compilation.",
+  "simulation_invoked": false,
+  "state": "REAL_ARCHIVED_SOURCE_GENERATION_PINS_CHECKED"
+}
