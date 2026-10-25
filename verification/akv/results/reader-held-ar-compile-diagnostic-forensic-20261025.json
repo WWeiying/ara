@@ -1,0 +1,34 @@
+{
+  "block_hashes": [
+    "f4c713994e1afd30ce8bd04a7d2309361aa79d91ac4f60701a156aed265fea2b",
+    "a3180fedc261f0bd0d5c7ddc12b34753b409fc4f3775201c756bd5893722617f"
+  ],
+  "compiler_exit_code": 0,
+  "controlled_offline_checks": {
+    "both_removed": "PASS",
+    "header_removed": "REJECT: Compilation or port-width contract failure",
+    "known_blocks_removed": "REJECT: Compilation or port-width contract failure",
+    "original": "REJECT: Compilation or port-width contract failure"
+  },
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/hardware/tb/ara_tb.sv": "c6416eabbc9a77c49ffbaec4643dcafdc1a31e758a35f1418cf084d63049f3e8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/hardware/tb/llm_perf_monitor.sv": "06429b17aadd8fcb7c7c9881879d4f84a0c1ba61b50a0aad79b18b3993d3af67",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbacc-soc-20261023-02/build/sim/comp.vcs.log": "3dea2df66c7bffe0fdc5fba59f785bb171a57fd765c493a412cb16fcca256873",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-held-ar-build-20261025-01/baseline/comp.vcs.log": "db5348d66a9ec3c635643c4be78bb3e1d651ee902abb28431e52e91fc051a10e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-held-ar-build-20261025-01/baseline/compile.console.command.json": "505db2161bce1d9a24bdc69bf4860d7213345fd2e3a5eaf773eb4dd8cf0252e7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-held-ar-build-20261025-01/baseline/compile.console.exit.json": "5e641d668d3e1aa6488d8fb4fd40b59cc6b2c661529ccc06cf43482f88abb79a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-held-ar-build-20261025-01/result.json": "d3163bd7e85a3c379320aea141db93b16e25dd9eada21f9b451598dbe2bc7d7d"
+  },
+  "functional_acceptance": false,
+  "inherited_lint_blocks": 2,
+  "lint_option_is_not_diagnostic": true,
+  "monitor_scope": "Two existing testbench countones results, range0..2, enter2bit retired-count ports; no data loss in this configuration",
+  "normalization": "Only mapped snapshot/source prefix to canonical root; no diagnostic content removed or rewritten in saved logs",
+  "normalized_blocks_byte_identical": true,
+  "original_worker_state": "FAIL",
+  "rtl_bug_claimed": false,
+  "schema": "held_ar_compile_diagnostic_forensic_v1",
+  "simulations_executed": 0,
+  "source_or_result_modified": false,
+  "state": "COMPILE_DIAGNOSTIC_ROOT_CAUSE_CONFIRMED"
+}
