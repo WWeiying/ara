@@ -530,6 +530,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic [1:0] akv_read_outstanding_max;
   logic [31:0] akv_read_outstanding_full_cycles;
 
+  `include "vlsu_shared_reader.svh"
+
   logic normal_vlsu_idle;
 
   function automatic logic qbs_range_is_cacheable_idempotent(
@@ -902,10 +904,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     end
   end
 
-  assign qbs_physical_range_allowed = qbs_range_is_cacheable_idempotent(
-      qbs_physical_check_addr, qbs_physical_check_bytes);
-  assign akv_physical_range_allowed = qbs_range_is_cacheable_idempotent(
-      akv_physical_check_addr, akv_physical_check_bytes);
+  assign qbs_physical_range_allowed = shared_physical_range_allowed;
+  assign akv_physical_range_allowed = shared_physical_range_allowed;
 
   // QBS and VLDu share the lane result ports. Grant and final-grant feedback
   // returns only to the current owner.
@@ -1030,6 +1030,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   assign qbs_fflags_o = qbs_result_fflags;
 
   qbs_engine #(
+    .reader_req_t(shared_read_req_t), .reader_rsp_t(shared_read_rsp_t),
     .SeedRestoreEnable(QbsVrfContinuationEnable && NrLanes == 4 && VLEN == 1024),
     .AxiDataWidth(AxiDataWidth),
     .AxiAddrWidth(AxiAddrWidth),
@@ -1067,25 +1068,17 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .read_fault_kind_o(qbs_read_fault_kind),
     .fault_vaddr_o(qbs_fault_vaddr),
     .fault_mmu_exception_o(qbs_fault_mmu_exception),
-    .core_st_pending_i,
-    .en_ld_st_translation_i,
-    .mmu_req_o(qbs_mmu_req),
-    .mmu_vaddr_o(qbs_mmu_vaddr),
-    .mmu_is_store_o(qbs_mmu_is_store),
-    .mmu_valid_i,
-    .mmu_paddr_i,
-    .mmu_exception_valid_i(mmu_exception_i.valid),
-    .mmu_exception_i,
-    .physical_check_valid_o(qbs_physical_check_valid),
-    .physical_check_addr_o(qbs_physical_check_addr),
-    .physical_check_bytes_o(qbs_physical_check_bytes),
-    .physical_range_allowed_i(qbs_physical_range_allowed),
-    .axi_ar_o(qbs_axi_ar),
-    .axi_ar_valid_o(qbs_axi_ar_valid),
-    .axi_ar_ready_i(qbs_axi_ar_ready),
-    .axi_r_i(qbs_axi_r),
-    .axi_r_valid_i(qbs_axi_r_valid),
-    .axi_r_ready_o(qbs_axi_r_ready),
+    .reader_req_o(shared_read_req[0]),
+    .reader_rsp_i(shared_read_rsp[0]),
+`ifndef SYNTHESIS
+    .reader_probe_plan_state_i(i_shared_reader.i_read_engine.plan_state_q),
+    .reader_probe_range_count_i(i_shared_reader.i_read_engine.range_fifo_count_q),
+    .reader_probe_burst_count_i(i_shared_reader.i_read_engine.burst_fifo_count_q),
+    .reader_probe_ar_valid_i(qbs_axi_ar_valid),
+    .reader_probe_ar_ready_i(qbs_axi_ar_ready),
+    .reader_probe_r_valid_i(qbs_axi_r_valid),
+    .reader_probe_r_ready_i(qbs_axi_r_ready),
+`endif
     .ldu_result_req_o(qbs_ldu_result_req),
     .ldu_result_id_o(qbs_ldu_result_id),
     .ldu_result_addr_o(qbs_ldu_result_addr),
@@ -1142,6 +1135,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   );
 
   akv_engine #(
+    .reader_req_t(shared_read_req_t), .reader_rsp_t(shared_read_rsp_t),
     .AxiDataWidth (AxiDataWidth),
     .AxiAddrWidth (AxiAddrWidth),
     .VAddrWidth   (CVA6Cfg.VLEN),
@@ -1178,25 +1172,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .fault_vaddr_o                 (akv_fault_vaddr),
     .fault_mmu_exception_o         (akv_fault_mmu_exception),
     .context_ready_o               (akv_context_ready),
-    .core_st_pending_i,
-    .en_ld_st_translation_i,
-    .mmu_req_o                     (akv_mmu_req),
-    .mmu_vaddr_o                   (akv_mmu_vaddr),
-    .mmu_is_store_o                (akv_mmu_is_store),
-    .mmu_valid_i,
-    .mmu_paddr_i,
-    .mmu_exception_valid_i         (mmu_exception_i.valid),
-    .mmu_exception_i,
-    .physical_check_valid_o        (akv_physical_check_valid),
-    .physical_check_addr_o         (akv_physical_check_addr),
-    .physical_check_bytes_o        (akv_physical_check_bytes),
-    .physical_range_allowed_i      (akv_physical_range_allowed),
-    .axi_ar_o                      (akv_axi_ar),
-    .axi_ar_valid_o                (akv_axi_ar_valid),
-    .axi_ar_ready_i                (akv_axi_ar_ready),
-    .axi_r_i                       (akv_axi_r),
-    .axi_r_valid_i                 (akv_axi_r_valid),
-    .axi_r_ready_o                 (akv_axi_r_ready),
+    .reader_req_o(shared_read_req[1]),
+    .reader_rsp_i(shared_read_rsp[1]),
     .ldu_result_req_o              (akv_ldu_result_req),
     .ldu_result_id_o               (akv_ldu_result_id),
     .ldu_result_addr_o             (akv_ldu_result_addr),
@@ -1382,18 +1359,18 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                          probe_profile_correction_pending_cycles_q,
                      i_qbs_engine.i_compute_engine.
                          probe_profile_result_pending_cycles_q,
-                     i_qbs_engine.i_read_engine.probe_range_blocked_cycles_q,
-                     i_qbs_engine.i_read_engine.
+                     i_shared_reader.i_read_engine.probe_range_blocked_cycles_q,
+                     i_shared_reader.i_read_engine.
                          probe_range_fifo_blocked_cycles_q,
-                     i_qbs_engine.i_read_engine.probe_ar_slot_blocked_cycles_q,
-                     i_qbs_engine.i_read_engine.
+                     i_shared_reader.i_read_engine.probe_ar_slot_blocked_cycles_q,
+                     i_shared_reader.i_read_engine.
                          probe_ar_ready_blocked_cycles_q,
-                     i_qbs_engine.i_read_engine.probe_response_idle_cycles_q,
-                     i_qbs_engine.i_read_engine.
+                     i_shared_reader.i_read_engine.probe_response_idle_cycles_q,
+                     i_shared_reader.i_read_engine.
                          probe_data_sink_blocked_cycles_q,
-                     i_qbs_engine.i_read_engine.
+                     i_shared_reader.i_read_engine.
                          probe_completion_blocked_cycles_q,
-                     i_qbs_engine.i_read_engine.
+                     i_shared_reader.i_read_engine.
                          probe_translation_wait_cycles_q,
                      i_qbs_engine.probe_weight_wait_no_outstanding_cycles_q,
                      i_qbs_engine.probe_weight_wait_response_idle_cycles_q,
@@ -1713,4 +1690,5 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   if (NrLanes == 0)
     $error("[vlsu] Ara needs to have at least one lane.");
 
+  `include "admission_assertions.svh"
 endmodule : vlsu

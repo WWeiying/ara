@@ -606,6 +606,9 @@ dc_flist_locked: | dc_require_lock
 	@cd ../backend/flist && cat packages.temp >> ara_soc_dc.f
 	@cd ../backend/flist && cat rtl.temp      >> ara_soc_dc.f
 
+# Promoted resource package; override explicitly for a legacy source graph.
+dc_akv_storage_organization ?= $(if $(filter 1,$(akv) $(akv_v2)),unified_q64x256_kv128x256,split_v1_96x256_v2_128x256)
+
 dc_preflight_locked: dc_flist_locked
 	@python3 scripts/akv/check-synthesis-preflight.py \
 		--filelist ../backend/flist/ara_soc_dc.f \
@@ -614,6 +617,7 @@ dc_preflight_locked: dc_flist_locked
 		$(if $(filter 1,$(qbs)),--require-qbs,) \
 		$(if $(filter 1,$(akv) $(akv_v2)),--require-akv,) \
 		$(if $(filter 1,$(akv_v2)),--require-akv-v2,) \
+		$(if $(filter 1,$(akv) $(akv_v2)),--akv-storage-organization $(dc_akv_storage_organization),) \
 		$(if $(filter 1,$(mc)),--require-macro-sram,) \
 		--nr-lanes $(nr_lanes) --vlen $(vlen)
 

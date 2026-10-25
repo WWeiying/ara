@@ -18,6 +18,8 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     parameter type         vaddr_t = logic,
     parameter type         axi_ar_t = logic,
     parameter type         axi_r_t = logic,
+    parameter type         reader_req_t = logic,
+    parameter type         reader_rsp_t = logic,
     parameter type         exception_t = logic
   ) (
     input  logic                         clk_i,
@@ -49,27 +51,8 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     output exception_t                   fault_mmu_exception_o,
     output logic                         context_ready_o,
 
-    input  logic                         core_st_pending_i,
-    input  logic                         en_ld_st_translation_i,
-    output logic                         mmu_req_o,
-    output logic [VAddrWidth-1:0]        mmu_vaddr_o,
-    output logic                         mmu_is_store_o,
-    input  logic                         mmu_valid_i,
-    input  logic [PAddrWidth-1:0]        mmu_paddr_i,
-    input  logic                         mmu_exception_valid_i,
-    input  exception_t                   mmu_exception_i,
-
-    output logic                         physical_check_valid_o,
-    output logic [AxiAddrWidth-1:0]      physical_check_addr_o,
-    output logic [12:0]                  physical_check_bytes_o,
-    input  logic                         physical_range_allowed_i,
-
-    output axi_ar_t                      axi_ar_o,
-    output logic                         axi_ar_valid_o,
-    input  logic                         axi_ar_ready_i,
-    input  axi_r_t                       axi_r_i,
-    input  logic                         axi_r_valid_i,
-    output logic                         axi_r_ready_o,
+    output reader_req_t reader_req_o,
+    input reader_rsp_t reader_rsp_i,
 
     output logic [NrLanes-1:0]          ldu_result_req_o,
     output vid_t [NrLanes-1:0]          ldu_result_id_o,
@@ -529,74 +512,46 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       (range_completion_count_q + read_completion_fire ==
        payload_range_count) && !context_write_busy;
 
-  qbs_read_engine #(
-    .AxiDataWidth    (AxiDataWidth),
-    .AxiAddrWidth    (AxiAddrWidth),
-    .VAddrWidth      (VAddrWidth),
-    .PAddrWidth      (PAddrWidth),
-    .RangeBytesWidth (RangeBytesWidth),
-    .ReadOutstanding (2),
-    .axi_ar_t        (axi_ar_t),
-    .axi_r_t         (axi_r_t),
-    .exception_t     (exception_t),
-    .tag_t           (akv_range_tag_t)
-  ) i_read_engine (
-    .clk_i,
-    .rst_ni,
-    .range_valid_i                  (read_range_valid),
-    .range_ready_o                  (read_range_ready),
-    .range_vaddr_i                  (read_range_vaddr),
-    .range_bytes_i                  (read_range_bytes),
-    .range_tag_i                    (read_range_tag),
-    .range_cache_i                  (cache_q),
-    .range_prot_i                   (prot_q),
-    .data_valid_o                   (read_data_valid),
-    .data_ready_i                   (read_data_ready),
-    .data_o                         (read_data),
-    .data_strb_o                    (read_data_strb),
-    .data_offset_o                  (read_data_offset),
-    .data_tag_o                     (read_data_tag),
-    .completion_valid_o             (read_completion_valid),
-    .completion_ready_i             (read_completion_ready),
-    .completion_tag_o               (read_completion_tag),
-    .fault_valid_o                  (read_fault_valid),
-    .fault_ready_i                  (read_fault_ready),
-    .fault_kind_o                   (read_fault_kind),
-    .fault_vaddr_o                  (read_fault_vaddr),
-    .fault_tag_o                    (read_fault_tag),
-    .fault_mmu_exception_o          (read_fault_mmu_exception),
-    .core_st_pending_i,
-    .en_ld_st_translation_i,
-    .mmu_req_o,
-    .mmu_vaddr_o,
-    .mmu_is_store_o,
-    .mmu_valid_i,
-    .mmu_paddr_i,
-    .mmu_exception_valid_i,
-    .mmu_exception_i,
-    .physical_check_valid_o,
-    .physical_check_addr_o,
-    .physical_check_bytes_o,
-    .physical_range_allowed_i,
-    .axi_ar_o,
-    .axi_ar_valid_o,
-    .axi_ar_ready_i,
-    .axi_r_i,
-    .axi_r_valid_i,
-    .axi_r_ready_o,
-    .counters_clear_i              (command_fire),
-    .range_count_o                 (read_range_count_o),
-    .translation_count_o           (read_translation_count_o),
-    .ar_count_o                    (read_ar_count_o),
-    .r_beat_count_o                (read_beat_count_o),
-    .payload_byte_count_o          (read_payload_bytes_o),
-    .store_wait_cycles_o           (read_store_wait_cycles_o),
-    .r_backpressure_cycles_o       (read_backpressure_cycles_o),
-    .outstanding_occupancy_sum_o   (read_outstanding_occupancy_sum_o),
-    .outstanding_max_o             (read_outstanding_max_o),
-    .outstanding_full_cycles_o     (read_outstanding_full_cycles_o),
-    .busy_o                        (read_busy)
-  );
+  // Reader state now lives once in VLSU; client scheduling is unchanged.
+  assign reader_req_o = '{
+    range_valid: read_range_valid,
+    range_vaddr: read_range_vaddr,
+    range_bytes: read_range_bytes,
+    range_tag: {8'b0, read_range_tag},
+    range_cache: cache_q,
+    range_prot: prot_q,
+    data_ready: read_data_ready,
+    completion_ready: read_completion_ready,
+    fault_ready: read_fault_ready
+  };
+  assign read_range_ready = reader_rsp_i.range_ready;
+  assign read_data_valid = reader_rsp_i.data_valid;
+  assign read_data = reader_rsp_i.data;
+  assign read_data_strb = reader_rsp_i.data_strb;
+  assign read_data_offset = reader_rsp_i.data_offset;
+  assign read_data_tag = akv_range_tag_t'(reader_rsp_i.data_tag[7:0]);
+  assign read_completion_valid = reader_rsp_i.completion_valid;
+  assign read_completion_tag = akv_range_tag_t'(reader_rsp_i.completion_tag[7:0]);
+  assign read_fault_valid = reader_rsp_i.fault_valid;
+  assign read_fault_kind = reader_rsp_i.fault_kind;
+  assign read_fault_vaddr = reader_rsp_i.fault_vaddr;
+  assign read_fault_tag = akv_range_tag_t'(reader_rsp_i.fault_tag[7:0]);
+  assign read_fault_mmu_exception = reader_rsp_i.fault_mmu_exception;
+  assign read_range_count_o = reader_rsp_i.range_count;
+  assign read_translation_count_o = reader_rsp_i.translation_count;
+  assign read_ar_count_o = reader_rsp_i.ar_count;
+  assign read_beat_count_o = reader_rsp_i.r_beat_count;
+  assign read_payload_bytes_o = reader_rsp_i.payload_byte_count;
+  assign read_store_wait_cycles_o = reader_rsp_i.store_wait_cycles;
+  assign read_backpressure_cycles_o = reader_rsp_i.r_backpressure_cycles;
+  assign read_outstanding_occupancy_sum_o = reader_rsp_i.outstanding_occupancy_sum;
+  assign read_outstanding_max_o = reader_rsp_i.outstanding_max;
+  assign read_outstanding_full_cycles_o = reader_rsp_i.outstanding_full_cycles;
+  assign read_busy = reader_rsp_i.busy;
+`ifndef SYNTHESIS
+  initial assert ($bits(akv_range_tag_t) == 8)
+    else $fatal(1, "SHARED_CLIENT_TAG_WIDTH");
+`endif
 
   always_comb begin
     unique case (read_data_tag.role)
@@ -618,52 +573,48 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       read_data_tag.role inside {AKV_RANGE_K, AKV_RANGE_V};
   assign v2_context_write_stream = read_data_tag.role == AKV_RANGE_K
       ? AKV_STREAM_K : AKV_STREAM_V;
-  assign context_write_busy =
-      v1_context_write_busy || v2_context_write_busy;
-
-  akv_context i_context (
+  // Unified payload only; command, metadata, replay and fault FSM are unchanged.
+  akv_unified_context i_unified_context (
     .clk_i,
     .rst_ni,
-    .write_valid_i  (v1_context_write_valid),
-    .write_slot_i   (context_write_slot),
-    .write_offset_i (read_data_offset[7:0]),
-    .write_data_i   (read_data),
-    .write_strb_i   (read_data_strb),
-    .write_busy_o   (v1_context_write_busy),
-    .replay_read_i  (state_q == AKV_ENGINE_REPLAY_READ &&
+    .abort_i(read_fault_valid && read_fault_ready),
+    .legacy_row_bytes_i(9'(payload_row_bytes)),
+    .write_busy_o(context_write_busy),
+    .legacy_write_valid_i(v1_context_write_valid),
+    .legacy_write_slot_i(context_write_slot),
+    .legacy_write_offset_i(read_data_offset[7:0]),
+    .legacy_write_data_i(read_data),
+    .legacy_write_strb_i(read_data_strb),
+    .legacy_write_busy_o(v1_context_write_busy),
+    .legacy_replay_read_i(state_q == AKV_ENGINE_REPLAY_READ &&
                      !replay_use_v2_q && !replay_column_q),
-    .replay_slot_i  (replay_slot_q),
-    .replay_word_i  (replay_word_q),
-    .replay_data_o  (v1_replay_data)
-  );
-
-  akv_v2_context i_v2_context (
-    .clk_i,
-    .rst_ni,
-    .write_valid_i       (v2_context_write_valid),
-    .write_stream_i      (v2_context_write_stream),
-    .write_token_i       (read_data_tag.index),
-    .write_offset_i      (read_data_offset[7:0]),
-    .write_data_i        (read_data),
-    .write_strb_i        (read_data_strb),
-    .write_busy_o        (v2_context_write_busy),
-    .row_read_i          (state_q == AKV_ENGINE_REPLAY_READ &&
+    .legacy_replay_slot_i(replay_slot_q),
+    .legacy_replay_word_i(replay_word_q),
+    .legacy_replay_data_o(v1_replay_data),
+    .v2_write_valid_i(v2_context_write_valid),
+    .v2_write_stream_i(v2_context_write_stream),
+    .v2_write_token_i(read_data_tag.index),
+    .v2_write_offset_i(read_data_offset[7:0]),
+    .v2_write_data_i(read_data),
+    .v2_write_strb_i(read_data_strb),
+    .v2_write_busy_o(v2_context_write_busy),
+    .v2_row_read_i(state_q == AKV_ENGINE_REPLAY_READ &&
                           replay_use_v2_q && !replay_column_q),
-    .row_stream_i        (replay_stream_q),
-    .row_token_i         (replay_token_q),
-    .row_word_i          (replay_word_q),
-    .row_data_o          (v2_row_data),
-    .column_start_i      (v2_column_start),
-    .column_stream_i     (command_selector_i[AkvV2ColumnSegmentBit]
+    .v2_row_stream_i(replay_stream_q),
+    .v2_row_token_i(replay_token_q),
+    .v2_row_word_i(replay_word_q),
+    .v2_row_data_o(v2_row_data),
+    .column_start_i(v2_column_start),
+    .column_stream_i(command_selector_i[AkvV2ColumnSegmentBit]
                               ? AKV_STREAM_V : AKV_STREAM_K),
-    .column_dimension_i  (command_selector_i[6:0]),
-    .column_count_i      (command_column_count_i),
+    .column_dimension_i(command_selector_i[6:0]),
+    .column_count_i(command_column_count_i),
     .column_token_count_i(context_tile_count_q),
-    .column_busy_o       (v2_column_busy),
-    .column_valid_o      (v2_column_valid),
-    .column_data_o       (v2_column_data),
-    .column_bank_cycle_o (v2_column_bank_cycle),
-    .conflict_o          (v2_context_conflict)
+    .column_busy_o(v2_column_busy),
+    .column_valid_o(v2_column_valid),
+    .column_data_o(v2_column_data),
+    .column_bank_cycle_o(v2_column_bank_cycle),
+    .conflict_o(v2_context_conflict)
   );
 
   always_comb begin

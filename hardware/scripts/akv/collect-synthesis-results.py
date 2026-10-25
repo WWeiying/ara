@@ -21,8 +21,48 @@ CORNER = {
     "clock_period_ns": 1.0,
     "setup_uncertainty_ns": 0.15,
 }
-# Keep historical reports readable without accepting mixed macro organizations.
-AKV_SRAM_ORGANIZATIONS = {(20, 4, 16): 327680, (10, 2, 8): 311296}
+# Counts are physical instances, not area or measured timing evidence.
+AKV_SRAM_ORGANIZATIONS = {
+    "legacy_v1_v2_64x256": (20, 4, 16, 0, 327680),
+    "split_v1_96x256_v2_128x256": (10, 2, 8, 0, 311296),
+    "unified_q64x256_kv128x256": (9, 0, 8, 1, 278528),
+}
+LEGACY_AKV_SRAM_ORGANIZATIONS = {
+    (20, 4, 16): "legacy_v1_v2_64x256",
+    (10, 2, 8): "split_v1_96x256_v2_128x256",
+}
+
+
+def validate_sram_organization(values, capacity_key):
+    def integer(key):
+        value = values.get(key)
+        if type(value) is int and value >= 0:
+            return value
+        if type(value) is str and re.fullmatch(r"0|[1-9][0-9]*", value):
+            return int(value)
+        raise CollectionError(f"invalid SRAM organization integer: {key}")
+
+    counts = tuple(integer(key) for key in (
+        "akv_sram_macro_count", "akv_v1_sram_macro_count", "akv_v2_sram_macro_count"))
+    capacity = integer(capacity_key)
+    label_present = "akv_sram_organization" in values
+    q_present = "akv_q_sram_macro_count" in values
+    if label_present != q_present:
+        raise CollectionError("SRAM organization and independent Q count must appear together")
+    if label_present:
+        label = values["akv_sram_organization"]
+        if type(label) is not str or label not in AKV_SRAM_ORGANIZATIONS:
+            raise CollectionError("unknown SRAM organization discriminator")
+        q_count = integer("akv_q_sram_macro_count")
+    else:
+        # Only the two exact historical organizations may omit new metadata.
+        label = LEGACY_AKV_SRAM_ORGANIZATIONS.get(counts)
+        if label is None:
+            raise CollectionError("SRAM organization requires explicit discriminator and Q count")
+        q_count = 0
+    if (*counts, q_count, capacity) != AKV_SRAM_ORGANIZATIONS[label]:
+        raise CollectionError("SRAM organization counts/capacity disagree with discriminator")
+    return label, q_count
 
 
 class CollectionError(ValueError):
@@ -156,11 +196,23 @@ def source_digest(filelist: Path, source_inputs: tuple[Path, ...], root: Path) -
     return digest.hexdigest()
 
 
-def library_inputs(source_inputs: tuple[Path, ...]) -> list[Path]:
+def selected_standalone_libraries(text, organization):
+    marker = '# AKV_STANDALONE_STORAGE_SELECTION_V2'
+    block = '# AKV_STANDALONE_STORAGE_SELECTION_V2\nset selected_organization split_v1_96x256_v2_128x256\nif {[info exists ::env(AKV_STORAGE_ORGANIZATION)]} {\n  set selected_organization $::env(AKV_STORAGE_ORGANIZATION)\n}\nswitch -- $selected_organization {\n  split_v1_96x256_v2_128x256 {\nset context_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb96x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb96x256m1swbso_170a_tt0p9v25c.db"\nset kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"\n    set storage_libraries [list $context_sram_library $kv_sram_library]\n  }\n  unified_q64x256_kv128x256 {\nset q_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db"\nset kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"\n    set storage_libraries [list $q_sram_library $kv_sram_library]\n  }\n  default {error "unsupported AKV_STORAGE_ORGANIZATION: $selected_organization"}\n}\n# END_AKV_STANDALONE_STORAGE_SELECTION_V2\n'
+    if marker not in text:
+        return text
+    branches = {'split_v1_96x256_v2_128x256': 'set context_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb96x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb96x256m1swbso_170a_tt0p9v25c.db"\nset kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"\n', 'unified_q64x256_kv128x256': 'set q_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db"\nset kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"\n'}
+    if text.count(marker) != 1 or text.count(block) != 1 or organization not in branches:
+        raise CollectionError("ambiguous standalone SRAM library selection")
+    return text.replace(block, branches[organization], 1)
+
+
+def library_inputs(source_inputs: tuple[Path, ...], organization: str | None = None) -> list[Path]:
     libraries: set[Path] = set()
     pattern = re.compile(r"(/[A-Za-z0-9_./+:-]+\.(?:db|sldb))(?=\s|\"|$)")
     for source in source_inputs:
         text = source.read_text(encoding="utf-8", errors="replace")
+        text = selected_standalone_libraries(text, organization)
         active = "\n".join(
             line for line in text.splitlines() if not line.lstrip().startswith("#")
         )
@@ -175,6 +227,10 @@ def library_inputs(source_inputs: tuple[Path, ...]) -> list[Path]:
     compact = all(any(shape in name for name in names) for shape in ("96x256", "128x256"))
     if not (legacy or compact):
         raise CollectionError("AKV SRAM DBs were not identified")
+    if organization == "unified_q64x256_kv128x256" and not all(
+        any(shape in name for name in names) for shape in ("64x256", "128x256")
+    ):
+        raise CollectionError("unified AKV requires independent Q64 and KV128 DBs")
     return sorted(libraries, key=lambda path: str(path.resolve()))
 
 
@@ -195,13 +251,7 @@ def validate_metrics(mode: str, values: dict[str, str], area_rpt: Path) -> dict[
     v1_count = required_int(values, "akv_v1_sram_macro_count")
     v2_count = required_int(values, "akv_v2_sram_macro_count")
     capacity = required_int(values, "physical_sram_capacity_bits")
-    organization = (macro_count, v1_count, v2_count)
-    if organization not in AKV_SRAM_ORGANIZATIONS:
-        raise CollectionError(
-            f"wrong AKV SRAM organization: total={macro_count}, v1={v1_count}, v2={v2_count}"
-        )
-    if capacity != AKV_SRAM_ORGANIZATIONS[organization]:
-        raise CollectionError(f"wrong AKV SRAM physical capacity: {capacity}")
+    organization, q_count = validate_sram_organization(values, "physical_sram_capacity_bits")
 
     report_total, report_macro = parse_area_report(area_rpt)
     summary_total = required_float(values, "design_total_area_um2")
@@ -228,6 +278,8 @@ def validate_metrics(mode: str, values: dict[str, str], area_rpt: Path) -> dict[
         "scope": expected_scope,
         "clock_period_ns": clock,
         "setup_uncertainty_ns": uncertainty,
+        "akv_sram_organization": organization,
+        "akv_q_sram_macro_count": q_count,
         "akv_sram_macro_count": macro_count,
         "akv_v1_sram_macro_count": v1_count,
         "akv_v2_sram_macro_count": v2_count,
@@ -311,7 +363,9 @@ def default_spec(mode: str, root: Path = ROOT) -> CollectionSpec:
 def collect(spec: CollectionSpec) -> dict[str, object]:
     if not spec.filelist.is_file():
         raise CollectionError(f"missing DC filelist: {spec.filelist}")
-    libraries = library_inputs(spec.source_inputs)
+    values = read_key_values(spec.summary_rpt)
+    organization, _ = validate_sram_organization(values, "physical_sram_capacity_bits")
+    libraries = library_inputs(spec.source_inputs, organization)
     synthesis_inputs = [
         spec.filelist,
         *filelist_inputs(spec.filelist),
@@ -331,7 +385,6 @@ def collect(spec: CollectionSpec) -> dict[str, object]:
             + ", ".join(str(path) for path in stale)
         )
 
-    values = read_key_values(spec.summary_rpt)
     metrics = validate_metrics(spec.mode, values, spec.area_rpt)
     summary = {
         "schema_version": 1,
@@ -381,7 +434,9 @@ def validate_summary(path: Path, expected_mode: str, root: Path = ROOT) -> dict[
             raise CollectionError(f"synthesis artifact changed: {item.get('path')}")
 
     source_inputs = tuple(resolve_recorded(raw, root) for raw in summary.get("source_inputs", []))
-    observed_libraries = library_inputs(source_inputs)
+    metrics = summary.get("metrics", {})
+    organization, _ = validate_sram_organization(metrics, "akv_sram_capacity_bits")
+    observed_libraries = library_inputs(source_inputs, organization)
     recorded_libraries = {
         resolve_recorded(str(item.get("path", "")), root).resolve()
         for item in summary.get("library_artifacts", [])
@@ -392,14 +447,8 @@ def validate_summary(path: Path, expected_mode: str, root: Path = ROOT) -> dict[
     if observed_digest != summary.get("source_digest"):
         raise CollectionError("current RTL or synthesis inputs differ from synthesized sources")
 
-    metrics = summary.get("metrics", {})
-    organization = (metrics.get("akv_sram_macro_count"),
-                    metrics.get("akv_v1_sram_macro_count"),
-                    metrics.get("akv_v2_sram_macro_count"))
     if (
-        organization not in AKV_SRAM_ORGANIZATIONS
-        or metrics.get("akv_sram_capacity_bits") != AKV_SRAM_ORGANIZATIONS.get(organization)
-        or float(metrics.get("design_total_area_um2", 0)) <= 0
+        float(metrics.get("design_total_area_um2", 0)) <= 0
         or float(metrics.get("design_logic_area_um2", 0)) <= 0
     ):
         raise CollectionError("synthesis summary metrics violate the AKV physical contract")

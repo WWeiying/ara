@@ -22,13 +22,15 @@ RTL_TILE_CONTEXT_RUN_TIMEOUT ?= 120
 RTL_RUN_TIMEOUT ?= 10800
 RTL_EXTRA_SOURCES ?=
 RTL_ENGINE_DEFINES ?=
+RTL_STANDALONE_GENERATOR := $(ROOT)/verification/akv/canonical_promotion/generate_standalone.py
 RTL_MACRO_VCS_FLAGS ?=
 RTL_FP_BUILD ?= rtl_fp_build
 RTL_HALF_BUILD ?= rtl_half_build
 RTL_BLOCK_ADAPTER_SOURCE ?= $(ROOT)/hardware/src/vlsu/qbs/qbs_block_adapter.sv
 RTL_VECTOR_FILE := $(abspath qbs_rtl_vectors.txt)
 RTL_COMMAND_VECTOR_FILE := $(abspath qbs_command_vectors.txt)
-RTL_INCLUDES := +incdir+$(ROOT)/hardware/deps/common_cells/include \
+RTL_INCLUDES := +incdir+$(ROOT)/hardware/include \
+	+incdir+$(ROOT)/hardware/deps/common_cells/include \
 	+incdir+$(ROOT)/hardware/deps/axi/include
 RTL_SOURCES := \
 	$(ROOT)/hardware/deps/common_cells/src/cf_math_pkg.sv \
@@ -50,6 +52,7 @@ RTL_SOURCES := \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_dot_array.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_read_engine.sv \
+	$(ROOT)/hardware/src/vlsu/qbs_akv_shared_reader.sv \
 	$(ROOT)/hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_activation_context.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_payload_sram.sv \
@@ -69,7 +72,9 @@ RTL_COMMAND_SOURCES := $(RTL_SOURCES) $(abspath qbs_compute_engine_tb.sv)
 RTL_DESCRIPTOR_SOURCES := $(RTL_SOURCES) $(abspath qbs_descriptor_decoder_tb.sv)
 RTL_READ_SOURCES := $(RTL_SOURCES) $(abspath qbs_read_engine_tb.sv)
 RTL_COMMIT_SOURCES := $(RTL_SOURCES) $(abspath qbs_commit_tb.sv)
-RTL_ENGINE_SOURCES := $(RTL_SOURCES) $(abspath qbs_engine_tb.sv)
+RTL_ENGINE_SOURCES := $(RTL_SOURCES) \
+	$(abspath $(RTL_ENGINE_BUILD)/standalone/composed_engine.sv) \
+	$(abspath $(RTL_ENGINE_BUILD)/standalone/original_suite.sv)
 RTL_CONTEXT_SOURCES := \
 	$(ROOT)/hardware/include/qbs_pkg.sv \
 	$(ROOT)/hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv \
@@ -202,8 +207,10 @@ rtl-commit-check: rtl-commit-compile
 	grep -q "QBS commit PASS" $(RTL_COMMIT_BUILD)/run.log
 	! grep -Eq "Fatal:|Error:" $(RTL_COMMIT_BUILD)/run.log
 
-rtl-engine-compile: qbs_command_vectors.txt $(RTL_ENGINE_SOURCES)
+rtl-engine-compile: qbs_command_vectors.txt $(RTL_SOURCES) $(abspath qbs_engine_tb.sv) $(RTL_STANDALONE_GENERATOR)
 	mkdir -p $(RTL_ENGINE_BUILD)
+	python3 -B $(RTL_STANDALONE_GENERATOR) --source-root $(ROOT) --kind qbs \
+		--tb $(abspath qbs_engine_tb.sv) --output $(abspath $(RTL_ENGINE_BUILD)/standalone)
 	cd $(RTL_ENGINE_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
 		+lint=TFIPC-L $(RTL_ENGINE_DEFINES) -l compile.log $(RTL_INCLUDES) $(RTL_ENGINE_SOURCES) \
 		-top qbs_engine_tb -o simv

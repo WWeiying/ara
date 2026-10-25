@@ -1,0 +1,27 @@
+{
+  "state": "Q8_THREEWAY_INDEPENDENTLY_ACCEPTED",
+  "scope": "Real strided KV, six query heads sharing KV head zero, D128, visible128; H/S/B/B/S/H in the same ELF and image",
+  "audit_directory": "verification/out/quantkv-hsb-terminal-audit-20261025-01/q8",
+  "audit_result_sha256": "c5d389ce7cba6be4bdbfac70b7196c9738eeb53e88a322865561bb50ffc8d9b8",
+  "full_audit_sha256": "b505636dbd409ba95b3354360b6e0422b348787d7708cd36002a32f6ad6c8031",
+  "audit_pins_sha256": "7573dd9cdca39a00ca9ed03d60ed15e955ffbaa6f578af4395f00f6cafa07747",
+  "trial_cycles": [1613333, 824296, 581080, 580635, 824327, 1612739],
+  "paired_cycle_sums": {
+    "head_major_rvv": 3226072,
+    "shared_schedule_rvv": 1648623,
+    "shared_schedule_qbs": 1161715
+  },
+  "shared_schedule_speedup": 1.9568282136061428,
+  "qbs_incremental_speedup": 1.419128615882553,
+  "combined_speedup": 2.776990914294814,
+  "native_commands": 16,
+  "source_image_raw_uvm_verified": true,
+  "original_golden_and_repeats_verified": true,
+  "interpretation": "H-to-S includes shared scheduling and callback-validation cost reduction; S-to-B measures the incremental QBS path including mapping and gathering, not arithmetic hardware alone",
+  "q4_state": "TIMEOUT_DURING_FINAL_HEAD_MAJOR_TRIAL_NOT_ACCEPTED",
+  "aggregate_audit_state": "FAIL",
+  "aggregate_result_sha256": "8cd6e002d027b5462f1c170135c9f7cacffb1f74351c68ebaa4f612767cd5751",
+  "hardware_only": false,
+  "whole_model": false,
+  "deployment_approved": false
+}
