@@ -29,6 +29,7 @@ decisions are:
 | Paired F32 Prefill PV | Fresh canonical runtime, real four-query/nine-head slice: 404094 to 380421 ABBA cycle sums | 1.062228x; preserve original order/flags and opt-in; not full M64 or model performance |
 | Quantized KV | Real strided-cache Q4/Q8 paired slices and all four visible5/33 tail runs passed; all-layer Qwen2.5 short generation has 112 native Decode calls / 448 QBS commands | Q8 and the fresh fixed-layout Q4 H/S/B experiments passed independent audit; preserve finite-domain/shape checks, RVV fallback and the original Q4 timeout record |
 | Reader/storage organization | Canonical RTL has one shared reader and AKV Q2 KiB plus unified KV32 KiB; actual canonical build, original generic/macro suites and same-ELF complete-operator regression passed independently | All six call cycles and 3864 command records are identical to the old resource organization; 4 KiB logical reduction is not measured area or a new acceleration claim |
+| Targeted quantized phase/retirement attribution | One real Q4_0 K / Q8_0 V H/S/B diagnostic; 2304 outputs and 1506177 full-stream retirements independently checked, including exact CSR timing and eight native commands | Named diagnostic follow-up closed; partial function labels and next-PC intervals are not exclusive stalls or utilization. See `quantkv_phase_attribution.md`; original six-call performance evidence is unchanged |
 
 Cross-head sharing is now in the canonical runtime, rather than only the
 isolated bench. `AKV_PAIR_HEADS` and `AKV_PREFILL_PAIR_PV` remain explicit,
@@ -92,8 +93,10 @@ outside the QBS-busy union, not an additive scalar/compute/memory stall
 breakdown or functional-unit utilization. The next attribution gate is the
 same-ELF shared-RVV control described in
 `verification/akv/quantized_kv/shared_rvv_control_plan.md`, followed by targeted
-phase/retirement evidence. The present data do not justify prioritizing a
-new QBS arithmetic pipeline to remove this unclassified time.
+phase/retirement evidence. Both gates subsequently completed; the targeted
+diagnostic is documented in `quantkv_phase_attribution.md`. The present data
+do not justify prioritizing a new QBS arithmetic pipeline to remove the time
+outside command activity.
 
 The complete Q8 three-way run now has independently accepted H/S/B paired
 cycle sums 3226072 / 1648623 / 1161715. H-to-S is 1.956828x and includes
@@ -113,6 +116,21 @@ S-to-B 1.547134x, combined 2.782155x. All six calls, 4608 outputs, 16 commands,
 flags, repeats, original gold and independent UVM/raw checks passed within the
 unchanged simulator bound. Receipt:
 `verification/akv/results/canonical-q4-hsb-acceptance-20261025.json`.
+
+The separate three-call retirement diagnostic completed in approximately
+84 minutes on the actual canonical image, without RTL changes. Its H/S/B calls
+have 1584411 / 880864 / 566605 own CSR cycles and 561123 / 270561 / 281981
+retired instructions. Independent raw numerical/protocol and full-stream
+retirement replays pass, including all 2304 outputs, eight commands, 960 source
+and evidence pins and no missing retirement orders. The mixed main/runtime
+functions remain explicitly unclassified: the descriptive next-PC intervals
+do not turn into exclusive execution/stall fractions. This closes the named
+targeted diagnostic, not Q8/model phase coverage or a new repeated performance
+claim. Acceptance: `verification/akv/results/quantkv-phase-acceptance-20261025.json`.
+The independently reviewed complete milestone/requirement map and the new
+diagnostic interpretation identify no outstanding mandatory execution gate
+within this stage. Negative overlap/QBACC candidates remain OFF; native F16
+full-GGML/model, Spike extensions, broader rollout and PPA remain separate.
 The Q4 and Q8 captures/images are separate experiments, not a cross-format
 speed or quality comparison. Do not reuse partial transcripts as full evidence.
 
