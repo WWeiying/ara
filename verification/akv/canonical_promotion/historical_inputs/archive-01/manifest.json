@@ -1,0 +1,69 @@
+{
+  "changed": {
+    "Bender.yml": "c503ebedf85924cc1add30fcadc7179a9b8fb7b53a03c5ee7139b3b0f3da2e1a",
+    "hardware/Makefile": "be1599812532e4839caeef5ebcf7b901228981d974a78aabdf3fad58e79c274b",
+    "hardware/src/vlsu/akv/akv_engine.sv": "fb7f3f647b734ce639ddf81366b9d5121b25225aad9bcb43e6d97ec5d5ac9bf4",
+    "hardware/src/vlsu/qbs/qbs_engine.sv": "70c97021aa34fd0565150e0a39a8da88a87140e4909e9908f0f6e57305da1024",
+    "hardware/src/vlsu/vlsu.sv": "39f9b9a76c438fa8fa11762302b3ce2a75df6d223250d041614eefa4546a9443"
+  },
+  "compilegraph_include": "payload/hardware/include",
+  "filelists": {
+    "verification/akv/shared_reader_integration/snapshot-03/source/verification/out/qbacc-soc-20261023-02/build/hardware-build/vcs/bender_script_default": "955bd225d99af519234e3ddc76b5fca191dedcf781d32d32b0d6c1cccb3aa4ce",
+    "verification/akv/shared_reader_integration/snapshot-03/sources.f": "c63382b6bcacb8f8545668acf149d5cc26906f498b32dec709a45135add015f5",
+    "verification/akv/shared_reader_integration/snapshot-03/vlsu_sources.f": "7d0a24c7537ac2ce2e9174fe3dbb31f30f8bb1475cceb28e23be5483e858a653",
+    "verification/out/qbacc-soc-20261023-02/build/hardware-build/vcs/bender_script_default": "955bd225d99af519234e3ddc76b5fca191dedcf781d32d32b0d6c1cccb3aa4ce"
+  },
+  "helper_pins": {
+    "README.md": "8515ab2fe9e7cff4ff8162fb0c4b10ebac6f25f15aa294136bb3ed8375ab2104",
+    "archive.py": "6078ed99015dd12c4f92c41e52d9905b480a2c5c29caf545e7fb730fc5adf8a9",
+    "preflight.py": "b253b443960e1dadc0e7b2562390bc42921e5fe23ce820999fdbd6c2939f4dc7",
+    "test_archive.py": "9d9825d9cf887b4aef80bd071fa8a16b0682086d10adf78e201fdcd908af4b9d"
+  },
+  "include_files": {
+    "akv_pkg.sv": "1a4971587b6eeea3e0a315f8f77acb4f7d823b56f2ca325a2305e34ef71df495",
+    "ara/ara.svh": "83f15750b453770ae8ca05f9db9f802a8589bbafbc861820c7f469eb591009b1",
+    "ara/ara_typedef.svh": "bd0af2e4d895ef6078331a10bc61a6859805bc981eed8ace9a888884011aa272",
+    "ara/intf_typedef.svh": "dbd94ded2c2627c17645c4c9e0e30894b29f6f9069186fabe78f53a94510e921",
+    "ara_pkg.sv": "49a4fd9879cad35c2c77241bd5114fb8d02ab520e833335fd916122854830971",
+    "qbs_pkg.sv": "5cba22278054776e56d74f01a4833f521729a16953a264fe959dbe8848c33a97",
+    "rvv_pkg.sv": "7c0095c0cc994f9e54b19245efa6a1340623b65ebe59f5c89c5af39473fd74fa"
+  },
+  "original_root": "/home/wangwy/openproject/ara_dsa_signoff_integration",
+  "payload": {
+    "Bender.lock": "4572274dd387f2b7f59038fd9186c4517eee0eeb39464819de4e9afe976329cd",
+    "Bender.yml": "c503ebedf85924cc1add30fcadc7179a9b8fb7b53a03c5ee7139b3b0f3da2e1a",
+    "hardware/Makefile": "be1599812532e4839caeef5ebcf7b901228981d974a78aabdf3fad58e79c274b",
+    "hardware/include/akv_pkg.sv": "1a4971587b6eeea3e0a315f8f77acb4f7d823b56f2ca325a2305e34ef71df495",
+    "hardware/include/ara/ara.svh": "83f15750b453770ae8ca05f9db9f802a8589bbafbc861820c7f469eb591009b1",
+    "hardware/include/ara/ara_typedef.svh": "bd0af2e4d895ef6078331a10bc61a6859805bc981eed8ace9a888884011aa272",
+    "hardware/include/ara/intf_typedef.svh": "dbd94ded2c2627c17645c4c9e0e30894b29f6f9069186fabe78f53a94510e921",
+    "hardware/include/ara_pkg.sv": "49a4fd9879cad35c2c77241bd5114fb8d02ab520e833335fd916122854830971",
+    "hardware/include/qbs_pkg.sv": "5cba22278054776e56d74f01a4833f521729a16953a264fe959dbe8848c33a97",
+    "hardware/include/rvv_pkg.sv": "7c0095c0cc994f9e54b19245efa6a1340623b65ebe59f5c89c5af39473fd74fa",
+    "hardware/src/vlsu/akv/akv_engine.sv": "fb7f3f647b734ce639ddf81366b9d5121b25225aad9bcb43e6d97ec5d5ac9bf4",
+    "hardware/src/vlsu/qbs/qbs_engine.sv": "70c97021aa34fd0565150e0a39a8da88a87140e4909e9908f0f6e57305da1024",
+    "hardware/src/vlsu/vlsu.sv": "39f9b9a76c438fa8fa11762302b3ce2a75df6d223250d041614eefa4546a9443",
+    "verification/akv/shared_reader_integration/snapshot-03/manifest.json": "035ac16298960fafbe2de94a764af5ad80bf08e0c62fdd0d424369d800b3b72f",
+    "verification/akv/shared_reader_integration/snapshot-03/source/verification/out/qbacc-soc-20261023-02/build/hardware-build/vcs/bender_script_default": "955bd225d99af519234e3ddc76b5fca191dedcf781d32d32b0d6c1cccb3aa4ce",
+    "verification/akv/shared_reader_integration/snapshot-03/sources.f": "c63382b6bcacb8f8545668acf149d5cc26906f498b32dec709a45135add015f5",
+    "verification/akv/shared_reader_integration/snapshot-03/vlsu_sources.f": "7d0a24c7537ac2ce2e9174fe3dbb31f30f8bb1475cceb28e23be5483e858a653",
+    "verification/out/akv-paired-heads-threeway-build-20261023-01/source-pins.json": "93946d629d430210f23a397efa85ecbad04b942aaa7cf9558b18e29a561399e1",
+    "verification/out/ordinary-rvv-unified-20261025-01/source-pins.json": "71c3dc262cf021081000d193ef38984d108f8a7bd9e8a22e711c91bb42a4b34c",
+    "verification/out/qbacc-soc-20261023-02/build/hardware-build/vcs/bender_script_default": "955bd225d99af519234e3ddc76b5fca191dedcf781d32d32b0d6c1cccb3aa4ce",
+    "verification/out/qbacc-soc-20261023-02/build/sim/vcs_source_manifest.json": "a6f84fe299eaa54c2f20da76d4b29a5a03fc8c9fcc80e35c51cf8de9bcafe8b3",
+    "verification/out/reader-handoff-build-20261024-01/source-pins.json": "dc8d77df586558582ee678a1254b73d30c308f9e3c6ea728bd31aeea69479e15",
+    "verification/out/shared-storage-integration-soc-build-20261025-01/source-pins.json": "24e3923862819e2438730011ac3b4ea2dc5cab681dbcc6d0474d9eefe9b4c8fe"
+  },
+  "receipts": {
+    "verification/akv/shared_reader_integration/snapshot-03/manifest.json": "035ac16298960fafbe2de94a764af5ad80bf08e0c62fdd0d424369d800b3b72f",
+    "verification/out/akv-paired-heads-threeway-build-20261023-01/source-pins.json": "93946d629d430210f23a397efa85ecbad04b942aaa7cf9558b18e29a561399e1",
+    "verification/out/ordinary-rvv-unified-20261025-01/source-pins.json": "71c3dc262cf021081000d193ef38984d108f8a7bd9e8a22e711c91bb42a4b34c",
+    "verification/out/qbacc-soc-20261023-02/build/sim/vcs_source_manifest.json": "a6f84fe299eaa54c2f20da76d4b29a5a03fc8c9fcc80e35c51cf8de9bcafe8b3",
+    "verification/out/reader-handoff-build-20261024-01/source-pins.json": "dc8d77df586558582ee678a1254b73d30c308f9e3c6ea728bd31aeea69479e15",
+    "verification/out/shared-storage-integration-soc-build-20261025-01/source-pins.json": "24e3923862819e2438730011ac3b4ea2dc5cab681dbcc6d0474d9eefe9b4c8fe"
+  },
+  "schema": "HISTORICAL_CANONICAL_INPUTS_V1",
+  "scope": "Source pin consumer only; not whole image/run/UVM acceptance",
+  "software_mapping": "UNCHANGED_SEPARATE_CONTRACT",
+  "state": "ARCHIVED_NOT_PROMOTED"
+}

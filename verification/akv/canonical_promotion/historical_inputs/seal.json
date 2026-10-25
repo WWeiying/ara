@@ -1,0 +1,33 @@
+{
+  "archive_manifest_sha256": "d958c77b3e6e966b7e2b22920d6cbc3358466defc65abcef71a8299a3b4c1674",
+  "archived_file_count": 23,
+  "command": [
+    "/usr/bin/python3",
+    "-B",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/historical_inputs",
+    "-p",
+    "test_*.py",
+    "-v"
+  ],
+  "compiler_invoked": false,
+  "helper_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/historical_inputs/README.md": "8515ab2fe9e7cff4ff8162fb0c4b10ebac6f25f15aa294136bb3ed8375ab2104",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/historical_inputs/archive.py": "6078ed99015dd12c4f92c41e52d9905b480a2c5c29caf545e7fb730fc5adf8a9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/historical_inputs/preflight.py": "b253b443960e1dadc0e7b2562390bc42921e5fe23ce820999fdbd6c2939f4dc7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/historical_inputs/test_archive.py": "9d9825d9cf887b4aef80bd071fa8a16b0682086d10adf78e201fdcd908af4b9d"
+  },
+  "historical_include_files": 7,
+  "host_tests_sha256": "601b63352e6aad59f0366fa2bc70fe56dbce33f3ec848e0aeb25845a4aea3a16",
+  "physical_copies": true,
+  "preflight_sha256": "729972de8d11b6453247f0aebd14d05012d603e0ba8917d2d4d328da0949cea8",
+  "receipt_count": 6,
+  "simulator_invoked": false,
+  "state": "FROZEN_HOST_VALIDATED_NOT_PROMOTED",
+  "test_exit": 0,
+  "tests": 17,
+  "unique_consumed_pins": 3019
+}
