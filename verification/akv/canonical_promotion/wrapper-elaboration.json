@@ -1,0 +1,59 @@
+{
+  "admitted_warning": {
+    "code": "IPDW",
+    "count": 1,
+    "identifier": "i",
+    "previous_line": 168,
+    "redeclaration_line": 458,
+    "source": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/source/hardware/deps/cva6/core/cva6_mmu/cva6_shared_tlb.sv",
+    "source_sha256": "2e46b236d59f27fb23e5e073daaa665a4a3ca5fb22d8a17a867e6504b575576a"
+  },
+  "command": [
+    "timeout",
+    "600",
+    "vcs",
+    "-full64",
+    "-sverilog",
+    "-timescale=1ns/1ps",
+    "-debug_access+all",
+    "+lint=TFIPC-L",
+    "-f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/vlsu_sources.f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/akv_engine_synth_wrapper.sv",
+    "-top",
+    "akv_engine_synth_wrapper",
+    "-Mdir=csrc",
+    "-o",
+    "simv",
+    "-l",
+    "compile.log"
+  ],
+  "exit_code": 0,
+  "functional_simulation_accepted": false,
+  "old_top_ports_preserved": true,
+  "output": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-resource-wrapper-elaboration-20261025-02",
+  "ppa_measured": false,
+  "previous_cli_failure": {
+    "output": "verification/out/akv-resource-wrapper-elaboration-20261025-01",
+    "reason": "-Mdir value requires equals form; VCS treated csrc as input source; preserved, no RTL correction"
+  },
+  "production_promoted": false,
+  "schema": "akv_resource_measurement_wrapper_elaboration_v1",
+  "simulation_run": false,
+  "snapshot_artifact_pins_post_match": true,
+  "snapshot_manifest_sha256": "035ac16298960fafbe2de94a764af5ad80bf08e0c62fdd0d424369d800b3b72f",
+  "source_and_artifact_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/akv_engine_synth_wrapper.sv": "2f5f41c46118610e6dcfcc231206159f555708467eb99de08ecc6003fda83557",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/test_measurement_wrapper.py": "2bccd2a2ca6eb2c8ee5eb935d49c5e579bd8ac693108dbc7a82178c933b3f97a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/manifest.json": "035ac16298960fafbe2de94a764af5ad80bf08e0c62fdd0d424369d800b3b72f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/vlsu_sources.f": "7d0a24c7537ac2ce2e9174fe3dbb31f30f8bb1475cceb28e23be5483e858a653",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/synthesis/akv_engine_synth_wrapper.sv": "cce4b31e0ed7c9ab7b8dc507f26436f2e1e7e71eca0ef2869e5a7159df6d1acc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-resource-wrapper-elaboration-20261025-02/compile.log": "19aafeaeacd7b468934f63b1c35e3d6434894cc2716a69a71863af921a60057c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-resource-wrapper-elaboration-20261025-02/simv": "efdcea8abd47c5302006a3736033b748a6b2f4565ccbeedd519447fa4b31b881"
+  },
+  "source_graph": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/vlsu_sources.f",
+  "state": "VCS_ELABORATION_ONLY_PASS",
+  "static_tests": 5,
+  "synthesis_run": false,
+  "top": "akv_engine_synth_wrapper"
+}
