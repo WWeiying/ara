@@ -24,13 +24,13 @@ cell area, timing, power or a whole-model speedup.
 | Original QBS standalone suite through the extracted-reader composition | All 36 functional cases and four fault classes PASS | `verification/out/shared-storage-standalone-qbs-20261025-01/` |
 | Original AKV standalone suite | v1 D64/D128, v2 D64/D96/D128 and segmented D256 row/column cases PASS, including tails, counters and faults | `verification/out/shared-storage-standalone-akv-20261025-01/` |
 | Source, testbench and build audit | Exact inverse TB transformation; no changed expected data/assertions; 124 full-SoC warning blocks unchanged | `verification/akv/results/shared-storage-component-audit-20261025.json` |
-| Integrated 71-command owner/context handoff | Worker PASS; all command counter records equal the accepted shared-reader predecessor | `verification/out/shared-storage-handoff-20261025-01/` |
+| Integrated 71-command owner/context handoff | Worker and independent raw audit PASS; all command counter records equal the original baseline | `verification/akv/results/shared-storage-handoff-20261025.json` |
 | Integrated 14-command AKV-fault/QBS-reuse/retry sequence | Independent paired raw audit PASS; all command records equal the original dual-reader baseline | `verification/akv/results/shared-storage-reverse-fault-20261025.json` |
 
 The handoff worker includes source identity, software output checks, independent
 protocol checking and settled-negedge waveform checks. A separate offline raw
-handoff audit is owned by `shared-storage-handoff-audit-20261025-01.service`;
-its receipt must exist and pass before claiming that additional audit complete.
+handoff audit completed under `shared-storage-handoff-audit-20261025-01.service`;
+its receipt independently confirms all 71 command records are identical.
 PMA read faults are covered here; this is not proof of every translated Linux
 page-fault restart or a held-AR fault condition at SoC level.
 
@@ -50,6 +50,24 @@ image pins, independently checked output/CSR/protocol results, and comparison
 with the recorded baseline cycles and command counters. No long-run polling is
 needed. Previous shared-reader-only regressions remain independent evidence and
 must not be relabeled as tests of unified storage.
+
+After a runtime worker has completed, use the independent raw auditor:
+
+```sh
+python3 -B verification/akv/shared_reader_integration/audit_real_runtime.py \
+  --run verification/out/shared-storage-real-prefill-20261025-01 \
+  --output verification/akv/results/shared-storage-real-prefill-20261025.json
+```
+
+Use a fresh receipt path. The auditor checks both terminal runs, their matching
+ELF/build association, current source/evidence pins, raw output/CSR records and
+independent protocol receipts. It reports every measured call separately; a
+faster aggregate cannot conceal one slower call. Counter differences require
+review rather than being silently accepted as equivalent. The existing Decode
+fixture has no complete-call cycle measurements, so it can establish per-call
+hardware-counter equivalence, not whole-operator performance. Prefill has actual
+complete-call cycles. The original checker scope remains part of each receipt;
+protocol independence is not an independent full-Attention numerical oracle.
 
 ## Remaining production and objective gates
 
