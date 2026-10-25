@@ -1,0 +1,29 @@
+{
+  "bender_invoked": false,
+  "canonical_unchanged": true,
+  "coherent_plan_sha256": "cfda0a82d1c909fb2a0ab3b90278ff339060c96ed4ac81e2f6c69118a3257cba",
+  "command": [
+    "/usr/bin/python3",
+    "-B",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/canonical_soc",
+    "-p",
+    "test_*.py",
+    "-v"
+  ],
+  "compiler_invoked": false,
+  "exit_code": 0,
+  "helper_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/canonical_soc/README.md": "7503d899269efce793a6698fd0d213d36cf8f5026884b1aaee96e43c5a5d10c7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/canonical_soc/build.py": "99063bec061c3417cddb2a17555d5348822d05779c1c65406d668551017762fa",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/canonical_soc/test_build.py": "f5914179dfa7ffd316a5c04d1a1dff9321128427bc1b03bd7448b61c9d00115f"
+  },
+  "host_test_log_sha256": "90d7d85f56f63d3667472d1a754dec28b83126937e5c980db6d735ae0f9163d7",
+  "limitations": "No post-promotion real preflight/build attempted; source graph and VCS argv require actual future compile validation",
+  "simulator_invoked": false,
+  "state": "PREPARED_FROZEN_NOT_COMPILED",
+  "tests": 14
+}
