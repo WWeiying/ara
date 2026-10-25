@@ -1,0 +1,75 @@
+{
+  "auditor_sha256": "724e70049aee44295a167cc77e9f61edf7b084396700ea6e8b8d4a298dde608f",
+  "baseline": {
+    "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01",
+    "evidence_sha256": {
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/cycles/cycles.csv": "bdedc5a73ce128cb55ffb491beef02845594b3c0d272a03166713c4279f1245f",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/cycles/fsdbreport.raw.csv": "811f54cf38fcd362bedd9519da8136234483828e40ed1ce3cc897dad8f47bd96",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/cycles/metadata.json": "dec348a024356aec7ee5d42d30ee14b4309911007bd2a5af6655e664cdfc6fb6",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/probe.tcl": "7d25a8d420f56333bfdcabed6860d40c3e31d042289bcc713c512b873c1ce426",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/profile.json": "2c695468e1d9875e32e093a61c57efeedaa58f220606aad0ec0416257e039561",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/source-pins.json": "ea07c5823a7f2efbb8391929f0f1cbcfe10277733d5c5a6746afdc288389b3cc",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/work/reader.fsdb": "7ed804d0b927a5af8c0ba72b77c455ba29c3d84deac2c8d637514a18442e135b",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/work/run.vcs.log": "bbbcd0c432ff34d267c3ffe9085ae7dd906a578773f85a4dc3ae88239a2d8833",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/work/uvm_result.json": "0170efdc16be89cc94e57de3dd57912d10dd36a6f62808579600933b8c5b9984",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/work/vector_trace.csv": "9967b182e3b6addbc427987e51289d0bfc06cc1881b17f8b3250aada0ebded17"
+    },
+    "result_sha256": "c91a991756a20e5c396705a19d70d9d505a47051c11ef2adf6d84e453c5f3ad8",
+    "source_pins_sha256": "ea07c5823a7f2efbb8391929f0f1cbcfe10277733d5c5a6746afdc288389b3cc",
+    "status_sha256": "a0515bf4d8786af22d0639ecfe251106a6750491f8ee4eff4bf6bd9f91e74796",
+    "wave": {
+      "commands": 14,
+      "faults": 1,
+      "foreign_context_samples": 301,
+      "q_write_samples_before_fault": 52,
+      "sampling": "Settled negedge",
+      "shared_image": false,
+      "stalled_ar_fault": false,
+      "state": "READER_FAULT_WAVE_CHECKED"
+    }
+  },
+  "cause": 5,
+  "command_counters_identical": true,
+  "commands_per_image": 14,
+  "current_inputs_match": true,
+  "elf_sha256": "d91c4cc5e726e6c0d83250872e65e4fa65a441c3fbf55af64910007e1e31bc91",
+  "exact_trap_pc_checked": true,
+  "fault_kind": "PMA",
+  "fault_owner": "akv",
+  "independent_protocol_checked": true,
+  "model_performance": false,
+  "ppa_measured": false,
+  "production_promoted": false,
+  "qbs_context_reuse_after_foreign_fault": true,
+  "same_elf": true,
+  "shared": {
+    "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-shared-20261025-01",
+    "evidence_sha256": {
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-shared-20261025-01/cycles/cycles.csv": "a82d0c5dcfc9f782151e06c6ae82dade5f3f8c558171b45073912372050a259b",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-shared-20261025-01/cycles/fsdbreport.raw.csv": "49511c14b3698f271d91660d053e6488a7ae435c60052ddd7582e656db9a251f",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-shared-20261025-01/cycles/metadata.json": "1bc344cf4923236406c06076b3b7919b0b4f955d8f1df8a4a4fc0e615593a733",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-shared-20261025-01/probe.tcl": "f8d869995b67a2d6b45f0ef9f7b357f03f2e4bda694eb01fb3f6feb7917016f1",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-shared-20261025-01/profile.json": "305831e2459ff498596c89dc06176cf6ce5296f68b4eb8ea986fe14469bf4193",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-shared-20261025-01/source-pins.json": "f4e044a20aedd38f0c1624fe223855ce6740a450a3a4baac61e8bbb0d8f110ea",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-shared-20261025-01/work/reader.fsdb": "3428cb6a73608b2ab5ebed45b901e0f65aea8f161d97fbac7a64c7a851a70de4",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-shared-20261025-01/work/run.vcs.log": "da757b1b5c676bdd43db3d2461cdbd5bdd85fdd134fdd8cfea27b64c84969544",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-shared-20261025-01/work/uvm_result.json": "a63084be8dc4a396d8a60800bdb28a5c28742266b28081d1346664193a50ec4f",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-shared-20261025-01/work/vector_trace.csv": "9967b182e3b6addbc427987e51289d0bfc06cc1881b17f8b3250aada0ebded17"
+    },
+    "result_sha256": "06bd3f083c69c427d3272c1004e8c77e9d331097439d0425a152919a04f0a5bb",
+    "source_pins_sha256": "f4e044a20aedd38f0c1624fe223855ce6740a450a3a4baac61e8bbb0d8f110ea",
+    "status_sha256": "227b04538890daf40f938946ad70e2c5073a65b83ef5d3d6b19427944a195612",
+    "wave": {
+      "commands": 14,
+      "faults": 1,
+      "foreign_context_samples": 301,
+      "q_write_samples_before_fault": 52,
+      "sampling": "Settled negedge",
+      "shared_image": true,
+      "stalled_ar_fault": false,
+      "state": "READER_FAULT_WAVE_CHECKED"
+    }
+  },
+  "state": "REVERSE_READER_FAULT_PAIRED_RAW_RECHECKED",
+  "tval": 0
+}
