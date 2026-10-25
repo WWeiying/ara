@@ -90,9 +90,9 @@ static inline int akv_quant_ggml_map(const struct ggml_tensor *dst,
   mapped.output.heads=(unsigned)dst->ne[1];
   mapped.output.token_stride=dst->nb[2]; mapped.output.head_stride=dst->nb[1];
   mapped.mask=(const uint16_t *)mask->data; mapped.mask_bytes=context->mask_bytes;
-  memcpy(&mapped.scale,dst->op_params,sizeof(float));
-  memcpy(&mapped.max_bias,dst->op_params+1,sizeof(float));
-  memcpy(&mapped.softcap,dst->op_params+2,sizeof(float));
+  AKV_QUANT_FIELD_COPY(&mapped.scale,dst->op_params,sizeof(float));
+  AKV_QUANT_FIELD_COPY(&mapped.max_bias,dst->op_params+1,sizeof(float));
+  AKV_QUANT_FIELD_COPY(&mapped.softcap,dst->op_params+2,sizeof(float));
   *input=mapped;
   return AKV_QUANT_GGML_MAP_OK;
 }

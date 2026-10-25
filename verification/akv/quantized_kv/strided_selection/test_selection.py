@@ -11,7 +11,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
 SOURCE = ROOT / 'software/akv/experimental/quantized_kv/selection.h'
 SUCCESSOR = SOURCE.with_name('selection_strided.h')
-SOURCE_SHA256 = 'd02f495fbec218b30631775102e418e3bfed51113b577d277c4cd7069fb28d42'
+SOURCE_SHA256 = 'd597ccdf8da49a14f029626825bdceb939af2029665216cd47a07c1acf00cff7'
 CAPTURE = ROOT / 'verification/out/akv-quantkv-host-capture-20261024-01'
 
 

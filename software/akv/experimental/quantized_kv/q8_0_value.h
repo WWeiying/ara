@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include "field_copy.h"
 
 /* Exact Q8_0 encoding only: F16 scale then 32 signed bytes. The caller must
  * provide disjoint valid buffers, elements divisible by 32, and finite scales.
@@ -15,7 +16,7 @@ static inline void akv_quant_q8_0_value(const void *source, float *output, size_
   const unsigned char *block = (const unsigned char *)source;
   for (size_t first = 0; first < elements; first += 32, block += 34) {
     _Float16 half_scale;
-    memcpy(&half_scale, block, sizeof(half_scale));
+    AKV_QUANT_FIELD_COPY(&half_scale, block, sizeof(half_scale));
     const float scale = (float)half_scale;
     for (size_t offset = 0; offset < 32;) {
       const size_t vl = __riscv_vsetvl_e8mf2(32 - offset);

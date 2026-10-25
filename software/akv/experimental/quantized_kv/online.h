@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include "field_copy.h"
 
 /* Software schedule for quantized KV, not new AKV quantized-payload hardware.
  * Admission must establish a finite, zero-mask visible prefix before entry.
@@ -54,7 +55,7 @@ static inline int akv_quant_online_valid(const akv_quant_online_plan_t *p,
       (SIZE_MAX / sizeof(float) - p->dim) / (p->heads - 1))
     return 0;
   uint32_t bits;
-  memcpy(&bits, &p->score_scale, sizeof(bits));
+  AKV_QUANT_FIELD_COPY(&bits, &p->score_scale, sizeof(bits));
   return bits && !(bits & UINT32_C(0x80000000)) &&
          (bits & UINT32_C(0x7f800000)) != UINT32_C(0x7f800000);
 }

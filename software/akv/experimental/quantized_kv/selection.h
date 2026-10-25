@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include "field_copy.h"
 
 /* Metadata for one Decode operation, not a promise of arbitrary GGML support.
  * All extents are bytes in a caller-owned normal-memory allocation. Admission
@@ -46,7 +47,7 @@ enum {
 
 static inline uint32_t akv_quant_float_bits(float value) {
   uint32_t result;
-  memcpy(&result, &value, sizeof(result));
+  AKV_QUANT_FIELD_COPY(&result, &value, sizeof(result));
   return result;
 }
 
@@ -135,7 +136,7 @@ static inline int akv_quant_select(const akv_quant_selection_input_t *p,
   unsigned visible = 0, hidden = 0;
   for (unsigned token = 0; token < p->key.tokens; ++token) {
     uint16_t bits;
-    memcpy(&bits, (const unsigned char *)p->mask + token * sizeof(bits), sizeof(bits));
+    AKV_QUANT_FIELD_COPY(&bits, (const unsigned char *)p->mask + token * sizeof(bits), sizeof(bits));
     if (bits == UINT16_C(0xfc00)) hidden = 1;
     else if (bits == 0 && !hidden) ++visible;
     else return AKV_QUANT_SELECT_MASK;
@@ -170,7 +171,7 @@ static inline int akv_quant_select(const akv_quant_selection_input_t *p,
       uint32_t maximum = 0;
       for (unsigned d = 0; d < 32; ++d) {
         uint32_t bits;
-        memcpy(&bits, (const unsigned char *)p->query.data + head * p->query.head_stride +
+        AKV_QUANT_FIELD_COPY(&bits, (const unsigned char *)p->query.data + head * p->query.head_stride +
                           (block * 32u + d) * 4u, 4);
         bits &= UINT32_C(0x7fffffff);
         if ((bits & UINT32_C(0x7f800000)) == UINT32_C(0x7f800000)) return AKV_QUANT_SELECT_NONFINITE;
@@ -190,7 +191,7 @@ static inline int akv_quant_select(const akv_quant_selection_input_t *p,
       for (unsigned token = 0; token < visible; ++token)
         for (unsigned block = 0; block < dim / 32u; ++block) {
           uint16_t bits;
-          memcpy(&bits, (const unsigned char *)view->data + head * view->head_stride +
+          AKV_QUANT_FIELD_COPY(&bits, (const unsigned char *)view->data + head * view->head_stride +
                            token * view->token_stride + block * block_bytes, 2);
           if ((bits & UINT16_C(0x7c00)) == UINT16_C(0x7c00)) return AKV_QUANT_SELECT_NONFINITE;
         }
