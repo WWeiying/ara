@@ -3,6 +3,7 @@ import copy
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sys
 import tempfile
 import unittest
@@ -23,6 +24,64 @@ def load(name,file):
 b=load('held_ar_build_tests','build.py')
 r=load('held_ar_run_tests','run.py')
 ALLOC=[dict(name='.bss',address=0x80000000,bytes=0x10000,nobits=True)]
+
+
+class SocCompileTests(unittest.TestCase):
+    def setUp(self):
+        self.source=c.ROOT/'verification/akv/shared_reader_integration/snapshot-03/source'
+        self.argv=['/approved/bin/vcs','-full64','+lint=PCWM','-f','/approved/input.f']
+        self.header='Command: vcs -full64 \\\n+lint=PCWM -f /approved/input.f\n'
+        prior=c.SOC_COMPILE_PRIOR.read_text()
+        self.blocks=[x.replace(str(c.ROOT)+'/',str(self.source)+'/') for x in
+                     re.findall(r'^Lint-\[PCWM-L\][\s\S]*?(?=\n\n|\Z)',prior,re.M)]
+        self.warning=c.latency.admitted_warning(self.source/'hardware/deps/cva6/core/cva6_mmu/cva6_shared_tlb.sv')
+        self.text=self.header+'\n'+self.warning+'\n'+'\n\n'.join(self.blocks)+'\n\n'
+
+    def check(self,text=None,code=0,argv=None):
+        return c.check_soc_compile(self.text if text is None else text,code,
+                                   self.argv if argv is None else argv,self.source)
+
+    def test_exact_monitor_and_legacy_admission(self):
+        receipt=self.check()
+        self.assertEqual(receipt['ports'],['retired_inst_count_i','retired_vector_inst_count_i'])
+        self.assertEqual(receipt['count_per_port'],1)
+        self.assertEqual(receipt['legacy']['code'],'IPDW')
+
+    def test_swapped_changed_missing_and_duplicate_blocks(self):
+        for blocks in (self.blocks[::-1],self.blocks[:1],self.blocks+self.blocks[:1],
+                       [self.blocks[0].replace('2-bit port','3-bit port'),self.blocks[1]],
+                       [self.blocks[0].replace(', 2129',', 2130'),self.blocks[1]],
+                       [self.blocks[0].replace('retired_inst_count_i','other_count_i'),self.blocks[1]],
+                       [self.blocks[0].replace('/hardware/tb/ara_tb.sv','/elsewhere/ara_tb.sv'),self.blocks[1]]):
+            with self.subTest(blocks=blocks),self.assertRaises((ValueError,RuntimeError)):
+                self.check(self.header+'\n'+self.warning+'\n'+'\n\n'.join(blocks)+'\n\n')
+
+    def test_new_diagnostics_and_nonzero_exit_still_fail(self):
+        for extra in ('Lint-[PCWM-L] new mismatch\nunknown.sv, 1\n\n',
+                      'Warning-[PCWM] mismatch\n','Lint-[PINMISSING] missing\n',
+                      'Warning-[IPDW] another declaration\n','Error-[OTHER] error\n',
+                      'Fatal: stopped\n','unverified +lint=PCWM outside header\n'):
+            with self.subTest(extra=extra),self.assertRaises((ValueError,RuntimeError)):
+                self.check(self.text+extra)
+        with self.assertRaises((ValueError,RuntimeError)): self.check(code=1)
+
+    def test_complete_header_argv_required(self):
+        for header in ('',self.header+self.header,self.header.replace('-full64','-full32'),
+                       self.header.replace('/approved/input.f','/wrong/input.f'),
+                       self.header.replace('+lint=PCWM','+lint=PCWM +lint=PCWM'),
+                       self.header.replace('vcs ','other-vcs ',1)):
+            with self.subTest(header=header),self.assertRaises((ValueError,RuntimeError)):
+                self.check(header+self.text[len(self.header):])
+        with self.assertRaises((ValueError,RuntimeError)): self.check(argv=self.argv+['-extra'])
+        with self.assertRaises((ValueError,RuntimeError)): self.check(self.header.rstrip('\n'))
+
+    def test_wrong_source_or_prior_hash(self):
+        real_digest=c.digest
+        for path in [c.SOC_COMPILE_PRIOR,*[self.source/p for p in c.SOC_MONITOR_HASHES]]:
+            with self.subTest(path=path),patch.object(c,'digest',side_effect=
+                    lambda p: '0'*64 if p==path else real_digest(p)),\
+                    self.assertRaises((ValueError,RuntimeError)):
+                self.check()
 
 
 class SocInventoryTests(unittest.TestCase):

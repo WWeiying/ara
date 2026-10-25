@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import signal
 import sys
 
@@ -67,6 +68,7 @@ class Execution(hand.Execution):
 def own_pins():
     files=[p for p in HERE.iterdir() if p.suffix in ('.py','.sv','.md')]
     files += [Path(sys.executable).resolve(),*s.script_files(),
+              SOC_COMPILE_PRIOR,
               ROOT/'hardware/scripts/fsdb_trace/extract_cycles.py',
               ROOT/'hardware/scripts/llama_q4km_extract/check-sim-l2.sh']
     for mod in tuple(sys.modules.values()):
@@ -112,6 +114,55 @@ SOC_REPEAT_HASHES = {
     'hardware/tb/ara_testharness.sv':
         '2170512673680e73b91cce44a0a600bb32000427404b9026238b2914af20482c',
 }
+
+
+SOC_COMPILE_PRIOR = ROOT/'verification/out/qbacc-soc-20261023-02/build/sim/comp.vcs.log'
+SOC_COMPILE_PRIOR_SHA256 = '3dea2df66c7bffe0fdc5fba59f785bb171a57fd765c493a412cb16fcca256873'
+SOC_MONITOR_HASHES = {
+    'hardware/tb/ara_tb.sv': 'c6416eabbc9a77c49ffbaec4643dcafdc1a31e758a35f1418cf084d63049f3e8',
+    'hardware/tb/llm_perf_monitor.sv': '06429b17aadd8fcb7c7c9881879d4f84a0c1ba61b50a0aad79b18b3993d3af67',
+}
+
+
+def check_soc_compile(text,code,expectedargv,source_root):
+    require(text.startswith('Command: ') and len(re.findall(r'^Command:',text,re.M))==1,
+            'Need one complete leading VCS command record')
+    lines=text.splitlines(keepends=True); header=[]
+    for line in lines:
+        require(line.endswith('\n'),'Unterminated VCS command record')
+        header.append(line)
+        if not line.endswith('\\\n'): break
+    header=''.join(header)
+    argv=shlex.split(header[len('Command: '):].replace('\\\n',''))
+    require(expectedargv and Path(expectedargv[0]).name=='vcs' and
+            argv==['vcs',*map(str,expectedargv[1:])] and argv.count('+lint=PCWM')==1,
+            'VCS command record differs from approved argv')
+    remaining=text[len(header):]
+    require(digest(SOC_COMPILE_PRIOR)==SOC_COMPILE_PRIOR_SHA256,'Accepted SoC compile log drift')
+    manifest=s.read_json(SOC_COMPILE_PRIOR.parent/'vcs_source_manifest.json')
+    records={row['path']:row['sha256'] for row in manifest['files']}
+    for relative,expected in SOC_MONITOR_HASHES.items():
+        require(records.get(str(ROOT/relative))==expected and
+                digest(source_root/relative)==expected,'Admitted SoC monitor source drift')
+    pattern=r'^Lint-\[PCWM-L\][\s\S]*?(?=\n\n|\Z)'
+    prior=re.findall(pattern,SOC_COMPILE_PRIOR.read_text(),re.M)
+    ports=('retired_inst_count_i','retired_vector_inst_count_i')
+    require(len(prior)==2,'Wrong accepted SoC lint inventory')
+    for block,port in zip(prior,ports):
+        require(block.startswith('Lint-[PCWM-L] Port connection width mismatch\n'+
+                    str(ROOT/'hardware/tb/ara_tb.sv')+', 2129\n') and
+                f'  "{port}" of module "llm_perf_monitor", instance ' in block and
+                '  The following 32-bit expression is connected to 2-bit port ' in block,
+                'Wrong accepted monitor lint contract')
+    admitted=[block.replace(str(ROOT)+'/',str(source_root)+'/') for block in prior]
+    require(re.findall(pattern,remaining,re.M)==admitted and
+            all(remaining.count(block)==1 for block in admitted),'Changed/extra/missing SoC lint blocks')
+    for block in admitted: remaining=remaining.replace(block,'',1)
+    legacy=latency.check_compile(remaining,code,source_root/'hardware/deps/cva6/core/cva6_mmu/cva6_shared_tlb.sv')
+    return dict(legacy=legacy,command_argv=list(map(str,expectedargv)),
+                prior_log=str(SOC_COMPILE_PRIOR),prior_sha256=SOC_COMPILE_PRIOR_SHA256,
+                source_hashes=SOC_MONITOR_HASHES,lint_code='PCWM-L',line=2129,
+                ports=list(ports),count_per_port=1)
 
 
 def soc_repeat_admission(filelist,source_root):

@@ -125,7 +125,7 @@ def build(args):
             identity()
             owner.execute(argv,work/'compile.console.log',1800,'VCS_'+mode.upper())
             text=(work/'comp.vcs.log').read_text()
-            admission=c.latency.check_compile(text,0,snapshot/c.latency.TLB_RELATIVE)
+            admission=c.check_soc_compile(text,0,argv,snapshot/'source')
             c.save(work/'compile-admission.json',admission)
             c.verify_manifest(work/'vcs_source_manifest.json')
             simv=work/'simv'; image=c.s.hashes(c.s.image_files(simv))
