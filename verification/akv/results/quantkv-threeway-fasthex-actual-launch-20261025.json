@@ -1,0 +1,63 @@
+{
+  "coordinator_result": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/tail_split/out/coordinator-fasthex-v3-01/result.json",
+  "coordinator_result_sha256": "4f624b959d7397934a1e71f8f1e7f29bda35dd29fbd7df5f1029b7cb507b9e7c",
+  "entries": [
+    {
+      "actual_argv": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbacc-soc-20261023-02/build/sim/simv",
+        "-no_save",
+        "-l",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/tail_split/out/coordinator-fasthex-v3-01/threeway-q4/work/run.vcs.log",
+        "+PRELOAD=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-threeway-fasthex-q4-build-20261025-01/build/threeway_attention.elf",
+        "+TESTCASE=quant_threeway_attention",
+        "+NO_FSDB",
+        "+NO_INSTR_TRACE",
+        "+QBS_PERF",
+        "+VECTOR_TRACE=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/tail_split/out/coordinator-fasthex-v3-01/threeway-q4/work/vector_trace.csv",
+        "+ARA_CONTRACT_TRACE_LIMIT=2000000",
+        "+ARA_UVM_TRACE_LIMIT=2000000"
+      ],
+      "actual_cwd": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/tail_split/out/coordinator-fasthex-v3-01/threeway-q4/work",
+      "cgroup": "0::/user.slice/user-1002.slice/user@1002.service/app.slice/akv-quantkv-threeway-fasthex-v3-20261025-01-q4.service",
+      "elf_sha256": "0a9cc534fd8195debdf7ab42678733cfb4d490c970e15feadfe886335e1926f6",
+      "kind": "q4",
+      "observation": "ACTUAL_SIMV_CONFIRMED_ONCE_NO_FURTHER_LONG_RUN_POLLS",
+      "process_start_ticks": "385427950",
+      "simulator_pid": 1265548,
+      "unit": "akv-quantkv-threeway-fasthex-v3-20261025-01-q4.service",
+      "worker_pid": 1250011
+    },
+    {
+      "actual_argv": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbacc-soc-20261023-02/build/sim/simv",
+        "-no_save",
+        "-l",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/tail_split/out/coordinator-fasthex-v3-01/threeway-q8/work/run.vcs.log",
+        "+PRELOAD=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-threeway-fasthex-q8-build-20261025-01/build/threeway_attention.elf",
+        "+TESTCASE=quant_threeway_attention",
+        "+NO_FSDB",
+        "+NO_INSTR_TRACE",
+        "+QBS_PERF",
+        "+VECTOR_TRACE=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/tail_split/out/coordinator-fasthex-v3-01/threeway-q8/work/vector_trace.csv",
+        "+ARA_CONTRACT_TRACE_LIMIT=2000000",
+        "+ARA_UVM_TRACE_LIMIT=2000000"
+      ],
+      "actual_cwd": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/tail_split/out/coordinator-fasthex-v3-01/threeway-q8/work",
+      "cgroup": "0::/user.slice/user-1002.slice/user@1002.service/app.slice/akv-quantkv-threeway-fasthex-v3-20261025-01-q8.service",
+      "elf_sha256": "3cf530e17df65152a9e9a4e9427b7fd606898d7554bfc74e62a28fd14cd40fad",
+      "kind": "q8",
+      "observation": "ACTUAL_SIMV_CONFIRMED_ONCE_NO_FURTHER_LONG_RUN_POLLS",
+      "process_start_ticks": "385432542",
+      "simulator_pid": 1267341,
+      "unit": "akv-quantkv-threeway-fasthex-v3-20261025-01-q8.service",
+      "worker_pid": 1250223
+    }
+  ],
+  "functional_or_performance_result_claimed": false,
+  "image": "Original full QBS+AKV image, not shared-resource candidate or no-QBS hardware",
+  "observed_utc": "2026-10-25T02:49:43.475723+00:00",
+  "purpose": "Same-ELF H/S/B/B/S/H quantized-KV operator attribution after four checked tail gates",
+  "schema": "quantkv_threeway_actual_launch_v1",
+  "simulator_timeout_seconds": 10800,
+  "state": "TWO_ACTUAL_SIMULATORS_CONFIRMED"
+}
