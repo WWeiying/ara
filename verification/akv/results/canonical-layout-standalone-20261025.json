@@ -1,0 +1,48 @@
+{
+  "original_assertions_and_expected_data_preserved": true,
+  "ppa_measured": false,
+  "production_promoted": false,
+  "results": {
+    "akv": {
+      "evidence": {
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-akv-20261025-01/compile.command.json": "98a4ac9411dbaea7b84aba3f132a8674c472360c7ca44a754fabe6a0248db4c9",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-akv-20261025-01/compile.exit.json": "81868a6e94ffc0178bf833deb1c9013d9fab4ee95ddb876a5e8ec4f1d26376d2",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-akv-20261025-01/compile.log": "3383e99c22d341ec491e533e35f835bdc5c9e031849f4b1018a3c7d6cdf73abe",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-akv-20261025-01/composed_engine.sv": "b091860dc39f031c0ba592d4b1b6f36ff85a8cbd095295b97685b95e8fc8f155",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-akv-20261025-01/manifest.json": "b142965ee1c051e82195b681b2eb7e13770ed3ffac2f936896c8adfe38d3fcf1",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-akv-20261025-01/original_suite.sv": "3fcd918a5b0d397638202e397604a4a7af67f575fb0623089b1f7667cec83acb",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-akv-20261025-01/simv": "dbc6f3f89f70a88ce1f2653193dfe471bf6e1bf22030d8ca9bdd572a015029d2",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-akv-20261025-01/suite.command.json": "e97cc02640602892669ff33a55f8bdf5ea02f2ac7b9e1c7e10ab94e963843779",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-akv-20261025-01/suite.exit.json": "81868a6e94ffc0178bf833deb1c9013d9fab4ee95ddb876a5e8ec4f1d26376d2",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-akv-20261025-01/suite.log": "3fb418aa9e33a0820df3d555963fe75215dbd973261a7cfe76fe65bb6f9d4b8f"
+      },
+      "manifest_sha256": "b142965ee1c051e82195b681b2eb7e13770ed3ffac2f936896c8adfe38d3fcf1",
+      "marker": "AKV engine PASS: v1 D64/D128 plus v2 D64/D96/D128 and segmented D256 row/column views, tails, counters, validation, and faults",
+      "result_sha256": "0c9cd6c615459ea2a4021088be0de127df6928a548f9dbb4adbd3ad8a98b934b",
+      "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-akv-20261025-01",
+      "state": "INDEPENDENT_RAW_RECHECKED"
+    },
+    "qbs": {
+      "evidence": {
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-qbs-20261025-01/compile.command.json": "dee41df3b854db6c43e8846133702175fc9534b50d48556bd530e0d84c2cebf3",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-qbs-20261025-01/compile.exit.json": "81868a6e94ffc0178bf833deb1c9013d9fab4ee95ddb876a5e8ec4f1d26376d2",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-qbs-20261025-01/compile.log": "368f1438ea32c7fd37b90d9e7b16bac9f39d8bd611ca44d2dcd7e204cada397f",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-qbs-20261025-01/composed_engine.sv": "ef0836ad1dcb7eb4bef02bb893915be756b6f92d7782987cc56fe39397cc0a28",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-qbs-20261025-01/manifest.json": "1cc25b83b11ccb62499213a9b830b8a7e1a63759bbf3b0b23bab620ac4ed0bbf",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-qbs-20261025-01/original_suite.sv": "b30a53009f1f39de9a032a292514f9cb6339db3549305baa695d32cdf380c781",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-qbs-20261025-01/simv": "40ebfd2d65b2451ec97f096c418eaa18c1d61218b5988e31ab84cca16890e5e0",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-qbs-20261025-01/suite.command.json": "4ddb2984af2bd9d54d23af86ac1aa9d8b4bcea93161b82464da39a04f49a604b",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-qbs-20261025-01/suite.exit.json": "81868a6e94ffc0178bf833deb1c9013d9fab4ee95ddb876a5e8ec4f1d26376d2",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-qbs-20261025-01/suite.log": "8f7e677bff2454824dc918aa0c9e3c38b106c5461deb218ee8deeb077038cdd7"
+      },
+      "manifest_sha256": "1cc25b83b11ccb62499213a9b830b8a7e1a63759bbf3b0b23bab620ac4ed0bbf",
+      "marker": "QBS engine PASS: 36 functional cases plus four fault classes",
+      "result_sha256": "ad847e9665a5ab51f5b966894ed73c2edb6ae6e73930bf2557d24913e87ed77d",
+      "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/canonical-standalone-qbs-20261025-01",
+      "state": "INDEPENDENT_RAW_RECHECKED"
+    }
+  },
+  "scope": "Independent explicit canonical-layout copied-source regression; not regenerated canonical Bender graph",
+  "state": "BOTH_ORIGINAL_ENGINE_SUITES_RAW_RECHECKED",
+  "whole_model": false
+}
