@@ -1,0 +1,1261 @@
+--- a/hardware/src/vlsu/qbs/qbs_engine.sv
++++ b/hardware/src/vlsu/qbs/qbs_engine.sv
+@@ -22,6 +22,8 @@
+     parameter type         vaddr_t = logic,
+     parameter type         axi_ar_t = logic,
+     parameter type         axi_r_t = logic,
++    parameter type         reader_req_t = logic,
++    parameter type         reader_rsp_t = logic,
+     parameter type         exception_t = logic
+   ) (
+     input  logic                         clk_i,
+@@ -51,27 +53,17 @@
+     output logic [VAddrWidth-1:0]        fault_vaddr_o,
+     output exception_t                   fault_mmu_exception_o,
+ 
+-    input  logic                         core_st_pending_i,
+-    input  logic                         en_ld_st_translation_i,
+-    output logic                         mmu_req_o,
+-    output logic [VAddrWidth-1:0]        mmu_vaddr_o,
+-    output logic                         mmu_is_store_o,
+-    input  logic                         mmu_valid_i,
+-    input  logic [PAddrWidth-1:0]        mmu_paddr_i,
+-    input  logic                         mmu_exception_valid_i,
+-    input  exception_t                   mmu_exception_i,
+-
+-    output logic                         physical_check_valid_o,
+-    output logic [AxiAddrWidth-1:0]      physical_check_addr_o,
+-    output logic [12:0]                  physical_check_bytes_o,
+-    input  logic                         physical_range_allowed_i,
+-
+-    output axi_ar_t                      axi_ar_o,
+-    output logic                         axi_ar_valid_o,
+-    input  logic                         axi_ar_ready_i,
+-    input  axi_r_t                       axi_r_i,
+-    input  logic                         axi_r_valid_i,
+-    output logic                         axi_r_ready_o,
++    output reader_req_t reader_req_o,
++    input reader_rsp_t reader_rsp_i,
++`ifndef SYNTHESIS
++    input logic [1:0] reader_probe_plan_state_i,
++    input logic [1:0] reader_probe_range_count_i,
++    input logic [1:0] reader_probe_burst_count_i,
++    input logic reader_probe_ar_valid_i,
++    input logic reader_probe_ar_ready_i,
++    input logic reader_probe_r_valid_i,
++    input logic reader_probe_r_ready_i,
++`endif
+ 
+     output logic [NrLanes-1:0]          ldu_result_req_o,
+     output vid_t [NrLanes-1:0]          ldu_result_id_o,
+@@ -507,13 +499,13 @@
+       probe_weight_wait_r_transfer_cycles_q <= '0;
+       probe_weight_wait_r_blocked_cycles_q <= '0;
+     end else if (i_compute_engine.probe_weight_wait_active) begin
+-      if (i_read_engine.burst_fifo_count_q == 0) begin
++      if (reader_probe_burst_count_i == 0) begin
+         probe_weight_wait_no_outstanding_cycles_q <=
+             probe_weight_wait_no_outstanding_cycles_q + 1'b1;
+-      end else if (!axi_r_valid_i) begin
++      end else if (!reader_probe_r_valid_i) begin
+         probe_weight_wait_response_idle_cycles_q <=
+             probe_weight_wait_response_idle_cycles_q + 1'b1;
+-      end else if (axi_r_ready_o) begin
++      end else if (reader_probe_r_ready_i) begin
+         probe_weight_wait_r_transfer_cycles_q <=
+             probe_weight_wait_r_transfer_cycles_q + 1'b1;
+       end else begin
+@@ -556,13 +548,13 @@
+                  read_range_tag.role,
+                  read_range_tag.weight_bank,
+                  read_range_tag.weight_row_count,
+-                 i_read_engine.plan_state_q,
+-                 i_read_engine.range_fifo_count_q,
+-                 i_read_engine.burst_fifo_count_q,
+-                 axi_ar_valid_o,
+-                 axi_ar_ready_i,
+-                 axi_r_valid_i,
+-                 axi_r_ready_o,
++                 reader_probe_plan_state_i,
++                 reader_probe_range_count_i,
++                 reader_probe_burst_count_i,
++                 reader_probe_ar_valid_i,
++                 reader_probe_ar_ready_i,
++                 reader_probe_r_valid_i,
++                 reader_probe_r_ready_i,
+                  read_data_valid,
+                  read_data_ready,
+                  read_data_offset,
+@@ -867,73 +859,46 @@
+   assign read_fault_ready = state_q inside {
+       QBS_ENGINE_DESCRIPTOR_WAIT, QBS_ENGINE_RUN};
+ 
+-  qbs_read_engine #(
+-    .AxiDataWidth    (AxiDataWidth),
+-    .AxiAddrWidth    (AxiAddrWidth),
+-    .VAddrWidth      (VAddrWidth),
+-    .PAddrWidth      (PAddrWidth),
+-    .RangeBytesWidth (RangeBytesWidth),
+-    .axi_ar_t        (axi_ar_t),
+-    .axi_r_t         (axi_r_t),
+-    .exception_t     (exception_t),
+-    .tag_t           (qbs_range_tag_t)
+-  ) i_read_engine (
+-    .clk_i,
+-    .rst_ni,
+-    .range_valid_i                  (read_range_valid),
+-    .range_ready_o                  (read_range_ready),
+-    .range_vaddr_i                  (read_range_vaddr),
+-    .range_bytes_i                  (read_range_bytes),
+-    .range_tag_i                    (read_range_tag),
+-    .range_cache_i                  (cache_q),
+-    .range_prot_i                   (prot_q),
+-    .data_valid_o                   (read_data_valid),
+-    .data_ready_i                   (read_data_ready),
+-    .data_o                         (read_data),
+-    .data_strb_o                    (read_data_strb),
+-    .data_offset_o                  (read_data_offset),
+-    .data_tag_o                     (read_data_tag),
+-    .completion_valid_o             (read_completion_valid),
+-    .completion_ready_i             (read_completion_ready),
+-    .completion_tag_o               (read_completion_tag),
+-    .fault_valid_o                  (read_fault_valid),
+-    .fault_ready_i                  (read_fault_ready),
+-    .fault_kind_o                   (read_fault_kind),
+-    .fault_vaddr_o                  (read_fault_vaddr),
+-    .fault_tag_o                    (read_fault_tag),
+-    .fault_mmu_exception_o          (read_fault_mmu_exception),
+-    .core_st_pending_i,
+-    .en_ld_st_translation_i,
+-    .mmu_req_o,
+-    .mmu_vaddr_o,
+-    .mmu_is_store_o,
+-    .mmu_valid_i,
+-    .mmu_paddr_i,
+-    .mmu_exception_valid_i,
+-    .mmu_exception_i,
+-    .physical_check_valid_o,
+-    .physical_check_addr_o,
+-    .physical_check_bytes_o,
+-    .physical_range_allowed_i,
+-    .axi_ar_o,
+-    .axi_ar_valid_o,
+-    .axi_ar_ready_i,
+-    .axi_r_i,
+-    .axi_r_valid_i,
+-    .axi_r_ready_o,
+-    .counters_clear_i               (command_fire),
+-    .range_count_o                  (read_range_count_o),
+-    .translation_count_o            (read_translation_count_o),
+-    .ar_count_o                     (read_ar_count_o),
+-    .r_beat_count_o                 (read_beat_count_o),
+-    .payload_byte_count_o           (read_payload_bytes_o),
+-    .store_wait_cycles_o            (read_store_wait_cycles_o),
+-    .r_backpressure_cycles_o        (read_backpressure_cycles_o),
+-    .outstanding_occupancy_sum_o    (read_outstanding_occupancy_sum_o),
+-    .outstanding_max_o              (read_outstanding_max_o),
+-    .outstanding_full_cycles_o      (read_outstanding_full_cycles_o),
+-    .busy_o                         (read_busy)
+-  );
++  // Reader state now lives once in VLSU; client scheduling is unchanged.
++  assign reader_req_o = '{
++    range_valid: read_range_valid,
++    range_vaddr: read_range_vaddr,
++    range_bytes: read_range_bytes,
++    range_tag: 16'(read_range_tag),
++    range_cache: cache_q,
++    range_prot: prot_q,
++    data_ready: read_data_ready,
++    completion_ready: read_completion_ready,
++    fault_ready: read_fault_ready
++  };
++  assign read_range_ready = reader_rsp_i.range_ready;
++  assign read_data_valid = reader_rsp_i.data_valid;
++  assign read_data = reader_rsp_i.data;
++  assign read_data_strb = reader_rsp_i.data_strb;
++  assign read_data_offset = reader_rsp_i.data_offset;
++  assign read_data_tag = qbs_range_tag_t'(reader_rsp_i.data_tag);
++  assign read_completion_valid = reader_rsp_i.completion_valid;
++  assign read_completion_tag = qbs_range_tag_t'(reader_rsp_i.completion_tag);
++  assign read_fault_valid = reader_rsp_i.fault_valid;
++  assign read_fault_kind = reader_rsp_i.fault_kind;
++  assign read_fault_vaddr = reader_rsp_i.fault_vaddr;
++  assign read_fault_tag = qbs_range_tag_t'(reader_rsp_i.fault_tag);
++  assign read_fault_mmu_exception = reader_rsp_i.fault_mmu_exception;
++  assign read_range_count_o = reader_rsp_i.range_count;
++  assign read_translation_count_o = reader_rsp_i.translation_count;
++  assign read_ar_count_o = reader_rsp_i.ar_count;
++  assign read_beat_count_o = reader_rsp_i.r_beat_count;
++  assign read_payload_bytes_o = reader_rsp_i.payload_byte_count;
++  assign read_store_wait_cycles_o = reader_rsp_i.store_wait_cycles;
++  assign read_backpressure_cycles_o = reader_rsp_i.r_backpressure_cycles;
++  assign read_outstanding_occupancy_sum_o = reader_rsp_i.outstanding_occupancy_sum;
++  assign read_outstanding_max_o = reader_rsp_i.outstanding_max;
++  assign read_outstanding_full_cycles_o = reader_rsp_i.outstanding_full_cycles;
++  assign read_busy = reader_rsp_i.busy;
++`ifndef SYNTHESIS
++  initial assert ($bits(qbs_range_tag_t) == 16)
++    else $fatal(1, "SHARED_CLIENT_TAG_WIDTH");
++`endif
+ 
+   assign context_lookup_valid = state_q == QBS_ENGINE_VALIDATE &&
+       descriptor_valid && descriptor_activation_access inside {
+--- a/hardware/src/vlsu/akv/akv_engine.sv
++++ b/hardware/src/vlsu/akv/akv_engine.sv
+@@ -18,6 +18,8 @@
+     parameter type         vaddr_t = logic,
+     parameter type         axi_ar_t = logic,
+     parameter type         axi_r_t = logic,
++    parameter type         reader_req_t = logic,
++    parameter type         reader_rsp_t = logic,
+     parameter type         exception_t = logic
+   ) (
+     input  logic                         clk_i,
+@@ -49,27 +51,8 @@
+     output exception_t                   fault_mmu_exception_o,
+     output logic                         context_ready_o,
+ 
+-    input  logic                         core_st_pending_i,
+-    input  logic                         en_ld_st_translation_i,
+-    output logic                         mmu_req_o,
+-    output logic [VAddrWidth-1:0]        mmu_vaddr_o,
+-    output logic                         mmu_is_store_o,
+-    input  logic                         mmu_valid_i,
+-    input  logic [PAddrWidth-1:0]        mmu_paddr_i,
+-    input  logic                         mmu_exception_valid_i,
+-    input  exception_t                   mmu_exception_i,
+-
+-    output logic                         physical_check_valid_o,
+-    output logic [AxiAddrWidth-1:0]      physical_check_addr_o,
+-    output logic [12:0]                  physical_check_bytes_o,
+-    input  logic                         physical_range_allowed_i,
+-
+-    output axi_ar_t                      axi_ar_o,
+-    output logic                         axi_ar_valid_o,
+-    input  logic                         axi_ar_ready_i,
+-    input  axi_r_t                       axi_r_i,
+-    input  logic                         axi_r_valid_i,
+-    output logic                         axi_r_ready_o,
++    output reader_req_t reader_req_o,
++    input reader_rsp_t reader_rsp_i,
+ 
+     output logic [NrLanes-1:0]          ldu_result_req_o,
+     output vid_t [NrLanes-1:0]          ldu_result_id_o,
+@@ -529,74 +512,46 @@
+       (range_completion_count_q + read_completion_fire ==
+        payload_range_count) && !context_write_busy;
+ 
+-  qbs_read_engine #(
+-    .AxiDataWidth    (AxiDataWidth),
+-    .AxiAddrWidth    (AxiAddrWidth),
+-    .VAddrWidth      (VAddrWidth),
+-    .PAddrWidth      (PAddrWidth),
+-    .RangeBytesWidth (RangeBytesWidth),
+-    .ReadOutstanding (2),
+-    .axi_ar_t        (axi_ar_t),
+-    .axi_r_t         (axi_r_t),
+-    .exception_t     (exception_t),
+-    .tag_t           (akv_range_tag_t)
+-  ) i_read_engine (
+-    .clk_i,
+-    .rst_ni,
+-    .range_valid_i                  (read_range_valid),
+-    .range_ready_o                  (read_range_ready),
+-    .range_vaddr_i                  (read_range_vaddr),
+-    .range_bytes_i                  (read_range_bytes),
+-    .range_tag_i                    (read_range_tag),
+-    .range_cache_i                  (cache_q),
+-    .range_prot_i                   (prot_q),
+-    .data_valid_o                   (read_data_valid),
+-    .data_ready_i                   (read_data_ready),
+-    .data_o                         (read_data),
+-    .data_strb_o                    (read_data_strb),
+-    .data_offset_o                  (read_data_offset),
+-    .data_tag_o                     (read_data_tag),
+-    .completion_valid_o             (read_completion_valid),
+-    .completion_ready_i             (read_completion_ready),
+-    .completion_tag_o               (read_completion_tag),
+-    .fault_valid_o                  (read_fault_valid),
+-    .fault_ready_i                  (read_fault_ready),
+-    .fault_kind_o                   (read_fault_kind),
+-    .fault_vaddr_o                  (read_fault_vaddr),
+-    .fault_tag_o                    (read_fault_tag),
+-    .fault_mmu_exception_o          (read_fault_mmu_exception),
+-    .core_st_pending_i,
+-    .en_ld_st_translation_i,
+-    .mmu_req_o,
+-    .mmu_vaddr_o,
+-    .mmu_is_store_o,
+-    .mmu_valid_i,
+-    .mmu_paddr_i,
+-    .mmu_exception_valid_i,
+-    .mmu_exception_i,
+-    .physical_check_valid_o,
+-    .physical_check_addr_o,
+-    .physical_check_bytes_o,
+-    .physical_range_allowed_i,
+-    .axi_ar_o,
+-    .axi_ar_valid_o,
+-    .axi_ar_ready_i,
+-    .axi_r_i,
+-    .axi_r_valid_i,
+-    .axi_r_ready_o,
+-    .counters_clear_i              (command_fire),
+-    .range_count_o                 (read_range_count_o),
+-    .translation_count_o           (read_translation_count_o),
+-    .ar_count_o                    (read_ar_count_o),
+-    .r_beat_count_o                (read_beat_count_o),
+-    .payload_byte_count_o          (read_payload_bytes_o),
+-    .store_wait_cycles_o           (read_store_wait_cycles_o),
+-    .r_backpressure_cycles_o       (read_backpressure_cycles_o),
+-    .outstanding_occupancy_sum_o   (read_outstanding_occupancy_sum_o),
+-    .outstanding_max_o             (read_outstanding_max_o),
+-    .outstanding_full_cycles_o     (read_outstanding_full_cycles_o),
+-    .busy_o                        (read_busy)
+-  );
++  // Reader state now lives once in VLSU; client scheduling is unchanged.
++  assign reader_req_o = '{
++    range_valid: read_range_valid,
++    range_vaddr: read_range_vaddr,
++    range_bytes: read_range_bytes,
++    range_tag: {8'b0, read_range_tag},
++    range_cache: cache_q,
++    range_prot: prot_q,
++    data_ready: read_data_ready,
++    completion_ready: read_completion_ready,
++    fault_ready: read_fault_ready
++  };
++  assign read_range_ready = reader_rsp_i.range_ready;
++  assign read_data_valid = reader_rsp_i.data_valid;
++  assign read_data = reader_rsp_i.data;
++  assign read_data_strb = reader_rsp_i.data_strb;
++  assign read_data_offset = reader_rsp_i.data_offset;
++  assign read_data_tag = akv_range_tag_t'(reader_rsp_i.data_tag[7:0]);
++  assign read_completion_valid = reader_rsp_i.completion_valid;
++  assign read_completion_tag = akv_range_tag_t'(reader_rsp_i.completion_tag[7:0]);
++  assign read_fault_valid = reader_rsp_i.fault_valid;
++  assign read_fault_kind = reader_rsp_i.fault_kind;
++  assign read_fault_vaddr = reader_rsp_i.fault_vaddr;
++  assign read_fault_tag = akv_range_tag_t'(reader_rsp_i.fault_tag[7:0]);
++  assign read_fault_mmu_exception = reader_rsp_i.fault_mmu_exception;
++  assign read_range_count_o = reader_rsp_i.range_count;
++  assign read_translation_count_o = reader_rsp_i.translation_count;
++  assign read_ar_count_o = reader_rsp_i.ar_count;
++  assign read_beat_count_o = reader_rsp_i.r_beat_count;
++  assign read_payload_bytes_o = reader_rsp_i.payload_byte_count;
++  assign read_store_wait_cycles_o = reader_rsp_i.store_wait_cycles;
++  assign read_backpressure_cycles_o = reader_rsp_i.r_backpressure_cycles;
++  assign read_outstanding_occupancy_sum_o = reader_rsp_i.outstanding_occupancy_sum;
++  assign read_outstanding_max_o = reader_rsp_i.outstanding_max;
++  assign read_outstanding_full_cycles_o = reader_rsp_i.outstanding_full_cycles;
++  assign read_busy = reader_rsp_i.busy;
++`ifndef SYNTHESIS
++  initial assert ($bits(akv_range_tag_t) == 8)
++    else $fatal(1, "SHARED_CLIENT_TAG_WIDTH");
++`endif
+ 
+   always_comb begin
+     unique case (read_data_tag.role)
+@@ -618,52 +573,48 @@
+       read_data_tag.role inside {AKV_RANGE_K, AKV_RANGE_V};
+   assign v2_context_write_stream = read_data_tag.role == AKV_RANGE_K
+       ? AKV_STREAM_K : AKV_STREAM_V;
+-  assign context_write_busy =
+-      v1_context_write_busy || v2_context_write_busy;
+-
+-  akv_context i_context (
++  // Unified payload only; command, metadata, replay and fault FSM are unchanged.
++  akv_unified_context i_unified_context (
+     .clk_i,
+     .rst_ni,
+-    .write_valid_i  (v1_context_write_valid),
+-    .write_slot_i   (context_write_slot),
+-    .write_offset_i (read_data_offset[7:0]),
+-    .write_data_i   (read_data),
+-    .write_strb_i   (read_data_strb),
+-    .write_busy_o   (v1_context_write_busy),
+-    .replay_read_i  (state_q == AKV_ENGINE_REPLAY_READ &&
++    .abort_i(read_fault_valid && read_fault_ready),
++    .legacy_row_bytes_i(9'(payload_row_bytes)),
++    .write_busy_o(context_write_busy),
++    .legacy_write_valid_i(v1_context_write_valid),
++    .legacy_write_slot_i(context_write_slot),
++    .legacy_write_offset_i(read_data_offset[7:0]),
++    .legacy_write_data_i(read_data),
++    .legacy_write_strb_i(read_data_strb),
++    .legacy_write_busy_o(v1_context_write_busy),
++    .legacy_replay_read_i(state_q == AKV_ENGINE_REPLAY_READ &&
+                      !replay_use_v2_q && !replay_column_q),
+-    .replay_slot_i  (replay_slot_q),
+-    .replay_word_i  (replay_word_q),
+-    .replay_data_o  (v1_replay_data)
+-  );
+-
+-  akv_v2_context i_v2_context (
+-    .clk_i,
+-    .rst_ni,
+-    .write_valid_i       (v2_context_write_valid),
+-    .write_stream_i      (v2_context_write_stream),
+-    .write_token_i       (read_data_tag.index),
+-    .write_offset_i      (read_data_offset[7:0]),
+-    .write_data_i        (read_data),
+-    .write_strb_i        (read_data_strb),
+-    .write_busy_o        (v2_context_write_busy),
+-    .row_read_i          (state_q == AKV_ENGINE_REPLAY_READ &&
++    .legacy_replay_slot_i(replay_slot_q),
++    .legacy_replay_word_i(replay_word_q),
++    .legacy_replay_data_o(v1_replay_data),
++    .v2_write_valid_i(v2_context_write_valid),
++    .v2_write_stream_i(v2_context_write_stream),
++    .v2_write_token_i(read_data_tag.index),
++    .v2_write_offset_i(read_data_offset[7:0]),
++    .v2_write_data_i(read_data),
++    .v2_write_strb_i(read_data_strb),
++    .v2_write_busy_o(v2_context_write_busy),
++    .v2_row_read_i(state_q == AKV_ENGINE_REPLAY_READ &&
+                           replay_use_v2_q && !replay_column_q),
+-    .row_stream_i        (replay_stream_q),
+-    .row_token_i         (replay_token_q),
+-    .row_word_i          (replay_word_q),
+-    .row_data_o          (v2_row_data),
+-    .column_start_i      (v2_column_start),
+-    .column_stream_i     (command_selector_i[AkvV2ColumnSegmentBit]
++    .v2_row_stream_i(replay_stream_q),
++    .v2_row_token_i(replay_token_q),
++    .v2_row_word_i(replay_word_q),
++    .v2_row_data_o(v2_row_data),
++    .column_start_i(v2_column_start),
++    .column_stream_i(command_selector_i[AkvV2ColumnSegmentBit]
+                               ? AKV_STREAM_V : AKV_STREAM_K),
+-    .column_dimension_i  (command_selector_i[6:0]),
+-    .column_count_i      (command_column_count_i),
++    .column_dimension_i(command_selector_i[6:0]),
++    .column_count_i(command_column_count_i),
+     .column_token_count_i(context_tile_count_q),
+-    .column_busy_o       (v2_column_busy),
+-    .column_valid_o      (v2_column_valid),
+-    .column_data_o       (v2_column_data),
+-    .column_bank_cycle_o (v2_column_bank_cycle),
+-    .conflict_o          (v2_context_conflict)
++    .column_busy_o(v2_column_busy),
++    .column_valid_o(v2_column_valid),
++    .column_data_o(v2_column_data),
++    .column_bank_cycle_o(v2_column_bank_cycle),
++    .conflict_o(v2_context_conflict)
+   );
+ 
+   always_comb begin
+--- a/hardware/src/vlsu/vlsu.sv
++++ b/hardware/src/vlsu/vlsu.sv
+@@ -530,6 +530,8 @@
+   logic [1:0] akv_read_outstanding_max;
+   logic [31:0] akv_read_outstanding_full_cycles;
+ 
++  `include "vlsu_shared_reader.svh"
++
+   logic normal_vlsu_idle;
+ 
+   function automatic logic qbs_range_is_cacheable_idempotent(
+@@ -902,10 +904,8 @@
+     end
+   end
+ 
+-  assign qbs_physical_range_allowed = qbs_range_is_cacheable_idempotent(
+-      qbs_physical_check_addr, qbs_physical_check_bytes);
+-  assign akv_physical_range_allowed = qbs_range_is_cacheable_idempotent(
+-      akv_physical_check_addr, akv_physical_check_bytes);
++  assign qbs_physical_range_allowed = shared_physical_range_allowed;
++  assign akv_physical_range_allowed = shared_physical_range_allowed;
+ 
+   // QBS and VLDu share the lane result ports. Grant and final-grant feedback
+   // returns only to the current owner.
+@@ -1030,6 +1030,7 @@
+   assign qbs_fflags_o = qbs_result_fflags;
+ 
+   qbs_engine #(
++    .reader_req_t(shared_read_req_t), .reader_rsp_t(shared_read_rsp_t),
+     .SeedRestoreEnable(QbsVrfContinuationEnable && NrLanes == 4 && VLEN == 1024),
+     .AxiDataWidth(AxiDataWidth),
+     .AxiAddrWidth(AxiAddrWidth),
+@@ -1067,25 +1068,17 @@
+     .read_fault_kind_o(qbs_read_fault_kind),
+     .fault_vaddr_o(qbs_fault_vaddr),
+     .fault_mmu_exception_o(qbs_fault_mmu_exception),
+-    .core_st_pending_i,
+-    .en_ld_st_translation_i,
+-    .mmu_req_o(qbs_mmu_req),
+-    .mmu_vaddr_o(qbs_mmu_vaddr),
+-    .mmu_is_store_o(qbs_mmu_is_store),
+-    .mmu_valid_i,
+-    .mmu_paddr_i,
+-    .mmu_exception_valid_i(mmu_exception_i.valid),
+-    .mmu_exception_i,
+-    .physical_check_valid_o(qbs_physical_check_valid),
+-    .physical_check_addr_o(qbs_physical_check_addr),
+-    .physical_check_bytes_o(qbs_physical_check_bytes),
+-    .physical_range_allowed_i(qbs_physical_range_allowed),
+-    .axi_ar_o(qbs_axi_ar),
+-    .axi_ar_valid_o(qbs_axi_ar_valid),
+-    .axi_ar_ready_i(qbs_axi_ar_ready),
+-    .axi_r_i(qbs_axi_r),
+-    .axi_r_valid_i(qbs_axi_r_valid),
+-    .axi_r_ready_o(qbs_axi_r_ready),
++    .reader_req_o(shared_read_req[0]),
++    .reader_rsp_i(shared_read_rsp[0]),
++`ifndef SYNTHESIS
++    .reader_probe_plan_state_i(i_shared_reader.i_read_engine.plan_state_q),
++    .reader_probe_range_count_i(i_shared_reader.i_read_engine.range_fifo_count_q),
++    .reader_probe_burst_count_i(i_shared_reader.i_read_engine.burst_fifo_count_q),
++    .reader_probe_ar_valid_i(qbs_axi_ar_valid),
++    .reader_probe_ar_ready_i(qbs_axi_ar_ready),
++    .reader_probe_r_valid_i(qbs_axi_r_valid),
++    .reader_probe_r_ready_i(qbs_axi_r_ready),
++`endif
+     .ldu_result_req_o(qbs_ldu_result_req),
+     .ldu_result_id_o(qbs_ldu_result_id),
+     .ldu_result_addr_o(qbs_ldu_result_addr),
+@@ -1142,6 +1135,7 @@
+   );
+ 
+   akv_engine #(
++    .reader_req_t(shared_read_req_t), .reader_rsp_t(shared_read_rsp_t),
+     .AxiDataWidth (AxiDataWidth),
+     .AxiAddrWidth (AxiAddrWidth),
+     .VAddrWidth   (CVA6Cfg.VLEN),
+@@ -1178,25 +1172,8 @@
+     .fault_vaddr_o                 (akv_fault_vaddr),
+     .fault_mmu_exception_o         (akv_fault_mmu_exception),
+     .context_ready_o               (akv_context_ready),
+-    .core_st_pending_i,
+-    .en_ld_st_translation_i,
+-    .mmu_req_o                     (akv_mmu_req),
+-    .mmu_vaddr_o                   (akv_mmu_vaddr),
+-    .mmu_is_store_o                (akv_mmu_is_store),
+-    .mmu_valid_i,
+-    .mmu_paddr_i,
+-    .mmu_exception_valid_i         (mmu_exception_i.valid),
+-    .mmu_exception_i,
+-    .physical_check_valid_o        (akv_physical_check_valid),
+-    .physical_check_addr_o         (akv_physical_check_addr),
+-    .physical_check_bytes_o        (akv_physical_check_bytes),
+-    .physical_range_allowed_i      (akv_physical_range_allowed),
+-    .axi_ar_o                      (akv_axi_ar),
+-    .axi_ar_valid_o                (akv_axi_ar_valid),
+-    .axi_ar_ready_i                (akv_axi_ar_ready),
+-    .axi_r_i                       (akv_axi_r),
+-    .axi_r_valid_i                 (akv_axi_r_valid),
+-    .axi_r_ready_o                 (akv_axi_r_ready),
++    .reader_req_o(shared_read_req[1]),
++    .reader_rsp_i(shared_read_rsp[1]),
+     .ldu_result_req_o              (akv_ldu_result_req),
+     .ldu_result_id_o               (akv_ldu_result_id),
+     .ldu_result_addr_o             (akv_ldu_result_addr),
+@@ -1382,18 +1359,18 @@
+                          probe_profile_correction_pending_cycles_q,
+                      i_qbs_engine.i_compute_engine.
+                          probe_profile_result_pending_cycles_q,
+-                     i_qbs_engine.i_read_engine.probe_range_blocked_cycles_q,
+-                     i_qbs_engine.i_read_engine.
++                     i_shared_reader.i_read_engine.probe_range_blocked_cycles_q,
++                     i_shared_reader.i_read_engine.
+                          probe_range_fifo_blocked_cycles_q,
+-                     i_qbs_engine.i_read_engine.probe_ar_slot_blocked_cycles_q,
+-                     i_qbs_engine.i_read_engine.
++                     i_shared_reader.i_read_engine.probe_ar_slot_blocked_cycles_q,
++                     i_shared_reader.i_read_engine.
+                          probe_ar_ready_blocked_cycles_q,
+-                     i_qbs_engine.i_read_engine.probe_response_idle_cycles_q,
+-                     i_qbs_engine.i_read_engine.
++                     i_shared_reader.i_read_engine.probe_response_idle_cycles_q,
++                     i_shared_reader.i_read_engine.
+                          probe_data_sink_blocked_cycles_q,
+-                     i_qbs_engine.i_read_engine.
++                     i_shared_reader.i_read_engine.
+                          probe_completion_blocked_cycles_q,
+-                     i_qbs_engine.i_read_engine.
++                     i_shared_reader.i_read_engine.
+                          probe_translation_wait_cycles_q,
+                      i_qbs_engine.probe_weight_wait_no_outstanding_cycles_q,
+                      i_qbs_engine.probe_weight_wait_response_idle_cycles_q,
+@@ -1713,4 +1690,5 @@
+   if (NrLanes == 0)
+     $error("[vlsu] Ara needs to have at least one lane.");
+ 
++  `include "admission_assertions.svh"
+ endmodule : vlsu
+--- /dev/null
++++ b/hardware/src/vlsu/qbs_akv_shared_reader.sv
+@@ -0,0 +1,150 @@
++// Experimental extraction only; current production RTL is unchanged.
++module qbs_akv_shared_reader #(
++  parameter int unsigned AxiDataWidth = 128,
++  parameter int unsigned AxiAddrWidth = 64,
++  parameter int unsigned VAddrWidth = 64,
++  parameter int unsigned PAddrWidth = 56,
++  parameter type req_t = logic,
++  parameter type rsp_t = logic,
++  parameter type axi_ar_t = logic,
++  parameter type axi_r_t = logic,
++  parameter type exception_t = logic
++) (
++  input logic clk_i,
++  input logic rst_ni,
++  input logic [1:0] owner_i,
++  input logic [1:0] command_fire_i,
++  input req_t client_req_i [2],
++  output rsp_t client_rsp_o [2],
++
++  input logic core_st_pending_i,
++  input logic en_ld_st_translation_i,
++  output logic mmu_req_o,
++  output logic [VAddrWidth-1:0] mmu_vaddr_o,
++  output logic mmu_is_store_o,
++  input logic mmu_valid_i,
++  input logic [PAddrWidth-1:0] mmu_paddr_i,
++  input logic mmu_exception_valid_i,
++  input exception_t mmu_exception_i,
++  output logic physical_check_valid_o,
++  output logic [AxiAddrWidth-1:0] physical_check_addr_o,
++  output logic [12:0] physical_check_bytes_o,
++  input logic physical_range_allowed_i,
++  output axi_ar_t axi_ar_o,
++  output logic axi_ar_valid_o,
++  input logic axi_ar_ready_i,
++  input axi_r_t axi_r_i,
++  input logic axi_r_valid_i,
++  output logic axi_r_ready_o
++);
++  typedef logic [15:0] tag_t;
++  req_t selected_req;
++  rsp_t reader_rsp;
++
++  // Ownership is supplied by the existing command controller, not arbitrated.
++  // Invalid ownership is rejected by assertions and selects neither endpoint.
++  always_comb begin
++    selected_req = '0;
++    client_rsp_o[0] = '0;
++    client_rsp_o[1] = '0;
++    case (owner_i)
++      2'b01: begin
++        selected_req = client_req_i[0];
++        client_rsp_o[0] = reader_rsp;
++      end
++      2'b10: begin
++        selected_req = client_req_i[1];
++        client_rsp_o[1] = reader_rsp;
++      end
++      default: ;
++    endcase
++  end
++
++  qbs_read_engine #(
++    .AxiDataWidth(AxiDataWidth), .AxiAddrWidth(AxiAddrWidth),
++    .VAddrWidth(VAddrWidth), .PAddrWidth(PAddrWidth),
++    .RangeBytesWidth(16), .ReadOutstanding(2),
++    .axi_ar_t(axi_ar_t), .axi_r_t(axi_r_t),
++    .exception_t(exception_t), .tag_t(tag_t)
++  ) i_read_engine (
++    .clk_i, .rst_ni,
++    .range_valid_i(selected_req.range_valid),
++    .range_ready_o(reader_rsp.range_ready),
++    .range_vaddr_i(selected_req.range_vaddr),
++    .range_bytes_i(selected_req.range_bytes),
++    .range_tag_i(selected_req.range_tag),
++    .range_cache_i(selected_req.range_cache),
++    .range_prot_i(selected_req.range_prot),
++    .data_valid_o(reader_rsp.data_valid), .data_ready_i(selected_req.data_ready),
++    .data_o(reader_rsp.data), .data_strb_o(reader_rsp.data_strb),
++    .data_offset_o(reader_rsp.data_offset), .data_tag_o(reader_rsp.data_tag),
++    .completion_valid_o(reader_rsp.completion_valid),
++    .completion_ready_i(selected_req.completion_ready),
++    .completion_tag_o(reader_rsp.completion_tag),
++    .fault_valid_o(reader_rsp.fault_valid), .fault_ready_i(selected_req.fault_ready),
++    .fault_kind_o(reader_rsp.fault_kind), .fault_vaddr_o(reader_rsp.fault_vaddr),
++    .fault_tag_o(reader_rsp.fault_tag), .fault_mmu_exception_o(reader_rsp.fault_mmu_exception),
++    .core_st_pending_i, .en_ld_st_translation_i,
++    .mmu_req_o, .mmu_vaddr_o, .mmu_is_store_o, .mmu_valid_i, .mmu_paddr_i,
++    .mmu_exception_valid_i, .mmu_exception_i,
++    .physical_check_valid_o, .physical_check_addr_o, .physical_check_bytes_o,
++    .physical_range_allowed_i,
++    .axi_ar_o, .axi_ar_valid_o, .axi_ar_ready_i, .axi_r_i, .axi_r_valid_i, .axi_r_ready_o,
++    // Acceptance can precede the owner register becoming nonzero.
++    .counters_clear_i(|command_fire_i),
++    .range_count_o(reader_rsp.range_count),
++    .translation_count_o(reader_rsp.translation_count),
++    .ar_count_o(reader_rsp.ar_count), .r_beat_count_o(reader_rsp.r_beat_count),
++    .payload_byte_count_o(reader_rsp.payload_byte_count),
++    .store_wait_cycles_o(reader_rsp.store_wait_cycles),
++    .r_backpressure_cycles_o(reader_rsp.r_backpressure_cycles),
++    .outstanding_occupancy_sum_o(reader_rsp.outstanding_occupancy_sum),
++    .outstanding_max_o(reader_rsp.outstanding_max),
++    .outstanding_full_cycles_o(reader_rsp.outstanding_full_cycles),
++    .busy_o(reader_rsp.busy)
++  );
++
++`ifndef SYNTHESIS
++  logic [1:0] previous_owner_q, admitted_owner_q;
++  initial begin
++    assert ($bits(selected_req.range_vaddr) == VAddrWidth &&
++            $bits(selected_req.range_bytes) == 16 && $bits(selected_req.range_tag) == 16 &&
++            $bits(reader_rsp.data) == AxiDataWidth &&
++            $bits(reader_rsp.data_strb) == AxiDataWidth/8 &&
++            $bits(reader_rsp.data_offset) == 16 && $bits(reader_rsp.data_tag) == 16 &&
++            $bits(reader_rsp.completion_tag) == 16 && $bits(reader_rsp.fault_tag) == 16 &&
++            $bits(reader_rsp.fault_vaddr) == VAddrWidth &&
++            $bits(reader_rsp.fault_mmu_exception) == $bits(exception_t))
++      else $fatal(1, "SHARED_READER_TYPE_WIDTH");
++  end
++  always_ff @(posedge clk_i or negedge rst_ni) begin
++    if (!rst_ni) begin
++      previous_owner_q <= '0;
++      admitted_owner_q <= '0;
++    end else begin
++      assert (!$isunknown({owner_i, command_fire_i}) &&
++              $onehot0(owner_i) && $onehot0(command_fire_i))
++        else $fatal(1, "SHARED_READER_ONEHOT");
++      if (reader_rsp.busy || i_read_engine.ar_stalled_q ||
++          i_read_engine.response_drain_q || reader_rsp.fault_valid) begin
++        assert ($onehot(owner_i) && owner_i == previous_owner_q)
++          else $fatal(1, "SHARED_READER_OWNER_CHANGED_LIVE");
++      end
++      if (|command_fire_i) begin
++        assert (!reader_rsp.busy && !axi_ar_valid_o &&
++                !i_read_engine.ar_stalled_q && !i_read_engine.response_drain_q &&
++                (owner_i == '0 || owner_i == command_fire_i) && !selected_req.range_valid)
++          else $fatal(1, "SHARED_READER_BAD_COMMAND_FIRE");
++        admitted_owner_q <= command_fire_i;
++      end else if (previous_owner_q != '0 && owner_i == '0) begin
++        admitted_owner_q <= '0;
++      end
++      if (|owner_i) begin
++        assert (owner_i == admitted_owner_q || owner_i == command_fire_i)
++          else $fatal(1, "SHARED_READER_OWNER_NOT_ADMITTED");
++      end
++      previous_owner_q <= owner_i;
++    end
++  end
++`endif
++endmodule
+--- /dev/null
++++ b/hardware/src/vlsu/akv/akv_legacy_repacker.sv
+@@ -0,0 +1,109 @@
++// Experimental legacy-F16 write adapter; not connected to production SRAM.
++module akv_legacy_repacker (
++  input logic clk_i, rst_ni, abort_i,
++  input logic fragment_valid_i,
++  input logic [15:0] fragment_tag_i,
++  input logic [8:0] fragment_offset_i, row_bytes_i,
++  input logic [127:0] fragment_data_i,
++  input logic [15:0] fragment_strb_i,
++  output logic write_valid_o,
++  output logic [15:0] write_tag_o,
++  output logic [8:0] write_offset_o,
++  output logic [127:0] write_data_o,
++  output logic write_last_o,
++  output logic busy_o
++);
++  logic stage_valid_q, emit_valid_q, active_q;
++  logic [15:0] stage_tag_q, stage_strb_q, tag_q;
++  logic [8:0] stage_offset_q, stage_row_bytes_q, next_offset_q, row_bytes_q;
++  logic [127:0] stage_data_q, pending_q;
++  logic [3:0] pending_count_q;
++  logic [255:0] joined;
++  logic [127:0] compact_data;
++  logic [5:0] fragment_count, combined_count;
++
++  always_comb begin
++    fragment_count = '0;
++    compact_data = '0;
++    for (int i = 0; i < 16; i++) begin
++      fragment_count += 6'(stage_strb_q[i]);
++      if (stage_strb_q[i]) compact_data[i*8 +: 8] = stage_data_q[i*8 +: 8];
++    end
++    combined_count = {2'b0, pending_count_q} + fragment_count;
++    joined = {128'b0, pending_q} |
++             ({128'b0, compact_data} << (8 * unsigned'(pending_count_q)));
++  end
++
++  // Abort suppresses an unconsumed registered write at this same SRAM edge.
++  assign write_valid_o = emit_valid_q && !abort_i;
++  assign busy_o = fragment_valid_i || stage_valid_q || active_q || emit_valid_q;
++
++  always_ff @(posedge clk_i or negedge rst_ni) begin
++    if (!rst_ni) begin
++      stage_valid_q <= 1'b0;
++      emit_valid_q <= 1'b0;
++      active_q <= 1'b0;
++      pending_count_q <= '0;
++      pending_q <= '0;
++      next_offset_q <= '0;
++      tag_q <= '0;
++      row_bytes_q <= '0;
++      write_tag_o <= '0;
++      write_offset_o <= '0;
++      write_data_o <= '0;
++      write_last_o <= 1'b0;
++    end else if (abort_i) begin
++      stage_valid_q <= 1'b0;
++      emit_valid_q <= 1'b0;
++      active_q <= 1'b0;
++      pending_count_q <= '0;
++      pending_q <= '0;
++      next_offset_q <= '0;
++    end else begin
++      stage_valid_q <= fragment_valid_i;
++      if (fragment_valid_i) begin
++        stage_tag_q <= fragment_tag_i;
++        stage_offset_q <= fragment_offset_i;
++        stage_row_bytes_q <= row_bytes_i;
++        stage_data_q <= fragment_data_i;
++        stage_strb_q <= fragment_strb_i;
++      end
++      emit_valid_q <= 1'b0;
++      if (stage_valid_q) begin
++        tag_q <= stage_tag_q;
++        row_bytes_q <= stage_row_bytes_q;
++        next_offset_q <= stage_offset_q + 9'(fragment_count);
++        active_q <= stage_offset_q + 9'(fragment_count) != stage_row_bytes_q;
++        if (combined_count >= 16) begin
++          emit_valid_q <= 1'b1;
++          write_tag_o <= stage_tag_q;
++          write_offset_o <= stage_offset_q - 9'(pending_count_q);
++          write_data_o <= joined[127:0];
++          write_last_o <= stage_offset_q + 9'(fragment_count) == stage_row_bytes_q;
++          pending_q <= joined[255:128];
++          pending_count_q <= 4'(combined_count - 16);
++        end else begin
++          pending_q <= joined[127:0];
++          pending_count_q <= 4'(combined_count);
++        end
++      end
++    end
++  end
++
++`ifndef SYNTHESIS
++  always @(posedge clk_i) if (rst_ni && !abort_i && stage_valid_q) begin
++    assert (fragment_count >= 2 && fragment_count <= 16 && !fragment_count[0] &&
++            stage_strb_q == 16'((32'd1 << fragment_count) - 1) &&
++            !stage_offset_q[0] &&
++            (stage_row_bytes_q == 128 || stage_row_bytes_q == 192 || stage_row_bytes_q == 256) &&
++            stage_offset_q + 9'(fragment_count) <= stage_row_bytes_q)
++      else $fatal(1, "REPACK_FRAGMENT_CONTRACT");
++    assert ((!active_q && stage_offset_q == 0 && pending_count_q == 0) ||
++            (active_q && stage_tag_q == tag_q && stage_row_bytes_q == row_bytes_q &&
++             stage_offset_q == next_offset_q))
++      else $fatal(1, "REPACK_STREAM_CONTINUITY");
++    assert (stage_offset_q + 9'(fragment_count) != stage_row_bytes_q || combined_count == 16)
++      else $fatal(1, "REPACK_FINAL_PARTIAL");
++  end
++`endif
++endmodule
+--- /dev/null
++++ b/hardware/src/vlsu/akv/akv_q_store.sv
+@@ -0,0 +1,64 @@
++// Isolated 2-KiB Q store. Aligned half-row writes come from the unchanged repacker.
++module akv_q_store (
++  input logic clk_i, rst_ni,
++  input logic write_valid_i,
++  input logic [2:0] write_slot_i,
++  input logic [7:0] write_offset_i,
++  input logic [127:0] write_data_i,
++  input logic read_i,
++  input logic [2:0] read_slot_i,
++  input logic [3:0] read_word_i,
++  output logic [255:0] read_data_o
++);
++  localparam int NumWords = 64;
++  logic req, we;
++  logic [5:0] addr;
++  logic [255:0] wdata;
++  logic [31:0] be;
++
++  always_comb begin
++    req = write_valid_i || read_i;
++    we = write_valid_i;
++    addr = {read_slot_i, read_word_i[2:0]};
++    wdata = '0;
++    be = '0;
++    if (write_valid_i) begin
++      addr = {write_slot_i, write_offset_i[7:5]};
++      if (write_offset_i[4]) begin
++        wdata[255:128] = write_data_i;
++        be[31:16] = '1;
++      end else begin
++        wdata[127:0] = write_data_i;
++        be[15:0] = '1;
++      end
++    end
++  end
++
++`ifndef TARGET_SRAM_MC
++  tc_sram #(.NumWords(NumWords), .DataWidth(256), .NumPorts(1), .Latency(1)) i_q_sram (
++    .clk_i, .rst_ni, .req_i(req), .we_i(we), .addr_i(addr),
++    .wdata_i(wdata), .be_i(be), .rdata_o(read_data_o)
++  );
++`else
++  wire [255:0] bweb;
++  for (genvar byte_lane = 0; byte_lane < 32; byte_lane++) begin : gen_byte
++    assign bweb[byte_lane*8 +: 8] = {8{!(we && be[byte_lane])}};
++  end
++  TS1N28HPCPUHDSVTB64X256M1SWBSO i_q_sram (
++    .SLP(1'b0), .SD(1'b0), .CLK(clk_i), .CEB(!req), .WEB(!we),
++    .CEBM(1'b1), .WEBM(1'b1), .A(addr), .D(wdata), .BWEB(bweb),
++    .AM('0), .DM('0), .BWEBM('1), .BIST(1'b0), .RTSEL(2'b01),
++    .WTSEL(2'b00), .Q(read_data_o)
++  );
++`endif
++
++`ifndef SYNTHESIS
++  always @(posedge clk_i) if (rst_ni) begin
++    assert (!(write_valid_i && read_i)) else $fatal(1, "Q_STORE_CONFLICT");
++    if (write_valid_i)
++      assert (write_offset_i[3:0] == 0) else $fatal(1, "Q_STORE_ALIGNMENT");
++    if (read_i)
++      assert (read_word_i < 8) else $fatal(1, "Q_STORE_WORD");
++  end
++`endif
++endmodule
+--- /dev/null
++++ b/hardware/src/vlsu/akv/akv_unified_context.sv
+@@ -0,0 +1,158 @@
++// Isolated composition candidate: 2 KiB Q plus ONE unchanged 32 KiB v2 K/V store.
++module akv_unified_context
++  import akv_pkg::*;
++(
++  input logic clk_i, rst_ni,
++  input logic abort_i,
++  // Accepted compact payload fragments; includes v2 Q, excludes descriptors.
++  input logic legacy_write_valid_i,
++  input logic [4:0] legacy_write_slot_i,
++  input logic [7:0] legacy_write_offset_i,
++  input logic [8:0] legacy_row_bytes_i,
++  input logic [127:0] legacy_write_data_i,
++  input logic [15:0] legacy_write_strb_i,
++  output logic legacy_write_busy_o,
++  // Existing aligned v2 K/V path, no adapter or added write register.
++  input logic v2_write_valid_i,
++  input akv_stream_e v2_write_stream_i,
++  input logic [5:0] v2_write_token_i,
++  input logic [7:0] v2_write_offset_i,
++  input logic [127:0] v2_write_data_i,
++  input logic [15:0] v2_write_strb_i,
++  output logic v2_write_busy_o,
++  output logic write_busy_o,
++
++  input logic legacy_replay_read_i,
++  input logic [4:0] legacy_replay_slot_i,
++  input logic [3:0] legacy_replay_word_i,
++  output logic [255:0] legacy_replay_data_o,
++  input logic v2_row_read_i,
++  input akv_stream_e v2_row_stream_i,
++  input logic [5:0] v2_row_token_i,
++  input logic [3:0] v2_row_word_i,
++  output logic [255:0] v2_row_data_o,
++
++  input logic column_start_i,
++  input akv_stream_e column_stream_i,
++  input logic [6:0] column_dimension_i,
++  input logic [2:0] column_count_i,
++  input logic [6:0] column_token_count_i,
++  output logic column_busy_o, column_valid_o,
++  output logic [3:0][1023:0] column_data_o,
++  output logic column_bank_cycle_o,
++  output logic conflict_o
++);
++  localparam int QBytes = 8 * 256;
++  localparam int KVBytes = 2 * 64 * 256;
++  logic packed_valid, packed_last;
++  logic [15:0] packed_tag;
++  logic [8:0] packed_offset;
++  logic [127:0] packed_data;
++  logic q_write, kv_write, kv_write_busy, kv_conflict;
++  logic [4:0] packed_slot;
++  logic q_read, kv_row_read, legacy_q_q;
++  logic [255:0] q_data, kv_data;
++  akv_stream_e kv_write_stream, kv_row_stream;
++  logic [5:0] kv_write_token, kv_row_token;
++  logic [7:0] kv_write_offset;
++  logic [127:0] kv_write_data;
++  logic [15:0] kv_write_strb;
++  logic [3:0] kv_row_word;
++
++  akv_legacy_repacker i_legacy_repacker (
++    .clk_i, .rst_ni, .abort_i,
++    .fragment_valid_i(legacy_write_valid_i && !abort_i),
++    .fragment_tag_i({11'b0, legacy_write_slot_i}),
++    .fragment_offset_i({1'b0, legacy_write_offset_i}), .row_bytes_i(legacy_row_bytes_i),
++    .fragment_data_i(legacy_write_data_i), .fragment_strb_i(legacy_write_strb_i),
++    .write_valid_o(packed_valid), .write_tag_o(packed_tag), .write_offset_o(packed_offset),
++    .write_data_o(packed_data), .write_last_o(packed_last), .busy_o(legacy_write_busy_o)
++  );
++  assign packed_slot = packed_tag[4:0];
++  assign q_write = packed_valid && packed_slot < 8;
++  assign kv_write = !abort_i && (v2_write_valid_i || (packed_valid && packed_slot >= 8));
++  assign v2_write_busy_o = v2_write_valid_i && !abort_i;
++  assign write_busy_o = legacy_write_busy_o || v2_write_busy_o || kv_write_busy;
++
++  // Decode only emission-registered metadata, never the younger input fragment.
++  always_comb begin
++    kv_write_stream = packed_slot < 16 ? AKV_STREAM_K : AKV_STREAM_V;
++    kv_write_token = packed_slot < 16 ? 6'(packed_slot - 8) : 6'(packed_slot - 16);
++    kv_write_offset = packed_offset[7:0];
++    kv_write_data = packed_data;
++    kv_write_strb = '1;
++    if (v2_write_valid_i) begin
++      kv_write_stream = v2_write_stream_i;
++      kv_write_token = v2_write_token_i;
++      kv_write_offset = v2_write_offset_i;
++      kv_write_data = v2_write_data_i;
++      kv_write_strb = v2_write_strb_i;
++    end
++  end
++
++  assign q_read = legacy_replay_read_i && legacy_replay_slot_i < 8;
++  assign kv_row_read = v2_row_read_i || (legacy_replay_read_i && legacy_replay_slot_i >= 8);
++  always_comb begin
++    kv_row_stream = legacy_replay_slot_i < 16 ? AKV_STREAM_K : AKV_STREAM_V;
++    kv_row_token = legacy_replay_slot_i < 16 ? 6'(legacy_replay_slot_i - 8) :
++                                            6'(legacy_replay_slot_i - 16);
++    kv_row_word = legacy_replay_word_i;
++    if (v2_row_read_i) begin
++      kv_row_stream = v2_row_stream_i;
++      kv_row_token = v2_row_token_i;
++      kv_row_word = v2_row_word_i;
++    end
++  end
++  always_ff @(posedge clk_i or negedge rst_ni) begin
++    if (!rst_ni) legacy_q_q <= 1'b0;
++    else if (legacy_replay_read_i) legacy_q_q <= legacy_replay_slot_i < 8;
++  end
++  assign legacy_replay_data_o = legacy_q_q ? q_data : kv_data;
++  assign v2_row_data_o = kv_data;
++
++  akv_q_store i_q_store (
++    .clk_i, .rst_ni, .write_valid_i(q_write), .write_slot_i(packed_slot[2:0]),
++    .write_offset_i(packed_offset[7:0]), .write_data_i(packed_data),
++    .read_i(q_read), .read_slot_i(legacy_replay_slot_i[2:0]),
++    .read_word_i(legacy_replay_word_i), .read_data_o(q_data)
++  );
++  akv_v2_context i_kv_store (
++    .clk_i, .rst_ni, .write_valid_i(kv_write), .write_stream_i(kv_write_stream),
++    .write_token_i(kv_write_token), .write_offset_i(kv_write_offset),
++    .write_data_i(kv_write_data), .write_strb_i(kv_write_strb), .write_busy_o(kv_write_busy),
++    .row_read_i(kv_row_read), .row_stream_i(kv_row_stream), .row_token_i(kv_row_token),
++    .row_word_i(kv_row_word), .row_data_o(kv_data),
++    .column_start_i, .column_stream_i, .column_dimension_i, .column_count_i, .column_token_count_i,
++    .column_busy_o, .column_valid_o, .column_data_o, .column_bank_cycle_o, .conflict_o(kv_conflict)
++  );
++  assign conflict_o = kv_conflict ||
++      // V2 K/V can follow the last Q fragment immediately: Q drains separately.
++      (v2_write_valid_i && (legacy_write_valid_i || (packed_valid && packed_slot >= 8))) ||
++      ((legacy_replay_read_i || v2_row_read_i || column_start_i || column_busy_o) && write_busy_o) ||
++      (legacy_replay_read_i && (v2_row_read_i || column_start_i || column_busy_o));
++
++`ifndef SYNTHESIS
++  initial begin
++    assert (AkvMaxQRows == 8 && AkvTileTokens == 8 && AkvMaxHeadDim == 128 &&
++            AkvV2TileTokens == 64 && QBytes == 2048 && KVBytes == 32768)
++      else $fatal(1, "UNIFIED_CAPACITY_CONTRACT");
++  end
++  always @(posedge clk_i) if (rst_ni) begin
++    assert (!$isunknown({abort_i, legacy_write_valid_i, v2_write_valid_i,
++                         legacy_replay_read_i, v2_row_read_i, column_start_i}))
++      else $fatal(1, "UNIFIED_UNKNOWN_CONTROL");
++    assert (!conflict_o) else $fatal(1, "UNIFIED_STORAGE_CONFLICT");
++    if (legacy_write_valid_i && !abort_i)
++      assert (legacy_write_slot_i < 24) else $fatal(1, "UNIFIED_LEGACY_SLOT");
++    if (legacy_replay_read_i)
++      assert (!abort_i && legacy_replay_slot_i < 24 && legacy_replay_word_i < 8)
++        else $fatal(1, "UNIFIED_LEGACY_REPLAY");
++    if (packed_valid)
++      assert (packed_tag < 24 && packed_offset < 256 && packed_offset[3:0] == 0)
++        else $fatal(1, "UNIFIED_EMISSION_IDENTITY");
++    if (abort_i)
++      assert (!q_write && !kv_write && !v2_row_read_i && !column_start_i && !column_busy_o)
++        else $fatal(1, "UNIFIED_ABORT_WRITE_OR_REPLAY");
++  end
++`endif
++endmodule
+--- /dev/null
++++ b/hardware/include/shared_reader_types.svh
+@@ -0,0 +1,46 @@
++`ifndef QBS_AKV_SHARED_READER_TYPES_SVH
++`define QBS_AKV_SHARED_READER_TYPES_SVH
++
++// Invoke inside the caller's package/module. No dependency on Ara interfaces.
++`define QBS_AKV_SHARED_READER_TYPEDEF_REQ_T(__name, __vaddr_width) \
++  typedef struct packed { \
++    logic range_valid; \
++    logic [(__vaddr_width)-1:0] range_vaddr; \
++    logic [15:0] range_bytes; \
++    logic [15:0] range_tag; \
++    axi_pkg::cache_t range_cache; \
++    axi_pkg::prot_t range_prot; \
++    logic data_ready; \
++    logic completion_ready; \
++    logic fault_ready; \
++  } __name;
++
++`define QBS_AKV_SHARED_READER_TYPEDEF_RSP_T(__name, __data_width, __vaddr_width, __exception_t) \
++  typedef struct packed { \
++    logic range_ready; \
++    logic data_valid; \
++    logic [(__data_width)-1:0] data; \
++    logic [(__data_width)/8-1:0] data_strb; \
++    logic [15:0] data_offset; \
++    logic [15:0] data_tag; \
++    logic completion_valid; \
++    logic [15:0] completion_tag; \
++    logic fault_valid; \
++    qbs_pkg::qbs_read_fault_e fault_kind; \
++    logic [(__vaddr_width)-1:0] fault_vaddr; \
++    logic [15:0] fault_tag; \
++    __exception_t fault_mmu_exception; \
++    logic [31:0] range_count; \
++    logic [31:0] translation_count; \
++    logic [31:0] ar_count; \
++    logic [31:0] r_beat_count; \
++    logic [31:0] payload_byte_count; \
++    logic [31:0] store_wait_cycles; \
++    logic [31:0] r_backpressure_cycles; \
++    logic [31:0] outstanding_occupancy_sum; \
++    logic [1:0] outstanding_max; \
++    logic [31:0] outstanding_full_cycles; \
++    logic busy; \
++  } __name;
++
++`endif
+--- /dev/null
++++ b/hardware/include/vlsu_shared_reader.svh
+@@ -0,0 +1,89 @@
++// Included only by the isolated VLSU overlay, after client declarations.
++`include "shared_reader_types.svh"
++`QBS_AKV_SHARED_READER_TYPEDEF_REQ_T(shared_read_req_t, CVA6Cfg.VLEN)
++`QBS_AKV_SHARED_READER_TYPEDEF_RSP_T(shared_read_rsp_t, AxiDataWidth, CVA6Cfg.VLEN, exception_t)
++shared_read_req_t shared_read_req [2];
++shared_read_rsp_t shared_read_rsp [2];
++logic shared_read_clk, shared_read_clk_en;
++logic shared_mmu_req, shared_mmu_is_store;
++logic [CVA6Cfg.VLEN-1:0] shared_mmu_vaddr;
++logic shared_physical_check_valid, shared_physical_range_allowed;
++logic [AxiAddrWidth-1:0] shared_physical_check_addr;
++logic [12:0] shared_physical_check_bytes;
++axi_ar_t shared_axi_ar;
++axi_r_t shared_axi_r;
++logic shared_axi_ar_valid, shared_axi_ar_ready, shared_axi_r_valid, shared_axi_r_ready;
++
++// OR the original enables BEFORE one clock gate, never OR gated clocks.
++// Includes acceptance with owner=0 and the whole command through terminal.
++assign shared_read_clk_en = qbs_clk_en || akv_clk_en;
++tc_clk_gating #(.IS_FUNCTIONAL(1'b1)) i_shared_read_clk_gate (
++  .clk_i, .en_i(shared_read_clk_en), .test_en_i(1'b0), .clk_o(shared_read_clk)
++);
++qbs_akv_shared_reader #(
++  .AxiDataWidth(AxiDataWidth), .AxiAddrWidth(AxiAddrWidth),
++  .VAddrWidth(CVA6Cfg.VLEN), .PAddrWidth(CVA6Cfg.PLEN),
++  .req_t(shared_read_req_t), .rsp_t(shared_read_rsp_t),
++  .axi_ar_t(axi_ar_t), .axi_r_t(axi_r_t), .exception_t(exception_t)
++) i_shared_reader (
++  .clk_i(shared_read_clk), .rst_ni,
++  .owner_i({akv_active_q, qbs_active_q}),
++  .command_fire_i({akv_command_fire, qbs_command_fire}),
++  .client_req_i(shared_read_req), .client_rsp_o(shared_read_rsp),
++  .core_st_pending_i, .en_ld_st_translation_i,
++  .mmu_req_o(shared_mmu_req), .mmu_vaddr_o(shared_mmu_vaddr),
++  .mmu_is_store_o(shared_mmu_is_store), .mmu_valid_i, .mmu_paddr_i,
++  .mmu_exception_valid_i(mmu_exception_i.valid), .mmu_exception_i,
++  .physical_check_valid_o(shared_physical_check_valid),
++  .physical_check_addr_o(shared_physical_check_addr),
++  .physical_check_bytes_o(shared_physical_check_bytes),
++  .physical_range_allowed_i(shared_physical_range_allowed),
++  .axi_ar_o(shared_axi_ar), .axi_ar_valid_o(shared_axi_ar_valid),
++  .axi_ar_ready_i(shared_axi_ar_ready), .axi_r_i(shared_axi_r),
++  .axi_r_valid_i(shared_axi_r_valid), .axi_r_ready_o(shared_axi_r_ready)
++);
++
++// Keep the existing VLSU AXI/MMU ownership mux and cut unchanged. These aliases
++// also preserve per-owner interface probes; there is no extra arbitration/state.
++assign qbs_axi_ar = qbs_active_q ? shared_axi_ar : axi_ar_t'('0);
++assign akv_axi_ar = akv_active_q ? shared_axi_ar : axi_ar_t'('0);
++assign qbs_axi_ar_valid = qbs_active_q && shared_axi_ar_valid;
++assign akv_axi_ar_valid = akv_active_q && shared_axi_ar_valid;
++assign qbs_axi_r_ready = qbs_active_q && shared_axi_r_ready;
++assign akv_axi_r_ready = akv_active_q && shared_axi_r_ready;
++assign shared_axi_ar_ready = qbs_axi_ar_ready || akv_axi_ar_ready;
++assign shared_axi_r = qbs_active_q ? qbs_axi_r : akv_axi_r;
++assign shared_axi_r_valid = qbs_axi_r_valid || akv_axi_r_valid;
++assign qbs_mmu_req = qbs_active_q && shared_mmu_req;
++assign akv_mmu_req = akv_active_q && shared_mmu_req;
++assign qbs_mmu_vaddr = qbs_active_q ? shared_mmu_vaddr : '0;
++assign akv_mmu_vaddr = akv_active_q ? shared_mmu_vaddr : '0;
++assign qbs_mmu_is_store = qbs_active_q && shared_mmu_is_store;
++assign akv_mmu_is_store = akv_active_q && shared_mmu_is_store;
++assign qbs_physical_check_valid = qbs_active_q && shared_physical_check_valid;
++assign akv_physical_check_valid = akv_active_q && shared_physical_check_valid;
++assign qbs_physical_check_addr = qbs_active_q ? shared_physical_check_addr : '0;
++assign akv_physical_check_addr = akv_active_q ? shared_physical_check_addr : '0;
++assign qbs_physical_check_bytes = qbs_active_q ? shared_physical_check_bytes : '0;
++assign akv_physical_check_bytes = akv_active_q ? shared_physical_check_bytes : '0;
++assign shared_physical_range_allowed = qbs_range_is_cacheable_idempotent(
++    shared_physical_check_addr, shared_physical_check_bytes);
++
++`ifndef SYNTHESIS
++// These are integration invariants, not a new drain/ownership state machine.
++always @(posedge clk_i) begin
++  if (rst_ni) begin
++    assert ($onehot0({akv_active_q, qbs_active_q}) &&
++            $onehot0({akv_command_fire, qbs_command_fire}))
++      else $fatal(1, "SHARED_VLSU_OWNERSHIP");
++    if (qbs_terminal || akv_terminal)
++      assert (!i_shared_reader.reader_rsp.busy && !shared_axi_ar_valid &&
++              !i_shared_reader.i_read_engine.ar_stalled_q &&
++              !i_shared_reader.i_read_engine.response_drain_q)
++        else $fatal(1, "SHARED_VLSU_PREMATURE_RELEASE");
++    if (i_shared_reader.reader_rsp.busy || shared_axi_ar_valid || shared_mmu_req)
++      assert (shared_read_clk_en && (qbs_active_q || akv_active_q))
++        else $fatal(1, "SHARED_VLSU_CLOCK_OR_OWNER_LOST");
++  end
++end
++`endif
+--- /dev/null
++++ b/hardware/include/admission_assertions.svh
+@@ -0,0 +1,19 @@
++// Successor-only VLSU assertions. Not included in the live snapshot-01 compile.
++// Include inside vlsu after the engine instances are declared.
++`ifndef SYNTHESIS
++always @(posedge clk_i) begin
++  if (rst_ni) begin
++    assert (!$isunknown({qbs_active_q, akv_active_q,
++                         qbs_command_fire, akv_command_fire}))
++      else $fatal(1, "SHARED_VLSU_UNKNOWN_OWNER_OR_FIRE");
++    if (qbs_command_fire || akv_command_fire) begin
++      // A fault terminal may precede local write-pipeline drain. Admission of
++      // the next command, not the fault terminal, is the required boundary.
++      assert (i_akv_engine.context_write_busy === 1'b0 &&
++              i_akv_engine.v1_context_write_valid === 1'b0 &&
++              i_akv_engine.v2_context_write_valid === 1'b0)
++        else $fatal(1, "SHARED_VLSU_ADMIT_WITH_AKV_WRITE_PENDING");
++    end
++  end
++end
++`endif
+--- a/Bender.yml
++++ b/Bender.yml
+@@ -64,6 +64,7 @@
+     - hardware/src/vlsu/qbs/qbs_dot_array.sv
+     - hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv
+     - hardware/src/vlsu/qbs/qbs_read_engine.sv
++    - hardware/src/vlsu/qbs_akv_shared_reader.sv
+     - hardware/src/vlsu/qbs/qbs_activation_context.sv
+     - hardware/src/vlsu/qbs/qbs_payload_sram.sv
+     - hardware/src/vlsu/qbs/qbs_payload_buffer.sv
+@@ -78,6 +79,9 @@
+     - hardware/src/vlsu/qbs/qbs_engine.sv
+     - hardware/src/vlsu/akv/akv_context.sv
+     - hardware/src/vlsu/akv/akv_v2_context.sv
++    - hardware/src/vlsu/akv/akv_legacy_repacker.sv
++    - hardware/src/vlsu/akv/akv_q_store.sv
++    - hardware/src/vlsu/akv/akv_unified_context.sv
+     - hardware/src/vlsu/akv/akv_engine.sv
+     # Level 2
+     - hardware/src/lane/operand_queues_stage.sv
