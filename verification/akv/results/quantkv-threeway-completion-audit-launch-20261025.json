@@ -1,0 +1,30 @@
+{
+  "state": "COMPLETION_AUDITOR_LAUNCHED_NOT_ACCEPTED",
+  "service": "quantkv-hsb-terminal-audit-20261025-01.service",
+  "actual_owner_pid": 1619945,
+  "runtime_limit_seconds": 7200,
+  "watched_owner_pids": [1250011, 1250223],
+  "waiting": "Both pidfds captured and boot/startticks/argv/cgroup/cwd checked; select waits for worker exit, not simulator exit",
+  "audit_output": "verification/out/quantkv-hsb-terminal-audit-20261025-01",
+  "launch_confirmation_sha256": "cdaf5e4fd1997b02dab3720bc2d343cd8f1325f8037ee8f7eab19fc4ce6347a4",
+  "helper_sha256": {
+    "wait_audit.py": "bb638b9f0f2289c40fa91da9d3433bf371b6769c54276d607818f834f7362163",
+    "test_wait_audit.py": "b5208b7d2c93cbc6d46592a546bead0f354e26993718363b9ee82ce9da7e8863",
+    "README.md": "73c08fcc009ae4d2cf6f6bd2cbca34637dd8b0cf912afdd81b6671ca9e63d5eb"
+  },
+  "host_tests_passed": 6,
+  "simulations_launched_by_auditor": 0,
+  "poll_loop": false,
+  "automatic_retry": false,
+  "automatic_promotion": false,
+  "future_checks": [
+    "Terminal run, build, ELF, image and all consumed source/evidence pins",
+    "Complete H/S/B numerical, original-golden, flags, work and mirrored-repeat replay",
+    "Profile-bound tail and strided prerequisites",
+    "Actual unfiltered four-switch UVM execution and raw-input binding",
+    "Separate per-profile receipts and aggregate success only if both pass"
+  ],
+  "source_barrier": "The auditor remains a source-pin consumer until its own audits terminate; simulator exit alone does not clear promotion",
+  "performance_accepted": false,
+  "production_promoted": false
+}
