@@ -1,0 +1,406 @@
+{
+  "reports": [
+    {
+      "comparison": {
+        "calls": [
+          {
+            "baseline_cycles": 8710,
+            "candidate_cycles": 8710,
+            "case": 0,
+            "cycle_delta": 0,
+            "mode": 0,
+            "trial": 0
+          },
+          {
+            "baseline_cycles": 8206,
+            "candidate_cycles": 8206,
+            "case": 0,
+            "cycle_delta": 0,
+            "mode": 1,
+            "trial": 1
+          },
+          {
+            "baseline_cycles": 8360,
+            "candidate_cycles": 8360,
+            "case": 0,
+            "cycle_delta": 0,
+            "mode": 0,
+            "trial": 2
+          },
+          {
+            "baseline_cycles": 30774,
+            "candidate_cycles": 30774,
+            "case": 1,
+            "cycle_delta": 0,
+            "mode": 0,
+            "trial": 0
+          },
+          {
+            "baseline_cycles": 25349,
+            "candidate_cycles": 25349,
+            "case": 1,
+            "cycle_delta": 0,
+            "mode": 1,
+            "trial": 1
+          },
+          {
+            "baseline_cycles": 30798,
+            "candidate_cycles": 30798,
+            "case": 1,
+            "cycle_delta": 0,
+            "mode": 0,
+            "trial": 2
+          },
+          {
+            "baseline_cycles": 13629,
+            "candidate_cycles": 13629,
+            "case": 2,
+            "cycle_delta": 0,
+            "mode": 0,
+            "trial": 0
+          },
+          {
+            "baseline_cycles": 13545,
+            "candidate_cycles": 13545,
+            "case": 2,
+            "cycle_delta": 0,
+            "mode": 1,
+            "trial": 1
+          },
+          {
+            "baseline_cycles": 13471,
+            "candidate_cycles": 13471,
+            "case": 2,
+            "cycle_delta": 0,
+            "mode": 0,
+            "trial": 2
+          },
+          {
+            "baseline_cycles": 19517,
+            "candidate_cycles": 19517,
+            "case": 3,
+            "cycle_delta": 0,
+            "mode": 0,
+            "trial": 0
+          },
+          {
+            "baseline_cycles": 14217,
+            "candidate_cycles": 14217,
+            "case": 3,
+            "cycle_delta": 0,
+            "mode": 1,
+            "trial": 1
+          },
+          {
+            "baseline_cycles": 19476,
+            "candidate_cycles": 19476,
+            "case": 3,
+            "cycle_delta": 0,
+            "mode": 0,
+            "trial": 2
+          }
+        ],
+        "command_comparison": {
+          "changed_commands": 0,
+          "commands": 3680,
+          "differences_truncated": false,
+          "first_differences": [],
+          "identical": true
+        },
+        "complete_call_cycles_available": true,
+        "complete_call_no_regression": true,
+        "complete_operator_performance_accepted": true,
+        "matched": {
+          "calls": 12,
+          "command_counters_available": true,
+          "command_counters_identical": true,
+          "output_signatures_and_csrs_identical": true,
+          "per_call_counters_available": true,
+          "per_call_counters_identical": true,
+          "task_cycles_available": true,
+          "task_cycles_identical": true
+        },
+        "per_call_counter_equivalence": true,
+        "resource_regression_gate_pass": true,
+        "whole_model_performance": false
+      },
+      "model_execution": false,
+      "ppa_measured": false,
+      "production_promoted": false,
+      "receipt": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/results/shared-storage-timed-decode-pair-20261025.json",
+      "receipt_sha256": "d5e1604835c25dc009df17885b4dee8c18fe1c608f791fb70e7262007514c88f",
+      "same_elf": true,
+      "state": "PASS"
+    },
+    {
+      "comparison": {
+        "calls": [
+          {
+            "baseline_cycles": 202315,
+            "candidate_cycles": 202315,
+            "case": null,
+            "cycle_delta": 0,
+            "mode": 0,
+            "trial": 0
+          },
+          {
+            "baseline_cycles": 190069,
+            "candidate_cycles": 190069,
+            "case": null,
+            "cycle_delta": 0,
+            "mode": 1,
+            "trial": 1
+          },
+          {
+            "baseline_cycles": 190352,
+            "candidate_cycles": 190352,
+            "case": null,
+            "cycle_delta": 0,
+            "mode": 1,
+            "trial": 2
+          },
+          {
+            "baseline_cycles": 201779,
+            "candidate_cycles": 201779,
+            "case": null,
+            "cycle_delta": 0,
+            "mode": 0,
+            "trial": 3
+          }
+        ],
+        "command_comparison": {
+          "changed_commands": 0,
+          "commands": 13380,
+          "differences_truncated": false,
+          "first_differences": [],
+          "identical": true
+        },
+        "complete_call_cycles_available": true,
+        "complete_call_no_regression": true,
+        "complete_operator_performance_accepted": true,
+        "matched": {
+          "calls": 4,
+          "command_counters_available": false,
+          "command_counters_identical": null,
+          "output_signatures_and_csrs_identical": true,
+          "per_call_counters_available": true,
+          "per_call_counters_identical": true,
+          "task_cycles_available": true,
+          "task_cycles_identical": true
+        },
+        "per_call_counter_equivalence": true,
+        "resource_regression_gate_pass": true,
+        "whole_model_performance": false
+      },
+      "model_execution": false,
+      "ppa_measured": false,
+      "production_promoted": false,
+      "receipt": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/results/shared-reader-real-prefill-20261025.json",
+      "receipt_sha256": "5f087aa5f7992ecd2457a810d402900a5ed0fb27288785c41cfd9154a4c0d901",
+      "same_elf": true,
+      "state": "REAL_RUNTIME_PAIRED_RAW_RECHECKED"
+    },
+    {
+      "comparison": {
+        "calls": [
+          {
+            "baseline_cycles": null,
+            "candidate_cycles": null,
+            "case": 0,
+            "cycle_delta": null,
+            "mode": 0,
+            "trial": 0
+          },
+          {
+            "baseline_cycles": null,
+            "candidate_cycles": null,
+            "case": 0,
+            "cycle_delta": null,
+            "mode": 1,
+            "trial": 1
+          },
+          {
+            "baseline_cycles": null,
+            "candidate_cycles": null,
+            "case": 0,
+            "cycle_delta": null,
+            "mode": 0,
+            "trial": 2
+          },
+          {
+            "baseline_cycles": null,
+            "candidate_cycles": null,
+            "case": 1,
+            "cycle_delta": null,
+            "mode": 0,
+            "trial": 0
+          },
+          {
+            "baseline_cycles": null,
+            "candidate_cycles": null,
+            "case": 1,
+            "cycle_delta": null,
+            "mode": 1,
+            "trial": 1
+          },
+          {
+            "baseline_cycles": null,
+            "candidate_cycles": null,
+            "case": 1,
+            "cycle_delta": null,
+            "mode": 0,
+            "trial": 2
+          },
+          {
+            "baseline_cycles": null,
+            "candidate_cycles": null,
+            "case": 2,
+            "cycle_delta": null,
+            "mode": 0,
+            "trial": 0
+          },
+          {
+            "baseline_cycles": null,
+            "candidate_cycles": null,
+            "case": 2,
+            "cycle_delta": null,
+            "mode": 1,
+            "trial": 1
+          },
+          {
+            "baseline_cycles": null,
+            "candidate_cycles": null,
+            "case": 2,
+            "cycle_delta": null,
+            "mode": 0,
+            "trial": 2
+          },
+          {
+            "baseline_cycles": null,
+            "candidate_cycles": null,
+            "case": 3,
+            "cycle_delta": null,
+            "mode": 0,
+            "trial": 0
+          },
+          {
+            "baseline_cycles": null,
+            "candidate_cycles": null,
+            "case": 3,
+            "cycle_delta": null,
+            "mode": 1,
+            "trial": 1
+          },
+          {
+            "baseline_cycles": null,
+            "candidate_cycles": null,
+            "case": 3,
+            "cycle_delta": null,
+            "mode": 0,
+            "trial": 2
+          }
+        ],
+        "command_comparison": {
+          "changed_commands": 0,
+          "commands": 3680,
+          "differences_truncated": false,
+          "first_differences": [],
+          "identical": true
+        },
+        "complete_call_cycles_available": false,
+        "complete_call_no_regression": null,
+        "complete_operator_performance_accepted": false,
+        "matched": {
+          "calls": 12,
+          "command_counters_available": false,
+          "command_counters_identical": null,
+          "output_signatures_and_csrs_identical": true,
+          "per_call_counters_available": true,
+          "per_call_counters_identical": true,
+          "task_cycles_available": false,
+          "task_cycles_identical": true
+        },
+        "per_call_counter_equivalence": true,
+        "resource_regression_gate_pass": true,
+        "whole_model_performance": false
+      },
+      "model_execution": false,
+      "ppa_measured": false,
+      "production_promoted": false,
+      "receipt": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/results/shared-storage-real-decode-20261025.json",
+      "receipt_sha256": "92609fcdd2457b1fc63632df0212f0bd7195d436ee99dcdedf8ce00def3c8642",
+      "same_elf": true,
+      "state": "REAL_RUNTIME_PAIRED_RAW_RECHECKED"
+    },
+    {
+      "comparison": {
+        "calls": [
+          {
+            "baseline_cycles": 202315,
+            "candidate_cycles": 202315,
+            "case": null,
+            "cycle_delta": 0,
+            "mode": 0,
+            "trial": 0
+          },
+          {
+            "baseline_cycles": 190069,
+            "candidate_cycles": 190069,
+            "case": null,
+            "cycle_delta": 0,
+            "mode": 1,
+            "trial": 1
+          },
+          {
+            "baseline_cycles": 190352,
+            "candidate_cycles": 190352,
+            "case": null,
+            "cycle_delta": 0,
+            "mode": 1,
+            "trial": 2
+          },
+          {
+            "baseline_cycles": 201779,
+            "candidate_cycles": 201779,
+            "case": null,
+            "cycle_delta": 0,
+            "mode": 0,
+            "trial": 3
+          }
+        ],
+        "command_comparison": {
+          "changed_commands": 0,
+          "commands": 13380,
+          "differences_truncated": false,
+          "first_differences": [],
+          "identical": true
+        },
+        "complete_call_cycles_available": true,
+        "complete_call_no_regression": true,
+        "complete_operator_performance_accepted": true,
+        "matched": {
+          "calls": 4,
+          "command_counters_available": false,
+          "command_counters_identical": null,
+          "output_signatures_and_csrs_identical": true,
+          "per_call_counters_available": true,
+          "per_call_counters_identical": true,
+          "task_cycles_available": true,
+          "task_cycles_identical": true
+        },
+        "per_call_counter_equivalence": true,
+        "resource_regression_gate_pass": true,
+        "whole_model_performance": false
+      },
+      "model_execution": false,
+      "ppa_measured": false,
+      "production_promoted": false,
+      "receipt": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/results/shared-storage-real-prefill-20261025.json",
+      "receipt_sha256": "10a664d5cdf646ceec13d998371a2dfa92869412b4ed220ca1918c096688250f",
+      "same_elf": true,
+      "state": "REAL_RUNTIME_PAIRED_RAW_RECHECKED"
+    }
+  ],
+  "schema": "resource_runtime_closure_summary_v1",
+  "state": "FOUR_INDEPENDENT_RAW_AUDITS_ACCEPTED"
+}
