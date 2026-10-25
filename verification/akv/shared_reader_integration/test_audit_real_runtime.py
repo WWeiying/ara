@@ -1,5 +1,9 @@
 import copy
+from pathlib import Path
+import tempfile
 import unittest
+from unittest.mock import patch
+import audit_real_runtime as auditor
 from audit_real_runtime import compare_performance, compare_commands, compare_runtime
 
 
@@ -92,6 +96,34 @@ class RuntimePerformanceAuditTests(unittest.TestCase):
         self.assertEqual(result['changed_commands'], 60)
         self.assertEqual(len(result['first_differences']), 50)
         self.assertTrue(result['differences_truncated'])
+
+    def test_baseline_image_and_path_must_match_original_build(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run, prior, build = (root/name for name in ('run', 'prior', 'build'))
+            for directory in (run, prior, build):
+                directory.mkdir()
+            image = {'accepted/simv': 'original-hash'}
+            baseline_status = dict(build=str(build), simv='accepted/simv')
+            status = dict(kind='decode', prior=str(prior), build=str(build))
+            report = dict(independent_protocol_checked=True, model_execution=False,
+                          production_promoted=False, elf_sha256='same-elf')
+            pins = {str(prior/name): 'receipt' for name in ('status.json', 'result.json')}
+            candidate = (status, report, {}, pins, {'candidate/simv': 'candidate-hash'}, [])
+            for changed_image, changed_path in ((True, False), (False, True)):
+                with self.subTest(image_drift=changed_image, path_drift=changed_path):
+                    old_status = dict(baseline_status, simv='other/simv') if changed_path else baseline_status
+                    old_image = {'accepted/simv': 'other-hash'} if changed_image else image
+                    baseline = (old_status, dict(elf_sha256='same-elf'), {}, {}, old_image, [])
+                    with patch.object(auditor.s, 'read_json', return_value=status), \
+                         patch.object(auditor.s, 'digest', return_value='receipt'), \
+                         patch.object(auditor, 'terminal', side_effect=[candidate, baseline]), \
+                         patch.object(auditor.original, 'checked_build', return_value=(
+                             dict(elf_sha256='same-elf', simv='accepted/simv'), image, {})), \
+                         patch.object(auditor, 'checked_soc') as soc:
+                        with self.assertRaisesRegex(ValueError, 'accepted baseline image'):
+                            auditor.audit(run)
+                        soc.assert_not_called()
 
 
 if __name__ == '__main__':
