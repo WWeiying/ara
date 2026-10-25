@@ -1,0 +1,58 @@
+{
+  "audit_receipt": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-legacy-latency-stdout-audit-parent-20261025-01/result.json",
+  "audit_receipt_sha256": "8bebcbf38b05cbcbd119a2dde2e8c9f256c4b1ac2c1fa2bf7e52b8d5057bc4bf",
+  "audit_source_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/legacy_latency/audit_stdout_extension.py": "4bb6a625141da1a1c8a720661690fbd4e0db99a138c4a1e47143c478e6d64879",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/legacy_latency/check.py": "c0a4044f97dc186cee6c94497f6530ff3e93716dff1ccb55659029eb87c9c14a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/legacy_latency/run.py": "6e704916e0b034b048dcf1ef76162e18ae546344702baf70e8fec120928b476a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/legacy_latency/test_audit_stdout_extension.py": "b0ffd0737318cc4025ac6ee6def04f133462068a171b94f18e6cbbf7fef4a6a8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/compose_canonical_standalone.py": "40efd646a000c60439dbeb186fef10f8223bc4bc7058e93ac1e6c029b3131576",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/compose_standalone.py": "52d24b16ba9cd0f78a0b6ba3aa5463ab5cd354d2e5e3c7d9470e124998d66d49",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/prepare.py": "8275dcdb9d45e3f9b0a0c502a87879f0ff07aaa88c71504519a1e1d4e763193a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/prepare_storage.py": "6eab3c654886c64ff5b893b8d3006bfff41f0f02f44019126976e2fc352ff54c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/run_canonical_standalone.py": "0d6f5a24c6bbb238d59a0e72bc9df0cb697c1e7eda4306c732ddae2d45dbbabe",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/ara_verify/__init__.py": "fef5bb5fd19e39e7fa65f86a0b7f58c472a98adcf9aee16c461cd92cd59c12d3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/ara_verify/catalog.py": "114e42c2d260062faa0f2469eab0ed750acbd2f42fbf7f683593fdf64af5cb6b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/ara_verify/model.py": "ca9e64aa9ac3bc345736e5c0dd67f3e3c5c44da4d3dc0ce8555ea39cd1f6dae3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/ara_verify/vcs_source_manifest.py": "4855c90318e768629976acce08059e82d76c8b2789f84d8eeebf5469bba445b1",
+    "/usr/bin/python3.9": "63520974d589373fbc041a60f199c4d7ad4fae96727da8fda4a5d21455f6acef"
+  },
+  "clean_original_evidence": false,
+  "commands": 892,
+  "cycles_each": {
+    "command_cycles": 955244,
+    "fire_latency": 956136,
+    "first_latency": 955244,
+    "wait_cycles": 892
+  },
+  "differences": [],
+  "model_performance": false,
+  "original_full_evidence_check": "FAIL",
+  "original_output": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-legacy-latency-pair-20261025-02",
+  "original_result_sha256": "2274f7c41c1b3c32980966b1c86dceb0e67187bfb1c0be44434c7667f0ef752c",
+  "original_source_header_graph_pins_pre_post_match": true,
+  "outcomes": {
+    "fault": 27,
+    "read_faults": {
+      "2": 4,
+      "3": 1,
+      "5": 1
+    },
+    "success": 865,
+    "validation": 21
+  },
+  "ppa_measured": false,
+  "production_promoted": false,
+  "rerun": false,
+  "schema": "akv_legacy_latency_acceptance_v2",
+  "soc_verified": false,
+  "source_pins_sha256": "72f8e4f4f06709f2f23e453c17e1de063604a6d13fec475901977eecc3bec05c",
+  "state": "FUNCTIONAL_AND_LATENCY_AUDIT_PASS",
+  "stdout_extension": {
+    "appended_bytes_hex": "504153530a",
+    "original_prefix_bytes": 0,
+    "original_verifier_error": "Input identity changed: /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-legacy-latency-pair-20261025-02/worker.log",
+    "sealed_prefix_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "terminal_sha256": "c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431"
+  }
+}
