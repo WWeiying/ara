@@ -28,7 +28,7 @@ decisions are:
 | Generic paired-head QK/PV | KV128 three-way sums: ordinary RVV 490585, generic AKV 161570, paired AKV 116651; KV256 sums 980328, 303767, 210254 | 1.385072x / 1.444762x versus generic at KV128 / KV256; canonical Decode shape regression passed, opt-in only; full F16 GGML/model execution remains separate |
 | Paired F32 Prefill PV | Fresh canonical runtime, real four-query/nine-head slice: 404094 to 380421 ABBA cycle sums | 1.062228x; preserve original order/flags and opt-in; not full M64 or model performance |
 | Quantized KV | Real strided-cache Q4/Q8 paired slices and all four visible5/33 tail runs passed; all-layer Qwen2.5 short generation has 112 native Decode calls / 448 QBS commands | Q8 H/S/B attribution passed independently; Q4 timed out in its final head-major trial and remains unaccepted; preserve finite-domain/shape checks and RVV fallback |
-| Reader/storage organization | Canonical RTL now has one shared reader and AKV Q2 KiB plus unified KV32 KiB; actual canonical VCS build and original QBS/AKV generic/macro suites passed | Same-ELF complete-operator canonical regression is running; 4 KiB logical reduction is not measured area or an accepted whole-call latency result |
+| Reader/storage organization | Canonical RTL has one shared reader and AKV Q2 KiB plus unified KV32 KiB; actual canonical build, original generic/macro suites and same-ELF complete-operator regression passed independently | All six call cycles and 3864 command records are identical to the old resource organization; 4 KiB logical reduction is not measured area or a new acceleration claim |
 
 Cross-head sharing is now in the canonical runtime, rather than only the
 isolated bench. `AKV_PAIR_HEADS` and `AKV_PREFILL_PAIR_PV` remain explicit,
@@ -52,7 +52,7 @@ mode/shape selection, unchanged output/flag checks and complete-operator timing.
 | 1 | Short-block QBS conversion/scale/accumulation throughput | Current-image cycle probes; real Q8_0 and neighboring format inputs; bit/fflags checks; paired cycles and traffic; multi-profile fault regression | Command-level and focused SoC integration passed; no model/PPA claim |
 | 2 | QBS activation overlap and Prefill scheduling | Existing M1/M4 overlap plus M5..8 comparison; include activation preparation and traffic; shared runtime selection if software changes | Direct overlap and wide-command exclusion checked; Q8_0/Q8_K M4 prep/full projections accepted; no claim of optimized preparation for every M or a model-level speedup |
 | 3 | AKV fill/replay/RVV compute overlap | Lifecycle and single-port conflict analysis; real Attention tile; matched QK/PV/numerical checks; shape and fault regression | Restricted overlap works, fixed-address complete Attention regresses 1.5451%; keep schedule OFF, do not count this as a deployed benefit |
-| Parallel resource work | Shared QBS/AKV reader; unified legacy/v2 AKV storage | Ownership/drain invariants; unchanged outstanding capacity and context lifetime; matched latency/fault tests | Promoted as c9ebabaa after isolated fault/latency gates; actual canonical build and original suites passed; canonical same-ELF runtime gate remains pending |
+| Parallel resource work | Shared QBS/AKV reader; unified legacy/v2 AKV storage | Ownership/drain invariants; unchanged outstanding capacity and context lifetime; matched latency/fault tests | Promoted as c9ebabaa; actual canonical build, original suites and independently audited same-ELF runtime passed with zero per-call cycle delta |
 | Subsequent coverage work | Quantized KV | One common llama.cpp format first; explicit decode/view contract; native RTL and model numerical validation; F16 fallback preserved | Q4_0/Q8_0 K plus Q8_0 V graph/model, strided VCS and 5/33-token gates passed; Q8 full H/S/B attribution passed; Q4 full mirrored run remains open |
 
 Do not represent lower traffic as lower cycles or SRAM capacity reduction as
@@ -121,8 +121,13 @@ successor admits only one pinned rendering after proving identical source order,
 macro/include context and unambiguous header lookup. Acceptance references:
 `verification/akv/results/reader-held-ar-paired-acceptance-20261025.json` and
 `verification/akv/results/canonical-resource-build-units-20261025.json`.
-The complete six-call same-ELF canonical runtime is running, not yet accepted.
-Logical capacity removal is not measured area. Do not change its sealed inputs.
+The complete six-call same-ELF canonical runtime has passed independent audit.
+All 3864 hardware records and corresponding complete parsed reports match;
+cycles are 245497 / 81047 / 58341 / 58310 / 80523 / 245088 on both images.
+Receipt: `verification/akv/results/canonical-resource-runtime-acceptance-20261025.json`.
+Logical capacity removal is not measured area or a new speedup result.
+The Q4 fixed-layout successor is separately running and must retain its sealed
+inputs; this resource gate does not close the remaining Q4 attribution work.
 The older `qbs_akv_resource_sharing_audit.md` remains the pre-extraction inventory,
 not a claim that current canonical RTL still instantiates two readers.
 
