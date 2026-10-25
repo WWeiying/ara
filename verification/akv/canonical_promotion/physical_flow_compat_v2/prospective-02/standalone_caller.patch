@@ -1,0 +1,19 @@
+--- a/verification/akv/Makefile
++++ b/verification/akv/Makefile
+@@ -89,11 +89,14 @@
+ 		$(RTL_EXTRA_DEFINES) -f $(MACRO_FILELIST) $(MACRO_MODEL) $(SYNTH_WRAPPER) $(RTL_EXTRA_SOURCES) \
+ 		-top akv_engine_synth_wrapper -o simv
+ 
++dc_akv_storage_organization ?= unified_q64x256_kv128x256
++
+ synth-preflight: synth-wrapper-compile
+-	$(MAKE) -C $(ROOT)/hardware dc_preflight mc=1 qbs=1 akv_v2=1
++	$(MAKE) -C $(ROOT)/hardware dc_preflight mc=1 qbs=1 akv_v2=1 dc_akv_storage_organization=$(dc_akv_storage_organization)
+ 	python3 $(SYNTH_CHECKER) --filelist $(DC_FILELIST) --sdc $(SYNTH_SDC) \
+ 		--setup $(DC_SETUP) --require-qbs --require-akv --require-akv-v2 \
+-		--require-macro-sram --nr-lanes 4 --vlen 1024
++		--require-macro-sram --nr-lanes 4 --vlen 1024 \
++		--akv-storage-organization $(dc_akv_storage_organization)
+ 
+ context-synth:
+ 	./synthesis/run_context_dc.sh
