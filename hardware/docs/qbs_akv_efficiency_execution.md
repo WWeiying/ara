@@ -27,8 +27,8 @@ decisions are:
 | One-query GQA6 QK PANEL4 | Focused RTL gate and complete Attention ABBA pass; 215259 to 207062 summed cycles, 1.039587x | Retain explicit opt-in; unchanged output/CSR/traffic, no whole-model claim; see `../../verification/akv/results/qk-panel4-attention-20261024.json` |
 | Generic paired-head QK/PV | KV128 three-way sums: ordinary RVV 490585, generic AKV 161570, paired AKV 116651; KV256 sums 980328, 303767, 210254 | 1.385072x / 1.444762x versus generic at KV128 / KV256; canonical Decode shape regression passed, opt-in only; full F16 GGML/model execution remains separate |
 | Paired F32 Prefill PV | Fresh canonical runtime, real four-query/nine-head slice: 404094 to 380421 ABBA cycle sums | 1.062228x; preserve original order/flags and opt-in; not full M64 or model performance |
-| Quantized KV | Real-cache-style graph and all-layer Qwen2.5 short generation passed; 112 native Decode calls / 448 QBS commands; matched-RVV contiguous slice 2.352348x for Q8_0 | Real strided-cache latency and RTL tail gates remain pending; preserve finite-domain/shape checks and RVV fallback |
-| Reader/storage organization | Two physical readers remain; legacy/v2 AKV payload SRAM is 6/32 KiB, including legacy Q used by v2 | Resource work is not complete; possible payload deduplication is 4 KiB, not 6 KiB; no area or latency claim |
+| Quantized KV | Real strided-cache Q4/Q8 paired slices and all four visible5/33 tail runs passed; all-layer Qwen2.5 short generation has 112 native Decode calls / 448 QBS commands | Q8 H/S/B attribution passed independently; Q4 timed out in its final head-major trial and remains unaccepted; preserve finite-domain/shape checks and RVV fallback |
+| Reader/storage organization | Canonical RTL now has one shared reader and AKV Q2 KiB plus unified KV32 KiB; actual canonical VCS build and original QBS/AKV generic/macro suites passed | Same-ELF complete-operator canonical regression is running; 4 KiB logical reduction is not measured area or an accepted whole-call latency result |
 
 Cross-head sharing is now in the canonical runtime, rather than only the
 isolated bench. `AKV_PAIR_HEADS` and `AKV_PREFILL_PAIR_PV` remain explicit,
@@ -52,8 +52,8 @@ mode/shape selection, unchanged output/flag checks and complete-operator timing.
 | 1 | Short-block QBS conversion/scale/accumulation throughput | Current-image cycle probes; real Q8_0 and neighboring format inputs; bit/fflags checks; paired cycles and traffic; multi-profile fault regression | Command-level and focused SoC integration passed; no model/PPA claim |
 | 2 | QBS activation overlap and Prefill scheduling | Existing M1/M4 overlap plus M5..8 comparison; include activation preparation and traffic; shared runtime selection if software changes | Direct overlap and wide-command exclusion checked; Q8_0/Q8_K M4 prep/full projections accepted; no claim of optimized preparation for every M or a model-level speedup |
 | 3 | AKV fill/replay/RVV compute overlap | Lifecycle and single-port conflict analysis; real Attention tile; matched QK/PV/numerical checks; shape and fault regression | Restricted overlap works, fixed-address complete Attention regresses 1.5451%; keep schedule OFF, do not count this as a deployed benefit |
-| Parallel resource work | Shared QBS/AKV reader; unified legacy/v2 AKV storage | Ownership/drain invariants; unchanged outstanding capacity and context lifetime; matched latency/fault tests | Open: same reader source is instantiated twice; storage requires legacy cross-row write support and Q preservation |
-| Subsequent coverage work | Quantized KV | One common llama.cpp format first; explicit decode/view contract; native RTL and model numerical validation; F16 fallback preserved | Q4_0/Q8_0 K plus Q8_0 V graph/model gates passed; real-cache VCS performance and 5/33-token RTL closure open |
+| Parallel resource work | Shared QBS/AKV reader; unified legacy/v2 AKV storage | Ownership/drain invariants; unchanged outstanding capacity and context lifetime; matched latency/fault tests | Promoted as c9ebabaa after isolated fault/latency gates; actual canonical build and original suites passed; canonical same-ELF runtime gate remains pending |
+| Subsequent coverage work | Quantized KV | One common llama.cpp format first; explicit decode/view contract; native RTL and model numerical validation; F16 fallback preserved | Q4_0/Q8_0 K plus Q8_0 V graph/model, strided VCS and 5/33-token gates passed; Q8 full H/S/B attribution passed; Q4 full mirrored run remains open |
 
 Do not represent lower traffic as lower cycles or SRAM capacity reduction as
 measured area reduction. Do not replace the requested mechanisms with smaller
@@ -95,21 +95,36 @@ same-ELF shared-RVV control described in
 phase/retirement evidence. The present data do not justify prioritizing a
 new QBS arithmetic pipeline to remove this unclassified time.
 
-The successor three-way source and strict checker are now prepared in
-`verification/akv/quantized_kv/threeway_attention_README.md`. Host tests and
-cross compilation are preparation only; H/S/B timing remains unmeasured.
-Do not reuse a two-mode transcript as evidence for this new attribution.
+The complete Q8 three-way run now has independently accepted H/S/B paired
+cycle sums 3226072 / 1648623 / 1161715. H-to-S is 1.956828x and includes
+software scheduling and callback-validation cost changes; S-to-B is 1.419129x
+including native mapping/gathering, not arithmetic hardware alone. Receipt:
+`verification/akv/results/quantkv-hsb-q8-acceptance-20261025.json`.
+Its 16 commands account for 18648 busy cycles; whole-call minus busy remains
+an unclassified residual, not an additive stall breakdown or unit utilization.
+Q4's uninterrupted six-call run hit its 10800-second bound during the final H
+trial. Its five complete records do not establish a full PASS. A reversible
+post-timing verifier bit-copy optimization is prepared in
+`verification/akv/quantized_kv/untimed_verify/`; source/host equivalence is not
+native closure, and the original timeout is retained. Do not reuse two-mode
+or partial transcripts as complete three-way evidence.
 
-Resource sharing remains a distinct unfinished hardware task. First establish
-owner-switch drain and resident-context preservation from pinned evidence.
-Then extract one reader without increasing outstanding capacity; only
-afterward consider shared AKV payload SRAM. Legacy two-byte-aligned writes
-can cross SRAM rows, while the current v2 writer requires 16-byte alignment.
-The v2 Q data still reside in legacy storage, so simply deleting legacy SRAM
-is incorrect. Current resource facts are static capacities, not PPA results.
-Do not alter RTL or helpers sealed by the running performance/tail gates.
-See `qbs_akv_resource_sharing_audit.md` for the current source-level inventory
-and the owner-transition evidence required before extracting shared hardware.
+Resource sharing has been implemented and promoted to canonical RTL as
+`c9ebabaa`: one reader retains two-range/two-burst capacity, and unified storage
+uses Q2 KiB plus KV32 KiB instead of Q6 KiB plus KV32 KiB. The legacy write
+repacker preserves two-byte alignment and cross-row writes; Q is not deleted.
+The paired held-AR/error/drain/context-recovery gate passed independently,
+alongside the earlier isolated latency and runtime gates. Actual canonical
+Makefile/Bender compilation and the original QBS engine plus AKV generic/macro
+suites have passed. The original graph-format rejection is preserved; the
+successor admits only one pinned rendering after proving identical source order,
+macro/include context and unambiguous header lookup. Acceptance references:
+`verification/akv/results/reader-held-ar-paired-acceptance-20261025.json` and
+`verification/akv/results/canonical-resource-build-units-20261025.json`.
+The complete six-call same-ELF canonical runtime is running, not yet accepted.
+Logical capacity removal is not measured area. Do not change its sealed inputs.
+The older `qbs_akv_resource_sharing_audit.md` remains the pre-extraction inventory,
+not a claim that current canonical RTL still instantiates two readers.
 
 Offline grouping of the accepted six-head PANEL4 trial shows QK command busy
 falling from 24055 to 15524 cycles over two calls; all command busy falls from
