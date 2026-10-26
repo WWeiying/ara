@@ -133,3 +133,23 @@ The next private candidate keeps the narrow input live alongside the widened
 result through an empty compiler constraint. Its purpose is distinct register
 allocation, not a new instruction or removal of overlap correctness logic.
 Inspect generated code and repeat functional gates before any RTL timing run.
+
+## Distinct-register candidate gate
+
+`sums_layout.h` passed all three successor gates at VLEN128/256/512/1024:
+133,120 helper checks, 11,520 complete finite-pattern comparisons and 1,120
+real-input comparisons. Source manifests and log hashes were independently
+rechecked before building the timing ELF. Directories are
+`q8k-decode-layout-{helper,full,real}-20261026-01` under `verification/out`.
+
+The bare-metal build `q8k-decode-layout-soc-build-20261026-01` has two loop
+bodies, each with `vslidedown.vx v1,v4,...` followed by
+`vwredsum.vs v2,v1,v3`. The destination no longer aliases the e8 source.
+This was checked separately from the Linux production-TU disassembly.
+`q8k-decode-layout-soc-golden-20261026-01` supplies the paired QEMU digest/CSR
+reference; the VCS worker uses the same harness and the unchanged canonical
+SoC image, with a new output directory and service named
+`q8k-decode-layout-soc-vcs-20261026-01`.
+
+This is still a private candidate. Functional equivalence and better register
+allocation do not establish a cycle reduction until the VCS result is checked.
