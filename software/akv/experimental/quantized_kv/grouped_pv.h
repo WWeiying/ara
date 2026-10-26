@@ -29,6 +29,16 @@ static inline int akv_grouped_pv_overlap(const void *a, size_t an,
          (uintptr_t)b < (uintptr_t)a + an;
 }
 
+static inline int akv_grouped_pv_stride_exceeds(size_t stride, size_t factor,
+                                               size_t limit) {
+#if defined(__GNUC__) || defined(__clang__)
+  size_t product;
+  return __builtin_mul_overflow(stride, factor, &product) || product > limit;
+#else
+  return factor && stride > limit / factor;
+#endif
+}
+
 /* Stride is in floats. Read-only inputs may overlap one another, but not the
  * output span (including padding). Allocation capacities are caller obligations.
  * Coefficients are precomputed; mask records the original rescale branch. */
@@ -37,7 +47,8 @@ static inline int akv_grouped_pv_update(unsigned heads, unsigned dim,
     const float *vs, unsigned rescale_mask) {
   if (!heads || heads > 8 || dim < 32 || dim > 256 || stride < dim ||
       (rescale_mask >> heads) ||
-      (heads > 1 && stride > (SIZE_MAX / sizeof(float) - dim) / (heads - 1)))
+      akv_grouped_pv_stride_exceeds(stride, heads - 1,
+                                   SIZE_MAX / sizeof(float) - dim))
     return AKV_GROUPED_PV_BAD_ARGUMENT;
   const size_t yn = ((heads - 1) * stride + dim) * sizeof(float);
   const size_t vn = dim * sizeof(float), cn = heads * sizeof(float);
