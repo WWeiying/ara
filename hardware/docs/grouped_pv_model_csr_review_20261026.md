@@ -30,10 +30,26 @@ quantize_row_q8_K:
 
 There is no VXRM restoration before return. VCSR=5 means VXRM=2 and VXSAT=1;
 setting VXRM=1 while preserving the sticky saturation bit yields VCSR=3.
-The zero-block branch bypasses this instruction. A minimal nonzero/zero-block
-diagnostic is being prepared to discriminate this cause without another full
-model run. Static evidence explains the observed value but is not yet that
-diagnostic's measured result.
+The zero-block branch bypasses this instruction. The minimal diagnostic now
+confirms this behavior using the same production archives:
+
+| Input | Entry VCSR | Return VCSR | FCSR | Output/input/canaries |
+| --- | ---: | ---: | --- | --- |
+| Zero block | 5 | 5 | 9 to 9 | PASS |
+| Nonzero block | 5 | 3 | 9 to 9 | PASS |
+| Zero block | 4 | 4 | 9 to 9 | PASS |
+| Nonzero block | 4 | 2 | 9 to 9 | PASS |
+
+The nonzero values are exact integers with scale one. Their expected bytes and
+block sums are independently constructed, not derived from another call to
+the tested quantizer. Source, binary disassembly and measurements agree.
+Raw records and all 182 input hashes were independently rechecked.
+
+Diagnostic: `verification/qbs/combined_zvfh_m4/vcsr_diagnostic/out-01`.
+Raw log SHA256:
+`4639b1971eb1f98986d81721b61e5da004f0f4c72cb3b678ec55b6df487e422d`.
+ELF SHA256:
+`df5e0b3a9da037ff9a079ec953670555e3b5dcbc3a819bf7b1b857bb20a9596a`.
 
 ## Contract Boundary
 
@@ -46,10 +62,10 @@ Do not add save/restore instructions throughout llama.cpp to satisfy this
 unsupported model-wide assumption. Do not relax the local QBS/AKV helper
 tests: they promise stronger behavior and must continue to prove it.
 
-After the small diagnostic confirms the cause, prepare a successor model
-test, retaining the original failure. The successor should record actual CSR
+The successor model test is `verification/akv/quantized_kv/grouped_pv/model_v2`;
+the original failure is retained. The successor records actual CSR
 values and require exact paired baseline/candidate values, retained rounding
 mode and sticky floating-point flags, complete logits and token equality,
-and identical projection work. It must not demand VCSR equal its entry value
+and identical projection work. It does not demand VCSR equal its entry value
 across the whole model call. Any paired CSR mismatch remains a failure to
 investigate, not a reason to normalize results or ignore flags.
