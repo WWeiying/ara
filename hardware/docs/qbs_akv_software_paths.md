@@ -1,9 +1,10 @@
 # QBS / AKV Software Paths and Switches
 
 Source audit: 2026-10-26. This documents current selection, not a new performance
-acceptance or deployment recommendation. No builds, simulations, or external
-source edits were performed for this audit. Paired field-copy RTL performance is
-a separate pending acceptance; earlier H/S/B results do not measure that change.
+acceptance or deployment recommendation. The source audit did not edit external
+sources. A separate fresh paired field-copy VCS measurement is now complete;
+see [the measured scope and results](../../verification/akv/quantized_kv/field_copy_pair/RESULTS.md).
+Earlier H/S/B results do not measure that change.
 
 ## Source Names
 
@@ -35,7 +36,7 @@ but M4 preparation and the shared native AKV opt-ins require exactly `1`.
 | Paired Decode QK/PV | `AKV_PAIR_HEADS` OFF; exact `1`, VLEN1024, real caps, 2..8 heads, D64/96/128; excludes D128/six heads to retain its specialized path. | Generic leaves otherwise; odd final head uses generic. Selection once before FULL, no cross-call pair state. | `software/akv/experimental/paired_heads/native_selection.h:11`, `dispatch.h`; [KV128](../../verification/akv/results/paired-heads-threeway-20261024.json), [KV256](../../verification/akv/results/paired-heads-kv256-threeway-20261024.json). |
 | Paired Prefill F32 PV | `AKV_PREFILL_PAIR_PV` OFF; exact `1`, VLEN1024 and row/tail/dimension caps; same head/dimension bounds and six-head D128 exclusion. | Generic F32 PV, including odd remainder. This is not Decode's padded F16 accumulator representation. | `software/akv/experimental/paired_heads/f32_pv/runtime.h:11-52`, N:690; [primitive](../../verification/akv/results/paired-f32-pv-rtl-20261024.json), [whole shared Prefill slice](../../verification/akv/results/canonical-prefill-runtime-20261024.json). |
 | Quantized KV native QBS DIRECT | CMake `GGML_RISCV_AKV_QUANT_KV=OFF`, nested under AKV and requiring QBS. Runtime needs `GGML_RISCV_AKV_QUANT_KV=1`, `GGML_RISCV_AKV_QUANT_KV_NORMAL_MEMORY=1`, and native QBS enabled. | One worker, Decode, K Q4_0/Q8_0, V Q8_0, finite guarded domain, VLEN1024/vstart0/RNE, prefix mask and checked non-overlapping strides. Rejection before execution returns ordinary GGML; execution failure after admission aborts. Not an AKV quantized-payload engine. | A:691-700; K:50-103; `software/akv/experimental/quantized_kv/selection_strided.h:15`; [graphs](../../verification/akv/results/quantized-kv-ggml-strided-20261024.json), [short actual model](../../verification/akv/results/quantized-kv-model-strided-20261024.json), [Q4 H/S/B](../../verification/akv/results/canonical-q4-hsb-acceptance-20261025.json), [Q8 H/S/B](../../verification/akv/results/quantkv-hsb-q8-acceptance-20261025.json). |
-| Fixed-size field-copy implementation | `AKV_QUANT_FIELD_COPY` uses `__builtin_memcpy` for GNU/Clang, ordinary `memcpy` otherwise. No new environment/CMake performance switch. | Object-representation copy, no pointer-punning/alignment strengthening; bulk gather/copy remains separate. Source integration is present; paired RTL benefit of this new implementation is not established by old ELF results. | `software/akv/experimental/quantized_kv/field_copy.h:4-13`; consumers `selection.h`, `selection_strided.h`, `ggml_decode.h`, `online.h`, `q8_0_value.h`. |
+| Fixed-size field-copy implementation | `AKV_QUANT_FIELD_COPY` uses `__builtin_memcpy` for GNU/Clang, ordinary `memcpy` otherwise. No new environment/CMake performance switch. | Object-representation copy, no pointer-punning/alignment strengthening; bulk gather/copy remains separate. Fresh Q4_0 K / Q8_0 V full-call pairing measured 16.35% fewer cycles for the native path, including compiled layout effects. This is not full-model deployment acceptance. | `software/akv/experimental/quantized_kv/field_copy.h:4-13`; consumers `selection.h`, `selection_strided.h`, `ggml_decode.h`, `online.h`, `q8_0_value.h`; [paired evidence](../../verification/akv/quantized_kv/field_copy_pair/RESULTS.md). |
 
 ## Actual Backend Connections
 
@@ -79,7 +80,8 @@ but M4 preparation and the shared native AKV opt-ins require exactly `1`.
    include/source paths and object/library/ELF identities. In particular, old
    static libraries and frozen primitive/runtime objects **do not acquire the
    `083d` field-copy source change** merely by changing a source checkout or env.
-   No rebuild or linked-binary identity was established by this document.
+   The field-copy experiment rebuilt its affected benchmark objects and linked
+   two fresh ELFs; it did not rebuild an external llama.cpp model executable.
 4. For ordinary fallback, explicitly disable the appropriate runtime backend and
    its emulation switch; also disable `GGML_RISCV_AKV_QUANT_KV` independently.
    Setting pair/PANEL4 opt-ins to zero retains generic AKV, not ordinary RVV.
@@ -95,11 +97,13 @@ but M4 preparation and the shared native AKV opt-ins require exactly `1`.
 
 ## Remaining Scope and Drift
 
-The immediate outstanding measurement is the **paired field-copy RTL experiment**
-with its own rebuilt binary and complete-call checks. Existing H/S/B receipts
-separate shared scheduling from incremental QBS benefit, but neither isolates this
-new field-copy change or implies hardware-only/model speedup. The new source keeps
-the selector and numerical contract; it does not create a new supported shape.
+The **paired field-copy RTL experiment** completed with two freshly rebuilt
+binaries and complete-call checks. H/S/B cycle sums changed from
+3171119/1755032/1137762 to 3009554/1726145/951711, respectively (two calls per
+mode). This measures the compiled software change, including natural layout
+effects, on the same hardware. It is neither hardware-only nor model speedup.
+The new source keeps the selector and numerical contract; it does not create a
+new supported shape or justify promoting opt-in backends to defaults.
 
 Activation-context traffic savings are not a blanket latency gain: the real
 full-output projection was 256975 DIRECT versus 257184 context cycles. Wide-M

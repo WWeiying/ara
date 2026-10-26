@@ -1,0 +1,112 @@
+{
+  "schema": "field_copy_pair_parent_acceptance_v1",
+  "state": "FRESH_COMPLETE_ATTENTION_PAIR_ACCEPTED",
+  "date": "2026-10-26",
+  "performance_acceptance": true,
+  "acceptance_scope": "Compiled fixed-size field-copy optimization, including natural code/data-layout effects, on one captured complete Attention group",
+  "whole_model": false,
+  "hardware_only": false,
+  "deployment_approved": false,
+  "rtl_changed": false,
+  "external_llama_checkout_changed": false,
+  "historical_timing_used": false,
+  "new_default_or_supported_shape": false,
+  "baseline_revision": "839a03622130dba7299155f1ccd55c004a6b676a",
+  "candidate_revision": "083d4ed84f47905a675566cc4c459d2e70549ac0",
+  "baseline_elf_sha256": "547b001f5a0a322908474ad2943f37e4f72cc1ba6ad0e8d1af549efa20fca4b7",
+  "candidate_elf_sha256": "a46f0360b13e85da422b13a298b794d52cc047c714ba5c395f6cab19efe73160",
+  "simv_sha256": "71bb0f7a22208cf9eb02a40298f8b96404eef6724050a86ab685a92958edb565",
+  "evidence_paths_relative_to_worktree": {
+    "verification/akv/quantized_kv/field_copy_pair/parent-review-20261026.json": "55e668396c80bde4c20a05d89e61c4517e370421fccc2f0b527a4f113aeed446",
+    "verification/akv/quantized_kv/field_copy_pair/prepare/out/build-gnu-06/build.json": "ddbe521cdcd0157cbed04096a8825d4a9569233905777e6de6e58ec186c95cfc",
+    "verification/out/field-copy-baseline-20261026-01/result.json": "8f87b54312b61cd728ee2d8a5a18d5c791f79ce2929ba2ede0c795795ad69fd9",
+    "verification/out/field-copy-candidate-20261026-01/result.json": "78c03a9d1a5cefd9115a17967b25e098ccf6b36601111d1df47b71458530dd67",
+    "verification/out/field-copy-pair-collection-20261026-01/result.json": "21a9f4bd0d6d1f166f2bf8bf55b216ec47c49e1bd8b611007002fa680a091cb5",
+    "verification/out/field-copy-pair-collection-20261026-01/input-pins.json": "a6b13172b27bc37c9257c25ef760ce899382f60daaef28817f9194f491e41684"
+  },
+  "parent_review": {
+    "independent_second_review": {
+      "agent_id": "01a168bb-3cae-76d1-9d71-54bdc2ce819f",
+      "result": "ACCEPTED_NO_BLOCKER",
+      "scope": "Independent raw six-call and four required UVM checks, collector agreement, software-path and results-document review"
+    },
+    "original_checker_source_reviewed": true,
+    "cross_binary_comparator_reviewed": true,
+    "collector_and_protocol_identity_gates_reviewed": true,
+    "timer_and_guard_source_reviewed": true,
+    "terminal_sides_and_raw_protocol_results_reviewed": true,
+    "scope_and_cycle_arithmetic_reviewed": true,
+    "original_checker_sha256": "ac2fecc27be77220a442bfdfb2292c37a9fe585148d4fe79da9aae09ff34dd05",
+    "comparator_sha256": "2a1545fd6f419912886a787f88af990f07ee14ce34272b0ff139cf2f5ff6b0be",
+    "collector_sha256": "c416ac5e4c4510c7d0b438ec2afee381cb0efad2077aacaf266d4e6261e1835f"
+  },
+  "workload": {
+    "key_type": "Q4_0",
+    "value_type": "Q8_0",
+    "query_heads": 6,
+    "selected_kv_groups": 1,
+    "head_dim": 128,
+    "visible_tokens": 128,
+    "original_strided_backing_preserved": true,
+    "trial_order": ["H", "S", "B", "B", "S", "H"],
+    "output_words_per_call": 768,
+    "output_words_per_binary": 4608,
+    "cross_binary_word_pairs_checked": 4608,
+    "native_commands_per_binary": 16,
+    "simulations_per_side": 1,
+    "timeout_seconds": 10800
+  },
+  "checks": {
+    "original_gold_tolerance": "abs_error <= 0.004 + 0.002 * abs(gold)",
+    "original_gold_all_outputs_pass": true,
+    "mirrored_outputs_exact": true,
+    "head_major_and_shared_rvv_exact": true,
+    "cross_binary_outputs_exact": true,
+    "cross_binary_csrs_and_work_exact": true,
+    "guards_and_output_padding_pass": true,
+    "fcsr_all_calls": 3,
+    "vcsr_all_calls": 5,
+    "native_command_records_checked": true,
+    "independent_events_backend_axi_read_axi_write_pass": true,
+    "protocol_issues": [],
+    "inputs_and_image_pre_post_match": true,
+    "offline_collection_pass": true
+  },
+  "paired_modes": {
+    "H": {
+      "description": "Head-major RVV",
+      "baseline_cycles": [1587996, 1583123],
+      "candidate_cycles": [1505915, 1503639],
+      "baseline_sum": 3171119,
+      "candidate_sum": 3009554,
+      "cycle_reduction_percent": 5.094889217339368,
+      "speedup": 1.0536840342456057
+    },
+    "S": {
+      "description": "Shared-schedule RVV",
+      "baseline_cycles": [876887, 878145],
+      "candidate_cycles": [862636, 863509],
+      "baseline_sum": 1755032,
+      "candidate_sum": 1726145,
+      "cycle_reduction_percent": 1.6459528943062007,
+      "speedup": 1.016734978811166
+    },
+    "B": {
+      "description": "Shared quantized Attention with native QBS DIRECT QK",
+      "baseline_cycles": [567130, 570632],
+      "candidate_cycles": [476050, 475661],
+      "baseline_sum": 1137762,
+      "candidate_sum": 951711,
+      "cycle_reduction_percent": 16.35236543319253,
+      "speedup": 1.1954910681919195,
+      "baseline_qbs_busy_cycles": [8805, 8804],
+      "candidate_qbs_busy_cycles": [8804, 8805]
+    }
+  },
+  "policy": {
+    "native_quant_kv_stays_opt_in": true,
+    "ordinary_rvv_fallback_preserved": true,
+    "negative_refill_overlap_and_qbacc_stay_off": true,
+    "external_llama_binary_must_be_rebuilt_to_take_inline_change": true
+  }
+}
