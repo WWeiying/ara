@@ -9,10 +9,13 @@ import tempfile
 import unittest
 
 HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[3]
+SDK_HEADER = Path("software/akv/experimental/quantized_kv/grouped_pv.h")
 CROSS = Path(os.environ.get("GROUPED_PV_CC",
     "/home/wangwy/openproject/ara/install/riscv-gcc/bin/riscv64-unknown-elf-gcc"))
 FLAGS = ["-std=c11", "-Wall", "-Wextra", "-Werror", "-fno-fast-math",
-         "-ffp-contract=off", "-frounding-math", "-fno-tree-vectorize"]
+         "-ffp-contract=off", "-frounding-math", "-fno-tree-vectorize",
+         "-I" + str(ROOT)]
 
 
 def command(args):
@@ -43,13 +46,16 @@ class KernelTests(unittest.TestCase):
     def test_inactive_scale_mutation_rejected(self):
         with tempfile.TemporaryDirectory(prefix="grouped-pv-mutation-") as tmp:
             tmp = Path(tmp)
-            src = (HERE / "kernel.h").read_text()
+            src = (ROOT / SDK_HEADER).read_text()
             old = "if (rescale_mask & (1u << h)) {"
             self.assertEqual(src.count(old), 1)
-            (tmp / "kernel.h").write_text(src.replace(old, "if (1) {"))
+            mutant = tmp / SDK_HEADER
+            mutant.parent.mkdir(parents=True)
+            mutant.write_text(src.replace(old, "if (1) {"))
+            shutil.copyfile(HERE / "kernel.h", tmp / "kernel.h")
             shutil.copyfile(HERE / "test_kernel.c", tmp / "test_kernel.c")
             exe = tmp / "test"
-            command([os.environ.get("CC", "/usr/bin/gcc"), *FLAGS, "-O3",
+            command([os.environ.get("CC", "/usr/bin/gcc"), "-I" + str(tmp), *FLAGS, "-O3",
                      tmp / "test_kernel.c", "-lm", "-o", exe])
             p = subprocess.run([exe], text=True, capture_output=True, timeout=120)
             self.assertNotEqual(p.returncode, 0)

@@ -6,6 +6,9 @@
 #include <stdint.h>
 #include <string.h>
 #include "field_copy.h"
+#if !defined(__FAST_MATH__)
+#include "grouped_pv.h"
+#endif
 
 /* Software schedule for quantized KV, not new AKV quantized-payload hardware.
  * Admission must establish a finite, zero-mask visible prefix before entry.
@@ -136,6 +139,76 @@ static inline int akv_quant_online_shared(const akv_quant_online_plan_t *p,
   }
   akv_quant_online_finish(p, output, stride, w);
   return AKV_QUANT_OK;
+}
+
+/* Explicit arithmetic opt-in, not a replacement for arbitrary callbacks.
+ * Intermediate scale/MAD callbacks are bypassed; final scale is unchanged.
+ * Caller supplies the production arithmetic bindings, RNE, masked FP traps,
+ * disjoint live buffers and no observation of intermediate sticky flags.
+ * Fast-math builds reject only this opt-in, before touching caller storage.
+ * After initialization/callbacks, any error is terminal, not fallback: output
+ * may be partial (including a leaf rejection if a callback corrupts the plan). */
+static inline int akv_quant_online_shared_grouped(const akv_quant_online_plan_t *p,
+    float *output, size_t stride, akv_quant_online_workspace_t *w) {
+#if defined(__FAST_MATH__)
+  (void)p;
+  (void)output;
+  (void)stride;
+  (void)w;
+  return AKV_QUANT_BAD_ARGUMENT;
+#else
+  if (!akv_grouped_pv_span(p, sizeof(*p)) ||
+      (uintptr_t)p % __alignof__(akv_quant_online_plan_t) ||
+      !akv_grouped_pv_span(w, sizeof(*w)) ||
+      (uintptr_t)w % __alignof__(akv_quant_online_workspace_t) ||
+      !akv_quant_online_valid(p, output, stride, w))
+    return AKV_QUANT_BAD_ARGUMENT;
+  const size_t bytes = ((p->heads - 1) * stride + p->dim) * sizeof(float);
+  if (!akv_grouped_pv_span(output, bytes) ||
+      akv_grouped_pv_overlap(output, bytes, w, sizeof(*w)) ||
+      akv_grouped_pv_overlap(output, bytes, p, sizeof(*p)) ||
+      akv_grouped_pv_overlap(p, sizeof(*p), w, sizeof(*w)))
+    return AKV_QUANT_BAD_ARGUMENT;
+
+  akv_quant_online_init(p, output, stride, w);
+  for (unsigned first = 0; first < p->tokens; first += AKV_QUANT_TILE) {
+    const unsigned remaining = p->tokens - first;
+    const unsigned tokens = remaining < AKV_QUANT_TILE ? remaining : AKV_QUANT_TILE;
+    for (unsigned head = 0; head < p->heads;) {
+      const unsigned left = p->heads - head;
+      const unsigned rows = left >= 4 ? 4 : left >= 2 ? 2 : 1;
+      if (p->qk(p->context, head, rows, first, tokens, &w->score[head][0], AKV_QUANT_TILE))
+        return AKV_QUANT_QK_FAILED;
+      head += rows;
+    }
+    for (unsigned token = 0; token < tokens; ++token) {
+      if (p->value(p->context, first + token, w->value, p->dim)) return AKV_QUANT_VALUE_FAILED;
+      float ms[AKV_QUANT_MAX_HEADS], vs[AKV_QUANT_MAX_HEADS];
+      unsigned rescale_mask = 0;
+      for (unsigned head = 0; head < p->heads; ++head) {
+        float s = w->score[head][token] * p->score_scale;
+        s += 0.0f;
+        const float old = w->maximum[head];
+        ms[head] = 1.0f;
+        vs[head] = 1.0f;
+        if (s > w->maximum[head]) {
+          w->maximum[head] = s;
+          ms[head] = expf(old - s);
+          rescale_mask |= 1u << head;
+        } else {
+          vs[head] = expf(s - w->maximum[head]);
+        }
+      }
+      if (akv_grouped_pv_update(p->heads, p->dim, stride, output, w->value,
+                               ms, vs, rescale_mask) != AKV_GROUPED_PV_OK)
+        return AKV_QUANT_BAD_ARGUMENT;
+      for (unsigned head = 0; head < p->heads; ++head)
+        w->sum[head] = w->sum[head] * ms[head] + vs[head];
+    }
+  }
+  akv_quant_online_finish(p, output, stride, w);
+  return AKV_QUANT_OK;
+#endif
 }
 
 #endif

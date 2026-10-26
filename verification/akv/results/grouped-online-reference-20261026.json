@@ -1,0 +1,49 @@
+{
+  "state": "PASS",
+  "scope": "Whole online schedule with deterministic score/value fixtures, not real-model GGML integration or RTL timing",
+  "rtl_performance": false,
+  "host": {
+    "test": "verification/akv/quantized_kv/grouped_pv/test_online_grouped.py",
+    "configurations": ["O0 contract=off", "O3 contract=off", "O3 contract=fast"],
+    "cases_each": 2800,
+    "injected_failures_each": 12,
+    "preflight_rejections_each": 6
+  },
+  "rvv": [
+    {
+      "output": "verification/out/grouped-online-rvv1024-20261026-01",
+      "vlen": 1024,
+      "cases": 2800,
+      "injected_failures": 12,
+      "preflight_rejections": 6,
+      "elf_sha256": "4f6ef9a26f98669c9427fbdd659be04e1b4c7b35329b44f5d05b76bfea4701b5",
+      "pins_sha256": "cd2ee28a2c686a6d4eb3d1c4f47edbb049717aeb35ddf0cb35a54e0d6ff0f8aa",
+      "log_sha256": "4335dc1ed6c59f8ba9a56c1ccea4661f8592b7b5586b7d03aaea5a6369e624d3"
+    },
+    {
+      "output": "verification/out/grouped-online-rvv256-20261026-01",
+      "vlen": 256,
+      "cases": 2800,
+      "injected_failures": 12,
+      "preflight_rejections": 6,
+      "elf_sha256": "4f6ef9a26f98669c9427fbdd659be04e1b4c7b35329b44f5d05b76bfea4701b5",
+      "pins_sha256": "9a82ac74087109bbd7108a856ddf9b1c8ac265b2945fb0dc6d52eb84d4d3e6ee",
+      "log_sha256": "e6f1a0cfffba095deed66b90110b0605d4a9f54e0134437464868d3e82dd2851"
+    }
+  ],
+  "checks": [
+    "Full strided output bits including padding guards",
+    "Per-head maximum and sum bits",
+    "Floating-point exception flags with and without preexisting DIVBYZERO",
+    "QK/value callback order and work counts",
+    "No intermediate grouped scale/MAD callbacks; unchanged final normalization",
+    "QK/value failure returns and exact partial output",
+    "Independent double-precision stable-softmax oracle",
+    "Preflight rejection without output/workspace mutation or signaling-NaN exception"
+  ],
+  "remaining": [
+    "Actual GGML binding and admission tests with explicit grouped selection",
+    "Real captured workload VCS full-call cycles",
+    "Actual model run with grouped path enabled"
+  ]
+}

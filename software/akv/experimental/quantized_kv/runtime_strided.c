@@ -68,11 +68,17 @@ size_t akv_quant_strided_workspace_bytes(void) {
   return sizeof(akv_quant_strided_workspace_t);
 }
 
-int akv_quant_strided_execute(const akv_quant_selection_input_t *input,
+static int akv_quant_strided_execute_impl(const akv_quant_selection_input_t *input,
     const akv_quant_native_bindings_t *bindings, void *workspace,
-    size_t workspace_bytes, akv_quant_strided_report_t *report) {
+    size_t workspace_bytes, akv_quant_strided_report_t *report, int grouped_pv) {
   if (!report) return AKV_QUANT_NATIVE_FALLBACK;
   memset(report, 0, sizeof(*report));
+#if defined(__FAST_MATH__)
+  if (grouped_pv) {
+    report->native.selection_reason = AKV_QUANT_SELECT_FEATURE;
+    return AKV_QUANT_NATIVE_FALLBACK;
+  }
+#endif
   if (!bindings || !bindings->quantize || !bindings->decode || !bindings->scale ||
       !bindings->mad || !bindings->execute) {
     report->native.selection_reason = AKV_QUANT_SELECT_FEATURE;
@@ -114,10 +120,25 @@ int akv_quant_strided_execute(const akv_quant_selection_input_t *input,
           (first_head + head) * input->query.head_stride),
           w->core.query + head * selection.query_quant_row_bytes, selection.dim);
     float *output = (float *)((unsigned char *)input->output.data + first_head * input->output.head_stride);
-    if (akv_quant_online_shared(&plan, output, input->output.head_stride / sizeof(float),
-                                &w->core.online) != AKV_QUANT_OK)
+    const size_t stride = input->output.head_stride / sizeof(float);
+    const int status = grouped_pv
+        ? akv_quant_online_shared_grouped(&plan, output, stride, &w->core.online)
+        : akv_quant_online_shared(&plan, output, stride, &w->core.online);
+    if (status != AKV_QUANT_OK)
       return AKV_QUANT_NATIVE_EXECUTION_FAILED;
     ++report->native.completed_groups;
   }
   return AKV_QUANT_NATIVE_OK;
+}
+
+int akv_quant_strided_execute(const akv_quant_selection_input_t *input,
+    const akv_quant_native_bindings_t *bindings, void *workspace,
+    size_t workspace_bytes, akv_quant_strided_report_t *report) {
+  return akv_quant_strided_execute_impl(input, bindings, workspace, workspace_bytes, report, 0);
+}
+
+int akv_quant_strided_execute_grouped_pv(const akv_quant_selection_input_t *input,
+    const akv_quant_native_bindings_t *bindings, void *workspace,
+    size_t workspace_bytes, akv_quant_strided_report_t *report) {
+  return akv_quant_strided_execute_impl(input, bindings, workspace, workspace_bytes, report, 1);
 }

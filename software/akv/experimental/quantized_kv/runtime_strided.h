@@ -19,6 +19,16 @@ int akv_quant_strided_execute(const akv_quant_selection_input_t *input,
     const akv_quant_native_bindings_t *bindings, void *workspace,
     size_t workspace_bytes, akv_quant_strided_report_t *report);
 
+/* Explicit opt-in for production F32 scale/fused-MAD arithmetic only.
+ * Skips intermediate scale/MAD callbacks, retaining final normalization scale.
+ * Same workspace/report ABI, admission and post-start failure contract.
+ * Fast-math runtime builds reject this opt-in with FALLBACK/FEATURE before
+ * quantization, commands or output writes. Post-start errors never fallback.
+ * The original entry above keeps its callback schedule and remains default. */
+int akv_quant_strided_execute_grouped_pv(const akv_quant_selection_input_t *input,
+    const akv_quant_native_bindings_t *bindings, void *workspace,
+    size_t workspace_bytes, akv_quant_strided_report_t *report);
+
 #ifdef __cplusplus
 }
 #endif

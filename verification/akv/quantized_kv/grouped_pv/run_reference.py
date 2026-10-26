@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and run the explicit RVV leaf against its scalar oracle in QEMU.
+"""Run the RVV leaf or complete online schedule against a scalar oracle.
 
 Functional only. Source inputs must be frozen before invocation. No SDK edits,
 VCS, hardware timing, model execution, or production promotion.
@@ -33,6 +33,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--vlen', type=int, choices=(256, 1024), default=1024)
+    parser.add_argument('--suite', choices=('leaf', 'online'), default='leaf')
     args = parser.parse_args()
     out = args.output.absolute()
     if out.exists() or out != out.resolve() or not out.is_relative_to(ROOT/'verification/out'):
@@ -43,12 +44,19 @@ def main():
     cpio = PLATFORM/'sdk/buildroot/output/build/linux-6.19.6/usr/gen_init_cpio'
     kernel, firmware = PLATFORM/'images/Image', PLATFORM/'images/fw_dynamic.bin'
     init = HERE.parent/'ggml_live/init.c'
-    paths = [Path(__file__).resolve(), HERE/'kernel.h', HERE/'test_kernel.c',
-             cc.resolve(strict=True), qemu, cpio, kernel, firmware, init]
+    source = HERE/('test_kernel.c' if args.suite == 'leaf' else 'test_online_grouped.c')
+    paths = [Path(__file__).resolve(), source, cc.resolve(strict=True),
+             qemu, cpio, kernel, firmware, init]
+    if args.suite == 'leaf':
+        paths.append(HERE/'kernel.h')
+        paths.append(ROOT/'software/akv/experimental/quantized_kv/grouped_pv.h')
+    else:
+        sdk = ROOT/'software/akv/experimental/quantized_kv'
+        paths.extend(sdk/name for name in ('online.h', 'field_copy.h', 'grouped_pv.h'))
     pins = {str(p): sha(p) for p in paths}
     save(out/'input-pins.json', pins)
     environment = dict(HOME='/home/wangwy', PATH='/usr/bin:/bin', LANG='C.UTF-8')
-    state = dict(state='PREPARING', pid=os.getpid(), child_pid=None, vlen=args.vlen,
+    state = dict(state='PREPARING', pid=os.getpid(), child_pid=None, vlen=args.vlen, suite=args.suite,
                  functional_only=True, rtl_performance=False)
 
     def unchanged():
@@ -85,9 +93,10 @@ def main():
     started = time.monotonic()
     try:
         run([cc, '-O2', '-static', '-march=rv64gcv', '-mabi=lp64d',
-             '-fno-tree-vectorize', '-fno-fast-math', '-ffp-contract=off',
+             '-fno-tree-vectorize', '-fno-fast-math',
+             '-ffp-contract='+('fast' if args.suite == 'online' else 'off'),
              '-frounding-math', '-Wall', '-Wextra', '-Werror',
-             HERE/'test_kernel.c', '-lm', '-o', out/'test'], 'build', 120)
+             '-I'+str(ROOT), source, '-lm', '-o', out/'test'], 'build', 120)
         run([cc, '-O2', '-static', '-march=rv64gc', '-mabi=lp64d',
              init, '-o', out/'init'], 'init-build', 120)
         listing = out/'initramfs.list'
@@ -106,15 +115,19 @@ def main():
              '-initrd', out/'initramfs.cpio', '-append',
              'console=ttyS0 rdinit=/init'], 'qemu', 600)
         log = (out/'qemu.log').read_text().replace('\r\n', '\n')
-        markers = [line for line in log.splitlines() if line.startswith('GROUPED_PV_PASS')]
-        expected = 'GROUPED_PV_PASS backend=RVV cases=13824 invalid=17 csr=fcsr_vcsr rounding=RNE'
+        prefix = 'GROUPED_PV_PASS' if args.suite == 'leaf' else 'GROUPED_ONLINE_PASS'
+        markers = [line for line in log.splitlines() if line.startswith(prefix)]
+        expected = ('GROUPED_PV_PASS backend=RVV cases=13824 invalid=17 csr=fcsr_vcsr rounding=RNE'
+                    if args.suite == 'leaf' else
+                    'GROUPED_ONLINE_PASS cases=2800 injected_errors=12 exact=1 '
+                    'flags=1 callbacks=1 guards=1 double_oracle=1')
         if (markers != [expected] or
                 log.splitlines().count('GUEST_TEST_EXIT=0') != 1 or
                 re.search(r'^FAIL\b|Kernel panic|GUEST_TEST_EXIT=[1-9]', log, re.M)):
             raise ValueError('Missing successful explicit-RVV test/guest termination')
         unchanged()
         result = dict(state='PASS', functional_only=True, rtl_performance=False,
-                      vlen=args.vlen, marker=markers[0], input_pins_sha256=sha(out/'input-pins.json'),
+                      vlen=args.vlen, suite=args.suite, marker=markers[0], input_pins_sha256=sha(out/'input-pins.json'),
                       log_sha256=sha(out/'qemu.log'), elf_sha256=sha(out/'test'),
                       source_pre_post_match=True, seconds=time.monotonic()-started)
         save(out/'result.json', result)

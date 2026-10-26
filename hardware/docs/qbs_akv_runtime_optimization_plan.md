@@ -86,3 +86,29 @@ tests passed, and actual RVV execution under QEMU passed 13824 numerical and
 `verification/akv/results/grouped-pv-reference-20261026.json`. Full online
 integration and paired RTL timing remain pending. No RTL or production dispatch
 changes are justified by the leaf prototype alone.
+
+## Grouped-PV integration in progress
+
+The shared SDK now has additive `*_grouped_pv` runtime/GGML entry points and
+`akv_quant_online_shared_grouped`. The old entry points retain the old callback
+schedule. The new entry groups only the PV arithmetic: each head still consumes
+tokens in order, a maximum update uses a separate rounded multiply before FMA,
+and final normalization still uses the original scale binding. It shares the
+existing format/layout/RNE/memory admission and workspace; no RTL change or new
+cross-call state is introduced. Fast-math builds reject the new entry before
+execution rather than weakening its numerical contract.
+
+The private llama.cpp adapter has an explicit default-OFF
+`GGML_RISCV_AKV_GROUPED_PV` switch, guarded by the actual RVV/SIMD compile macros.
+A separate trace line reports the requested grouped path and completed groups.
+This adapter change is pending real GGML and model validation; merely building
+the SDK does not establish that the new path was selected.
+
+Whole-schedule checks now pass at host O0/O3 and actual QEMU RVV VLEN256/1024:
+2800 inputs per configuration, 12 injected callback failures, six preflight
+rejections, exact output/maximum/sum/flags, callback work/order, padding guards,
+and an independent double-precision softmax oracle. See
+`verification/akv/results/grouped-online-reference-20261026.json`. These are
+deterministic schedule fixtures, not a substitute for real captured data or
+VCS timing. Full-call paired preparation and actual GGML tests are the next
+gates; performance benefit and default promotion remain unproven.

@@ -11,9 +11,10 @@ typedef struct {
 
 /* Preserve the original mapper and backend-checked extents. Only K execution
  * changes: a strided view requires a bounded panel, never a strided descriptor. */
-static inline int akv_quant_ggml_strided_execute(const struct ggml_tensor *dst,
+static inline int akv_quant_ggml_strided_execute_impl(const struct ggml_tensor *dst,
     const akv_quant_ggml_context_t *context, const akv_quant_native_bindings_t *bindings,
-    void *workspace, size_t workspace_bytes, akv_quant_ggml_strided_report_t *report) {
+    void *workspace, size_t workspace_bytes, akv_quant_ggml_strided_report_t *report,
+    int grouped_pv) {
   if (!report) return AKV_QUANT_NATIVE_FALLBACK;
   memset(report, 0, sizeof(*report));
   akv_quant_selection_input_t input;
@@ -26,7 +27,23 @@ static inline int akv_quant_ggml_strided_execute(const struct ggml_tensor *dst,
       !akv_quant_ggml_host_extent(dst, &input.output.bytes)) return AKV_QUANT_NATIVE_FALLBACK;
   report->memory_verified = 1;
   report->runtime_called = 1;
-  return akv_quant_strided_execute(&input, bindings, workspace, workspace_bytes, &report->execution);
+  return grouped_pv
+      ? akv_quant_strided_execute_grouped_pv(&input, bindings, workspace, workspace_bytes, &report->execution)
+      : akv_quant_strided_execute(&input, bindings, workspace, workspace_bytes, &report->execution);
+}
+
+static inline int akv_quant_ggml_strided_execute(const struct ggml_tensor *dst,
+    const akv_quant_ggml_context_t *context, const akv_quant_native_bindings_t *bindings,
+    void *workspace, size_t workspace_bytes, akv_quant_ggml_strided_report_t *report) {
+  return akv_quant_ggml_strided_execute_impl(dst, context, bindings, workspace, workspace_bytes, report, 0);
+}
+
+/* Caller explicitly selects production grouped-PV arithmetic. Mapping, memory
+ * verification, admission and failure ownership are identical to the old API. */
+static inline int akv_quant_ggml_strided_execute_grouped_pv(const struct ggml_tensor *dst,
+    const akv_quant_ggml_context_t *context, const akv_quant_native_bindings_t *bindings,
+    void *workspace, size_t workspace_bytes, akv_quant_ggml_strided_report_t *report) {
+  return akv_quant_ggml_strided_execute_impl(dst, context, bindings, workspace, workspace_bytes, report, 1);
 }
 
 #endif
