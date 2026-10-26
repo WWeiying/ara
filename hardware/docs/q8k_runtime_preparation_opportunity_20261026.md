@@ -27,6 +27,18 @@ necessarily the preceding graph node. The runtime trace producer uses a full
 byte comparison after its digest and identity checks; a repeated pointer
 alone would not establish equal data.
 
+The duplicate candidates are concentrated in these consumers (per mode):
+
+| Consumer | Single-row duplicates | Four-row duplicates |
+| --- | ---: | ---: |
+| Attention V projection | 112 | 56 |
+| Attention K projection | 112 | 56 |
+| FFN up projection | 0 | 54 |
+
+Thus single-row FFN gate/up reuse is already represented by the existing
+skip mechanism; the remaining single-row opportunity is Q/V/K preparation.
+This is specific to the recorded graph, not a claim about all model families.
+
 ## Why the current mechanism does not remove every duplicate
 
 `arch/riscv/qbs.cpp::context_identity_for_node` requires one input row and a
@@ -36,6 +48,15 @@ consumers. `repack.cpp` skips preparation only if context acquisition returns
 reuse. Four-row preparation is therefore outside this mechanism. Some
 single-row duplicates can also fall outside its conservative lifetime rules;
 their exact rejection causes need per-node attribution before changing gates.
+
+The log includes `CONTEXT_BARRIER op=ROPE reason=may_modify_activation`
+records around Decode attention consumers. That message is emitted during
+lookahead and has no current-node identity, so its proximity to a quantization
+line does not prove which failed reuse it explains. A future attribution
+probe must include current node, examined next node, source extent, write
+extent and rejection reason, including unsupported matrix consumers. Do not
+remove the ROPE barrier based on these aggregate byte matches: graph arena
+reuse can make a later ROPE destination overlap an earlier input legitimately.
 
 The hardware context and a possible software prepared-buffer cache are
 different mechanisms. Removing the one-row restriction from hardware-context
