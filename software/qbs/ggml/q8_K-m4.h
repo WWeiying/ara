@@ -14,6 +14,7 @@
     (!defined(__FINITE_MATH_ONLY__) || !__FINITE_MATH_ONLY__)
 #define GGML_RISCV_Q8_K_M4_VECTOR 1
 #include <riscv_vector.h>
+#include "q8_K-signed-max.h"
 #else
 #define GGML_RISCV_Q8_K_M4_VECTOR 0
 #endif
@@ -77,11 +78,9 @@ inline bool quantize(const float * GGML_RESTRICT x, void * GGML_RESTRICT vy, int
     for (int64_t b = 0; b < k / QK_K; ++b) {
         float scales[4];
         for (int row = 0; row < 4; ++row) {
-            float amax = 0.0f, maximum = 0.0f;
-            for (int j = 0; j < QK_K; ++j) {
-                const float value = x[row * k + b * QK_K + j];
-                if (amax < fabsf(value)) { amax = fabsf(value); maximum = value; }
-            }
+            float amax;
+            const float maximum = ggml_riscv_q8_K_signed_max(
+                x + row * k + b * QK_K, QK_K, &amax);
             scales[row] = amax ? -127.0f / maximum : 0.0f;
             y[b].d[row] = amax ? 1.0f / scales[row] : 0.0f;
         }

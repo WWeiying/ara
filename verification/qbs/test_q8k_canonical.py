@@ -9,9 +9,9 @@ def without_comments(text):
     return re.sub(r'//[^\n]*|/\*.*?\*/', '', text, flags=re.S)
 
 
-def body(text,name):
+def body(text,name,kind="bool"):
     text=without_comments(text)
-    start=text.index("inline bool "+name+"(")
+    start=text.index("inline "+kind+" "+name+"(")
     start=text.index("{",start)
     depth=1; end=start+1
     while depth:
@@ -28,11 +28,21 @@ def normalized(text):
 class CanonicalTest(unittest.TestCase):
     def test_vector_function_is_the_accepted_candidate(self):
         current=(ROOT/"software/qbs/ggml/q8_K-m4.h").read_text()
-        accepted=(ROOT/"verification/qbs/ggml_q8k_m4_prepare_vla_candidate.h").read_text()
+        accepted=(ROOT/"verification/out/q8k-signed-max-compile-20261026-01/ggml/src/ggml-cpu/arch/riscv/q8_K-m4.h").read_text()
+        accepted=accepted.replace("qbs_signed_max_candidate", "ggml_riscv_q8_K_signed_max")
         actual=body(current,"quantize")
         actual=actual.replace("#if GGML_RISCV_Q8_K_M4_VECTOR","")
         actual=actual.split("#else")[0]
-        self.assertEqual(normalized(actual),normalized(body(accepted,"quantize")))
+        expected=body(accepted,"quantize").replace("#if GGML_RISCV_Q8_K_M4_VECTOR", "").split("#else")[0]
+        self.assertEqual(normalized(actual),normalized(expected))
+
+    def test_signed_max_matches_tested_candidate(self):
+        current=(ROOT/"software/qbs/ggml/q8_K-signed-max.h").read_text()
+        accepted=(ROOT/"verification/qbs/signed_max_candidate/signed_max.h").read_text()
+        self.assertEqual(normalized(body(current,"ggml_riscv_q8_K_signed_max","float")),
+                         normalized(body(accepted,"qbs_signed_max_candidate","float")))
+        installed=Path("/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/q8_K-signed-max.h")
+        self.assertEqual(current,installed.read_text())
 
     def test_preflight_is_the_accepted_vla_algorithm(self):
         current=(ROOT/"software/qbs/ggml/q8_K-m4.h").read_text()
