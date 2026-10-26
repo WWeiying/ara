@@ -62,6 +62,16 @@ The hardware context and a possible software prepared-buffer cache are
 different mechanisms. Removing the one-row restriction from hardware-context
 selection would not safely implement a software cache or increase SRAM capacity.
 
+An executable planner probe (`verification/qbs/q8k_decode_sums/context_probe.c`)
+checks 48 combinations against the current SDK with its VLEN1024 reference
+capabilities: Q4_K/Q6_K, M1/M4, N256/1536/8960, K1536/8960 and unsegmented/
+256-block-segmented storage. All checks passed. The 12 M1/K1536 combinations
+are context-eligible (1,752 bytes); all tested M4 and K8960 combinations exceed
+the 4,672-byte capacity. Thus ordinary planner shape/capacity policy alone
+does not explain missing M1/K1536 Q/V/K reuse. This is a host planner check,
+not a new native capability measurement or proof that graph lookahead admits
+those nodes. Keep those distinctions when choosing the next optimization.
+
 ## Implementation boundary for a future software reuse candidate
 
 1. Prove that the graph input has not changed between consumers; retain the
