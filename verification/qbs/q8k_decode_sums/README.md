@@ -78,3 +78,30 @@ No latency improvement is established yet. Next measure complete preparation
 with the same captured data on VCS, then a complete projection if preparation
 improves. Keep original and candidate in the same ELF, use ABBA order and
 include all conversion and block-sum work inside the measured interval.
+
+## VCS measurement
+
+`soc_test.c` measures the entire original/candidate quantizer in ABBA order for
+captured Decode Q (K1536) and FFN-down (K8960). Eight calls retain output-byte,
+input, guard, block-sum and CSR checks. `run_soc_golden.py` generates independent
+QEMU output digests using the same harness. Its cycle field is a dummy ordinal,
+not a QEMU performance measurement: user-mode cycle CSR reads are disabled in
+this guest. The first golden attempt retained its illegal-instruction failure
+in `q8k-decode-soc-golden-20261026-01`; the corrected golden passed in `-02`.
+
+`build_soc.py` builds the bare-metal ELF; its cycle probe uses fenced `rdcycle`.
+`run_soc.py` checks the eight complete records against the QEMU digests and CSR
+values, then reports per-shape summed ABBA cycles. UVM protocol checks and
+source/image identity checks are also required. `test_check_soc.py` includes
+negative cases for malformed records, incorrect identity, failed results,
+changed outputs and a mismatching golden digest.
+
+Run directories for the pending hardware measurement:
+
+- `verification/out/q8k-decode-soc-build-20261026-01`
+- `verification/out/q8k-decode-soc-vcs-20261026-01`
+
+The latter is owned directly by `q8k-decode-soc-vcs-20261026-01.service`.
+No production kernel or RTL was changed. These measurements exclude matrix
+execution, GGML graph scheduling and model loading; do not label the result as
+complete projection or end-to-end speedup.
