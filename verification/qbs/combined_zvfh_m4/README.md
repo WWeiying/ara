@@ -16,6 +16,30 @@ These tests apply the patch only to a temporary copy and reject production
 source drift. They do not establish compiler compatibility, numerical equality
 or performance. The patch must not be applied to inputs of active workers.
 
+## Isolated Full Translation-Unit Compile
+
+`compile_candidate.py` consumes the actual combined build's compile database,
+copies only `repack.cpp` into a fresh directory, applies the two-guard patch
+there, and compiles with the original production flags and include paths.
+Production sources and original object files are never overwritten. Headers,
+source, patch and command identities are recorded and checked for changes.
+
+```sh
+python3 -B verification/qbs/combined_zvfh_m4/compile_candidate.py \
+  --compile-commands verification/out/grouped-pv-model-build-20261026-01/compile_commands.json \
+  --output verification/out/q8k-combined-zvfh-compile-NEW
+```
+
+The run `verification/out/q8k-combined-zvfh-compile-20261026-02` completed with
+`COMPILE_ONLY_PASS`, effective `-march=rv64gcv_zfh_zvfh`, in 49.41 seconds.
+Its object SHA256 is
+`ea698aa0ea0706bd66ef14a0343a0a98d687f8b6f5dfa7d6d5715eac4be040af`.
+The earlier `-01` attempt stopped before compilation: Git discovered the parent
+repository and skipped the temporary-copy patch. The worker now constrains Git
+discovery to the isolated output; exact candidate-text validation remains
+mandatory. Neither attempt changed live sources. Numerical and performance
+acceptance remain pending.
+
 ## Required Functional Gate
 
 Rebuild the actual combined GGML translation unit with the effective production
