@@ -96,3 +96,25 @@ speedup claim. First finish the two pending Decode preparation measurements;
 then decide whether local kernel gains or eliminating repeated preparation
 offers the better measured return. Do not enlarge SRAM or relax correctness
 gates solely to match these trace counts.
+
+## Private attribution probe
+
+`verification/qbs/q8k_decode_sums/compile_context_attribution.py` now builds
+a separate QBS translation unit with lookahead decision records. It does not
+edit or install the runtime source. Each record includes graph epoch, current
+and examined graph-node indices and identities, source tensor identity, source
+address/extent, examined destination address/extent, operation, decision and
+reason. Reasons distinguish missing graph, possible input modification, expert
+context consumers, ineligible matrix consumers, identity comparison and graph
+end. Pointer identities can be joined with the existing lifetime records.
+
+The complete production-flags compile passed in
+`verification/out/q8k-context-attribution-compile-20261026-01`. The source hash
+was `5de40095e57195b73c642f813ca3f3b7e9e1976d89149d177e5f0df7954ee180`.
+The accompanying test reverses all observation wrappers and requires the
+original source text to be recovered exactly; double instrumentation is
+rejected. This establishes instrumentation scope, not runtime correctness or
+performance. No model has yet been run with this probe. Its logging must not
+be used for latency measurement. The existing potentially conservative
+overlap checks remain intact until a concrete graph-level counterexample and
+safe alternative are established.
