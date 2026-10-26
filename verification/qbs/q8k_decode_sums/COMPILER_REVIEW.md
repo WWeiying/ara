@@ -72,3 +72,25 @@ The successor VCS run is isolated in
 confirmed running. The first candidate's worker and sealed inputs were not
 changed. Both compare against their own original path in the same ELF; do
 not substitute cross-ELF cycle ratios for those paired measurements.
+
+## Preliminary K1536 RTL result: do not promote
+
+Both workers emitted all four K1536 records while K8960 was still running.
+The observations below are partial-run timing, not final PASS receipts:
+
+| Candidate | Original ABBA cycle sum | Candidate ABBA cycle sum | Cycle increase |
+| --- | ---: | ---: | ---: |
+| Vector-select loop | 19,660 | 45,618 | 132.03% |
+| Split loops | 19,669 | 28,028 | 42.50% |
+
+The split trial records are 9909/14108/13920/9760 cycles in ABBA order.
+All eight observed K1536 records across the two runs have packed digest
+`30ba8689f5196189`, FCSR=1 and VCSR=3. Final canary/protocol/provenance and
+K8960 checks remain pending. Neither candidate is justified for production.
+
+Removing duplicate reductions improved the candidate but did not beat the
+original. Smaller logical slide extents alone are therefore insufficient.
+Use the instruction-level allocation/completion and writeback trace to
+separate slide, reduction, register-copy and scalar synchronization costs
+before proposing any further local variant. Do not infer the runtime or
+model speedup from these partial preparation numbers.
