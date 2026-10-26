@@ -49,3 +49,32 @@ produced int8 values. It covers lengths 0, 256, 512, 1536, 1792 and 8960,
 2,880 comparisons per VLEN. Special floating-point input behavior beyond these
 finite patterns is not claimed. Real captured data and VCS latency remain
 required before promotion.
+
+## Runtime and captured-data gates
+
+The complete extracted-function run
+`verification/out/q8k-decode-full-20261026-01` passed 2,880 comparisons at each
+of the four VLEN values (11,520 total).
+
+`compile_runtime.py` uses the recorded production compile flags to compile
+both entire `arch/riscv/quants.c` translation units, with only the private
+candidate's block-sum section changed. The run
+`verification/out/q8k-decode-runtime-compile-20261026-01` passed for the
+combined RVV/Zfh/Zvfh configuration. Compilation is not a full runtime
+execution test. The type table in `ggml-cpu.c` maps Q8_K `from_float` to this
+function; the repack path calls it for single rows when activation reuse does
+not eliminate preparation. Existing reuse must remain intact.
+
+`run_real.py` additionally generates exact bit-pattern inputs from all seven
+captured Decode projections of Qwen2.5-1.5B Q4_K_M: attention Q/K/V/output
+and FFN gate/up/down. Metadata, finite values, byte sizes and contiguous
+single-row geometry are checked before compilation. K is 1536 or 8960.
+The run `verification/out/q8k-decode-real-20261026-01` passed all 280
+comparisons per VLEN, 1,120 total, across VLEN 128/256/512/1024. These are
+captured-input function comparisons, not complete model executions. Source
+pins and log digests are retained with each result.
+
+No latency improvement is established yet. Next measure complete preparation
+with the same captured data on VCS, then a complete projection if preparation
+improves. Keep original and candidate in the same ELF, use ABBA order and
+include all conversion and block-sum work inside the measured interval.
