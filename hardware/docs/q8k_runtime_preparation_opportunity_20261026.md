@@ -118,3 +118,28 @@ performance. No model has yet been run with this probe. Its logging must not
 be used for latency measurement. The existing potentially conservative
 overlap checks remain intact until a concrete graph-level counterexample and
 safe alternative are established.
+
+### First measured attribution, before final model completion
+
+The independent model probe is running in
+`verification/out/q8k-context-attribution-model-20261026-01`. Its first frozen
+analysis is `verification/out/q8k-context-attribution-analysis-20261026-01`;
+the snapshot hash is
+`8c4dbe6872406cae1200975018ce0daaeb6c63156c6e0a9266116a6f4638641c`.
+This is partial-run attribution, not a complete model acceptance record.
+
+For graph epoch 2, layer 0, the probe establishes these specific boundaries:
+
+| Current projection | Current node index | Examined index | Decision |
+| --- | ---: | ---: | --- |
+| Q | 3 | 8 | Ineligible intermediate MUL_MAT; destination does not overlap input |
+| V | 10 | 14 | Ineligible intermediate MUL_MAT; destination does not overlap input |
+| K | 16 | 19 | ROPE destination overlaps input storage |
+
+Thus the ROPE warning is not the reason Q-to-V and V-to-K reuse was rejected.
+It occurs after K, where the input allocation is genuinely reused by a later
+output. The Q/V boundary is the conservative rule that any ineligible matrix
+node may acquire the hardware context, for example through a supported tail.
+Before changing that rule, identify these intermediate nodes' weight/input
+types, shapes, backend selection and actual context use. Do not simply skip
+all unsupported matrix nodes: the existing rule protects context ownership.
