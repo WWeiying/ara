@@ -1,0 +1,23 @@
+{
+  "state": "FULL_QUANTIZER_REFERENCE_PASS",
+  "output": "verification/out/q8k-signed-max-native-20261026-01",
+  "build": "verification/out/q8k-signed-max-native-build-20261026-01",
+  "candidate": "verification/out/q8k-signed-max-compile-20261026-01",
+  "vlen": 1024,
+  "cases": 50,
+  "checks": 4000,
+  "real_capture_cases": 6,
+  "real_k": [1536, 8960],
+  "off": {"checks": 2000, "generic": 2000, "vector": 0},
+  "on": {"checks": 2000, "generic_fallback": 1688, "vector": 312},
+  "paired_bytes_scales_bsums_and_csr": "exact",
+  "oracle": "Actual production generic from the same combined RVV/Zfh/Zvfh translation unit",
+  "parent_raw_checker_replayed": true,
+  "candidate_object_sha256": "5e25058cb569d93c5824155ff913365ced572e0da1805cad06adef151117009b",
+  "log_sha256": "e328d08f8b770f5c4a0d6eb82ff029b63e307ffa895305e604894ac78ad9df88",
+  "manifest_sha256": "3662bbd735204ccb5f9e029bdf1264d5afe5789368f00fbeb53e57a78beae174",
+  "production_modified": false,
+  "rtl_performance_measured": false,
+  "full_model_tested": false,
+  "next_gate": "Same-ELF complete projection against the accepted vector-preparation baseline, not only against generic scalar preparation"
+}
