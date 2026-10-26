@@ -15,6 +15,7 @@ from run_half_scale_soc import atomic_json, digest, hashes
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--signed-max', action='store_true')
     args = parser.parse_args()
     out = args.output.resolve()
     if not out.is_relative_to(ROOT/'verification/out'):
@@ -28,6 +29,25 @@ def main():
     if receipt['state'] != 'PASS' or digest(obj) != receipt['production_object_sha256'] or \
             digest(ggml/'src/ggml-cpu/repack.cpp') != receipt['production_source_sha256']:
         raise ValueError('Accepted integrated preparation changed')
+    candidate_pins = {}
+    if args.signed_max:
+        candidate = ROOT/'verification/out/q8k-signed-max-compile-20261026-01'
+        gate = ROOT/'verification/qbs/results/q8k-signed-max-projection-20261026.json'
+        numerical = ROOT/'verification/qbs/results/q8k-signed-max-quantizer-20261026.json'
+        numerical_record = json.loads(numerical.read_text())
+        if json.loads(gate.read_text())['state'] != 'PASS' or \
+                numerical_record['state'] != 'FULL_QUANTIZER_REFERENCE_PASS':
+            raise ValueError('Candidate numerical/performance prerequisite')
+        candidate_pins = json.loads((candidate/'inputs.json').read_text())
+        candidate_record = json.loads((candidate/'result.json').read_text())
+        obj = candidate/'candidate.o'
+        if candidate_record['state'] != 'COMPILE_ONLY_PASS' or \
+                digest(obj) != candidate_record['object_sha256'] or \
+                digest(obj) != numerical_record['candidate_object_sha256'] or \
+                digest(candidate/'inputs.json') != candidate_record['inputs_sha256'] or \
+                hashes(map(Path, candidate_pins)) != candidate_pins:
+            raise ValueError('Candidate identity drift')
+        candidate_pins.update(hashes([obj, gate, numerical, candidate/'inputs.json', candidate/'result.json']))
     result = json.loads((base/'result.json').read_text())
     manifest = base/'source-pins.json'
     if result['state'] != 'PASS' or digest(manifest) != result['source_pins_sha256']:
@@ -52,6 +72,7 @@ def main():
                llama/'tests/test-ara-q4k-repack.cpp', HERE/'init.c', Path(__file__),
                ROOT/'verification/qbs/ggml_segmented_init.c', cxx.resolve(), cc.resolve(), cpio]
     pins = hashes(sources)
+    pins.update(candidate_pins)
     out.mkdir(parents=True, exist_ok=False)
     commands = []
     def run(command, label):
@@ -81,7 +102,8 @@ def main():
     atomic_json(out/'manifest.json', pins)
     atomic_json(out/'build.json', dict(state='READY', execution='NOT_RUN',
         manifest_sha256=digest(out/'manifest.json'), elf_sha256=digest(out/'test'),
-        suites=['context', 'alias', 'barrier'], production_modified=False))
+        suites=['context', 'alias', 'barrier'], production_modified=False,
+        signed_max_candidate=args.signed_max, quantizer_object=str(obj)))
     print(json.dumps(dict(state='READY', execution='NOT_RUN', output=str(out))))
 
 
