@@ -1,0 +1,24 @@
+{
+  "schema": "q8k_m4_model_applicability_review_v1",
+  "source_log": "verification/out/grouped-pv-model-v2-20261026-01/qemu.log",
+  "source_log_sha256": "ba87fe8156cd9624a11db9fcb807e165769aa1dc8ddaacea6d90558e7facb57c",
+  "scope": "Four short Qwen2.5-1.5B Q4_K_M generation runs, three decode API calls per context, including four-token prefill",
+  "counts": [
+    {"weight": "q4_K", "mode": "gemm", "input_rows": 4, "calls": 664},
+    {"weight": "q4_K", "mode": "gemv", "input_rows": 1, "calls": 1352},
+    {"weight": "q6_K", "mode": "gemm", "input_rows": 4, "calls": 108},
+    {"weight": "q6_K", "mode": "gemv", "input_rows": 1, "calls": 240}
+  ],
+  "total_projection_calls": 2364,
+  "four_row_calls": 772,
+  "single_row_calls": 1592,
+  "observed_k": [1536, 8960],
+  "interpretation": "The candidate applies to Q8_K four-row preparation, not single-row decode or an already-reused activation. Call counts are neither cycle shares nor a speedup estimate.",
+  "current_gate": "Both real K sizes appear in the accepted combined-ISA numerical gate; current RTL performance measurement covers M4/N1536/K1536 only.",
+  "integration_constraints": [
+    "Preserve Q8_0 Zvfh selection and default-OFF opt-in until performance acceptance.",
+    "Keep row tails, wide-M preparation and reused-activation paths unchanged.",
+    "The enable switch is cached in a function-local static: use fresh processes for OFF/ON model runs.",
+    "Do not generalize a K1536 timing result into a measured K8960 or whole-model speedup."
+  ]
+}
