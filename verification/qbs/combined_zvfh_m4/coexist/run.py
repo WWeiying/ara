@@ -21,7 +21,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--build', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--suites', nargs='+', choices=('context', 'alias', 'barrier'),
+                        default=['context', 'alias', 'barrier'])
     args = parser.parse_args()
+    if len(set(args.suites)) != len(args.suites):
+        raise ValueError('Duplicate suites')
     build, out = args.build.resolve(strict=True), args.output.resolve()
     if not out.is_relative_to(ROOT/'verification/out'):
         raise ValueError('Use private verification/out')
@@ -55,7 +59,8 @@ def main():
     checks = dict(context=check_context_dispatch, alias=check_alias_dispatch, barrier=check_barrier_dispatch)
     results = {}
     try:
-        for suite, check in checks.items():
+        for suite in args.suites:
+            check = checks[suite]
             state.update(state='RUNNING', suite=suite)
             save()
             command = list(map(str, [qemu, '-M', 'virt', '-cpu',
@@ -76,7 +81,7 @@ def main():
                 raise ValueError(suite+' failure diagnostic')
             check(text)
             prep = re.findall(r'GGML_RISCV_QBS_Q8K_M4_PREPARE enabled=(\d+) path=(\w+) k=(\d+)', text)
-            if suite == 'context' and (not prep or any(enabled != '1' or path != 'vector' or k != '1792'
+            if suite == 'context' and (len(prep) != 16 or any(enabled != '1' or path != 'rvv' or k != '1792'
                                                        for enabled, path, k in prep)):
                 raise ValueError('M4 combined vector path was not exercised as expected')
             if suite != 'context' and prep:
