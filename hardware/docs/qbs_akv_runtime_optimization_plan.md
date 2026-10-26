@@ -70,12 +70,19 @@ fallback cases. Parent raw-log replay agrees; the receipt is
 `verification/akv/results/current-ggml-graph-20261026.json`.
 
 The fresh model worker is `quantkv-current-model-20261026-01.service`. It consumes
-that checked graph result and rebuilds actual llama.cpp using current shared
-sources. Its result is still pending at this checkpoint. Do not edit its pinned
-SDK or external source files while it runs.
+that checked graph result and rebuilt actual llama.cpp using current shared
+sources. It completed PASS: 112 native Attention calls, 448 commands and six
+paired logit comparisons with zero max-absolute error, RMSE and KL. All four
+independent contexts generated the same three tokens. The receipt is
+`verification/akv/results/current-llama-model-20261026.json`. This is short-model
+functional evidence under QEMU, not model throughput or long-generation quality.
 
 The next candidate is an explicit grouped-PV leaf: retain one decoded V vector
 across heads and avoid a separate Y round trip on maximum updates. Prototype
 work is isolated in `verification/akv/quantized_kv/grouped_pv/`; its
-`INTEGRATION.md` states the arithmetic and promotion gates. No RTL or production
-dispatch changes are justified by this prototype alone.
+`INTEGRATION.md` states the arithmetic and promotion gates. Host/code-generation
+tests passed, and actual RVV execution under QEMU passed 13824 numerical and
+17 rejection cases at each of VLEN256/1024. The receipt is
+`verification/akv/results/grouped-pv-reference-20261026.json`. Full online
+integration and paired RTL timing remain pending. No RTL or production dispatch
+changes are justified by the leaf prototype alone.
