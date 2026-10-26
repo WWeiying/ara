@@ -83,3 +83,30 @@ or complete-call benefit disappears, stop this candidate; do not optimize its
 microbenchmark further. It cannot accelerate M1 decode, wide-M row preparation
 or calls whose quantization was already skipped. The 11.66% historical slice
 result is motivation, not an estimate or promise for current llama/model time.
+
+## Current Full-Projection Policy Check
+
+The host test `verification/qbs/combined_zvfh_m4/test_plan_probe.py` executes
+the current production planner using reference capability words, not a mocked
+plan. It checks the M4/N1536 Q4_K projection family:
+
+| K | Packed Q8_K bytes | Context eligible | Commands |
+| ---: | ---: | --- | ---: |
+| 512 | 2336 | Yes | 48 |
+| 1024 | 4672 | Yes | 48 |
+| 1536 | 7008 | No | 48 |
+
+All three plans use M4/N32 commands with no split-K or activation gathering.
+The byte budget is 4672. Thus the historical real M4/N1536/K1536 DIRECT
+benchmark is consistent with the current planner's capacity restriction;
+shrinking K to 1024 would change the eligible execution policy. This host
+test does not establish which capability words an arbitrary RTL image returns.
+The eventual VCS run must verify the chosen image contract.
+
+The old standalone projection harness still omits GGML plan creation,
+workspace allocation and scheduling. A fresh counterpart may measure the
+preparation-plus-command slice, but must not call that a full GGML or model
+speedup. Keep these costs distinct and use the actual graph test to verify
+dispatch. Rebuild from the current shared canonical quantizer and SDK; do not
+reuse an old private candidate header or combine historical cycle totals with
+new preparation measurements.
