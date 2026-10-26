@@ -48,14 +48,23 @@ performance acceptance; no default-on/backend/whole-model claim is made.
 
 ## Review Interface
 
-The native prepare/build.json schema is consumed directly. No new API is
-required from the preparation owner. admission.checked_pair verifies receipt
-types, full workload, all input/artifact hashes, both source trees and exact
-five-header-plus-new-helper delta, all seventeen dependency/compile proofs,
-three affected rebuilds, common linker slots/scripts, linked layouts and original
-payloads. Pure producer layout/recipe functions are replayed from reviewed helper
-code; no producer build/Git/compiler action is called. The original gold file
-must equal each linked attention_golden payload. Neither side is an old ELF.
+The native prepare/build.json schema is consumed through the reviewed
+prepare/build.py:checked_pair(receipt) API. Producer replay verifies pristine
+source revisions, seventeen dependency/compile proofs, three affected rebuilds,
+per-TU compiler/FP policy, original tensor payloads, ordinary linker rules,
+recorded natural layouts and timed main CFG. It returns the normalized
+quantkv_field_copy_pair_prepared_v1 report and complete pin map. Admission
+checks typed full-workload/review fields, the exact five-header-plus-new-helper
+delta, identical linker script bytes, fresh program/gold bindings and pre/post
+pins. Producer replay may invoke bounded read-only Git queries; it never calls
+the producer build, compiler, simulator or EDA entry points.
+
+Both arms use identical ordinary linker rules and original object ordering.
+No common slots or equal code/data addresses are required. Natural section,
+function and data-placement differences are recorded in the pinned layout.json;
+the result measures the compiled change INCLUDING those layout effects, not
+instruction-isolated causality. Original tensor values/sizes, math, flags,
+rebuild/difference proof and all six-call runtime checker gates remain unchanged.
 
 Parent review schema `field_copy_pair_parent_review_v1` contains:
 prepared_pair (absolute pair build.json), prepared_pair_sha256,

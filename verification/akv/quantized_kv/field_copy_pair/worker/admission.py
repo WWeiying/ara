@@ -1,4 +1,4 @@
-"""Read-only consumer of preparation's native receipt and pure layout replay."""
+"""Reviewed producer admission: ordinary linking, natural layout differences."""
 from pathlib import Path
 import sys
 
@@ -23,114 +23,56 @@ def receipt_flags(report):
         original_checks_preserved=True, timeout_seconds=10800), 'complete workload')
 
 
+def normalized_flags(prepared, report):
+    worker.fields(prepared, dict(report['workload'], schema='quantkv_field_copy_pair_prepared_v1',
+        state='FIELD_COPY_PAIR_STATIC_PASS_NOT_EXECUTED', execution='NOT_RUN', revisions=worker.REVISIONS,
+        matching_compiler_flags=True, matching_fp_policy=True, matching_input_payloads=True,
+        affected_objects_rebuilt=True, layout_reviewed=True, post_pins_match=True,
+        simulations_launched=0, performance_measured=False), 'producer normalized report')
+
+
 def checked_pair(receipt, helpers):
     report = s.read_json(receipt)
     receipt_flags(report)
-    directory = receipt.parent
-    prep = worker.PAIR/'prepare'
-    worker.load('layout', prep/'layout.py', helpers[str(prep/'layout.py')])
-    producer = worker.load('field_copy_pair_preparation', prep/'build.py', helpers[str(prep/'build.py')])
-    s.require(producer.VERSIONS == worker.REVISIONS, 'Preparation revisions differ')
-    artifacts, inputs = report['artifacts'], report['input_pins']
-    required = [directory/n for n in ('commands.json', 'dependencies.json', 'versions.json',
-                'slots.json', 'layout.json', 'input-pins-before.json', 'input-pins-after.json')]
-    s.require(all(artifacts.get(str(p)) == s.digest(p) for p in required), 'Incomplete preparation artifacts')
-    s.require(inputs == s.read_json(directory/'input-pins-before.json') ==
-              s.read_json(directory/'input-pins-after.json'), 'Preparation pre/post inputs differ')
-    pins = dict(inputs)
-    s.merge_pins(pins, artifacts)
+    pins = dict(report['input_pins'])
+    s.merge_pins(pins, report['artifacts'])
     s.merge_pins(pins, helpers)
     s.verify_pins(pins)
-    elf_reader = Path(producer.ELF_READER)
-    Elf = worker.load('field_copy_pair_elf', elf_reader, pins[str(elf_reader)]).Elf
+    prep = worker.PAIR/'prepare'
+    producer = worker.load('field_copy_pair_preparation', prep/'build.py', helpers[str(prep/'build.py')])
+    s.require(producer.VERSIONS == worker.REVISIONS and producer.WORKLOAD == report['workload'],
+              'Preparation revisions/workload differ')
+    # Producer owns source/Git, dependency, compile, ELF, tensor, linker and CFG replay.
+    prepared, consumed = producer.checked_pair(receipt)
+    normalized_flags(prepared, report)
+    s.merge_pins(pins, consumed)
+    s.require(consumed.get(str(receipt)) == s.digest(receipt), 'Producer did not close receipt identity')
+    directory = receipt.parent
     versions = s.read_json(directory/'versions.json')
-    s.require(set(versions) == set(worker.SIDES) and set(report['programs']) == set(worker.SIDES), 'Missing pair side')
-    main_bytes = (producer.BASE/'attention_threeway_untimed.c').read_bytes()
-    for side in worker.SIDES:
-        row = versions[side]
-        s.require(row['commit'] == worker.REVISIONS[side] and Path(row['tree']) == directory/side/'source' and
-                  Path(row['main']) == directory/side/'source/main.c' and
-                  Path(row['main']).read_bytes() == main_bytes and
-                  row['main_sha256'] == s.digest(Path(row['main'])), 'Snapshot/main source identity differs')
-        for relative, sha in row['files'].items():
-            p = Path(row['tree'])/relative
-            s.require(p.resolve().is_relative_to(Path(row['tree'])) and pins.get(str(p)) == sha == s.digest(p),
-                      'Snapshot source inventory differs')
+    s.require(set(versions) == set(worker.SIDES), 'Missing version side')
     old, new = (versions[side]['files'] for side in worker.SIDES)
     s.require(set(new)-set(old) == {producer.NEW} and not set(old)-set(new) and
               {p for p in old if old[p] != new[p]} == producer.CHANGED and
               report['historical_header_translation_only'] == sorted(producer.CHANGED), 'Unexpected software delta')
-    proofs = s.read_json(directory/'dependencies.json')
-    s.require(len(proofs) == 17 and sum(p['rebuilt'] is True for p in proofs) == 3 and
-              all(type(p['rebuilt']) is bool for p in proofs), 'Wrong affected/reused object scope')
-    rebuilt_sources = {Path(p['original_source']).name for p in proofs if p['rebuilt']}
-    s.require('runtime.c' in rebuilt_sources and 'runtime_strided.c' in rebuilt_sources and
-              any(Path(p['original_object']) == producer.BASE/'main.o' and p['rebuilt'] for p in proofs),
-              'Need main, contiguous runtime and strided runtime rebuilds')
-    objects = {side: [] for side in worker.SIDES}
-    for proof in proofs:
-        original = Path(proof['original_object'])
-        s.require(pins.get(str(original)) == proof['original_sha256'] == s.digest(original), 'Original object differs')
-        recipe, _ = producer.compile_record(original)
-        for side in worker.SIDES:
-            row = proof['sides'][side]
-            obj = Path(row['object'])
-            s.require(pins.get(str(obj)) == row['object_sha256'] == s.digest(obj), 'Prepared object differs')
-            expected = list(recipe)
-            tree = Path(versions[side]['tree'])
-            if proof['rebuilt']:
-                s.require(obj.is_relative_to(directory/side) and obj != original, 'Rebuild reused historical object')
-                src = tree/'main.c' if original == producer.BASE/'main.o' else tree/Path(proof['original_source']).relative_to(worker.ROOT)
-                expected[expected.index('-c')+1] = str(src)
-                expected[expected.index('-o')+1] = str(obj)
-                expected.insert(1, '-I'+str(tree))
-            else:
-                s.require(obj == original, 'Unreviewed reused-object substitution')
-            s.require(row['compile_argv'] == expected, 'Compiler/FP flags differ from original recipe')
-            deps = row['dependencies']
-            s.require(deps and all(pins.get(p) == sha for p, sha in deps.items()), 'Missing dependency pins')
-            if not proof['rebuilt']:
-                s.require(not any(Path(p).is_relative_to(worker.ROOT) and
-                    Path(p).relative_to(worker.ROOT).as_posix() in producer.CHANGED | {producer.NEW} for p in deps),
-                    'Changed header consumer was reused')
-            if original == producer.BASE/'main.o':
-                s.require(all(str(tree/producer.QDIR/n) in deps for n in
-                    ('ggml_decode.h', 'q8_0_value.h', 'online.h', 'selection.h')) and
-                    ((str(tree/producer.NEW) in deps) == (side == 'candidate')), 'Missing mapper/admission/V rebuild')
-            objects[side].append(obj)
-    commands = s.read_json(directory/'commands.json')
-    s.require(commands and all(type(r['exit_code']) is int and r['exit_code'] == 0 and
-              r['timeout_seconds'] == 120 and r['cwd'] == str(directory) and
-              artifacts.get(r['log']) == s.digest(Path(r['log'])) for r in commands), 'GNU stage evidence differs')
-    for proof in proofs:
-        for side in worker.SIDES:
-            argv = proof['sides'][side]['compile_argv']
-            for expected in ([argv] if proof['rebuilt'] else [])+[producer.deps_command(argv)]:
-                s.require(sum(r['argv'] == expected for r in commands) == 1, 'Missing/duplicate dependency or compile command')
-    table = producer.layout.slots(objects, Elf)
-    s.require(table == s.read_json(directory/'slots.json'), 'Common section slots differ')
-    programs = {}
+    worker.fields(report['layout'], dict(matched_addresses_claim=False, historical_elf_layout_claim=False),
+                  'natural layout review')
+    scripts = [directory/side/'link.ld' for side in worker.SIDES]
+    s.require(scripts[0].read_bytes() == scripts[1].read_bytes(), 'Ordinary linker rules differ across sides')
+    s.require(set(prepared['programs']) == set(worker.SIDES), 'Need two fresh programs')
     for side in worker.SIDES:
-        entry = report['programs'][side]
-        elf, build = directory/side/'attention.elf', directory/side/'build.json'
-        worker.fields(entry, dict(elf=str(elf), elf_sha256=s.digest(elf), build_receipt=str(build),
-                                 build_receipt_sha256=s.digest(build)), 'program receipt references')
-        side_report = s.read_json(build)
-        worker.fields(side_report, dict(state='GNU_BUILT_NOT_EXECUTED', side=side, commit=worker.REVISIONS[side],
-            elf=str(elf), elf_sha256=entry['elf_sha256'], workload=report['workload'], sources=versions[side]), 'side build')
-        s.require((directory/side/'link.ld').read_text() == producer.layout.script(
-                  (producer.BASE/'link.ld').read_text(), objects[side], table), 'Paired linker script differs')
-        programs[side] = dict(elf=str(elf), elf_sha256=entry['elf_sha256'],
-            golden=str(worker.accepted.GOLD), golden_sha256=s.digest(worker.accepted.GOLD))
-    parsed = [Elf(Path(programs[side]['elf'])) for side in worker.SIDES]
-    layout = producer.layout.compare(*parsed, Elf(producer.BASE/'threeway_attention.elf'),
-                                     s.read_json(producer.BASE/'layout-review.json'), table)
-    s.require(layout == report['layout'] == s.read_json(directory/'layout.json'), 'Actual layout/payload review differs')
-    s.require(all(p.payload('attention_golden', 6144) == worker.accepted.GOLD.read_bytes() for p in parsed),
-              'Linked original capture gold differs')
-    s.require(programs['baseline']['elf_sha256'] != programs['candidate']['elf_sha256'], 'Same ELF on both sides')
+        program, raw = prepared['programs'][side], report['programs'][side]
+        worker.fields(program, dict(revision=worker.REVISIONS[side], fresh_build=True,
+            elf=raw['elf'], elf_sha256=raw['elf_sha256'], build_receipt=raw['build_receipt'],
+            build_receipt_sha256=raw['build_receipt_sha256'], golden=str(worker.accepted.GOLD),
+            golden_sha256=s.digest(worker.accepted.GOLD)), 'prepared program')
+        for key, sha_key in (('elf', 'elf_sha256'), ('build_receipt', 'build_receipt_sha256'),
+                             ('golden', 'golden_sha256')):
+            path = worker.path(program[key])
+            s.require(pins.get(str(path)) == program[sha_key] == s.digest(path), 'Program/payload receipt drift')
+    a, b = (prepared['programs'][side] for side in worker.SIDES)
+    s.require(a['elf'] != b['elf'] and a['elf_sha256'] != b['elf_sha256'], 'Same ELF on both sides')
     s.verify_pins(pins)
-    return dict(programs=programs), pins, report
+    return prepared, pins, report
 
 
 def prepare_inputs(args):

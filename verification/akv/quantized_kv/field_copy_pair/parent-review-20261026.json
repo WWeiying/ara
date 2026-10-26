@@ -1,0 +1,30 @@
+{
+  "schema": "field_copy_pair_parent_review_v1",
+  "prepared_pair": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/field_copy_pair/prepare/out/build-gnu-06/build.json",
+  "prepared_pair_sha256": "ddbe521cdcd0157cbed04096a8825d4a9569233905777e6de6e58ec186c95cfc",
+  "runtime_environment": {
+    "LD_LIBRARY_PATH": ":/usr/lib:/usr/local/cuda-11.8/lib64:/home/wangwy/software/synopsys/install/verdi/V-2023.12-SP1/share/PLI/VCS/LINUX64:/usr/lib:/usr/local/cuda-11.8/lib64:/home/wangwy/software/synopsys/install/verdi/V-2023.12-SP1/share/PLI/VCS/LINUX64:/usr/lib:/usr/local/cuda-11.8/lib64:/home/wangwy/software/synopsys/install/verdi/V-2023.12-SP1/share/PLI/VCS/LINUX64"
+  },
+  "input_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/field_copy_pair/PLAN.md": "bc0afeff3f5890c59817253e2664d213ef236262822b368283fc08245b96012b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/field_copy_pair/prepare/.gitignore": "744a1502c1d7ad664e0677975e40beb6cf6abfe3f49da5311af22b109a50af68",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/field_copy_pair/prepare/README.md": "cd6f19660ddb56a05a23a79ec6a2417ec4fde575dc4fcc1be2e5a012bd7e22e1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/field_copy_pair/prepare/build.py": "ed1943dc6cdedcc425bb99dad0a3000b74de4730d4af4fb4a05c281f80df1eb9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/field_copy_pair/prepare/layout.py": "9e0ed1ff2495b23802c6d030ce62125372a1126dc96e8f04568d3ea8cb673c97",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/field_copy_pair/prepare/test_prepare.py": "946512391c29ed114283b8bd366d147284758de59f2ea297807695be0f3a4732",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/field_copy_pair/worker/README.md": "51af3ce150f49c3f47bc7496b2db756e3b8a40d56f492990690a7c47b47568c7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/field_copy_pair/worker/admission.py": "aa84fd39fed70aa6a74c2e9764dd0d2686d2f3719e113635009cffc252d2b264",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/field_copy_pair/worker/collect.py": "c416ac5e4c4510c7d0b438ec2afee381cb0efad2077aacaf266d4e6261e1835f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/field_copy_pair/worker/compare.py": "2a1545fd6f419912886a787f88af990f07ee14ce34272b0ff139cf2f5ff6b0be",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/field_copy_pair/worker/run.py": "82d5848ca749dc30b634527182d22b98e7d944aa7caddc7b2322466882f8678b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/field_copy_pair/worker/test_admission.py": "20a6fc7cc0900dbd67e3ff8ad55bf8e12da4b603898dcbe00befd9903651d7b0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/field_copy_pair/worker/test_compare.py": "14bc59ca2a3854f07205c10a69841ce1287338241aa6194c5eeadad7bdffff7b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/field_copy_pair/worker/test_worker.py": "fbcbd7626a4f26013ea113cc2c9751d0f18a57ef8b435e7c75e4e517fa9358d6"
+  },
+  "preparation_reviewed": true,
+  "same_inputs_flags_schedule": true,
+  "affected_objects_rebuilt": true,
+  "historical_timings_used": false,
+  "interpretation": "Compiled fixed-field-copy optimization including natural layout and compiler effects; not fixed-address isolated causality",
+  "scope": "Fresh two-binary six-call full Attention pair; no model/PPA claim"
+}
