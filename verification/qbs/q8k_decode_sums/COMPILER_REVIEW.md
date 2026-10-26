@@ -94,3 +94,42 @@ Use the instruction-level allocation/completion and writeback trace to
 separate slide, reduction, register-copy and scalar synchronization costs
 before proposing any further local variant. Do not infer the runtime or
 model speedup from these partial preparation numbers.
+
+## Cycle trace: register layout churn
+
+The frozen snapshot in
+`verification/out/q8k-decode-split-trace-analysis-20261026-01/trace-prefix.csv`
+has SHA256 `4d5441043d231c4a1bd0aa144c9faa5ed3af784374f6f16482dfa963a2c4a09a`.
+The first two six-block invocations of each path (K1536 ABBA) show:
+
+| Instruction site | Architectural instructions | Backend micro-operations | Mean first-allocation to last-completion cycles |
+| --- | ---: | ---: | ---: |
+| Original slide | 180 | 180 | 24.00 |
+| Original widening reduction | 192 | 216 | 24.56 |
+| Split slide | 192 | 384 | 26.00 |
+| Split widening reduction | 192 | 588 | 55.13 |
+
+The split reductions contain 192 VL16/EEW16 micro-operations plus 396
+VL64/EEW16 micro-operations. Its slides contain 192 VL16/EEW8 operations plus
+192 VL128/EEW8 operations. These are backend metadata lengths, not extra
+architectural instructions. Residence intervals overlap and cannot be added
+as a stall-cycle breakdown. Write-byte accounting includes internal layout
+operations; it is not DRAM traffic.
+
+`ara_commit_monitor.sv` retains an architectural sequence across internal
+operations and permits VID reuse after completion. Accordingly, the analysis
+must match allocation occurrences and completions, not assume a sequence/VID
+pair occurs only once. The initial analyzer rejected that assumption rather
+than silently dropping micro-operations; tests now cover repeated pairs.
+
+The split assembly writes e8 slide output to v1 and immediately performs
+`vwredsum.vs v1,v1,v2`, whose result has e16 layout. The next slide overwrites
+the same register at e8. The dispatcher's source/destination reshuffle and
+legal overlapping widening-reduction repair paths explain the repeated
+layout micro-operations. The original reduction uses a distinct destination
+and does not alternate its layout on every group.
+
+The next private candidate keeps the narrow input live alongside the widened
+result through an empty compiler constraint. Its purpose is distinct register
+allocation, not a new instruction or removal of overlap correctness logic.
+Inspect generated code and repeat functional gates before any RTL timing run.
