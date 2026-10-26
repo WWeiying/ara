@@ -1,0 +1,31 @@
+{
+  "state": "TWO_ACTUAL_SIMULATORS_CONFIRMED_RUNNING",
+  "snapshot_only": true,
+  "performance_accepted": false,
+  "review": "verification/akv/quantized_kv/field_copy_pair/parent-review-20261026.json",
+  "review_sha256": "55e668396c80bde4c20a05d89e61c4517e370421fccc2f0b527a4f113aeed446",
+  "preparation_receipt_sha256": "ddbe521cdcd0157cbed04096a8825d4a9569233905777e6de6e58ec186c95cfc",
+  "baseline": {
+    "service": "field-copy-baseline-20261026-01.service",
+    "output": "verification/out/field-copy-baseline-20261026-01",
+    "worker_pid": 3177939,
+    "simulator_pid": 3180308,
+    "observed_cycle_at_least": 33890
+  },
+  "candidate": {
+    "service": "field-copy-candidate-20261026-01.service",
+    "output": "verification/out/field-copy-candidate-20261026-01",
+    "worker_pid": 3177950,
+    "simulator_pid": 3180309,
+    "observed_cycle_at_least": 35463
+  },
+  "each_timeout_seconds": 10800,
+  "each_trials": 6,
+  "each_outputs": 4608,
+  "each_expected_commands": 16,
+  "preflight_both_passed": true,
+  "before_manifest_and_image_contract_both_passed": true,
+  "rtl_changed": false,
+  "whole_model": false,
+  "synthesis_launched": false
+}
