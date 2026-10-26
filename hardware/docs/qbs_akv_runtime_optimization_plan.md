@@ -112,3 +112,28 @@ and an independent double-precision softmax oracle. See
 deterministic schedule fixtures, not a substitute for real captured data or
 VCS timing. Full-call paired preparation and actual GGML tests are the next
 gates; performance benefit and default promotion remain unproven.
+
+The first actual GGML suite remains FAIL due to a two-thread fallback checker
+assumption. Its 32 native call records passed, but that is not a full-suite
+acceptance. A separate 16-call control with both optimized paths disabled
+produced identical complete outputs while caller FCSR varied between 9 and 11;
+GGML dynamically distributes head chunks and does not aggregate worker fflags.
+The successor changes only the two-thread comparison, retaining output bits,
+FRM/VCSR and preset sticky flags. Native/single-thread exact CSR checks remain.
+See `verification/akv/quantized_kv/grouped_pv/GGML_CHECKER_REVIEW.md`.
+
+Two independent workers have been launched after review:
+
+- `grouped-pv-ggml-20261026-02.service`: fresh actual-GGML build and functional
+  suite; output `verification/out/grouped-pv-ggml-20261026-02`.
+- `grouped-pv-vcs-pair-20261026-01.service`: one canonical RTL image, one fresh
+  ELF, four complete Q4_0 K/Q8_0 V H6/D128/T128 calls in OFF/ON/ON/OFF order.
+  Output `verification/out/grouped-pv-vcs-pair-20261026-01`. Simulation process
+  and increasing interface cycles were confirmed; no long-run polling.
+
+Both workers must reach checked terminal results before acceptance. The VCS
+pair includes complete numerical/guard/CSR/work checks and independent protocol
+checks; neither preparation nor launch is performance evidence. The next linear
+projection candidate is recorded separately in
+`qbs_projection_preparation_audit_20261026.md`; no production changes to that
+candidate are made while the current consumers have frozen their inputs.

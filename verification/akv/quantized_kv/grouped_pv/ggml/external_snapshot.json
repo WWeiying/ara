@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "source": "/home/wangwy/llama/llama.cpp",
+  "scope": "Additive default-OFF grouped-PV GGML adapter; independent of all old snapshots.",
+  "inventory": "LC_ALL=C rg --files ggml cmake, sorted; SHA256 of sha256sum-format rows",
+  "tree_sha256": "d499bbe2d6c16c6417cd50e45df7c3d6471e06f7c8da7592e283fee8a322c236",
+  "source_sha256": {
+    "ggml/src/ggml-cpu/arch/riscv/quant-kv.cpp": "5983f866063e0d65b920b48ce53bc3d4eb866313949101afd1b8d724dbb1a24b",
+    "ggml/src/ggml-cpu/arch/riscv/akv.cpp": "a2382b3a19a9c035428181c22a131ca18aaa466c153d9dc8006d7b43a75f97fb",
+    "ggml/src/ggml-cpu/arch/riscv/qbs.cpp": "5de40095e57195b73c642f813ca3f3b7e9e1976d89149d177e5f0df7954ee180",
+    "ggml/src/ggml-cpu/vec.h": "926330bae1c5d003bd654035426e31381fafcdca23ffcc23201d219dbb97cbeb",
+    "ggml/src/ggml-cpu/simd-mappings.h": "c8371bfb028ccee0e5af76bf47a9ae1d029b38cfda35fa6f0ee1358d63428737",
+    "ggml/src/ggml-cpu/ops.cpp": "7e8dea5f434230002de9bc5817422ebcebda59207f7b691b385af961414a6b14",
+    "ggml/src/ggml-cpu/CMakeLists.txt": "ab5ef2217480637aa16db42262127b6a217815ac9679fa29dd0832a6724fa5c9",
+    "ggml/include/ggml-cpu.h": "316279e004cdeb8e6ef78599acb602bf79a8abdf897fed9fd1914808c1518c6e"
+  }
+}
