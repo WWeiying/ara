@@ -1,0 +1,56 @@
+{
+  "state": "STATIC_COMPATIBILITY_REVIEW_PASS",
+  "execution": "NOT_RUN",
+  "root_cause": "Runner selected the legacy-context QEMU. The SDK accepts its legacy context ABI, but the graph oracle correctly requires the extended context contract.",
+  "original_failure": {
+    "log": "run-01/qemu.log",
+    "sha256": "c774d9d1a2d6e0bb457151e06961c66caa41ee38f2d72b512e4671510e697986",
+    "reason": "extended_context_capability_required",
+    "phase": "First OFF process capability preflight, before graph arithmetic"
+  },
+  "capability_evidence_kind": "Read-only ELF disassembly and .rodata extraction, corroborated by receipt-pinned qbs_abi.h; not fresh guest QBINFO measurements",
+  "legacy_model": {
+    "path": "verification/out/qbs-native-qemu-build-20261023/qemu-10.2.0-build/qemu-system-riscv64",
+    "elf_sha256": "c12444780f4a533dc1b32c1b192c3d78469da70d4bea1e741feac2fbbf1b7f49",
+    "abi_sha256": "86fb8f1b48ad1ba23d0af07307285f323282ead735354f002db8f5b1d0707015",
+    "native_build_receipt": "PASS; verify_native_build returned 34945 verified paths",
+    "capability_table_address": "0xa284e0",
+    "word2": "0x00000208f0002781",
+    "word3": "0x0000000000000000",
+    "max_m": 1,
+    "max_k_blocks": 16,
+    "profiles": ["Q8_K"],
+    "layouts": ["ROW_MAJOR"],
+    "sdk_decoded_capacity_bytes": 4672,
+    "capacity_origin": "SDK legacy fallback: 16 * 292, not advertised word3"
+  },
+  "matching_model": {
+    "path": "verification/out/qemu-context-20261023-01/qemu-10.2.0-build/qemu-system-riscv64",
+    "elf_sha256": "37e3b4c100c3e8fbb7a248f3a0ab328797285dfe59e285fcf8540a14bd5b8e4c",
+    "abi_sha256": "4d7bf2d7f78c44bab494d86aee4163a02087b6ad10a43f1ed0752ff3a98fa117",
+    "native_build_receipt": "PASS; verify_native_build returned 34945 verified paths",
+    "capability_table_address": "0xa281e0",
+    "word2": "0x00000e08f0006ff1",
+    "word3": "0x0000000100001240",
+    "max_m": 8,
+    "max_k_blocks": 32,
+    "profiles": ["Q8_K", "Q8_0"],
+    "layouts": ["ROW_MAJOR", "M4_INTERLEAVED", "M8_INTERLEAVED"],
+    "capacity_bytes": 4672,
+    "storage_version": 1,
+    "cpu_source_support": "cpu.c declares zfh and zvfh properties; successor retains zfh=true,zvfh=true",
+    "historical_graph_run": "verification/out/qbs-q8k-live-graphs-20261023-01"
+  },
+  "current_sdk_decode": "software/qbs/src/qbs_runtime.c:qbs_context_capabilities_decode explicitly accepts exact legacy info3=0 or exact extended info3=0x0000000100001240",
+  "successor": {
+    "runner": "run_context_v2.py",
+    "build": "build-01",
+    "graph_sha256": "f0e77f28aec393ecdee534f4b08e881f546e6617ff740fccf45d2ba0734658c6",
+    "oracle_and_checker": "UNCHANGED",
+    "graphs": 384,
+    "q8k_calls_per_mode": 52,
+    "q8_0_graphs": 264,
+    "action": "Select exact matching extended-context binary; do not weaken capability or context-lifecycle checks",
+    "approval": "Parent approval required before launch"
+  }
+}
