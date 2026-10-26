@@ -53,6 +53,16 @@ were identical between modes, with no software-emulated commands.
 
 ## Use in a rebuilt runtime
 
+The follow-up combined-ISA coexistence gate has now passed 88 synthetic GGML
+graphs: 48 context-policy cases, 32 input-alias/mutation cases and eight expert
+barrier cases. This enables the accepted M4 preparation together with cross-op
+context and checks both eligible reuse and mandatory re-preparation. Sixteen
+M4 calls actually used the RVV quantizer. Original dispatch/lifetime checkers
+and source pins were independently replayed. This is functional coexistence
+evidence, not additional model or RTL performance evidence, and does not cover
+the newer signed-max candidate. See
+`verification/qbs/results/q8k-coexist-complete-20261026.json`.
+
 Rebuild the llama.cpp executable after updating the source. Setting an
 environment variable cannot change an older binary's preprocessor selection.
 Inside the target Linux environment, use:
