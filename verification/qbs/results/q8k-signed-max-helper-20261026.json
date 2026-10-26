@@ -1,0 +1,15 @@
+{
+  "state": "HELPER_REFERENCE_PASS",
+  "output": "verification/out/q8k-signed-max-reference-20261026-01",
+  "vlen": [256, 1024],
+  "cases_per_vlen": 1315,
+  "checks_per_vlen": 210400,
+  "full_quantizer_tested": false,
+  "production_integrated": false,
+  "performance_measured": false,
+  "source_pins_sha256": "c0af2c4473f498fb4e4cdf9189c15d40ffe1c1e8faaffd9a57dd605b1fa71c8a",
+  "log_sha256": {
+    "256": "be04a2f5d17508a9f355db72cc1ebaedcbfbd535adc3f30b45152d0acde5a521",
+    "1024": "61e09cd762c000f9dd658da49572375091daaf47d0e5387949a1856e7b8e037b"
+  }
+}
