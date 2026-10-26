@@ -1,0 +1,8 @@
+{
+  "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/grouped-pv-ggml-20261026-02",
+  "sha256": {
+    "result.json": "ebc29ec7d1bef4b5c4ffe01fa0d7734bfb27e660e89d1d8a71c4b32956a1b984",
+    "source-pins.json": "564425c0b62531e1f73eb08dc49e039ed8badd0c3551ce1bda1e1c4bf78c800f",
+    "qemu.log": "d65a900539c6f850f6e6bc458f0ca32c4103b9a7ec1d8c942d19b77dfc26a249"
+  }
+}
