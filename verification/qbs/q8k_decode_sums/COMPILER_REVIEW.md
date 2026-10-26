@@ -47,3 +47,28 @@ Both successor gates completed successfully on 2026-10-26:
 
 These results do not replace the pending latency test or establish complete
 model correctness for an integrated successor. Keep this candidate private.
+
+## Successor bare-metal measurement
+
+The successor golden and ELF are in
+`verification/out/q8k-decode-split-soc-golden-20261026-01` and
+`verification/out/q8k-decode-split-soc-build-20261026-01`. The golden passed.
+In the bare-metal disassembly, the low loop has one slide/reduction/extraction
+at 0x80000258/0x80000262/0x8000026e; the high loop has one at
+0x8000028c/0x80000296/0x800002a4. Each half still has an entry `vmv1r.v`.
+
+The RTL motivation is specific: `hardware/src/sldu/sldu.sv` initializes
+VSLIDEDOWN `issue_cnt_d` to `vl << vsew`, then decrements remaining work by
+the processed byte count. With e8 and VLEN1024, the original block-sum loop
+requests 15 slides of VL256; the split candidate requests 16 slides of VL16.
+Those are logical output extents, not measured AXI traffic or elapsed cycles.
+Setup, operand queues, register copies, reduction and scalar-result latency
+can still dominate. This is why instruction inspection is not sufficient to
+claim performance.
+
+The successor VCS run is isolated in
+`verification/out/q8k-decode-split-soc-vcs-20261026-01`, directly owned by
+`q8k-decode-split-soc-vcs-20261026-01.service`. Its actual `simv` process was
+confirmed running. The first candidate's worker and sealed inputs were not
+changed. Both compare against their own original path in the same ELF; do
+not substitute cross-ELF cycle ratios for those paired measurements.
