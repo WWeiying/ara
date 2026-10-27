@@ -173,6 +173,35 @@ comparisons and copies on RTL, multi-group admission policy and normal-runtime
 integration remain subsequent gates. No additional hardware or model speedup
 is claimed here.
 
+### RTL preparation-cost experiment
+
+`build_cache_soc.py`, `cache_soc.cpp`, `run_cache_soc.py` and `check.py` define
+a same-ELF ABBA comparison on the canonical VCS SoC. Each trial prepares the
+same captured four-row input three times. Baseline performs three actual
+quantizations; the candidate uses the tested cache, with a cold miss followed
+by two exact-value hits. All three output buffers must match the golden bytes,
+their guards and FCSR/VCSR requirements. Both paths use the same producer.
+
+The timed candidate includes Newlib heap allocation, CSR handling, one input
+snapshot and prepared-result snapshot, two full input comparisons and two
+output copies. The standalone allocator is a bounded 128 KiB heap, not an OS
+allocator; allocator behavior and library byte-copy speed may differ in Linux.
+Cache construction, destruction, UART printing and post-run oracle checks are
+outside the timed region. This experiment measures preparation only: it does
+not include matrix execution, graph scheduling or establish model speedup.
+The candidate must report 49152 requested comparison bytes and 45600 copied
+payload bytes per three-call trial; these are software accounting quantities,
+not measured DRAM traffic.
+
+The build is `verification/out/m4-cache-soc-build-20261027-03`. Offline
+preflight passed. Execution was launched independently as
+`m4-cache-soc-20261027-01.service`, with output in
+`verification/out/m4-cache-soc-20261027-01`. At launch the actual VCS child
+was confirmed executing after source-manifest and image-contract checks.
+No timing result is yet accepted. The worker automatically performs protocol,
+guest-result and post-execution identity checks; success is not inferred from
+launch or partial UART output.
+
 1. Completed for the independent prototype: bounded owned snapshots, exact
    shape/layout/control keys, allocation failure and invalid-mode rejection.
    Production remains unchanged.
