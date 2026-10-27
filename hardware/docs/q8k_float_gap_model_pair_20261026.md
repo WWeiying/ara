@@ -69,3 +69,23 @@ Before production integration:
 The candidate is not yet installed in the production runtime. A separate
 single-output quantizer whole-projection VCS experiment is also running; its
 result must not be attributed to this cross-projection policy.
+
+## Real GGML tensor alias checks
+
+`verification/qbs/q8k_decode_sums/test_float_gap_ggml_alias.py` passed 16
+checks using real GGML allocation/view APIs and `ggml_nbytes`. It compiles the
+current GGML base sources instead of loading an older host shared library.
+The production write-guard function is extracted without replacing its body.
+Its C++ execution is checked with UndefinedBehaviorSanitizer.
+
+The checks include exact overlap, partial overlap from either side, adjacent
+non-overlapping buffers, a strided destination whose second row overlaps the
+input, a strided input whose second row is overwritten, missing addresses,
+custom/optimizer barriers and metadata-only views. All expected admissions
+and rejections matched. In particular, the byte span includes stride gaps;
+counting elements alone would have missed the second-row hazards.
+
+This strengthens the alias-guard evidence, but does not execute a GGML graph
+or replace the remaining graph-level ownership and fallback tests. Tensor
+storage is genuinely allocated; selected operation tags and result addresses
+are assigned by the fixture to model arena reuse deliberately.
