@@ -127,3 +127,21 @@ unchanged. Log SHA256:
 These are bounded synthetic graph boundary tests, complementary to the real
 model run above. They establish neither RTL speedup nor exhaustive expert,
 custom-operation, concurrent-graph or cancellation coverage.
+
+### Same-identity side-write successor
+
+The fourth graph scenario deliberately keeps the second projection's input
+tensor object and address identical to the first projection. An intervening
+custom operation writes through its user-data pointer to double that input,
+while its ordinary output is a separate four-element tensor. Unlike the
+in-place scale scenario, rejection cannot be explained merely by a different
+source tensor identity. The custom-operation barrier must prevent reuse of
+the stale activation context.
+
+`verification/out/q8k-float-gap-graphs-20261026-04/result.json` reports a clean
+worker PASS for all 16 graph executions, including both changed-input epochs.
+The second projection doubles correctly in both write scenarios; safe float
+gaps still reuse. Old/new quantization counts are 16/12, skips are 0/4, native
+commands are 32/32, and native fill/release counts are 16/16 versus 12/12.
+All 4224 output/CSR bytes match between policies. This adds a real custom-op
+side-write case, but is not exhaustive custom/expert or concurrent coverage.
