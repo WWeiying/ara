@@ -50,3 +50,31 @@ Both run independent QEMU functional preflight before VCS. The expected
 benefit is shorter experiment wall time, not improved measured processor
 performance. Do not mix partial measurements from stopped predecessors with
 the successor's completed paired results.
+
+## Group-boundary weight checking
+
+The fastcheck runs were subsequently stopped as well, preserving their logs.
+At about 65 minutes, the projection trace had advanced to cycle 1179616 and
+was executing the vector checksum at PC `0x80000120` through `0x80000150`.
+Earlier, cycle 544385 and PC `0x80001cc8` identified actual QBS execution.
+Thus computation had progressed, but repeating the full immutable-weight scan
+after every trial still dominated wall time before the first printed result.
+
+The `*_groupcheck.c` successors compare the complete weight checksum once
+before and once after the ABBA group, instead of once before and after every
+trial. Input integrity, full output checks, paired output/CSR equality and
+canaries remain per-trial. This detects final weight changes but does not
+localize them to an individual trial; no intermediate-weight-integrity claim
+is made. The source-scope test verifies that only weight-rescan scheduling
+changed relative to fastcheck. Measured regions and computational shapes are
+unchanged. Later trials have a different pre-measurement cache history, so
+only matched ABBA results within the successor are valid comparisons.
+
+Independent run directories:
+
+- `verification/out/q8k-decode-projection-groupcheck-20261026-01`
+- `verification/out/q8k-context-qkv-groupcheck-20261026-01`
+
+The stopped runs must not be treated as hardware failures or completed
+performance results. This change addresses experiment overhead; it is not
+a production runtime optimization or a measured speedup claim.
