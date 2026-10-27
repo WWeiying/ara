@@ -190,4 +190,34 @@ The normal-library worker uses the same inherited dispatch reporter, so a
 separate background audit has been arranged for its known parent-record case.
 It waits on that specific live worker handle and never starts another QEMU
 or modifies a checker/input used by the running worker. Any different failure
-is rejected rather than ignored. The normal-library result remains pending.
+is rejected rather than ignored. That independent audit has now completed
+with PASS: six comparisons and 911616 bitwise-equal logits, equal token/CSR,
+equal native work and dispatch counts 796 old versus 458 installed. Its log
+SHA256 is `91c8abed8d32b10245a06505521548ffff439184b2276c9a327f6b91f7ad2c97`.
+The original worker retains its parent-report FAIL; the audit is a separate
+artifact. No further model execution was needed for the reporting correction.
+
+`combined_decode_gate_v2.py` provides a successor reporter for future gates.
+It suppresses only a parent with no mode and zero calls. A real host fork /
+destructor test verifies two correctly counted child reports, a silent idle
+parent, and rejection of an invalid-mode parent that did make a call. The
+original sealed reporter remains unchanged for reproducibility.
+
+## Combined RTL timing gate
+
+After separate numerical and normal-library acceptance, one combined RTL
+comparison is running in
+`verification/out/q8k-combined-qkv-exact-20261027-01`. It retains full captured
+Q/V/K shapes and profiles. The baseline performs three old-quantizer calls
+and separate per-projection context lifetimes; the optimized side performs
+one layout-optimized quantization and a shared context lifetime. This measures
+the combination directly rather than multiplying the two earlier speedups.
+
+The inherited old quantizer source has been replaced in the live runtime by
+the reviewed integration. The builder therefore verifies its saved
+`quants.before.c` against the exact original source hash and records this
+source-location rebinding separately; reused objects/generated quantizers
+and every other inherited pin must still match. It also records the current
+runtime source hash. This does not accept arbitrary input drift. The QEMU
+preflight passed before launching VCS; combined hardware timing remains
+pending and is not yet a new accepted performance number.

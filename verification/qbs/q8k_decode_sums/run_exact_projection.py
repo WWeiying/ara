@@ -73,6 +73,7 @@ def main():
                 for name,flag in (('original',0),('candidate',1))}
         atomic_json(out/'result.json',dict(state='PASS',trials=trials,totals=totals,
             speedup=totals['original']/totals['candidate'],log_sha256=digest(log),
+            combined_prepare=report.get('combined_prepare',False),
             scope='Complete captured '+report['kind']+' projection pair; not full model performance'))
         state['state']='PASS'
     except BaseException as exc:

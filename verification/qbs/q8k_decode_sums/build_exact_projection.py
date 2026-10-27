@@ -35,18 +35,47 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--kind',choices=('projection','qkv'),required=True)
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--combined-prepare',action='store_true')
+    parser.add_argument('--archived-quantizer-source',type=Path)
     args=parser.parse_args();out=args.output.resolve()
+    if args.combined_prepare and args.kind!='qkv':raise ValueError('Combined preparation requires Q/V/K')
     if not out.is_relative_to(ROOT/'verification/out'): raise ValueError('Independent output required')
     stem='q8k-decode-projection' if args.kind=='projection' else 'q8k-context-qkv'
     base=ROOT/f'verification/out/{stem}-groupcheck-build-20261026-01'
     pins=json.loads((base/'manifest.json').read_text())
+    rebindings=[]
+    if args.archived_quantizer_source:
+        original_source=Path('/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/quants.c')
+        archived=args.archived_quantizer_source.resolve(strict=True)
+        expected=pins[str(original_source)]
+        if archived==original_source or digest(archived)!=expected:
+            raise ValueError('Archived quantizer must exactly match the inherited original source')
+        # The reused quantizer objects and generated source remain unchanged.
+        # Preserve their original input identity using its saved byte-exact copy.
+        del pins[str(original_source)]
+        pins[str(archived)]=expected
+        pins.update(hashes([original_source]))
+        rebindings.append(dict(original_path=str(original_source),archived_path=str(archived),
+                               inherited_sha256=expected,current_sha256=digest(original_source)))
     if hashes(map(Path,pins))!=pins: raise ValueError('Prerequisite input drift')
     commands=json.loads((base/'commands.json').read_text())
     compile_cmd=list(commands[0])
     original=Path(compile_cmd[compile_cmd.index('-c')+1])
     generated=generate(original.read_text(),args.kind)
+    if args.combined_prepare:
+        declaration='extern void decode_original(const float *, void *, int64_t);'
+        call='            if(!reuse || part==0) decode_original(qkv_input,packed+1,1536);'
+        if generated.count(declaration)!=1 or generated.count(call)!=1:
+            raise ValueError('Reviewed combined preparation structure drift')
+        generated=generated.replace(declaration,declaration+'\nextern void decode_candidate(const float *, void *, int64_t);')
+        generated=generated.replace(call,
+            '            if(!reuse || part==0) {\n'
+            '                if(reuse) decode_candidate(qkv_input,packed+1,1536);\n'
+            '                else decode_original(qkv_input,packed+1,1536);\n'
+            '            }')
     pins.update(hashes([Path(__file__),HERE/'exact_projection_source.py',HERE/'integrity_equal.h']))
     out.mkdir(parents=True,exist_ok=False)
+    atomic_json(out/'source-rebindings.json',rebindings)
     source=out/'experiment.c';source.write_text(generated)
     weights=[('projection_weights',base/'weight_r4.bin')] if args.kind=='projection' else [
         (n+'_weights',base/(n+'_r4.bin')) for n in ('q','v','k')]
@@ -81,7 +110,8 @@ def main():
     if hashes(map(Path,pins))!=pins: raise ValueError('Build input drift')
     pins.update(hashes([source,expected,out/'experiment.o',out/'expected.o',out/'projection.elf',out/'projection-linux']))
     atomic_json(out/'manifest.json',pins)
-    atomic_json(out/'build.json',dict(state='BUILT_NOT_EXECUTED',kind=args.kind,
+    atomic_json(out/'build.json',dict(state='BUILT_NOT_EXECUTED',kind=args.kind,combined_prepare=args.combined_prepare,
+        source_rebindings=rebindings,
         manifest_sha256=digest(out/'manifest.json'),load_ranges=ranges,
         scope='Original complete shapes and ABBA; independent exact weight comparison outside timing'))
 
