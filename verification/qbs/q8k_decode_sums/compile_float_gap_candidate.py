@@ -35,6 +35,15 @@ def candidate(text):
     return text.replace(OLD, NEW, 1)
 
 
+def reviewed_baseline(text):
+    """Allow tests after installation without silently applying the patch twice."""
+    if text.count(NEW)==1 and OLD not in text:
+        return text.replace(NEW,OLD,1)
+    if text.count(OLD)==1 and NEW not in text:
+        return text
+    raise ValueError('Neither reviewed baseline nor reviewed installed policy')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)

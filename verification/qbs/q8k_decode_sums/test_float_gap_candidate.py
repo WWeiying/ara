@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import unittest
 
-from compile_float_gap_candidate import SOURCE, candidate
+from compile_float_gap_candidate import SOURCE, candidate, reviewed_baseline
 
 PREFIX = r'''
 #include <cassert>
@@ -88,7 +88,7 @@ int main() {
 
 class FloatGapTest(unittest.TestCase):
     def test_actual_control_paths(self):
-        text = candidate(SOURCE.read_text())
+        text = candidate(reviewed_baseline(SOURCE.read_text()))
         first = text.index('static bool node_may_modify_activation(')
         last = text.index('\nstatic qbs_activation_trace_link linked_activation', first)
         with tempfile.TemporaryDirectory() as directory:

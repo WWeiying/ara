@@ -52,10 +52,10 @@ across expert matmuls or identity-ineligible ordinary matmuls. It keeps adjacent
 compatible projection reuse. The reproduced self-wait, fixed tests and remaining
 in-place/alias safety gate are described in `qbs_segmented_r4.md`.
 
-## Pending float-gap context refinement
+## Float-gap context refinement
 
-`llama-float-gap-context.patch` is a separate, **not yet installed** candidate
-on top of the current local runtime. It is not a replacement for the segmented
+`llama-float-gap-context.patch` is a separate refinement, now installed in the
+local runtime source after its paired RTL gate. It is not a replacement for the segmented
 patch above. It permits lookahead across ordinary F32/F16-weight matrix
 operations only after the existing write/alias guard passes and only while
 those weights have no QBS profile. Expert and incompatible quantized matrix
@@ -71,8 +71,12 @@ runtime checkout. It performs these operations only in a temporary directory.
 
 The model pair and 16 executed graph cases are documented in
 `hardware/docs/q8k_float_gap_model_pair_20261026.md`. The captured mixed-profile
-Q/V/K RTL performance experiment is pending. Do not install the candidate into
-a checkout pinned by an active worker. After its performance gate, apply only
-after `git apply --check`, rebuild the production runtime, and repeat affected
-graph/model gates using that actual build. Private candidate results alone
-do not establish acceptance of a newly rebuilt production binary.
+Q/V/K RTL gate passed at 1.11947x (10.672% fewer cycles), with unchanged work;
+it excludes intermediate graph operators and is not whole-model performance.
+The actual installed translation unit has been rebuilt with production flags;
+its graph acceptance run is separate from the private candidate results.
+Do not install into a checkout pinned by an active worker. On another checkout,
+apply only after `git apply --check`, rebuild, and repeat the affected gates.
+See `hardware/docs/q8k_projection_accepted_results_20261026.md` for provenance
+and current integration scope. Existing dirty runtime changes are not included
+in this repository's scoped patch and must not be overwritten.

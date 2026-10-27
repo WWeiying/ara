@@ -17,6 +17,7 @@ from run_tile_context_engine import run_command
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--installed-build',type=Path)
     args=parser.parse_args()
     out=args.output.resolve()
     if not out.is_relative_to(ROOT/'verification/out'): raise ValueError('Independent output required')
@@ -32,6 +33,14 @@ def main():
     inherited += [Path(qemu[0]),Path(qemu[qemu.index('-kernel')+1]),Path(qemu[qemu.index('-bios')+1]),init]
     pins=hashes(inherited)
     if any(manifest.get(p)!=h for p,h in pins.items()): raise ValueError('Inherited input drift')
+    if args.installed_build:
+        installed=args.installed_build.resolve(strict=True)
+        installed_pins=json.loads((installed/'manifest.json').read_text())
+        if (json.loads((installed/'result.json').read_text())['state']!='PRODUCTION_TU_COMPILE_PASS' or
+                hashes(map(Path,installed_pins))!=installed_pins):
+            raise ValueError('Installed production build drift')
+        link[link.index(str(base/'qbs.o'))]=str(installed/'qbs.cpp.o')
+        pins.update(installed_pins)
     pins.update(hashes([source,Path(__file__),cpio]))
     out.mkdir(parents=True,exist_ok=False)
     state=dict(state='BUILDING',pid=os.getpid(),child_pid=None)
@@ -42,7 +51,15 @@ def main():
         atomic_json(out/(label+'.command.json'),cmd)
         if run_command(cmd,out/(label+'.log'),limit,os.environ.copy(),started): raise RuntimeError(label+' failed')
     try:
-        compile_cmd[compile_cmd.index('-c')+1]=str(source)
+        compile_source=source
+        if args.installed_build:
+            text=source.read_text()
+            marker='env("GGML_RISCV_QBS_CROSS_OP_CONTEXT","1");'
+            if text.count(marker)!=1: raise ValueError('Graph mode selection drift')
+            text=text.replace(marker,'env("GGML_RISCV_QBS_CROSS_OP_CONTEXT",mode ? "1":"0");')
+            compile_source=out/'graph.cpp';compile_source.write_text(text)
+            pins.update(hashes([compile_source]))
+        compile_cmd[compile_cmd.index('-c')+1]=str(compile_source)
         compile_cmd[compile_cmd.index('-o')+1]=str(out/'test.o')
         ggml=Path('/home/wangwy/llama/llama.cpp/ggml/src')
         # GGML internal headers define unused static helpers in this test TU.
@@ -93,6 +110,9 @@ def main():
         if hashes(map(Path,pins))!=pins: raise ValueError('Input drift')
         state.update(state='PASS',graphs=16,quantizations=[16,12],skips=[0,4],
                      scope='Graph outputs, CSR and aggregate context admission; not RTL performance')
+        if args.installed_build:
+            state['production_tu']=str(args.installed_build.resolve()/'qbs.cpp.o')
+            state['mode_scope']='Actual installed policy, cross-op context OFF/ON; other objects frozen'
     except BaseException as exc:
         state.update(state='FAIL',error=repr(exc));raise
     finally:

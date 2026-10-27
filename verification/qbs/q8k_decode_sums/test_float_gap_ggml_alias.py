@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import unittest
 
-from compile_float_gap_candidate import SOURCE, candidate
+from compile_float_gap_candidate import SOURCE, candidate, reviewed_baseline
 
 LLAMA = SOURCE.parents[4]
 
@@ -74,7 +74,7 @@ int main() {
 
 class GGMLAliasTest(unittest.TestCase):
     def test_actual_tensor_spans(self):
-        text = candidate(SOURCE.read_text())
+        text = candidate(reviewed_baseline(SOURCE.read_text()))
         first = text.index('static bool node_may_modify_activation(')
         end = text.index('\nstatic bool next_context_consumer_matches(', first)
         # Compile the current GGML implementation itself, avoiding a possibly

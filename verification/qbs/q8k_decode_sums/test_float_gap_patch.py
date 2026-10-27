@@ -4,7 +4,7 @@ import subprocess
 import tempfile
 import unittest
 
-from compile_float_gap_candidate import SOURCE, ROOT, candidate
+from compile_float_gap_candidate import SOURCE, ROOT, candidate, reviewed_baseline
 
 PATCH=ROOT/'software/qbs/integrations/llama-float-gap-context.patch'
 REL=Path('ggml/src/ggml-cpu/arch/riscv/qbs.cpp')
@@ -12,7 +12,8 @@ REL=Path('ggml/src/ggml-cpu/arch/riscv/qbs.cpp')
 
 class PatchTest(unittest.TestCase):
     def test_matches_validated_candidate_and_reverses(self):
-        original=SOURCE.read_text()
+        production=SOURCE.read_text()
+        original=reviewed_baseline(production)
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
             source=root/REL
@@ -30,7 +31,7 @@ class PatchTest(unittest.TestCase):
                                   capture_output=True,text=True,timeout=10)
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertEqual(source.read_text(),original)
-        self.assertEqual(SOURCE.read_text(),original)
+        self.assertEqual(SOURCE.read_text(),production)
 
 
 if __name__=='__main__':unittest.main()
