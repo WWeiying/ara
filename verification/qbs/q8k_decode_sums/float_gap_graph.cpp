@@ -15,6 +15,13 @@ static void need(bool ok, const char *why) {
     if (!ok) { std::fprintf(stderr,"FLOAT_GAP_GRAPH_FAIL %s\n",why); std::exit(1); }
 }
 static void env(const char *k,const char *v) { need(setenv(k,v,1)==0,"env"); }
+static void side_write(ggml_tensor *dst,const ggml_tensor *a,int ith,int nth,void *opaque) {
+    need(ith==0&&nth==1,"custom_threads");
+    auto *x=static_cast<ggml_tensor *>(opaque);
+    auto *values=static_cast<float *>(x->data);
+    for(int64_t i=0;i<ggml_nelements(x);++i) values[i]*=2.0f;
+    std::memcpy(dst->data,a->data,ggml_nbytes(a));
+}
 static void run(unsigned mode,const char *path) {
     env("GGML_RISCV_QBS","1"); env("GGML_RISCV_QBS_EMULATE","0");
     env("GGML_RISCV_QBS_ACTIVATION_CONTEXT","1");
@@ -26,7 +33,7 @@ static void run(unsigned mode,const char *path) {
     std::printf("FLOAT_GAP_GRAPH_MODE mode=%u\n",mode);
     FILE *file=std::fopen(path,"wb"); need(file,"output");
     constexpr int k=256,n=64;
-    for (int scenario=0;scenario<3;++scenario) {
+    for (int scenario=0;scenario<4;++scenario) {
         ggml_init_params p{1024*1024,nullptr,true};
         auto *wc=ggml_init(p), *ctx=ggml_init(p); need(wc&&ctx,"contexts");
         auto *w=ggml_new_tensor_2d(wc,GGML_TYPE_Q4_K,k,n);
@@ -46,8 +53,11 @@ static void run(unsigned mode,const char *path) {
             fw=ggml_new_tensor_2d(ctx,scenario ? GGML_TYPE_F16:GGML_TYPE_F32,4,4);
             fx=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,4,1);
             gap=ggml_mul_mat(ctx,fw,fx);
-        } else {
+        } else if(scenario==2) {
             gap=ggml_scale_inplace(ctx,x,2.0f);
+        } else {
+            fx=ggml_new_tensor_1d(ctx,GGML_TYPE_F32,4);
+            gap=ggml_map_custom1(ctx,fx,side_write,1,x);
         }
         ggml_build_forward_expand(graph,gap);
         auto *second=ggml_mul_mat(ctx,w,scenario==2 ? gap:x);
@@ -60,6 +70,9 @@ static void run(unsigned mode,const char *path) {
             for(int i=0;i<4;++i) { identity[i*5]=1; half[i*5]=ggml_fp32_to_fp16(1); }
             ggml_backend_tensor_set(fw,scenario ? static_cast<void *>(half):static_cast<void *>(identity),
                                     0,scenario ? sizeof(half):sizeof(identity));
+            ggml_backend_tensor_set(fx,vec,0,sizeof(vec));
+        } else if(scenario==3) {
+            const float vec[4]={1,2,3,4};
             ggml_backend_tensor_set(fx,vec,0,sizeof(vec));
         }
         const void *address=x->data;
@@ -78,11 +91,11 @@ static void run(unsigned mode,const char *path) {
             ggml_backend_tensor_get(second,b.data(),0,n*sizeof(float));
             for(int i=0;i<n;++i) {
                 need(std::isfinite(a[i])&&std::isfinite(b[i]),"nonfinite");
-                need(b[i]==a[i]*(scenario==2 ? 2.0f:1.0f),"reuse_or_overwrite");
+                need(b[i]==a[i]*(scenario>=2 ? 2.0f:1.0f),"reuse_or_overwrite");
             }
             if(epoch) need(std::memcmp(previous.data(),a.data(),n*sizeof(float))!=0,"stale_epoch");
             previous=a;
-            if(scenario<2) {
+            if(scenario<2 || scenario==3) {
                 float values[4]; ggml_backend_tensor_get(gap,values,0,sizeof(values));
                 for(int i=0;i<4;++i) need(values[i]==i+1,"float_gap_result");
             }
@@ -107,7 +120,7 @@ int main() {
     FILE *a=std::fopen(paths[0],"rb"),*b=std::fopen(paths[1],"rb"); need(a&&b,"paired_files");
     size_t bytes=0;
     for (;;) {int x=std::fgetc(a),y=std::fgetc(b);need(x==y,"paired_output_csr");if(x==EOF)break;++bytes;}
-    need(!std::ferror(a)&&!std::ferror(b)&&bytes==3168,"paired_length");
+    need(!std::ferror(a)&&!std::ferror(b)&&bytes==4224,"paired_length");
     std::fclose(a);std::fclose(b);
-    std::puts("FLOAT_GAP_GRAPH_SUITE_PASS graphs=12 paired_bytes=3168 performance=not_measured");
+    std::puts("FLOAT_GAP_GRAPH_SUITE_PASS graphs=16 paired_bytes=4224 performance=not_measured");
 }

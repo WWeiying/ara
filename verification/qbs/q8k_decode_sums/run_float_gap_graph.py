@@ -67,16 +67,16 @@ def main():
         run(qemu,'qemu',900)
         text=(out/'qemu.log').read_text()
         expected=[f'FLOAT_GAP_GRAPH_PASS mode={m} scenario={s} epoch={e}'
-                  for m in range(2) for s in range(3) for e in range(2)]
+                  for m in range(2) for s in range(4) for e in range(2)]
         if [l for l in text.splitlines() if l.startswith('FLOAT_GAP_GRAPH_PASS ')]!=expected:
             raise ValueError('Missing graph results')
-        if text.splitlines().count('FLOAT_GAP_GRAPH_SUITE_PASS graphs=12 paired_bytes=3168 performance=not_measured')!=1:
+        if text.splitlines().count('FLOAT_GAP_GRAPH_SUITE_PASS graphs=16 paired_bytes=4224 performance=not_measured')!=1:
             raise ValueError('Missing paired comparison')
         if 'FLOAT_GAP_GRAPH_FAIL' in text or 'GUEST_TEST_EXIT=0' not in text: raise ValueError('Guest failure')
         summaries=[dict(w.split('=',1) for w in line.split()[1:])
                    for line in text.splitlines() if line.startswith('GGML_RISCV_QBS_LIFETIME_SUMMARY ')]
         if len(summaries)!=2: raise ValueError('Missing policy activity summaries')
-        if ([int(s['quantizations']) for s in summaries]!=[12,8] or
+        if ([int(s['quantizations']) for s in summaries]!=[16,12] or
                 [int(s['cross_op_quantization_skips']) for s in summaries]!=[0,4]):
             raise ValueError('Expected two float-gap scenarios to reuse; writes must not reuse')
         for s, expected_cross in zip(summaries, (0,4)):
@@ -85,13 +85,13 @@ def main():
         executions=[dict(w.split('=',1) for w in line.split()[1:])
                     for line in text.splitlines() if line.startswith('GGML_RISCV_QBS_EXEC ')]
         if len(executions)!=2: raise ValueError('Missing native execution summaries')
-        for s, fills, reuse in zip(executions,(12,8),(0,8)):
+        for s, fills, reuse in zip(executions,(16,12),(0,8)):
             if (int(s['context_fill'])!=fills or int(s['context_release'])!=fills or
-                    int(s['context_reuse'])!=reuse or int(s['native_qbexec'])!=24 or
+                    int(s['context_reuse'])!=reuse or int(s['native_qbexec'])!=32 or
                     int(s['emulated_commands'])!=0):
                 raise ValueError('Native context lifetime/work mismatch')
         if hashes(map(Path,pins))!=pins: raise ValueError('Input drift')
-        state.update(state='PASS',graphs=12,quantizations=[12,8],skips=[0,4],
+        state.update(state='PASS',graphs=16,quantizations=[16,12],skips=[0,4],
                      scope='Graph outputs, CSR and aggregate context admission; not RTL performance')
     except BaseException as exc:
         state.update(state='FAIL',error=repr(exc));raise
