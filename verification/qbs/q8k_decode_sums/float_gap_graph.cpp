@@ -25,7 +25,7 @@ static void run(unsigned mode,const char *path) {
     env("GGML_QBS_FLOAT_GAP_TEST",mode ? "1":"0");
     std::printf("FLOAT_GAP_GRAPH_MODE mode=%u\n",mode);
     FILE *file=std::fopen(path,"wb"); need(file,"output");
-    constexpr int k=256,n=32;
+    constexpr int k=256,n=64;
     for (int scenario=0;scenario<3;++scenario) {
         ggml_init_params p{1024*1024,nullptr,true};
         auto *wc=ggml_init(p), *ctx=ggml_init(p); need(wc&&ctx,"contexts");
@@ -107,7 +107,7 @@ int main() {
     FILE *a=std::fopen(paths[0],"rb"),*b=std::fopen(paths[1],"rb"); need(a&&b,"paired_files");
     size_t bytes=0;
     for (;;) {int x=std::fgetc(a),y=std::fgetc(b);need(x==y,"paired_output_csr");if(x==EOF)break;++bytes;}
-    need(!std::ferror(a)&&!std::ferror(b)&&bytes==1632,"paired_length");
+    need(!std::ferror(a)&&!std::ferror(b)&&bytes==3168,"paired_length");
     std::fclose(a);std::fclose(b);
-    std::puts("FLOAT_GAP_GRAPH_SUITE_PASS graphs=12 paired_bytes=1632 performance=not_measured");
+    std::puts("FLOAT_GAP_GRAPH_SUITE_PASS graphs=12 paired_bytes=3168 performance=not_measured");
 }
