@@ -1,7 +1,22 @@
 {
   "production_integrated": false,
   "rtl_modified": false,
-  "performance_measured": false,
+  "performance_measured": true,
+  "rtl_preparation_pair": {
+    "state": "PASS",
+    "run": "verification/out/m4-cache-soc-20261027-01",
+    "baseline_trial_cycles": [344672, 344335],
+    "cache_trial_cycles": [255709, 254528],
+    "baseline_pair_cycles": 689007,
+    "cache_pair_cycles": 510237,
+    "speedup": 1.3503665943473326,
+    "cycle_reduction": 0.2594603538135316,
+    "log_sha256": "1ef81a5770e8e51554e234de3457c98a4f769d0b07a23fcc5ffc3c58a2157044",
+    "uvm_sha256": "1116184b510da0ea843ad213e3fb51f091a578ddbb282d1c5a3fdc9634b2478c",
+    "result_sha256": "478b4eac7f8cb3001bd9bd4e13220c898cca3591c405c7042d27cae3f7d70b8e",
+    "scope": "Preparation only, three calls on real M4/K1536 input, cold allocation and copies included, construction/destruction and matrix execution excluded",
+    "whole_model_speedup_measured": false
+  },
   "host_cache_checks": {
     "state": "PASS",
     "checks": 8064,

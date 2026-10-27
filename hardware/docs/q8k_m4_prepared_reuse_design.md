@@ -267,9 +267,39 @@ preflight passed. Execution was launched independently as
 `m4-cache-soc-20261027-01.service`, with output in
 `verification/out/m4-cache-soc-20261027-01`. At launch the actual VCS child
 was confirmed executing after source-manifest and image-contract checks.
-No timing result is yet accepted. The worker automatically performs protocol,
-guest-result and post-execution identity checks; success is not inferred from
-launch or partial UART output.
+The worker completed PASS after 34 minutes 50 seconds, including protocol,
+guest-result and post-execution identity checks. This is preparation timing,
+not model or complete projection timing:
+
+| Trial | Path | First call | Second call | Third call | Total cycles |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 0 | Recompute | 115156 | 114785 | 114731 | 344672 |
+| 1 | Cache | 149945 | 52952 | 52812 | 255709 |
+| 2 | Cache | 148830 | 52818 | 52880 | 254528 |
+| 3 | Recompute | 114839 | 114770 | 114726 | 344335 |
+
+Paired totals are 689007 versus 510237 cycles, a 25.946% reduction or 1.3504x
+preparation speedup. The first cache fill is more expensive than recomputation;
+with no later reuse it is a regression. Therefore, do not install unconditional
+cache insertion for every projection merely because this three-call sequence
+is beneficial. Admission must target repeated consumers, such as Q/V/K and
+gate/up. A lookup miss with no future consumer should quantize normally and
+avoid snapshot insertion. Runtime policy and its graph-level cost still need
+validation before enabling any production default.
+
+The prototype has not reserved or enlarged hardware SRAM. Its owned copies
+use software memory. Every admitted three-call cache trial reports two hits,
+one miss, one store, 49152 requested comparison bytes and 45600 copied bytes.
+The independent protocol check records 65586 CVXIF requests/responses,
+66544 backend allocations/completions, 7256 completed AXI reads and 49152
+matched write bursts; none remain pending or aborted. All guest error counts
+and contract protocol-error counts are zero. Both source-manifest checks pass.
+
+Log SHA256:
+`1ef81a5770e8e51554e234de3457c98a4f769d0b07a23fcc5ffc3c58a2157044`.
+UVM result SHA256:
+`1116184b510da0ea843ad213e3fb51f091a578ddbb282d1c5a3fdc9634b2478c`.
+The accepted ledger is `verification/qbs/m4_prepared_reuse/results-20261027.json`.
 
 1. Completed for the independent prototype: bounded owned snapshots, exact
    shape/layout/control keys, allocation failure and invalid-mode rejection.
