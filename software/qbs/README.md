@@ -308,8 +308,8 @@ runs retain the legacy schema. `audit_model_preparations.py` under
 The accepted RTL microbenchmark reduces three-call preparation cycles by
 60.79% with cold fill included. This is not model speedup. Private real-model
 tests pass bitwise logits/token/CSR comparison; the newly installed normal
-libraries have passed clean build and graph gates, with a fresh model gate
-still pending. See `hardware/docs/q8k_m4_prepared_reuse_design.md` for evidence.
+libraries also pass clean build, graph and model gates without object overrides.
+See `hardware/docs/q8k_m4_prepared_reuse_design.md` for evidence.
 
 ### Host tests
 

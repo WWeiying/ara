@@ -1,9 +1,26 @@
 {
   "production_integrated": true,
   "production_default_enabled": false,
-  "installed_model_gate": "RUNNING_NOT_ACCEPTED",
+  "installed_model_gate": "PASS",
   "rtl_modified": false,
   "performance_measured": true,
+  "installed_model": {
+    "state": "PASS",
+    "run": "verification/out/m4-prepared-installed-model-20261027-01",
+    "object_overrides": false,
+    "comparisons": 6,
+    "logits_compared": 911616,
+    "logical_prepared_records_per_process": 844,
+    "logical_m4_preparations_per_process": 386,
+    "executed_m4_computations_off": 386,
+    "executed_m4_computations_on": 220,
+    "cache_hits": 166,
+    "native_qbs_commands_per_process": 149448,
+    "schema_off": 1,
+    "schema_on": 2,
+    "log_sha256": "941cc6c4bfc027506c53e421a81f9cb70e211c091a69b4f40076d254563c310d",
+    "performance_measured": false
+  },
   "installed_build": {
     "state": "PASS",
     "run": "verification/out/m4-prepared-installed-build-20261027-01",

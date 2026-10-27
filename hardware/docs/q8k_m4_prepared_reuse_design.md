@@ -2,7 +2,7 @@
 
 The accepted vector-byte implementation is installed behind the opt-in
 `GGML_RISCV_QBS_M4_CACHE` switch. Normal CMake build and graph gates pass;
-the final normal-library model gate is running. Default behavior remains
+the final normal-library model gate also passes. Default behavior remains
 unchanged. The experiments below retain their precise scope and do not
 represent additional whole-model speedup measurements.
 
@@ -589,8 +589,13 @@ The final normal-library model worker is
 `m4-prepared-installed-model-20261027-01.service`, output
 `verification/out/m4-prepared-installed-model-20261027-01`. Actual QEMU
 execution is confirmed. It repeats complete logits/token/CSR/native-work
-pairing and checks the summary schema. This installed model result remains
-pending. The cache is off by default; request it with both
+pairing and checks the summary schema. The installed result is PASS: all
+911616 logits, token/CSR states and native work match. Actual M4 computations
+remain 386 versus 220 with 166 hits; logical preparation records are 844 in
+both processes, separately reconciled under summary schema 1/2. No object
+overrides are linked. Installed model log SHA256:
+`941cc6c4bfc027506c53e421a81f9cb70e211c091a69b4f40076d254563c310d`.
+The cache is off by default; request it with both
 `GGML_RISCV_QBS_M4_PREPARE=1` and `GGML_RISCV_QBS_M4_CACHE=1`.
 
 1. Completed for the independent prototype: bounded owned snapshots, exact
@@ -602,6 +607,6 @@ pending. The cache is off by default; request it with both
    They do not measure a complete projection including graph-policy overhead.
 4. Opt-in integration distinguishes logical preparation from actual work.
    Private full-model activity removes the observed duplicate M4 preparations.
-5. Normal-library graph gate passes; normal-library model gate is pending.
+5. Normal-library graph and model gates pass.
    Broader Prefill batches/worker-policy expansion require separate evidence.
    Hardware context reservations and SRAM size remain unchanged.
