@@ -79,9 +79,17 @@ def main():
         if ([int(s['quantizations']) for s in summaries]!=[12,8] or
                 [int(s['cross_op_quantization_skips']) for s in summaries]!=[0,4]):
             raise ValueError('Expected two float-gap scenarios to reuse; writes must not reuse')
-        for s in summaries:
-            if int(s['cross_op_fill'])<=0 or s['cross_op_fill']!=s['cross_op_release']:
-                raise ValueError('Context lifetime imbalance')
+        for s, expected_cross in zip(summaries, (0,4)):
+            if any(int(s[k])!=expected_cross for k in ('cross_op_fill','cross_op_reuse','cross_op_release')):
+                raise ValueError('Cross-operation context accounting mismatch')
+        executions=[dict(w.split('=',1) for w in line.split()[1:])
+                    for line in text.splitlines() if line.startswith('GGML_RISCV_QBS_EXEC ')]
+        if len(executions)!=2: raise ValueError('Missing native execution summaries')
+        for s, fills, reuse in zip(executions,(12,8),(0,8)):
+            if (int(s['context_fill'])!=fills or int(s['context_release'])!=fills or
+                    int(s['context_reuse'])!=reuse or int(s['native_qbexec'])!=24 or
+                    int(s['emulated_commands'])!=0):
+                raise ValueError('Native context lifetime/work mismatch')
         if hashes(map(Path,pins))!=pins: raise ValueError('Input drift')
         state.update(state='PASS',graphs=12,quantizations=[12,8],skips=[0,4],
                      scope='Graph outputs, CSR and aggregate context admission; not RTL performance')
