@@ -89,3 +89,41 @@ This strengthens the alias-guard evidence, but does not execute a GGML graph
 or replace the remaining graph-level ownership and fallback tests. Tensor
 storage is genuinely allocated; selected operation tags and result addresses
 are assigned by the fixture to model arena reuse deliberately.
+
+## Executed paired GGML graphs
+
+`float_gap_graph.cpp` executes real backend graphs, not extracted policy
+functions. Each policy runs F32 and F16 independent matrix gaps plus an
+in-place input scaling barrier, across two changed-input epochs at the same
+address. QBS weights use the production repack buffer. Both projections'
+outputs and FCSR/VCSR are compared bitwise across policies; independent checks
+also require the gap's identity-matrix result, unchanged projection results
+across safe gaps, doubled results after scaling, and changed results across
+epochs.
+
+The initial N32 case passed through DIRECT because one output tile is not
+context-eligible. It is retained as fallback evidence, not reuse evidence.
+The successor N64/K256 case executes two output tiles and covers reuse:
+
+| Counter | Old | Candidate |
+| --- | ---: | ---: |
+| Quantizations | 12 | 8 |
+| Cross-operation quantizations skipped | 0 | 4 |
+| Native commands | 24 | 24 |
+| Native context fill / release | 12 / 12 | 8 / 8 |
+| Native context reuse | 0 | 8 |
+| Cross-operation fill / reuse / release | 0 / 0 / 0 | 4 / 4 / 4 |
+
+All 12 graph executions and the 3168-byte output/CSR pair passed. Evidence is
+`verification/out/q8k-float-gap-graphs-20261026-03`. The original worker is
+FAIL because its checker incorrectly required nonzero *cross-operation*
+fills in the old policy. The corrected checker distinguishes these from
+ordinary per-operation context fills. An independent
+`corrected-checker-audit.json` records PASS without replacing the original
+report; every pinned input except the explicitly corrected checker is
+unchanged. Log SHA256:
+`a57529df3bee233665995ac5cfd7245bc2522253db59309f90565ee5802e5d7a`.
+
+These are bounded synthetic graph boundary tests, complementary to the real
+model run above. They establish neither RTL speedup nor exhaustive expert,
+custom-operation, concurrent-graph or cancellation coverage.
