@@ -77,7 +77,7 @@ tests also passed after installation. This closes the production-TU graph
 gate; a fresh model run with the production object remains separate work.
 A full clean rebuild of every library is not claimed.
 
-The single-output quantizer layout candidate remains uninstalled. Its shared
+The single-output quantizer layout optimization is now installed. Its shared
 implementation is now `software/qbs/ggml/q8_K-decode-sums.h`. The helper keeps
 the measured algorithm exactly, changing only private function/include-guard
 names. `test_shared_decode_helper.py` verifies this textual equivalence.
@@ -95,6 +95,29 @@ VLEN at least 128 and VL containing complete groups, as in the existing Q8_K
 block quantizer. The separate VLEN128/256/512/1024 functional tests remain
 the numerical evidence, not the opcode comparison alone.
 
-Actual runtime-source installation and a combined model regression are still
-required; this helper preparation does not silently enable a second change
-during the context policy's installed-model gate.
+The actual runtime source and helper were installed after verifying that they
+were not inputs to the running context-policy model gate. That model uses its
+sealed pre-existing quantizer objects. A snapshot of the old source is in
+`verification/out/q8k-decode-integration-20261026-01/quants.before.c`.
+`compile_installed_decode.py` checks the entire source delta and header bytes,
+then compiles the actual source with production flags. All 177 quantizer
+opcodes again matched the measured candidate, in
+`verification/out/q8k-decode-installed-compile-20261026-01`.
+
+`verification/out/q8k-decode-installed-full-20261026-01` completed PASS with
+11520 checks using that actual production object. It tests VLEN128/256/512/1024,
+12 input patterns, K=0/256/512/1536/1792/8960, five legal FRM settings and all
+eight VCSR settings. Full block bytes, input preservation, canaries, subgroup
+sums and FCSR/VCSR are checked against the separate old function. No private
+candidate implementation is used for the optimized callee.
+
+The context-policy installed-model gate also completed PASS in
+`verification/out/q8k-float-gap-installed-model-20261026-01`: six comparisons,
+911616 bitwise-equal logits, equal tokens and CSR, with equal native matrix
+work. This gate toggles the real cross-op option OFF/ON with M4 preparation
+fixed ON; unlike the earlier private test, it measures correctness of the
+installed policy rather than isolating just the float-gap rule.
+
+The two actual production objects still need a combined model regression.
+Their separate acceptance results are not a substitute for this final
+combination check, nor a full clean build of all runtime libraries.

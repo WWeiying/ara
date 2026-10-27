@@ -80,3 +80,20 @@ apply only after `git apply --check`, rebuild, and repeat the affected gates.
 See `hardware/docs/q8k_projection_accepted_results_20261026.md` for provenance
 and current integration scope. Existing dirty runtime changes are not included
 in this repository's scoped patch and must not be overwritten.
+
+## Decode Q8_K subgroup sums
+
+`llama-decode-sums.patch` installs the shared
+`software/qbs/ggml/q8_K-decode-sums.h` implementation into the RISC-V quantizer.
+It is now applied locally. Do not apply it twice. On another checkout use
+`git apply --check`; the patch also adds the required header. The installed
+header must match the canonical helper byte-for-byte.
+
+This is an integer subgroup-sum implementation change, not a new quantization
+format or rounding rule. Non-vector fallback and the other quantizers are
+unchanged. The actual production object has the same 177 quantizer instruction
+opcodes as the RTL-measured candidate, and passed 11520 independent QEMU
+checks across VLEN128/256/512/1024. The complete captured Decode projection
+gain is 1.00998x, not the larger preparation-only gain. The context policy's
+model gate and this quantizer's gate are separate; a combined model regression
+is still needed before reporting acceptance of both installed objects together.
