@@ -121,3 +121,20 @@ installed policy rather than isolating just the float-gap rule.
 The two actual production objects still need a combined model regression.
 Their separate acceptance results are not a substitute for this final
 combination check, nor a full clean build of all runtime libraries.
+
+The combined gate is now arranged in
+`verification/out/q8k-combined-installed-model-20261026-01`. It explicitly
+links both installed objects. Its baseline calls the old single-row quantizer
+extracted from the pre-integration snapshot and disables cross-op reuse; the
+optimized side calls the actual installed quantizer and enables reuse. M4
+preparation, QBS/AKV settings and all arithmetic workload remain fixed.
+This is a combined functional test, not an isolated incremental policy
+ablation or model timing measurement.
+
+The link-time wrapper records original/installed quantizer calls independently.
+`combined_decode_gate.py` requires those counts to reconcile with all recorded
+single-row preparations for each mode, rejecting missing, duplicated or
+wrong-path dispatch records. It also preserves the six full-vocabulary,
+token/CSR and native-work checks from the accepted model harness. Tests of
+the dispatch checker and old-function extraction passed before launch. The
+worker's final result must be inspected before reporting combined acceptance.
