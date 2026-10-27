@@ -57,3 +57,39 @@ whole-projection/runtime validation beyond the preparation-only measurement.
 In particular, paired model runs must compare the original and candidate
 Decode implementation, not merely toggle M4 preparation while both processes
 use the same new Decode implementation.
+
+## Direct model A/B and complete projection follow-up
+
+`verification/out/q8k-layout-model-pair-20261026-01` passed the direct model
+comparison. M4 preparation remains enabled in both processes; only the Decode
+quantizer changes. The wrapper counted 682 original calls in one process and
+682 candidate calls in the other. Six full-vocabulary comparisons, totalling
+911616 logit pairs, are bitwise equal with matching tokens and FCSR/VCSR.
+Native QBS work counts match. Raw log hash:
+`3b0b80a112672a6c82a2d27bc6696efd1c2bc13dd709731de37f70046a7158b3`.
+This model test does not measure RTL timing.
+
+The complete Decode Q projection pair uses real M1/N1536/K1536 tensors,
+48 native commands per invocation, and identical context fill/reuse/release
+in both paths. Preparation, descriptor construction, execution and output
+stores are timed; comparisons and guard checks are outside the interval.
+The captured original GGML output supplies an independent tolerance check,
+and ABBA output bytes and CSR must match exactly.
+
+The first build/run (`q8k-decode-projection-*-20261026-01`) stopped at the
+short QEMU preflight, before any VCS launch. GNU Linux compilation specialized
+the embedded static original quantizer and emitted `vfmv.v.f` after
+`vsetvli ... e8,m2`, without a new floating-compatible vtype. QEMU trapped at
+PC 0x10e94, instruction 0x5e04dc57. This is evidence about that generated
+test executable, not an RTL failure or a claim about every compiler version.
+The harness now compiles the two quantizers in a separate translation unit,
+like the runtime's externally called functions, without changing the algorithm
+or compiler optimization flags. The failed artifacts are preserved.
+
+Successor build `q8k-decode-projection-build-20261026-02` passed QEMU preflight:
+all four output digests are `64337d9fac6cceba`, FCSR=1, VCSR=3, guards and
+captured-output comparison pass. The dummy QEMU cycle values are not timing.
+The independent VCS run is
+`verification/out/q8k-decode-projection-pair-20261026-02`, systemd service
+`q8k-decode-projection-pair-20261026-02.service`; actual simv execution was
+confirmed. Complete-projection performance remains pending.
