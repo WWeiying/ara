@@ -8,6 +8,18 @@
     "instrumentation": "Clang UBSan, no recovery",
     "source": "verification/qbs/m4_prepared_reuse/cache_test.cpp"
   },
+  "full_group_replay": {
+    "state": "PASS",
+    "checks": 36,
+    "computations": 6,
+    "misses": 6,
+    "hits": 12,
+    "tails": 18,
+    "run": "verification/out/m4-group-replay-20261027-02",
+    "log_sha256": "ac18452bb819711ccce461064de27dffa7d201d87d2a5262f5cf417ffbc8966a",
+    "qbs_extension_enabled": false,
+    "scope": "Standalone full 15-token captures, three M4 groups and three direct single-row tails per pass; not GGML graph integration"
+  },
   "real_producer_replay": {
     "state": "PASS",
     "checks": 269,

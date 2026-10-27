@@ -219,6 +219,29 @@ comparisons and copies on RTL, multi-group admission policy and normal-runtime
 integration remain subsequent gates. No additional hardware or model speedup
 is claimed here.
 
+### Full captured groups and single-row tails
+
+`run_group_replay.py` adds a separate standalone functional check using the
+complete 15-token Q, V, K, FFN-gate and FFN-up input captures. Each input has
+three M4 groups and three single-row tails. Q/V/K and gate/up occupy distinct
+storage in the ELF, so equal values at different addresses must still hit.
+The test revisits Q after FFN-up to verify retained snapshot ownership.
+
+`verification/out/m4-group-replay-20261027-02/result.json` is PASS: 36 checks,
+six actual M4 computations, six misses, 12 hits and 18 direct single-row tail
+calls. For each group, cached bytes and FCSR/VCSR match actual recomputation;
+all output guards match. Each tail uses the installed `quantize_row_q8_K`
+function on both sides, without passing through the M4 cache. This exercises
+the proposed standalone grouping, not the still-unchanged GGML call site,
+threadpool, graph cancellation or a model using the cache. It does not provide
+an independent quantizer specification oracle for every group.
+
+QEMU runs with QBS disabled. Log SHA256:
+`ac18452bb819711ccce461064de27dffa7d201d87d2a5262f5cf417ffbc8966a`.
+All source, library and capture pins are checked before and after execution.
+The preceding `m4-group-replay-20261027-01` attempt stopped at compilation on
+an array-address comparison warning; it did not execute a guest test.
+
 ### RTL preparation-cost experiment
 
 `build_cache_soc.py`, `cache_soc.cpp`, `run_cache_soc.py` and `check.py` define
