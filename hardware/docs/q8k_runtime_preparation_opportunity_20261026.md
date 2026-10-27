@@ -143,3 +143,37 @@ node may acquire the hardware context, for example through a supported tail.
 Before changing that rule, identify these intermediate nodes' weight/input
 types, shapes, backend selection and actual context use. Do not simply skip
 all unsupported matrix nodes: the existing rule protects context ownership.
+
+### Private float-gap candidate activity
+
+The detailed successor probe identified the layer-0 intermediate matrices as
+F32 weights and F32 activations: weights 128x128 with activation 128x12 after
+Q, and weights 64x64 with activation 64x4 after V. Neither uses a QBS weight
+profile. The private candidate only skips such F32/F16-weight, F32-activation
+matrix nodes when their weight profile remains invalid for QBS, after the
+original input-write guard. Quantized matrices, expert operations, custom
+operations and overlapping output writes remain barriers. A host test executes
+the extracted production guards in 17 fixtures, including future float-profile
+support, aliasing, missing sources and source-identity changes. This test does
+not replace real graph/RTL tests.
+
+`verification/out/q8k-float-gap-model-20261026-01` completed its model gate;
+raw log hash `f2504122e53010effa9f7ab7a31fe0ee1e9cd914ebedef84ac0d966dd4f2b1df`.
+The existing activity analyzer reconciles every sequence with runtime totals:
+
+| Per-process activity | Original policy | Private candidate |
+| --- | ---: | ---: |
+| Quantizations executed | 1068 | 844 |
+| Quantizations skipped | 114 | 338 |
+| Quantized bytes produced | 6694392 | 6301944 |
+| Remaining exact-byte duplicate calls | 390 | 166 |
+| Remaining single-row duplicates | 224 | 0 |
+| Remaining four-row duplicates | 166 | 166 |
+
+Projection work and native command counts are unchanged. These results show
+that the candidate removes the observed single-row duplicate preparation,
+without an SRAM change. They do not establish model latency savings. The
+completed model harness compared M4 preparation OFF/ON while both modes used
+the candidate context policy; it is not yet a direct old-policy/new-policy
+numerical comparison. Keep the candidate private until that comparison,
+targeted real-graph alias/barrier regressions and paired RTL timing pass.
