@@ -77,7 +77,24 @@ tests also passed after installation. This closes the production-TU graph
 gate; a fresh model run with the production object remains separate work.
 A full clean rebuild of every library is not claimed.
 
-The single-output quantizer layout candidate remains uninstalled. Its modest
-complete-projection benefit is measured, but it must undergo its own shared
-helper integration and actual-build regression rather than being silently
-folded into this context-policy change.
+The single-output quantizer layout candidate remains uninstalled. Its shared
+implementation is now `software/qbs/ggml/q8_K-decode-sums.h`. The helper keeps
+the measured algorithm exactly, changing only private function/include-guard
+names. `test_shared_decode_helper.py` verifies this textual equivalence.
+`compile_shared_decode.py` rebuilds the entire quantizer translation unit with
+production flags and requires all 177 `quantize_row_q8_K` instruction opcodes
+to match the measured candidate object; this check passed in
+`verification/out/q8k-decode-shared-compile-20261026-01`.
+
+The helper only sums complete 16-byte quantized groups. It leaves signed-max
+selection, scale computation, floating-point conversion, output layout and
+scalar fallback unchanged. Its empty assembly constraint keeps the narrow
+source distinct from the wide reduction result; it emits no instruction and
+does not change architectural state. The caller requires standard RVV with
+VLEN at least 128 and VL containing complete groups, as in the existing Q8_K
+block quantizer. The separate VLEN128/256/512/1024 functional tests remain
+the numerical evidence, not the opcode comparison alone.
+
+Actual runtime-source installation and a combined model regression are still
+required; this helper preparation does not silently enable a second change
+during the context policy's installed-model gate.
