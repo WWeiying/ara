@@ -342,6 +342,63 @@ consumers, views, strided/small/batched inputs, invalid node selection and a
 missing capability predicate. This is policy selection testing, not native
 graph execution or a production-model integration result.
 
+### Actual repack call-site candidate
+
+The private `repack_candidate.patch` now connects the policy to GGML's real
+`forward_mul_mat` grouping loop. `compile_runtime_candidate.py` copies the
+current external `repack.cpp`, applies only this patch and compiles it with
+the production compile record. The production source and normal archives
+remain unchanged. Its helper is still under `verification/qbs/m4_prepared_reuse`
+and must be promoted/consolidated before production installation.
+
+The candidate uses a thread-local owned cache, graph/epoch/source boundaries
+and prefix admission for the first eight groups. The current functional
+domain additionally requires one GGML worker, enabled M4 preparation and
+contiguous, non-wide Q8_K packing with K no greater than 6144. Other worker
+counts, K sizes, shapes, packing paths and numerical modes retain the original
+quantization call. This limit is a software optimization policy, not a change
+to QBS or ordinary RVV hardware support. The capability predicate consults
+actual QBS support and activation-layout planning rather than assuming that
+every quantized weight selects the same packing.
+
+On a miss, the normal producer is executed once and incoming/generated
+FFLAGS are combined. Only an eligible vector result with a future consumer
+may be saved. Allocation failure does not run the producer a second time.
+A final consumer misses without saving. Input-chain changes clear ownership;
+finishing the final consumer releases snapshots. Tails remain direct calls
+to the existing single-row converter. No hardware activation-context
+reservation is created by this software cache.
+
+`verification/out/m4-runtime-graph-20261027-01/result.json` is PASS. It links
+the private repack object with the unchanged normal libraries and compares
+cache OFF/ON in 24 actual GGML graph executions. Real captured activations
+are used with deterministic test weights. Scenarios cover repeated consumers,
+an F32 matrix gap, in-place input writes, custom hidden input writes, two-worker
+fallback and non-RNE fallback, each over two changed-input epochs at reused
+addresses. All 46272 output/state bytes match. The eligible paired chains
+report exactly 12 real vector computations and 12 cache hits; no cache event
+appears in the baseline or prohibited scenarios. The graph checker also passes
+four host tests covering missing, duplicate and invalid activity evidence.
+
+Graph log SHA256:
+`442dec36a1989cbeb21ea92b0bd06a0c2795fa8cfda9abe224d7dc454ce136f6`.
+
+The candidate emits `GGML_RISCV_QBS_M4_CACHE` events with `hit`, `compute_rvv`
+or `compute_generic`. The `fill` field is permission to attempt insertion, not
+a count of successful stores. Those events distinguish actual work from reuse.
+Under this private experiment, the older lifetime report still describes
+logical packed-buffer preparation invocations and must not be interpreted as
+the number of executed quantizations. Production installation requires an
+explicit compatible counter/schema update, not a silent relabeling.
+
+The full-model OFF/ON worker is `m4-runtime-model-20261027-01.service`, output
+`verification/out/m4-runtime-model-20261027-01`. QEMU was confirmed executing
+and loading the real Qwen2.5-1.5B Q4_K_M model. Both sides retain installed
+Decode preparation and cross-op context reuse; only the software M4 cache
+changes. The worker compares six full-vocabulary outputs, token and CSR state,
+and exact native QBS workload counts with two KV configurations. Its result
+is pending; QEMU wall time is not a hardware performance metric.
+
 1. Completed for the independent prototype: bounded owned snapshots, exact
    shape/layout/control keys, allocation failure and invalid-mode rejection.
    Production remains unchanged.

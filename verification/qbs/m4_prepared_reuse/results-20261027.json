@@ -2,6 +2,17 @@
   "production_integrated": false,
   "rtl_modified": false,
   "performance_measured": true,
+  "private_runtime_graph": {
+    "state": "PASS",
+    "run": "verification/out/m4-runtime-graph-20261027-01",
+    "graphs": 24,
+    "paired_bytes": 46272,
+    "cache_hits": 12,
+    "cache_vector_computations": 12,
+    "log_sha256": "442dec36a1989cbeb21ea92b0bd06a0c2795fa8cfda9abe224d7dc454ce136f6",
+    "production_modified": false,
+    "performance_measured": false
+  },
   "rtl_preparation_pair": {
     "state": "PASS",
     "run": "verification/out/m4-cache-soc-20261027-01",
