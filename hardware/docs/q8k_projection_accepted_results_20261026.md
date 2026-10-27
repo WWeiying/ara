@@ -138,3 +138,24 @@ wrong-path dispatch records. It also preserves the six full-vocabulary,
 token/CSR and native-work checks from the accepted model harness. Tests of
 the dispatch checker and old-function extraction passed before launch. The
 worker's final result must be inspected before reporting combined acceptance.
+
+## Normal-library build gate
+
+`build_installed_runtime.py` completed an independent normal CMake build of
+the current llama.cpp source in
+`verification/out/q8k-installed-runtime-build-20261026-01`. All 884 selected
+source/configuration files retained their recorded hashes. The build produced
+`libllama.a`, `libggml.a`, `libggml-cpu.a` and `libggml-base.a`; effective
+GGML ISA and QBS/AKV/quantized-KV feature definitions matched the accepted
+configuration. The normal quantizer object again has the measured 177
+instruction opcodes. This build did not overwrite any sealed earlier library.
+
+The corresponding model gate is
+`verification/out/q8k-normal-runtime-model-20261026-01`, driven by
+`run_normal_runtime_model.py`. It removes all standalone runtime-object
+overrides, including the historical M4 repack object, and links exclusively
+against the four normal libraries. Only the pre-integration quantizer
+reference and its dispatch observer are extra test objects. It retains the
+same paired numerical/CSR/work and dispatch checks as the combined-object
+gate. Build success alone is not model-execution acceptance; inspect this
+worker's final result separately.
