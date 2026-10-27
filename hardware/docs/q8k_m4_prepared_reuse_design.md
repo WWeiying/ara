@@ -478,8 +478,68 @@ Its direct-owned service is `m4-vector-cache-soc-20261027-01.service`, output
 and advancing trace cycles were confirmed after image/source checks. This
 run must verify cache bytes, scalar/vector storage interactions and the same
 ABBA timing/accounting contract before accepting any additional benefit.
-No successor RTL or model performance result is yet accepted, and neither
-cache variant is installed in production llama.cpp.
+The VCS successor has now completed PASS, including UVM, guest bytes/guards,
+accounting and both source-manifest checks:
+
+| Trial | Path | First call | Second call | Third call | Total cycles |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 0 | Recompute | 115146 | 114709 | 114739 | 344594 |
+| 1 | RVV-byte cache | 121840 | 6933 | 6825 | 135598 |
+| 2 | RVV-byte cache | 120906 | 6821 | 6816 | 134543 |
+| 3 | Recompute | 114886 | 114708 | 114732 | 344326 |
+
+Paired totals are 688920 versus 270141 cycles: 2.5502x preparation speedup,
+or a 60.788% cycle reduction. The same cold-fill scope and construction/
+destruction exclusions as the scalar-byte experiment apply. This is not a
+whole-projection or model speedup. The earlier scalar-byte cache's independent
+pair was 689007 versus 510237; these are separate same-ELF ABBA experiments,
+not one three-way experiment. Their matching workload does not make their
+raw cycle ratios a substitute for a three-way paired measurement.
+
+The new hit phases cost 6816--6933 cycles; cold fill still costs more than one
+recomputation, so consumer-aware admission remains necessary. The added RVV
+traffic is not free: the complete run has 63508 AXI read beats versus 44864
+in the earlier scalar-byte run. Do not claim less memory traffic solely from
+the cycle reduction. Both runs include setup/check traffic outside the timed
+regions, and these whole-run counters are not a phase-level traffic breakdown.
+
+The successor protocol result has 66336 CVXIF requests/responses, 67110 backend
+allocations/completions, 7580 completed AXI reads and 49266 matched write
+bursts, with zero pending/aborted transactions or contract protocol errors.
+Log SHA256:
+`b624888bc9d40fb3dac25c484bb5e0247254b1404056c2e670cd6d0a3178bc56`.
+UVM result SHA256:
+`d9869bc7b46fec8154a4c7e1c0477bf4d5694e2f4081feb2b585d218532696ee`.
+
+`compile_vector_runtime_candidate.py` builds the same private GGML call site
+and controller with the accepted vector-byte header, without rewriting the
+earlier candidate. `run_candidate_runtime.py` provides graph/model gates for
+a specified pinned candidate object. The vector-byte runtime is built in
+`verification/out/m4-vector-runtime-compile-20261027-01`. Its source/controller
+are byte-identical to the preceding private runtime candidate; the shadowed
+cache header is byte-identical to the accepted vector-cache VCS header.
+
+`verification/out/m4-vector-runtime-graph-20261027-01/result.json` is PASS:
+the same 24 graph executions, 46272 paired output/state bytes, 12 wrapper
+computations and 12 hits pass with the vector-byte implementation. Scenarios
+retain write barriers, two-worker and non-RNE fallback. Graph log SHA256:
+`0047551676261c972e9f94a3797743f8010ed8d344cf25d4880a86f7e81ba2d2`.
+
+The byte helper changes VL/VTYPE, as ordinary RVV C calls may do. The native
+QBS SDK issues a memory fence and explicitly selects e32/appropriate LMUL
+before each custom matrix command, then sets its output-store geometry.
+The dispatcher additionally constructs QBS EW32/VL/EMUL from the command's M,
+ignores the ordinary zero-VL check and does not derive its arithmetic shape
+from the preceding byte helper. These source checks support safe integration;
+they are not a substitute for the pending complete runtime/model gate.
+
+The independent full-model successor is
+`m4-vector-runtime-model-20261027-01.service`, output
+`verification/out/m4-vector-runtime-model-20261027-01`. Its worker checks model
+outputs and actual M4 preparation accounting, requiring the same 386 logical
+preparations, 220 actual computations and 166 hits as the accepted scalar-byte
+runtime. No new model result is accepted at launch. Neither cache variant is
+installed in production llama.cpp.
 
 1. Completed for the independent prototype: bounded owned snapshots, exact
    shape/layout/control keys, allocation failure and invalid-mode rejection.
