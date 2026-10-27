@@ -1,0 +1,22 @@
+--- a/ggml/src/ggml-cpu/arch/riscv/qbs.cpp
++++ b/ggml/src/ggml-cpu/arch/riscv/qbs.cpp
+@@ -982,8 +982,18 @@
+         }
+         qbs_cross_op_identity next{};
+         if (!context_identity_for_node(next_node, params->graph_epoch, &next)) {
+-            // A different matrix shape may still acquire a context for a tail.
++            // Quantized matrices may acquire a context even for a tail.
++            // Ordinary float matrices do not enter the QBS block interface.
++            // The input-write check above remains mandatory before this skip.
+             if (next_node->op == GGML_OP_MUL_MAT) {
++                const ggml_tensor * weights = next_node->src[0];
++                const ggml_tensor * activation = next_node->src[1];
++                if (weights != nullptr && activation != nullptr &&
++                    (weights->type == GGML_TYPE_F32 || weights->type == GGML_TYPE_F16) &&
++                    activation->type == GGML_TYPE_F32 &&
++                    profile_for_type(weights->type).weight == QBS_WEIGHT_PROFILE_INVALID) {
++                    continue;
++                }
+                 return false;
+             }
+             continue;

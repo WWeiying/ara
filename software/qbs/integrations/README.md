@@ -51,3 +51,28 @@ The patch includes a scoped context-ownership fix: lookahead does not reserve
 across expert matmuls or identity-ineligible ordinary matmuls. It keeps adjacent
 compatible projection reuse. The reproduced self-wait, fixed tests and remaining
 in-place/alias safety gate are described in `qbs_segmented_r4.md`.
+
+## Pending float-gap context refinement
+
+`llama-float-gap-context.patch` is a separate, **not yet installed** candidate
+on top of the current local runtime. It is not a replacement for the segmented
+patch above. It permits lookahead across ordinary F32/F16-weight matrix
+operations only after the existing write/alias guard passes and only while
+those weights have no QBS profile. Expert and incompatible quantized matrix
+barriers remain unchanged. No descriptor ABI, hardware resource or public
+runtime option changes.
+
+The patch reproduces the private candidate exactly; the model-test-only
+`GGML_QBS_FLOAT_GAP_TEST` switch is deliberately absent. Existing cross-op
+context opt-in, capability/shape selection and ordinary RVV fallback remain.
+`test_float_gap_patch.py` checks application, exact equivalence to the tested
+candidate, rejection of double application, reversal and preservation of the
+runtime checkout. It performs these operations only in a temporary directory.
+
+The model pair and 16 executed graph cases are documented in
+`hardware/docs/q8k_float_gap_model_pair_20261026.md`. The captured mixed-profile
+Q/V/K RTL performance experiment is pending. Do not install the candidate into
+a checkout pinned by an active worker. After its performance gate, apply only
+after `git apply --check`, rebuild the production runtime, and repeat affected
+graph/model gates using that actual build. Private candidate results alone
+do not establish acceptance of a newly rebuilt production binary.
