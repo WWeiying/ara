@@ -397,7 +397,45 @@ and loading the real Qwen2.5-1.5B Q4_K_M model. Both sides retain installed
 Decode preparation and cross-op context reuse; only the software M4 cache
 changes. The worker compares six full-vocabulary outputs, token and CSR state,
 and exact native QBS workload counts with two KV configurations. Its result
-is pending; QEMU wall time is not a hardware performance metric.
+is now PASS; QEMU wall time is not a hardware performance metric.
+
+All six comparisons cover 911616 logits in total, with bitwise-equal logits,
+tokens and FCSR/VCSR. Both sides execute the same 149448 native QBS commands
+per process, with identical per-format shapes, arithmetic work and hardware
+context lifetime counts; no emulated commands are used. The software cache
+does not reduce the model's matrix arithmetic or claim to replace it.
+
+`audit_model_preparations.py` independently associates each computation/hit
+event with its following logical M4 lifetime record, checking graph epoch,
+row count and K. All records reconcile:
+
+| Preparation activity per process | Cache OFF | Cache ON |
+| --- | ---: | ---: |
+| Logical M4 preparations | 386 | 386 |
+| Actual M4 producer executions | 386 | 220 |
+| Cache hits | 0 | 166 |
+| Actual producer executions inside the cache wrapper | 0 | 110 |
+| Actual producer executions on the original uncached path | 386 | 110 |
+| K1536 producer executions | 332 | 166 |
+| K8960 producer executions | 54 | 54 |
+
+The 166 observed duplicate M4 preparations are all removed in this recorded
+model execution. The reduction in actual M4 quantization calls is 43.0%, not
+a measured model-cycle reduction. In particular, `compute_rvv=110` in the
+cache event stream is not the total quantization count: another 110 M4 calls
+still execute on the ordinary path. Single-row preparation is outside this
+audit. The analysis checks source/library pins and the original worker's
+passed result before interpreting activity. Its three tests reject malformed
+or unbalanced event/lifetime traces.
+
+Model log SHA256:
+`843843bcc5b1fe81f96947527bec54dd0be557fba8a79e8ca3aef2c8860d5bb8`.
+Worker result SHA256:
+`0e5c89d28e51b008d747eefe9b04041745f52d7a34c6d6614852923bab9609f2`.
+Detailed activity is `preparation-audit.json` in the same run directory.
+Production sources/archives remain unchanged. The forthcoming vector-byte
+successor needs its own acceptance; this result validates only the original
+private runtime candidate.
 
 ### RVV byte-operation successor
 
