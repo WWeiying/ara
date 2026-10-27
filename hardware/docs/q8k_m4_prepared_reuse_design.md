@@ -399,6 +399,50 @@ changes. The worker compares six full-vocabulary outputs, token and CSR state,
 and exact native QBS workload counts with two KV configurations. Its result
 is pending; QEMU wall time is not a hardware performance metric.
 
+### RVV byte-operation successor
+
+Static inspection of the accepted preparation ELF confirms that cache calls
+resolve to scalar `memcmp`/`memcpy` loops. A cache hit includes a 24576-byte
+input comparison and a 7008-byte output copy and costs about 52800 cycles in
+that experiment. That is the whole hit cost, not a measured function-level
+stall breakdown. The successor hypothesis is that these byte operations can
+use otherwise available standard RVV resources instead of CVA6 scalar loops.
+
+`software/qbs/ggml/rvv-byte-ops.h` supplies exact byte equality and
+nonoverlapping copy with VLA e8/m8 loads, comparisons and stores. Equality
+uses the same full-byte/vector-first-mismatch approach as the already checked
+integrity helper, not a hash. The helper requires the ordinary RVV C ABI's
+zero restart state, clobbers caller-saved vector state, and uses no floating
+or saturating operation. No QBS/AKV instruction, hardware capacity, data layout
+or quantization rule changes. It is not a global libc replacement.
+
+The standalone helper passes QEMU checks at VLEN 128, 256, 512 and 1024. Each
+configuration tests 52 length/alignment combinations, first/middle/last-byte
+mismatches, output guards and 256 FFLAGS/VCSR combinations with non-RNE FRM.
+Empty/null zero-length cases are included. Logs:
+
+| VLEN | Run suffix under `verification/out/` | Log SHA256 |
+| ---: | --- | --- |
+| 128 | `m4-byte-ops-v128-20261027-01` | `a7951a6d22b1a1702dc99f285f4b4ef514b072501c7e4e3f22d50bf96954ffa4` |
+| 256 | `m4-byte-ops-v256-20261027-01` | `891baf5cd9343bae032c2f0c50bb6ff48587edc0c90c8614ce03f0db21a7d87d` |
+| 512 | `m4-byte-ops-v512-20261027-01` | `f14658cb216707ae1d34e2acdc00cc072426ed607804c77a0b9c92c2696f6b2c` |
+| 1024 | `m4-byte-ops-v1024-20261027-02` | `2f5d351737ae5034f49aa4f31dc9221f6a2a6188a58ff6215f8edb7bffd4922b` |
+
+`build_vector_cache_soc.py` derives a separate experimental cache header by
+replacing precisely two equality checks and three copies. It refuses source
+structure drift; all other cache logic remains unchanged. The portable
+management path still passes all 8064 UBSan checks, and two generator tests
+pass. The earlier model worker's header/object is not modified.
+
+The new VCS build is `verification/out/m4-vector-cache-soc-build-20261027-01`.
+Its direct-owned service is `m4-vector-cache-soc-20261027-01.service`, output
+`verification/out/m4-vector-cache-soc-20261027-01`. Actual simulator execution
+and advancing trace cycles were confirmed after image/source checks. This
+run must verify cache bytes, scalar/vector storage interactions and the same
+ABBA timing/accounting contract before accepting any additional benefit.
+No successor RTL or model performance result is yet accepted, and neither
+cache variant is installed in production llama.cpp.
+
 1. Completed for the independent prototype: bounded owned snapshots, exact
    shape/layout/control keys, allocation failure and invalid-mode rejection.
    Production remains unchanged.
