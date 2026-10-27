@@ -111,12 +111,74 @@ speedup measurement.
 
 ## Next implementation gates
 
-1. Implement a bounded experimental value-checked cache with independently
-   owned input/output snapshots, exact shape/layout/control keys and strict
-   allocation-failure/unsupported-mode fallback. Keep production unchanged.
-2. Test mutations at first/middle/last bytes, reused addresses, distinct
-   buffers with equal values, changed shape/control, eviction and repeated
-   groups. Test nonmultiples-of-four through the unchanged tail path.
+### Experimental cache implementation
+
+`verification/qbs/m4_prepared_reuse/value_cache.hpp` now implements the
+independent prototype. It is not included by production llama.cpp. Each entry
+owns both snapshots; a hit requires exact input bytes and matching producer,
+shape, layout and numerical controls. A conflicting prepared result for the
+same key/input invalidates the old entry rather than returning it. Allocation
+failure preserves existing entries. Cache instances are worker-local and are
+not internally synchronized.
+
+Experimental defaults are eight entries, 1 MiB retained payload and 128 KiB
+maximum per entry, with lazy allocation and LRU eviction. Metadata is extra;
+replacement can temporarily allocate one additional entry. These defaults are
+not a production memory-budget decision. Returned flags are independently
+captured producer flags; the caller must OR them into FFLAGS. The byte-cache
+class neither reads nor changes architectural CSRs.
+
+The host test passed 8064 checks with Clang undefined-behavior instrumentation
+on 2026-10-27. Checks include owned snapshots, equal data at different
+addresses, first/middle/last mutations, LRU, duplicate/conflicting insertion,
+allocation failure, exact capacity limits, invalid controls, overlapping
+buffers, guards and 2000 successive source-address reuse iterations. Run:
+
+```sh
+clang++ -std=c++17 -O1 -g -Wall -Wextra -Werror \
+  -fsanitize=undefined -fno-sanitize-recover=all -Isoftware/qbs/include \
+  verification/qbs/m4_prepared_reuse/cache_test.cpp -o /tmp/m4-cache-test
+/tmp/m4-cache-test
+```
+
+The host test covers byte-cache management. A separate real-producer check
+now covers byte and CSR replay through this implementation:
+
+`verification/out/m4-cache-replay-20261027-01/result.json` is PASS, with 269
+checks. It uses the original real M4/K1536 input and prepared-byte oracle,
+the actual shared quantizer in a separate translation unit, and the pinned
+normal runtime libraries. QEMU runs with `xaraqbs=false`.
+
+- One cold computation and 256 warm calls cover all 32 incoming FFLAGS masks
+  and eight VCSR values. Results and guard regions match recomputation.
+- Three changes at first/middle/last input elements each cause a miss and a
+  real computation, followed by a hit. Restoring original input hits the owned
+  original snapshot. Total: four computations, four misses and 260 hits.
+- Four non-RNE controls and nonzero vstart are rejected without consuming the
+  unsupported state. No production fallback is replaced by this test wrapper.
+
+The test records SHA256
+`7b425dd265d18f3270c57c3033253f24050dfce35956ecccba05852daad6ed84`
+for its QEMU log and checks inherited source/library pins before and after
+execution. Reproduce with:
+
+```sh
+python3 verification/qbs/m4_prepared_reuse/run_cache_replay.py \
+  --output verification/out/m4-cache-replay-NEW
+```
+
+This is functional evidence for the real captured input and its tested
+mutations, not exhaustive quantizer-domain testing. Measuring cold misses,
+comparisons and copies on RTL, multi-group admission policy and normal-runtime
+integration remain subsequent gates. No additional hardware or model speedup
+is claimed here.
+
+1. Completed for the independent prototype: bounded owned snapshots, exact
+   shape/layout/control keys, allocation failure and invalid-mode rejection.
+   Production remains unchanged.
+2. Completed for byte-cache management and the real-data replay checks above.
+   Runtime multi-group and nonmultiples-of-four tail tests remain necessary
+   when integrating the cache at the actual GGML call site.
 3. Measure real-data miss plus repeated-hit sequences on VCS, counting input
    comparisons, snapshots, copies and flag handling inside the timed region.
    Do not benchmark only an artificially prefilled cache.

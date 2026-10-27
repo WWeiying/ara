@@ -1,0 +1,22 @@
+{
+  "production_integrated": false,
+  "rtl_modified": false,
+  "performance_measured": false,
+  "host_cache_checks": {
+    "state": "PASS",
+    "checks": 8064,
+    "instrumentation": "Clang UBSan, no recovery",
+    "source": "verification/qbs/m4_prepared_reuse/cache_test.cpp"
+  },
+  "real_producer_replay": {
+    "state": "PASS",
+    "checks": 269,
+    "computations": 4,
+    "misses": 4,
+    "hits": 260,
+    "run": "verification/out/m4-cache-replay-20261027-01",
+    "log_sha256": "7b425dd265d18f3270c57c3033253f24050dfce35956ecccba05852daad6ed84",
+    "qbs_extension_enabled": false,
+    "scope": "Real captured M4/K1536 input and three mutations, byte output and architectural FCSR/VCSR comparison"
+  }
+}
