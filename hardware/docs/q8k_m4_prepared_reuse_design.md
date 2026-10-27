@@ -1,7 +1,10 @@
 # Four-row prepared-activation reuse: investigation and design
 
-This is a prospective optimization, not an installed runtime cache. The
-completed Decode/reuse optimization remains unchanged.
+The accepted vector-byte implementation is installed behind the opt-in
+`GGML_RISCV_QBS_M4_CACHE` switch. Normal CMake build and graph gates pass;
+the final normal-library model gate is running. Default behavior remains
+unchanged. The experiments below retain their precise scope and do not
+represent additional whole-model speedup measurements.
 
 ## Measured opportunity
 
@@ -57,7 +60,8 @@ bytes, excluding metadata. This is software RAM, not new RTL storage. A
 bounded, lazily allocated, per-thread cache could retain several groups.
 Its size/admission policy must be tested for larger Prefill batches to avoid
 sequential-scan thrashing; a single last-result slot is not sufficient for
-general multi-group inputs. No cache size has been committed to production.
+general multi-group inputs. The installed opt-in wrapper now uses the
+eight-entry/1 MiB bounds below, with prefix admission for longer inputs.
 
 ## Numerical-state contract
 
@@ -160,7 +164,8 @@ Reproduce with `analyze_capture_residency.py --captures CAPTURE/operators
 ### Experimental cache implementation
 
 `verification/qbs/m4_prepared_reuse/value_cache.hpp` now implements the
-independent prototype. It is not included by production llama.cpp. Each entry
+independent prototype. That verification-only file remains archived; the
+installed runtime uses the promoted canonical header. Each entry
 owns both snapshots; a hit requires exact input bytes and matching producer,
 shape, layout and numerical controls. A conflicting prepared result for the
 same key/input invalidates the old entry rather than returning it. Allocation
@@ -303,8 +308,8 @@ The accepted ledger is `verification/qbs/m4_prepared_reuse/results-20261027.json
 
 ### GGML profitability policy candidate
 
-`software/qbs/ggml/m4-reuse-policy.h` is a candidate admission helper, not yet
-included by the production runtime. It uses actual GGML graph/tensor APIs and
+`software/qbs/ggml/m4-reuse-policy.h` is the installed admission helper.
+It uses actual GGML graph/tensor APIs and
 a caller-provided predicate for supported Q8_K/M4 consumers. The predicate
 must include real runtime capability/layout selection; the helper does not
 invent a hardware capability from a GGML weight type.
@@ -538,21 +543,65 @@ The independent full-model successor is
 `verification/out/m4-vector-runtime-model-20261027-01`. Its worker checks model
 outputs and actual M4 preparation accounting, requiring the same 386 logical
 preparations, 220 actual computations and 166 hits as the accepted scalar-byte
-runtime. No new model result is accepted at launch. Neither cache variant is
-installed in production llama.cpp.
+runtime. This successor has completed PASS: all 911616 logits, token/CSR states
+and native work agree, with 386 versus 220 actual M4 computations and 166
+hits. Model log SHA256:
+`fc3b84e5a199da7e1af5278b8a811e15084a6c745be01676320a7d9c949e5fa9`.
+Result SHA256:
+`8eb2aab7c431a0e5848bb3160843d0fb7501ee1fdda43b6a8f9b59419725b21b`.
+
+### Installed Runtime Integration
+
+The source of truth is `software/qbs/ggml/q8_K-prepared-cache.h` and
+`q8_K-prepared-reuse.h`, alongside the shared policy and byte helpers. Promotion
+changes namespaces/includes only. The private implementation remains unchanged
+as historical evidence. `llama-m4-prepared-reuse.patch` under
+`software/qbs/integrations/` contains only this integration and trace-schema
+delta: three existing external files and four new headers. Preexisting fork
+changes are preserved, not folded into this patch. Its reverse-apply check
+passes against the installed tree.
+
+The three previous dirty sources were copied before editing to
+`verification/out/m4-prepared-promotion-20261027-01/before/`.
+`source-snapshots.json` and `installed-delta.json` record before/after hashes
+and scope. Older workers pinning old live sources will now correctly reject
+drift; their completed results are historical. Old objects are not relabeled
+as newly built or linked into the installed gate.
+
+`verification/out/m4-prepared-installed-build-20261027-01/result.json` is PASS,
+covering 892 source inputs and rv64gcv_zfh_zvfh. The installed single-row
+quantizer still matches all 177 accepted opcodes. The installed graph gate is
+`verification/out/m4-prepared-installed-graph-20261027-01/result.json`, PASS
+for 24 graph executions and 46272 paired output/state bytes. Schema versions
+and 24 logical records per process are also checked. The link uses only
+test/data objects and four normal libraries: no private `candidate.o`, old
+quantizer or wrapper override. Graph log SHA256:
+`bc85685f196979d470475195b1fa524f9721efd48cdf99d2a0e3152ba0d30d30`.
+
+Cache-enabled lifetime summaries use `SUMMARY_V2`,
+`prepared_buffer_invocations` and preparation-time labels. Cache-disabled
+logs preserve the original schema. Per-record correlation stays intact.
+Three schema tests reject ambiguous names, missing records and inconsistent
+counts. Actual M4 work remains independently reconciled from compute/hit
+events and uncached conversion traces, not inferred from the logical summary.
+
+The final normal-library model worker is
+`m4-prepared-installed-model-20261027-01.service`, output
+`verification/out/m4-prepared-installed-model-20261027-01`. Actual QEMU
+execution is confirmed. It repeats complete logits/token/CSR/native-work
+pairing and checks the summary schema. This installed model result remains
+pending. The cache is off by default; request it with both
+`GGML_RISCV_QBS_M4_PREPARE=1` and `GGML_RISCV_QBS_M4_CACHE=1`.
 
 1. Completed for the independent prototype: bounded owned snapshots, exact
    shape/layout/control keys, allocation failure and invalid-mode rejection.
-   Production remains unchanged.
+   The accepted implementation is installed behind an off-by-default switch.
 2. Completed for byte-cache management and the real-data replay checks above.
-   Runtime multi-group and nonmultiples-of-four tail tests remain necessary
-   when integrating the cache at the actual GGML call site.
-3. Measure real-data miss plus repeated-hit sequences on VCS, counting input
-   comparisons, snapshots, copies and flag handling inside the timed region.
-   Do not benchmark only an artificially prefilled cache.
-4. Retain only a reproducibly beneficial policy. Then integrate with explicit
-   counters for real quantizations, cache copies and bytes compared/copied;
-   do not present logical preparation events as executed arithmetic.
-5. Repeat normal-library graph/model gates, including multi-group Prefill,
-   standard fallback and existing M1 hardware-context reuse. The software
-   cache must not reserve or imply validity of the hardware context.
+   Actual 15-row GGML grouping/tails pass private and installed graph gates.
+3. Preparation-only VCS pairs pass with cold fill and byte/CSR costs included.
+   They do not measure a complete projection including graph-policy overhead.
+4. Opt-in integration distinguishes logical preparation from actual work.
+   Private full-model activity removes the observed duplicate M4 preparations.
+5. Normal-library graph gate passes; normal-library model gate is pending.
+   Broader Prefill batches/worker-policy expansion require separate evidence.
+   Hardware context reservations and SRAM size remain unchanged.

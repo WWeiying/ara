@@ -1,7 +1,39 @@
 {
-  "production_integrated": false,
+  "production_integrated": true,
+  "production_default_enabled": false,
+  "installed_model_gate": "RUNNING_NOT_ACCEPTED",
   "rtl_modified": false,
   "performance_measured": true,
+  "installed_build": {
+    "state": "PASS",
+    "run": "verification/out/m4-prepared-installed-build-20261027-01",
+    "source_inputs": 892,
+    "normal_cmake_build": true,
+    "single_row_quantizer_opcodes_unchanged": 177
+  },
+  "installed_graph": {
+    "state": "PASS",
+    "run": "verification/out/m4-prepared-installed-graph-20261027-01",
+    "graphs": 24,
+    "paired_bytes": 46272,
+    "object_overrides": false,
+    "schema_off": 1,
+    "schema_on": 2,
+    "log_sha256": "bc85685f196979d470475195b1fa524f9721efd48cdf99d2a0e3152ba0d30d30",
+    "performance_measured": false
+  },
+  "vector_private_runtime_model": {
+    "state": "PASS",
+    "run": "verification/out/m4-vector-runtime-model-20261027-01",
+    "comparisons": 6,
+    "logits_compared": 911616,
+    "executed_m4_computations_off": 386,
+    "executed_m4_computations_on": 220,
+    "cache_hits": 166,
+    "log_sha256": "fc3b84e5a199da7e1af5278b8a811e15084a6c745be01676320a7d9c949e5fa9",
+    "result_sha256": "8eb2aab7c431a0e5848bb3160843d0fb7501ee1fdda43b6a8f9b59419725b21b",
+    "performance_measured": false
+  },
   "vector_private_runtime_graph": {
     "state": "PASS",
     "run": "verification/out/m4-vector-runtime-graph-20261027-01",

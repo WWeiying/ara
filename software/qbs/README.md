@@ -262,6 +262,55 @@ python3 -m venv /tmp/qbs-onnx-test
 /tmp/qbs-onnx-test/bin/python software/qbs/tests/test_onnx_portability.py
 ```
 
+### Optional GGML Prepared-Activation Reuse
+
+`integrations/llama-m4-prepared-reuse.patch` adds the checked M4/Q8_K software
+cache to the existing QBS-enabled llama.cpp fork. It is an incremental patch,
+not a complete upstream QBS backend. The canonical helpers are under `ggml/`.
+The runtime's previous local changes were preserved in independent snapshots;
+this patch contains only the preparation-cache delta.
+
+Set `GGML_RISCV_QBS_M4_PREPARE=1` and `GGML_RISCV_QBS_M4_CACHE=1` to request
+reuse. The cache is off by default. For an isolated comparison, retain M4
+preparation and set only `GGML_RISCV_QBS_M4_CACHE=0` on the baseline. Existing
+QBS selection, ordinary RVV fallback and single-row hardware-context reuse
+remain separate mechanisms.
+
+The initial optimization admits one GGML worker, contiguous F32[K,M] with
+M >= 4, K divisible by 256 and K <= 6144, no higher-dimensional batch, and
+non-wide Q8_K/M4 consumers. Q2_K/Q3_K/Q4_K/Q5_K/Q6_K weights can use that
+activation representation. Eligibility still requires actual runtime support.
+Only the first eight four-row groups are admitted; other groups and tails
+compute normally. Unsupported formats, shapes, controls and worker counts
+retain the original path. These are cache-policy limits, not new hardware
+support limits.
+
+Each hit compares all input bytes against an owned snapshot and copies the
+owned prepared data using standard VLA RVV. Independently captured FFLAGS are
+ORed into incoming sticky flags. Only RNE/zero-restart entries are cached.
+A predicted future consumer permits insertion; an isolated or final miss
+does not allocate a snapshot. Allocation failure leaves the computed output
+usable, without a second quantization. Retained payload is bounded by 1 MiB
+per worker plus metadata, with at most 128 KiB temporary replacement payload.
+Normal chain completion releases entries. Cancellation can leave bounded owned
+snapshots until the next ownership check or thread exit; no tensor data pointer
+is used as a substitute for an owned input snapshot.
+
+With `GGML_RISCV_QBS_TRACE_M4_PREPARE=1`, cache events distinguish `hit`,
+`compute_rvv` and `compute_generic`. The event's `fill` field means permission
+to attempt insertion, not a successful-store counter. With lifetime tracing,
+cache-enabled runs emit `GGML_RISCV_QBS_LIFETIME_SUMMARY_V2` and
+`prepared_buffer_invocations`; their timing fields say `preparation_time_*`.
+Do not interpret these logical calls as executed quantizations. Cache-disabled
+runs retain the legacy schema. `audit_model_preparations.py` under
+`verification/qbs/m4_prepared_reuse/` reconciles actual M4 computations/hits.
+
+The accepted RTL microbenchmark reduces three-call preparation cycles by
+60.79% with cold fill included. This is not model speedup. Private real-model
+tests pass bitwise logits/token/CSR comparison; the newly installed normal
+libraries have passed clean build and graph gates, with a fresh model gate
+still pending. See `hardware/docs/q8k_m4_prepared_reuse_design.md` for evidence.
+
 ### Host tests
 
 ```sh
