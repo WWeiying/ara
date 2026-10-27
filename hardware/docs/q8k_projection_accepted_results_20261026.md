@@ -205,8 +205,8 @@ original sealed reporter remains unchanged for reproducibility.
 
 ## Combined RTL timing gate
 
-After separate numerical and normal-library acceptance, one combined RTL
-comparison is running in
+After separate numerical and normal-library acceptance, the combined RTL
+comparison completed in
 `verification/out/q8k-combined-qkv-exact-20261027-01`. It retains full captured
 Q/V/K shapes and profiles. The baseline performs three old-quantizer calls
 and separate per-projection context lifetimes; the optimized side performs
@@ -219,5 +219,36 @@ the reviewed integration. The builder therefore verifies its saved
 source-location rebinding separately; reused objects/generated quantizers
 and every other inherited pin must still match. It also records the current
 runtime source hash. This does not accept arbitrary input drift. The QEMU
-preflight passed before launching VCS; combined hardware timing remains
-pending and is not yet a new accepted performance number.
+preflight passed before launching VCS. The complete combined result is now
+PASS, including the strict UVM event audit, all numerical/CSR/canary checks,
+exact weight comparisons and frozen-input verification:
+
+| Trial | Preparation / reuse | Preparation | QBS execution | Total cycles |
+| --- | --- | ---: | ---: | ---: |
+| 0 | Old / separate | 29352 | 157852 | 187409 |
+| 1 | New / shared | 8782 | 157916 | 166802 |
+| 2 | New / shared | 8636 | 157741 | 166478 |
+| 3 | Old / separate | 29274 | 157647 | 187118 |
+
+Matched totals are **374527 to 333280 cycles: 1.123761x, or 11.0131% fewer
+cycles**. Preparation falls from 58626 to 17418 cycles, while QBS execution
+is essentially unchanged (315499 versus 315657). This is a direct combined
+measurement, not a product of earlier speedups. It compares software paths
+on the same existing hardware, not the original ordinary-RVV processor or a
+whole model. It excludes intervening GGML graph operations.
+
+The UVM checker recorded no issues: 25094 requests/responses, 17851 backend
+allocations/completions, 23616 completed AXI reads and 320 matched writes/B
+responses. No pending or aborted transactions remain. Log SHA256:
+`af1e3735723b25b0b2b9f77fd79b565ec0498d2ee6142484551d6f87c3ac1235`.
+No RTL resource or instruction changes were needed in this software stage;
+the duplicate weight image exists only in the verification payload.
+
+The accepted machine-readable data are in
+`verification/qbs/results/q8k-runtime-optimization-20261027.json`. Separate
+historical FAIL records remain unchanged. This closes the measured Decode
+preparation/reuse integration milestone, not the broader claim that every
+QBS/AKV bottleneck or every model/shape is fully optimized. In particular,
+the measured four-row duplicate preparations remain a separate opportunity
+with buffer-ownership and numerical-state requirements; do not remove the
+hardware context's M1/capacity guards to claim those are already eliminated.

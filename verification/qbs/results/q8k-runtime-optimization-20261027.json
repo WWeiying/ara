@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "scope": "Incremental software improvements on existing native QBS hardware; not TC/RVV or whole-model speedup",
+  "rtl_changed": false,
+  "performance": [
+    {
+      "name": "decode_layout",
+      "run": "verification/out/q8k-projection-exact-20261026-01",
+      "status": "PASS",
+      "baseline_cycles": 245395,
+      "optimized_cycles": 242971,
+      "speedup": 1.0099764992529974,
+      "cycle_reduction_pct": 0.9877951873510038,
+      "preparation_cycles": {
+        "baseline": 19698,
+        "optimized": 17306
+      },
+      "execution_cycles": {
+        "baseline": 225697,
+        "optimized": 225665
+      },
+      "trials": 4,
+      "uvm_status": "PASS",
+      "protocol_errors": 0,
+      "log_sha256": "c2b15756921a8f400dbc2554ae6d3116be70b93fa650f0258db9169c3c926d6c"
+    },
+    {
+      "name": "cross_projection_reuse",
+      "run": "verification/out/q8k-qkv-exact-20261026-01",
+      "status": "PASS",
+      "baseline_cycles": 374776,
+      "optimized_cycles": 334780,
+      "speedup": 1.1194695023597587,
+      "cycle_reduction_pct": 10.671974726236478,
+      "preparation_cycles": {
+        "baseline": 58580,
+        "optimized": 19589
+      },
+      "execution_cycles": {
+        "baseline": 315850,
+        "optimized": 314955
+      },
+      "trials": 4,
+      "uvm_status": "PASS",
+      "protocol_errors": 0,
+      "log_sha256": "f936beca35013f9d19927a2eb96367a3c4bfcafc381d4823daddf86f67e6bf87"
+    },
+    {
+      "name": "combined",
+      "run": "verification/out/q8k-combined-qkv-exact-20261027-01",
+      "status": "PASS",
+      "baseline_cycles": 374527,
+      "optimized_cycles": 333280,
+      "speedup": 1.1237608017282765,
+      "cycle_reduction_pct": 11.013091179007118,
+      "preparation_cycles": {
+        "baseline": 58626,
+        "optimized": 17418
+      },
+      "execution_cycles": {
+        "baseline": 315499,
+        "optimized": 315657
+      },
+      "trials": 4,
+      "uvm_status": "PASS",
+      "protocol_errors": 0,
+      "log_sha256": "af1e3735723b25b0b2b9f77fd79b565ec0498d2ee6142484551d6f87c3ac1235"
+    }
+  ],
+  "normal_library_model_gate": {
+    "run": "verification/out/q8k-normal-runtime-model-20261026-01",
+    "audit_status": "INDEPENDENT_MODEL_DISPATCH_AUDIT_PASS",
+    "original_worker_status": "FAIL",
+    "comparisons": 6,
+    "logits_compared": 911616,
+    "dispatch": [
+      {
+        "installed": 0,
+        "mode": 0,
+        "original": 796
+      },
+      {
+        "installed": 458,
+        "mode": 1,
+        "original": 0
+      }
+    ],
+    "log_sha256": "91c8abed8d32b10245a06505521548ffff439184b2276c9a327f6b91f7ad2c97",
+    "reason_for_separate_audit": "Zero-call parent destructor reporting; original failure preserved"
+  }
+}
