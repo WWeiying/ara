@@ -139,6 +139,32 @@ token/CSR and native-work checks from the accepted model harness. Tests of
 the dispatch checker and old-function extraction passed before launch. The
 worker's final result must be inspected before reporting combined acceptance.
 
+### Combined-object result and dispatch-report defect
+
+The combined-object application completed all six full-vocabulary comparisons
+with bitwise-equal logits, equal tokens and CSR. Its host worker nevertheless
+reported FAIL because the test object's destructor also runs in the parent
+process, which never enters GGML: after the suite marker it prints
+`Q8K_COMBINED_DISPATCH mode=invalid original=0 installed=0`. The two child
+records themselves are correct: old calls 796 and installed calls 458.
+Those equal every M1 preparation recorded in each mode, including 114 K8960
+calls per mode; the K8960 calls are not unexplained extra work.
+
+The original FAIL report is preserved. `audit_combined_dispatch.py` independently
+verifies all original input pins and all original numerical/CSR/native-work
+checks, then validates child dispatch counts. It permits exactly one zero-call
+parent record only after the complete suite and before successful guest exit.
+Nonzero parent counts, missing/duplicated child records, incorrect order or
+missing guest acceptance are rejected by dedicated tests. The separate
+`combined-dispatch-audit.json` reports
+`INDEPENDENT_MODEL_DISPATCH_AUDIT_PASS` for 911616 logits. This is a scoped
+independent acceptance audit, not a relabeling of the original worker result.
+
+The model gate's baseline disables all cross-op reuse, so its 338 skipped
+quantizations include the pre-existing 114 skips plus the new rule's 224.
+The earlier private old/new-policy comparison with reuse enabled in both
+modes is the evidence that isolates that incremental 224-call improvement.
+
 ## Normal-library build gate
 
 `build_installed_runtime.py` completed an independent normal CMake build of
@@ -159,3 +185,9 @@ reference and its dispatch observer are extra test objects. It retains the
 same paired numerical/CSR/work and dispatch checks as the combined-object
 gate. Build success alone is not model-execution acceptance; inspect this
 worker's final result separately.
+
+The normal-library worker uses the same inherited dispatch reporter, so a
+separate background audit has been arranged for its known parent-record case.
+It waits on that specific live worker handle and never starts another QEMU
+or modifies a checker/input used by the running worker. Any different failure
+is rejected rather than ignored. The normal-library result remains pending.
