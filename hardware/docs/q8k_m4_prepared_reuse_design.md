@@ -301,6 +301,47 @@ UVM result SHA256:
 `1116184b510da0ea843ad213e3fb51f091a578ddbb282d1c5a3fdc9634b2478c`.
 The accepted ledger is `verification/qbs/m4_prepared_reuse/results-20261027.json`.
 
+### GGML profitability policy candidate
+
+`software/qbs/ggml/m4-reuse-policy.h` is a candidate admission helper, not yet
+included by the production runtime. It uses actual GGML graph/tensor APIs and
+a caller-provided predicate for supported Q8_K/M4 consumers. The predicate
+must include real runtime capability/layout selection; the helper does not
+invent a hardware capability from a GGML weight type.
+
+| Position in a matching consumer chain | Lookup | Save a miss |
+| --- | --- | --- |
+| First, with a future consumer | Yes | Yes |
+| Intermediate | Yes | Yes |
+| Last, with an earlier matching consumer only | Yes | No |
+| Isolated or unsupported | No | No |
+
+The last rule avoids the measured first-fill regression on one-use inputs.
+A last-consumer miss should compute normally without allocating a new entry.
+The graph scans are bounded at 128 nodes in each direction. Unknown/custom
+side-effect boundaries, expert operations, overlapping result writes, other
+quantized consumers and incompatible inputs stop the chain. Nonoverlapping
+F32/F16 matrix work and metadata-only views may be crossed. Current-node
+output aliasing is checked as well as intervening writes. The initial shape
+domain is contiguous F32[K,M] with K divisible by 256, M at least four and
+no higher-dimensional batches.
+
+This policy estimates useful reuse; it never proves a hit. Exact owned input
+bytes and producer/numerical controls remain mandatory. Even when a graph
+hint predicts reuse, changes to input contents must cause a miss. Cache
+ownership, graph epochs, worker-local state, prefix admission, actual-compute
+counters and exception replay remain the integration wrapper's responsibility.
+Do not turn this helper into an identity-only cache.
+
+The actual-GGML host test in `test_policy.py` passes 35 checks under UBSan.
+It compiles current GGML graph/tensor source instead of using fake tensor
+structures or a possibly stale host library. Cases include Q/V/K positions,
+different inputs, current/intervening aliases, exact adjacency versus one-byte
+overlap, custom writes, float/half gaps, unsupported quantized and expert
+consumers, views, strided/small/batched inputs, invalid node selection and a
+missing capability predicate. This is policy selection testing, not native
+graph execution or a production-model integration result.
+
 1. Completed for the independent prototype: bounded owned snapshots, exact
    shape/layout/control keys, allocation failure and invalid-mode rejection.
    Production remains unchanged.
