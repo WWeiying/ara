@@ -78,3 +78,36 @@ Independent run directories:
 The stopped runs must not be treated as hardware failures or completed
 performance results. This change addresses experiment overhead; it is not
 a production runtime optimization or a measured speedup claim.
+
+## Exact-comparison acceptance run
+
+The groupcheck projection completed its application but exceeded the detailed
+event log capacity; the Q/V/K run exceeded the two-hour bound before its final
+trial result. Both original failures remain intact. Their evidence and the
+partial/performance interpretation are in `q8k_projection_timing_findings_20261026.md`.
+
+`build_exact_projection.py` now generates successors using
+`integrity_equal.h`, without changing either timing window. Each executed
+weight image has a separately located, read-only copy made from the same
+host-pinned capture. RVV compares every byte at group start and end. This is
+an exact comparison against the copy, not a hash; simultaneous identical
+corruption of both copies is not excluded by the comparison alone. Captured
+numerical oracles, independent QEMU results, input checks and canaries remain.
+The executable verifies that the original and expected symbols are distinct.
+The ELF builder validates all load-segment ranges against the 16 MiB L2.
+
+The comparison self-test includes matching data and first/middle/last-byte
+mutations across 12 lengths, including partial vectors. Three host tests check
+source-drift rejection, unchanged timing windows and ELF load-range rejection.
+The builders reuse the original quantizer and native-command objects; no RTL,
+arithmetic shape, weight profile or descriptor sequence changes.
+
+`run_exact_projection.py` retains the strict original UVM checker. It raises
+both event limits to 1000000 before launching and bounds VCS to three hours.
+QEMU preflight is mandatory before either simulator starts. Runs use:
+
+- `verification/out/q8k-projection-exact-20261026-01`
+- `verification/out/q8k-qkv-exact-20261026-01`
+
+These are new experiments with different unmeasured cache activity. Only
+matched within-run ABBA results are accepted, not mixed predecessor timings.
