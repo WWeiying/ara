@@ -1,5 +1,5 @@
 #include "execute.h"
-#include "selector_runtime.h"
+#include "selector_baseline_runtime.h"
 static unsigned char selector_workspace[32768] __attribute__((aligned(64)));
 #include "verification/qbs/qbs_ref.h"
 #include <assert.h>
@@ -77,19 +77,19 @@ int main(int argc,char **argv) {
       slice.output.data=output+t*2048;slice.output.bytes-=t*8192;slice.output.tokens=1;
       slice.mask=mask+t*256;slice.mask_bytes=512;
       akv_quant_strided_report_t original;
-      assert(akv_quant_strided_execute(&slice,&bindings,selector_workspace,sizeof(selector_workspace),&original)==AKV_QUANT_NATIVE_OK);
+      assert(akv_quant_baseline_execute(&slice,&bindings,selector_workspace,sizeof(selector_workspace),&original)==AKV_QUANT_NATIVE_OK);
     }
     assert(commands==160 && fetestexcept(FE_ALL_EXCEPT)==old_flags && !memcmp(output,baseline,163840));
     memset(output,0xa5,163840);commands=0;feclearexcept(FE_ALL_EXCEPT);
     akv_quant_strided_report_t report;memset(&report,0,sizeof(report));
-    assert(akv_quant_selector_workspace_bytes()<=sizeof(selector_workspace));
+    assert(akv_quant_strided_workspace_bytes()<=sizeof(selector_workspace));
     for(unsigned t=0;t<20;++t) {
       akv_quant_selection_input_t slice=request.tensors;
       slice.query.data=(unsigned char *)q+t*512;slice.query.bytes-=t*512;slice.query.tokens=1;
       slice.output.data=output+t*2048;slice.output.bytes-=t*8192;slice.output.tokens=1;
       slice.mask=mask+t*256;slice.mask_bytes=512;
       akv_quant_strided_report_t one;
-      assert(akv_quant_selector_execute(&slice,&bindings,selector_workspace,sizeof(selector_workspace),&one)==AKV_QUANT_NATIVE_OK);
+      assert(akv_quant_strided_execute(&slice,&bindings,selector_workspace,sizeof(selector_workspace),&one)==AKV_QUANT_NATIVE_OK);
       report.native.command_attempts+=one.native.command_attempts;
       report.native.completed_groups+=one.native.completed_groups;
       report.native.value_decodes+=one.native.value_decodes;

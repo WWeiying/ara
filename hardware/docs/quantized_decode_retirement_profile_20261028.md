@@ -1,5 +1,12 @@
 # 当前 Decode 完整调用的退休 PC 定位
 
+> 评测接线复核（2026-10-28）：本文既有 native 周期数据使用通用标量
+> `dequantize_row_q8_0` 作为 V 回调；当前 llama.cpp 后端使用共享 RVV
+> `akv_quant_q8_0_value`。这些历史配对数据在其配置下仍有效，但不能当成
+> 当前后端回调配置下的周期或瓶颈占比。真实 GGML/模型功能回归不受此
+> benchmark 差异影响。更正及补测见 `quantized_native_binding_audit_20261028.md`。
+
+
 ## 为什么继续定位
 
 已接受的旧/新 selector ABBA 实验中，候选完整调用约 71651 cycles，

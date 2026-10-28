@@ -1,5 +1,12 @@
 # Token-major KV 的完整入口 RTL 结果
 
+> 评测接线复核（2026-10-28）：本文既有 native 周期数据使用通用标量
+> `dequantize_row_q8_0` 作为 V 回调；当前 llama.cpp 后端使用共享 RVV
+> `akv_quant_q8_0_value`。这些历史配对数据在其配置下仍有效，但不能当成
+> 当前后端回调配置下的周期或瓶颈占比。真实 GGML/模型功能回归不受此
+> benchmark 差异影响。更正及补测见 `quantized_native_binding_audit_20261028.md`。
+
+
 结果目录：`verification/out/prefill-strided-q4-vcs-20261028-01/`，PASS。
 构建：`verification/out/prefill-strided-q4-build-20261028-02/`，16 个对象重编译。
 此前 build-01 的符号检查失败已保留；修正的是旧连续入口符号检查，不是内核。

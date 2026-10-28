@@ -88,8 +88,9 @@ def main():
         pin(subprocess.check_output([cc, '-print-file-name=' + lib], text=True).strip())
     execute(link, 'link')
     dis = execute([cc.with_name('riscv64-unknown-elf-objdump'), '-d', elf], 'disassembly')
-    for symbol in ('qbs_native_execute_command', 'quantize_row_q8_0', 'dequantize_row_q8_0'):
+    for symbol in ('qbs_native_execute_command', 'quantize_row_q8_0'):
         assert '<' + symbol + '>:' in dis, symbol
+    assert '<dequantize_row_q8_0>:' not in dis,'Scalar V binding drift'
     assert '<qbs_ref_execute>:' not in dis
     for name, sha in pins.items(): assert digest(name) == sha, name
     save('source-pins.json', pins)

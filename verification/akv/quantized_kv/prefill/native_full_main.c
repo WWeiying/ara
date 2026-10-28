@@ -22,7 +22,7 @@ int main(void) {
     .output={output.data,sizeof(output.data),2*STRIDE*4,STRIDE*4,DIM,4,2},
     .mask=prefill_mask+FIRST_QUERY*256,.mask_bytes=4*512,.scale=0},.mask_row_stride=512};
   input.tensors.scale=prefill_scale;
-  akv_quant_native_bindings_t bindings={quantize_row_q8_0,dequantize_row_q8_0,
+  akv_quant_native_bindings_t bindings={quantize_row_q8_0,prefill_native_decode,
     quant_kv_ggml_scale_f32,quant_kv_ggml_mad_f32,qbs_native_execute_command,NULL};
   printf("PREFILL_SCOPE whole_call=1 admission=1 scatter=1 baseline=per_query_qbs\n");
   printf("PREFILL_CAP q4=%u rows=8 d=128 first_query=16 tokens=20 trials=4\n",prefill_q4);

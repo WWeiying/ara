@@ -2,6 +2,9 @@
 #include "native_main.c"
 #undef main
 #include "selector_runtime.h"
+#ifdef SELECTOR_PRODUCTION_PAIR
+#include "selector_baseline_runtime.h"
+#endif
 
 extern const uint16_t prefill_mask[];
 static unsigned char selector_workspace[32768] __attribute__((aligned(64)));
@@ -11,7 +14,11 @@ int main(void) {
   __asm__ volatile("csrr %0,vlenb":"=r"(vlenb));
   if(vlenb!=128 || qbs_device_query(qbs_native_info,NULL,&device)!=QBS_STATUS_OK ||
       akv_quant_strided_workspace_bytes()>sizeof(selector_workspace) ||
+#ifdef SELECTOR_PRODUCTION_PAIR
+      akv_quant_baseline_workspace_bytes()!=akv_quant_strided_workspace_bytes()) return 1;
+#else
       akv_quant_selector_workspace_bytes()!=akv_quant_strided_workspace_bytes()) return 1;
+#endif
   const unsigned row_bytes=prefill_q4?72:136;
   akv_quant_selection_input_t input={
     .requested=1,.vlen_bits=1024,.normal_memory=1,.device=&device,
@@ -22,18 +29,26 @@ int main(void) {
     .value={prefill_value,136*256*8,136*8,136,DIM,256,1},
     .output={output.data,sizeof(output.data),2*STRIDE*4,STRIDE*4,DIM,1,2},
     .mask=prefill_mask+19*256,.mask_bytes=512,.scale=prefill_scale};
-  akv_quant_native_bindings_t bindings={quantize_row_q8_0,dequantize_row_q8_0,
+  akv_quant_native_bindings_t bindings={quantize_row_q8_0,prefill_native_decode,
     quant_kv_ggml_scale_f32,quant_kv_ggml_mad_f32,qbs_native_execute_command,NULL};
   printf("SELECTOR_SCOPE whole_call=1 query=19 heads=2 dim=128 visible=20 token_major=1 trials=4\n");
   printf("SELECTOR_FORMAT q4=%u\n",prefill_q4);
+#ifdef SELECTOR_PRODUCTION_PAIR
+  printf("SELECTOR_BINDINGS value=shared_rvv_q8_0 baseline=frozen_selector candidate=current_shared\n");
+#endif
   const unsigned order[]={0,1,1,0};
   for(unsigned trial=0;trial<4;++trial) {
     unsigned aligned=order[trial];memset(&output,0xa5,sizeof(output));
     printf("SELECTOR_BEGIN trial=%u aligned=%u\n",trial,aligned);
     __asm__ volatile("vsetivli zero,1,e32,m1,ta,ma\nvmv.v.i v8,0\ncsrwi fcsr,0\ncsrwi vcsr,5" :::"memory","v8");
     drain();uint64_t begin=cycles();akv_quant_strided_report_t report;
+#ifdef SELECTOR_PRODUCTION_PAIR
+    int status=aligned?akv_quant_strided_execute(&input,&bindings,selector_workspace,sizeof(selector_workspace),&report):
+      akv_quant_baseline_execute(&input,&bindings,selector_workspace,sizeof(selector_workspace),&report);
+#else
     int status=aligned?akv_quant_selector_execute(&input,&bindings,selector_workspace,sizeof(selector_workspace),&report):
       akv_quant_strided_execute(&input,&bindings,selector_workspace,sizeof(selector_workspace),&report);
+#endif
     drain();uint64_t elapsed=cycles()-begin;uintptr_t fc,vc;
     __asm__ volatile("frcsr %0;csrr %1,vcsr":"=r"(fc),"=r"(vc));
     unsigned errors=status || report.native.command_attempts!=1 || report.native.completed_groups!=1 ||

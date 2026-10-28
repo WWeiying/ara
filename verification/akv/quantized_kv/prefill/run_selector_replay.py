@@ -39,7 +39,7 @@ def main():
     libraries=ROOT/'verification/out/akv-quantkv-host-capture-20261024-01/build/bin'
     sources=[HERE/'replay_selector.c',ROOT/'software/qbs/src/qbs_runtime.c',
              ROOT/'verification/qbs/qbs_ref.c',HERE/'host_bindings.cpp',
-             ROOT/'software/akv/experimental/quantized_kv/runtime.c',HERE/'selector_runtime.c',
+             ROOT/'software/akv/experimental/quantized_kv/runtime.c',HERE/'selector_baseline_runtime.c',
              ROOT/'software/akv/experimental/quantized_kv/runtime_strided.c']
     objects=[]
     for i,source in enumerate(sources):
@@ -67,7 +67,7 @@ def main():
     result=dict(state='PASS',results=results,binary_sha256=digest(binary),
                 source_pins_sha256=digest(out/'source-pins.json'),
                 scope='Common selector candidate Decode execution on real data, same canonical runtime source',
-                performance_measured=False,production_integrated=False)
+                performance_measured=False,production_integrated=False,baseline='frozen_pre_alignment_selector')
     (out/'result.json').write_text(json.dumps(result,indent=2)+'\n')
     print(json.dumps(result,indent=2))
 

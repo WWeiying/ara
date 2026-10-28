@@ -31,7 +31,8 @@ def main():
     try:
         report=json.loads((build/'build.json').read_text())
         s.require(report['state']=='BUILT_NOT_EXECUTED' and report.get('current_decode_profile') is True and
-            report['outputs_per_trial']==256 and report['trials']==1 and report['reused_objects']==0,'Build contract')
+            report['outputs_per_trial']==256 and report['trials']==1 and report['reused_objects']==0 and
+            report.get('value_binding')=='shared_rvv_q8_0','Build contract')
         s.require(s.digest(build/'source-pins.json')==report['source_pins_sha256'],'Build pins')
         pins=json.loads((build/'source-pins.json').read_text());s.merge_pins(pins,report['artifacts'])
         s.merge_pins(pins,s.hashes([build/'build.json']))
@@ -74,7 +75,7 @@ def main():
             owner.execute(original.uvm_command(simv,elf,work),work/'checker.log',600,'PROTOCOL_CHECK')
             accepted.protocol(work,report['elf_sha256'],image);manifest('manifest-after')
             result.update(state='PASS',numerical=numerical,measured=measured,qbs=qbs[0],
-                performance_measured=True,independent_protocol_checked=True)
+                performance_measured=True,independent_protocol_checked=True,value_binding=report['value_binding'])
         else:result['state']='PREFLIGHT_NOT_RUN'
         identity();result.update(post_pins_match=True,elf_sha256=report['elf_sha256'])
     except BaseException as exc:

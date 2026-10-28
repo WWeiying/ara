@@ -63,6 +63,10 @@ def main():
             s.require(not (out/'early-failure.json').exists(),'Unexpected exception/contract error')
             golden=ROOT/'verification/out/quant-prefill-capture-20261028-01'/report['kind']/'prefill/block/kqv_out-0.bin'
             measured=check_log((work/'run.vcs.log').read_text(),golden.read_bytes(),int(report['kind']=='q4_0'))
+            if report.get('frozen_selector_baseline'):
+                s.require(report.get('value_binding')=='shared_rvv_q8_0' and
+                    (work/'run.vcs.log').read_text().splitlines().count('SELECTOR_BINDINGS value=shared_rvv_q8_0 baseline=frozen_selector candidate=current_shared')==1,'Production binding marker')
+                measured['value_binding']='shared_rvv_q8_0'
             owner.execute(original.uvm_command(simv,elf,work),work/'checker.log',600,'PROTOCOL_CHECK')
             accepted.protocol(work,report['elf_sha256'],image);manifest('manifest-after')
             result.update(state='PASS',measured=measured,performance_measured=True,independent_protocol_checked=True)

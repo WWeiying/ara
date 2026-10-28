@@ -1,11 +1,14 @@
 #include "native_prefix.h"
 #include "printf.h"
+#include "software/akv/experimental/quantized_kv/q8_0_value.h"
 
 extern const float prefill_query[], prefill_golden[], prefill_scale;
 extern const unsigned char prefill_key[], prefill_value[];
 extern const unsigned prefill_q4;
 extern void quantize_row_q8_0(const float *, void *, int64_t);
-extern void dequantize_row_q8_0(const void *, float *, int64_t);
+static void prefill_native_decode(const void *source,float *out,int64_t n) {
+  akv_quant_q8_0_value(source,out,(size_t)n);
+}
 extern void quant_kv_ggml_mad_f32(int, float *, const float *, float);
 extern void quant_kv_ggml_scale_f32(int, float *, float);
 
@@ -57,7 +60,7 @@ int main(void) {
     .group_heads=ROWS, .kv_heads=1, .dim=DIM, .visible_tokens=20,
     .key_profile=prefill_q4 ? QBS_WEIGHT_PROFILE_Q4_0 : QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
     .key_row_bytes=key_bytes, .query_quant_row_bytes=136};
-  const akv_quant_native_bindings_t bindings = {quantize_row_q8_0, dequantize_row_q8_0,
+  const akv_quant_native_bindings_t bindings = {quantize_row_q8_0, prefill_native_decode,
     quant_kv_ggml_scale_f32, quant_kv_ggml_mad_f32, qbs_native_execute_command, NULL};
   printf("PREFILL_CAP q4=%u rows=8 d=128 first_query=16 tokens=20 trials=4\n", prefill_q4);
   const unsigned order[] = {0,1,1,0};

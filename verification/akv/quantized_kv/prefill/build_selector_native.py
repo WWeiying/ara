@@ -16,9 +16,11 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--recipe-build',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True)
-    parser.add_argument('--profile-current',action='store_true',help='One current production call, not an old/new pair')
+    mode=parser.add_mutually_exclusive_group()
+    mode.add_argument('--profile-current',action='store_true',help='One current production call, not an old/new pair')
+    mode.add_argument('--pair-production-bindings',action='store_true',help='Frozen old selector versus current, shared runtime V decoder')
     args=parser.parse_args();prior=args.recipe_build.resolve(strict=True);out=args.output.resolve()
-    if not args.profile_current:
+    if not args.profile_current and not args.pair_production_bindings:
         assert 'AKV_QUANT_PROVEN_ALIGNMENT' not in (ROOT/'software/akv/experimental/quantized_kv/selection_strided.h').read_text(), 'Historical pair is sealed; use --profile-current after promotion'
     report=json.loads((prior/'build.json').read_text())
     assert report['state']=='BUILT_NOT_EXECUTED' and report.get('token_major') is True
@@ -47,7 +49,8 @@ def main():
                 assert digest(payload)==old_pins[payload],payload
                 pin(payload)
     compiles[1][compiles[1].index('-c')+1]=str(HERE/('native_decode_profile.c' if args.profile_current else 'native_selector_main.c'))
-    candidate=list(compiles[15]);candidate[candidate.index('-c')+1]=str(HERE/'selector_runtime.c')
+    if args.pair_production_bindings:compiles[1].insert(1,'-DSELECTOR_PRODUCTION_PAIR=1')
+    candidate=list(compiles[15]);candidate[candidate.index('-c')+1]=str(HERE/('selector_baseline_runtime.c' if args.pair_production_bindings else 'selector_runtime.c'))
     compiles.append(candidate)
     def run(argv,label):
         argv=list(map(str,argv));pin(argv[0]);commands.append(dict(label=label,argv=argv))
@@ -74,7 +77,9 @@ def main():
     if args.profile_current:
         run([Path(link[0]).with_name('riscv64-unknown-elf-nm'),'-n','-S','--defined-only',elf],'symbols')
         for marker in ('decode_profile_begin','decode_profile_end'):assert '<'+marker+'>:' in dis,marker
+    elif args.pair_production_bindings:assert '<akv_quant_baseline_execute>:' in dis
     else:assert '<akv_quant_selector_execute>:' in dis
+    assert '<dequantize_row_q8_0>:' not in dis,'Scalar V binding drift'
     assert '<qbs_ref_execute>:' not in dis
     for p,h in pins.items():assert digest(p)==h,p
     (out/'source-pins.json').write_text(json.dumps(pins,indent=2)+'\n')
@@ -87,6 +92,9 @@ def main():
     if args.profile_current:
         result.update(current_decode_profile=True,aligned_selector=False,trials=1,value_decodes=[20],
           scope='One current shared Decode call; retirement-PC attribution, not paired speedup')
+    result['value_binding']='shared_rvv_q8_0'
+    if args.pair_production_bindings:
+        result.update(frozen_selector_baseline=True,scope='Frozen original versus current selector with production shared RVV V decoder')
     (out/'build.json').write_text(json.dumps(result,indent=2)+'\n')
     print('SELECTOR_BUILT_NOT_EXECUTED '+str(elf))
 

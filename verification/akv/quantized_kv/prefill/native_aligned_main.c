@@ -32,7 +32,7 @@ int main(void) {
     .output={plan_output.data,sizeof(plan_output.data),2*STRIDE*4,STRIDE*4,DIM,5,2},
     .mask=prefill_mask,.mask_bytes=5*512},.mask_row_stride=512};
   input.tensors.scale=prefill_scale;
-  akv_quant_native_bindings_t bindings={quantize_row_q8_0,dequantize_row_q8_0,
+  akv_quant_native_bindings_t bindings={quantize_row_q8_0,prefill_native_decode,
     quant_kv_ggml_scale_f32,quant_kv_ggml_mad_f32,qbs_native_execute_command,NULL};
   printf("PREFILL_PLAN_SCOPE baseline=fixed_groups candidate=proven_alignment admission_in_roi=1\n");
   printf("PREFILL_CAP q4=%u rows=10 d=128 first_query=0 tokens=5 trials=4\n",prefill_q4);

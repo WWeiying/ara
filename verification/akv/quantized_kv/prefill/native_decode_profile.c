@@ -22,7 +22,7 @@ int main(void) {
     .value={prefill_value,136*256*8,136*8,136,DIM,256,1},
     .output={output.data,sizeof(output.data),2*STRIDE*4,STRIDE*4,DIM,1,2},
     .mask=prefill_mask+19*256,.mask_bytes=512,.scale=prefill_scale};
-  akv_quant_native_bindings_t bindings={quantize_row_q8_0,dequantize_row_q8_0,
+  akv_quant_native_bindings_t bindings={quantize_row_q8_0,prefill_native_decode,
     quant_kv_ggml_scale_f32,quant_kv_ggml_mad_f32,qbs_native_execute_command,NULL};
   printf("DECODE_PROFILE_SCOPE query=19 heads=2 dim=128 visible=20 token_major=1 q4=%u\n",prefill_q4);
   memset(&output,0xa5,sizeof(output));
