@@ -4,7 +4,7 @@
 #include "m4-reuse-policy.h"
 #include "ggml-cpu-impl.h"
 #include "arch/riscv/qbs.h"
-#include "q8_K-m4.h"
+#include "q8_K-m4-packed.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -53,12 +53,12 @@ struct state {
         unsigned before,start;
         asm volatile("frcsr %0;csrr %1,vstart":"=r"(before),"=r"(start)::"memory");
         if((before>>5)!=0 || start) return false;
-        ggml_riscv_q8_K_cache::key identity;identity.k=uint32_t(k);identity.producer_tag=1;
+        ggml_riscv_q8_K_cache::key identity;identity.k=uint32_t(k);identity.producer_tag=ggml_riscv_q8_K_m4_packed::producer_tag();
         const size_t in=size_t(k)*16,out=size_t(k/256)*4*QBS_Q8_K_BLOCK_BYTES;
         unsigned raised=0;const char *event="hit";
         if(!bytes.get(identity,input,in,output,out,raised)) {
             asm volatile("fsflags zero":::"memory");
-            const bool vector=ggml_riscv_q8_K_m4::quantize<16>(input,output,k);
+            const bool vector=ggml_riscv_q8_K_m4_packed::selected_quantize(input,output,k);
             asm volatile("frflags %0":"=r"(raised)::"memory");
             const unsigned restored=(before&31)|raised;
             asm volatile("fsflags %0"::"r"(restored):"memory");
@@ -70,6 +70,8 @@ struct state {
         asm volatile("fsflags %0"::"r"(restored):"memory");
         if(trace) std::fprintf(stderr,"GGML_RISCV_QBS_M4_CACHE epoch=%llu group=%lld event=%s fill=%d\n",
             (unsigned long long)epoch,(long long)group,event,int(policy.fill));
+        if(trace) std::fprintf(stderr,"GGML_RISCV_QBS_M4_SELECTED source=cache tag=%u event=%s k=%lld\n",
+            identity.producer_tag,event,(long long)k);
         return true;
     }
     void finish(ggml_riscv_m4_reuse::policy policy) {if(!policy.fill) bytes.clear();}
