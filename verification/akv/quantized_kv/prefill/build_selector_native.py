@@ -16,7 +16,10 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--recipe-build',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--profile-current',action='store_true',help='One current production call, not an old/new pair')
     args=parser.parse_args();prior=args.recipe_build.resolve(strict=True);out=args.output.resolve()
+    if not args.profile_current:
+        assert 'AKV_QUANT_PROVEN_ALIGNMENT' not in (ROOT/'software/akv/experimental/quantized_kv/selection_strided.h').read_text(), 'Historical pair is sealed; use --profile-current after promotion'
     report=json.loads((prior/'build.json').read_text())
     assert report['state']=='BUILT_NOT_EXECUTED' and report.get('token_major') is True
     records_path=prior/'commands.json'
@@ -43,7 +46,7 @@ def main():
             for payload in re.findall(r'\.incbin\s+"([^"]+)"',source.read_text()):
                 assert digest(payload)==old_pins[payload],payload
                 pin(payload)
-    compiles[1][compiles[1].index('-c')+1]=str(HERE/'native_selector_main.c')
+    compiles[1][compiles[1].index('-c')+1]=str(HERE/('native_decode_profile.c' if args.profile_current else 'native_selector_main.c'))
     candidate=list(compiles[15]);candidate[candidate.index('-c')+1]=str(HERE/'selector_runtime.c')
     compiles.append(candidate)
     def run(argv,label):
@@ -66,8 +69,12 @@ def main():
     link=['-Wl,-Map='+str(out/'link.map') if v.startswith('-Wl,-Map=') else v for v in link]
     run(link,'link')
     dis=run([Path(link[0]).with_name('riscv64-unknown-elf-objdump'),'-d',elf],'disassembly')
-    for symbol in ('qbs_native_execute_command','akv_quant_strided_execute','akv_quant_selector_execute','main'):
+    for symbol in ('qbs_native_execute_command','akv_quant_strided_execute','main'):
         assert '<'+symbol+'>:' in dis,symbol
+    if args.profile_current:
+        run([Path(link[0]).with_name('riscv64-unknown-elf-nm'),'-n','-S','--defined-only',elf],'symbols')
+        for marker in ('decode_profile_begin','decode_profile_end'):assert '<'+marker+'>:' in dis,marker
+    else:assert '<akv_quant_selector_execute>:' in dis
     assert '<qbs_ref_execute>:' not in dis
     for p,h in pins.items():assert digest(p)==h,p
     (out/'source-pins.json').write_text(json.dumps(pins,indent=2)+'\n')
@@ -77,6 +84,9 @@ def main():
       recipe_only=str(prior),historical_source_identity_reused=False,
       scope='Qwen3 query19 GQA2 D128 token-major Decode original versus aligned selector',
       performance_measured=False,artifacts={str(p):digest(p) for p in out.iterdir() if p.is_file()})
+    if args.profile_current:
+        result.update(current_decode_profile=True,aligned_selector=False,trials=1,value_decodes=[20],
+          scope='One current shared Decode call; retirement-PC attribution, not paired speedup')
     (out/'build.json').write_text(json.dumps(result,indent=2)+'\n')
     print('SELECTOR_BUILT_NOT_EXECUTED '+str(elf))
 
