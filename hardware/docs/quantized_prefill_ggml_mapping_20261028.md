@@ -55,6 +55,19 @@ query 数和 mask 行间距。不修改输入张量，不访问数据，不发�
 - 拒绝时结果结构不变；正常映射不修改 tensor 元数据或输出数据。
 - GCC 和 Clang UBSan 执行检查；另检查 C++17 头文件兼容性。
 
+随后补充真实 GGML allocator 测试 `test_ggml_prefill_memory.cpp/.py`：
+
+- 54 个正常组合：D=32/128/256、query=2/20/33、GQA=2/3/6、
+  两种 K 格式，每个组合有两个 KV head。
+- Q/K/V 均来自非零偏移的真实 tensor view，head 之间保留 padding，mask
+  行数按 32 向上取整。所有张量共用一次 backend 分配。
+- 实测经过 `akv_quant_ggml_memory_context`、Prefill metadata map 和
+  `quant_prefill_admit` 三个阶段，逐行可见前缀及 GQA/head 数符合预期。
+- 162 个拒绝检查：仅最后一个 query 的 mask 有洞、真实输出/query 别名、
+  data pointer 靠近分配末尾导致有效跨度越界。拒绝不写输出。
+- GCC 和 Clang UBSan 均通过。编译/执行前后核对已有封存 GGML 库和头文件
+  哈希。测试未执行硬件命令，不能替代完整运算结果检查。
+
 这些是元数据单元测试，不是模型执行证据。当前仍需完整调用 VCS 验收，再
 完成 buffer-aware 桥接、实际 GGML graph 测试和受控模型运行；此时不启用
 默认快速路径，也不据此宣称端到端性能提升。
