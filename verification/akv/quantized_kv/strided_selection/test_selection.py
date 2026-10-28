@@ -36,6 +36,12 @@ class StridedSelectionTest(unittest.TestCase):
             '                           token * view->token_stride + block * block_bytes, 2);',
             'AKV_QUANT_FIELD_COPY(&bits, AKV_QUANT_PROVEN_ALIGNMENT((const unsigned char *)view->data + head * view->head_stride +\n'
             '                           token * view->token_stride + block * block_bytes,2), 2);',1)
+        expected = expected.replace(
+            '        if ((bits & UINT32_C(0x7f800000)) == UINT32_C(0x7f800000)) return AKV_QUANT_SELECT_NONFINITE;\n','',1).replace(
+            '      /* Conservative source-domain guard',
+            '      /* The maximum absolute bit pattern is nonfinite iff any element is. */\n'
+            '      if (maximum >= UINT32_C(0x7f800000)) return AKV_QUANT_SELECT_NONFINITE;\n'
+            '      /* Conservative source-domain guard',1)
         successor = SUCCESSOR.read_text()
         self.assertIn('"' + SOURCE_SHA256 + '"', successor)
         self.assertIn('#include "selection.h"', successor)

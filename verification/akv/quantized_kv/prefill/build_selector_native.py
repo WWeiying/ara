@@ -21,6 +21,8 @@ def main():
     mode.add_argument('--pair-production-bindings',action='store_true',help='Frozen old selector versus current, shared runtime V decoder')
     mode.add_argument('--block-max-experiment',action='store_true',help='Current shared selector versus independent block-max experiment')
     args=parser.parse_args();prior=args.recipe_build.resolve(strict=True);out=args.output.resolve()
+    if args.block_max_experiment or args.pair_production_bindings:
+        assert 'if (maximum >= UINT32_C(0x7f800000))' not in (ROOT/'software/akv/experimental/quantized_kv/selection_strided.h').read_text(), 'Historical comparison is sealed after block-max promotion; use --profile-current'
     if not args.profile_current and not args.pair_production_bindings and not args.block_max_experiment:
         assert 'AKV_QUANT_PROVEN_ALIGNMENT' not in (ROOT/'software/akv/experimental/quantized_kv/selection_strided.h').read_text(), 'Historical pair is sealed; use --profile-current after promotion'
     report=json.loads((prior/'build.json').read_text())

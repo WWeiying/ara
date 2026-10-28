@@ -108,9 +108,10 @@ static inline int akv_quant_select_strided(const akv_quant_selection_input_t *p,
         AKV_QUANT_FIELD_COPY(&bits, AKV_QUANT_PROVEN_ALIGNMENT((const unsigned char *)p->query.data + head * p->query.head_stride +
                           (block * 32u + d) * 4u,4), 4);
         bits &= UINT32_C(0x7fffffff);
-        if ((bits & UINT32_C(0x7f800000)) == UINT32_C(0x7f800000)) return AKV_QUANT_SELECT_NONFINITE;
         if (bits > maximum) maximum = bits;
       }
+      /* The maximum absolute bit pattern is nonfinite iff any element is. */
+      if (maximum >= UINT32_C(0x7f800000)) return AKV_QUANT_SELECT_NONFINITE;
       /* Conservative source-domain guard for the original Q8_0 quantizer:
        * nonzero amax >= 2^-120 keeps reciprocal finite; amax <= 127*65504
        * keeps its rounded F16 scale finite. Zero blocks use its id=0 branch.

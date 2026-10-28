@@ -26,17 +26,17 @@ class BlockMaxTest(unittest.TestCase):
     def test_ubsan(self):self.check('/usr/bin/clang',['-fsanitize=undefined','-fno-sanitize-recover=undefined'])
 
     def test_exact_function_delta(self):
-        source=(ROOT/'software/akv/experimental/quantized_kv/selection_strided.h').read_text()
-        old=source[source.index('static inline int akv_quant_select_strided('):source.index('\n#undef AKV_QUANT_PROVEN_ALIGNMENT')]
+        source=(HERE/'selector_before_block_max.h').read_text()
+        old=source[source.index('static inline int akv_quant_select_strided_before_block_max('):source.index('\n#undef AKV_QUANT_PROVEN_ALIGNMENT')]
         removed='        if ((bits & UINT32_C(0x7f800000)) == UINT32_C(0x7f800000)) return AKV_QUANT_SELECT_NONFINITE;\n'
         self.assertEqual(old.count(removed),1)
         expected=old.replace(removed,'').replace('      /* Conservative source-domain guard',
             '      /* The maximum absolute bit pattern is nonfinite iff any element is. */\n'
             '      if (maximum >= UINT32_C(0x7f800000)) return AKV_QUANT_SELECT_NONFINITE;\n'
             '      /* Conservative source-domain guard')
-        expected=expected.replace('akv_quant_select_strided(','akv_quant_select_strided_block_max(').replace('AKV_QUANT_PROVEN_ALIGNMENT','BLOCK_MAX_PROVEN_ALIGNMENT')
-        candidate=(HERE/'selector_block_max.h').read_text()
-        actual=candidate[candidate.index('static inline int akv_quant_select_strided_block_max('):candidate.index('\n#undef BLOCK_MAX_PROVEN_ALIGNMENT')]
+        expected=expected.replace('akv_quant_select_strided_before_block_max(','akv_quant_select_strided(')
+        candidate=(ROOT/'software/akv/experimental/quantized_kv/selection_strided.h').read_text()
+        actual=candidate[candidate.index('static inline int akv_quant_select_strided('):candidate.index('\n#undef AKV_QUANT_PROVEN_ALIGNMENT')]
         self.assertEqual(actual,expected)
 
 

@@ -1,7 +1,8 @@
 #define main native_fixture_main
 #include "verification/akv/quantized_kv/test_native.c"
 #undef main
-#include "selector_block_max.h"
+#include "selector_before_block_max.h"
+#include "software/akv/experimental/quantized_kv/selection_strided.h"
 #include <fenv.h>
 
 static unsigned cases;
@@ -9,9 +10,9 @@ static int compare(const akv_quant_selection_input_t *p) {
   akv_quant_selection_t a,b,poison;memset(&poison,0xa5,sizeof(poison));
   memcpy(&a,&poison,sizeof(a));memcpy(&b,&poison,sizeof(b));
   feclearexcept(FE_ALL_EXCEPT);feraiseexcept(FE_DIVBYZERO);
-  int before=akv_quant_select_strided(p,&a);int flags=fetestexcept(FE_ALL_EXCEPT);
+  int before=akv_quant_select_strided_before_block_max(p,&a);int flags=fetestexcept(FE_ALL_EXCEPT);
   feclearexcept(FE_ALL_EXCEPT);feraiseexcept(FE_DIVBYZERO);
-  int after=akv_quant_select_strided_block_max(p,&b);
+  int after=akv_quant_select_strided(p,&b);
   assert(before==after && flags==FE_DIVBYZERO && fetestexcept(FE_ALL_EXCEPT)==flags);
   if(after==AKV_QUANT_SELECT_OK) {
     assert(a.group_heads==b.group_heads && a.kv_heads==b.kv_heads && a.dim==b.dim &&
