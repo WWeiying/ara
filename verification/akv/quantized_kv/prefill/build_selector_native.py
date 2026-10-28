@@ -19,8 +19,9 @@ def main():
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--profile-current',action='store_true',help='One current production call, not an old/new pair')
     mode.add_argument('--pair-production-bindings',action='store_true',help='Frozen old selector versus current, shared runtime V decoder')
+    mode.add_argument('--block-max-experiment',action='store_true',help='Current shared selector versus independent block-max experiment')
     args=parser.parse_args();prior=args.recipe_build.resolve(strict=True);out=args.output.resolve()
-    if not args.profile_current and not args.pair_production_bindings:
+    if not args.profile_current and not args.pair_production_bindings and not args.block_max_experiment:
         assert 'AKV_QUANT_PROVEN_ALIGNMENT' not in (ROOT/'software/akv/experimental/quantized_kv/selection_strided.h').read_text(), 'Historical pair is sealed; use --profile-current after promotion'
     report=json.loads((prior/'build.json').read_text())
     assert report['state']=='BUILT_NOT_EXECUTED' and report.get('token_major') is True
@@ -50,7 +51,9 @@ def main():
                 pin(payload)
     compiles[1][compiles[1].index('-c')+1]=str(HERE/('native_decode_profile.c' if args.profile_current else 'native_selector_main.c'))
     if args.pair_production_bindings:compiles[1].insert(1,'-DSELECTOR_PRODUCTION_PAIR=1')
-    candidate=list(compiles[15]);candidate[candidate.index('-c')+1]=str(HERE/('selector_baseline_runtime.c' if args.pair_production_bindings else 'selector_runtime.c'))
+    if args.block_max_experiment:compiles[1].insert(1,'-DSELECTOR_BLOCK_MAX_EXPERIMENT=1')
+    runtime='selector_baseline_runtime.c' if args.pair_production_bindings else 'selector_block_max_runtime.c' if args.block_max_experiment else 'selector_runtime.c'
+    candidate=list(compiles[15]);candidate[candidate.index('-c')+1]=str(HERE/runtime)
     compiles.append(candidate)
     def run(argv,label):
         argv=list(map(str,argv));pin(argv[0]);commands.append(dict(label=label,argv=argv))
@@ -95,6 +98,9 @@ def main():
     result['value_binding']='shared_rvv_q8_0'
     if args.pair_production_bindings:
         result.update(frozen_selector_baseline=True,scope='Frozen original versus current selector with production shared RVV V decoder')
+    if args.block_max_experiment:
+        result.update(aligned_selector=False,selector_block_max=True,
+          scope='Current shared selector versus block-max experiment; whole Decode call, not whole model')
     (out/'build.json').write_text(json.dumps(result,indent=2)+'\n')
     print('SELECTOR_BUILT_NOT_EXECUTED '+str(elf))
 

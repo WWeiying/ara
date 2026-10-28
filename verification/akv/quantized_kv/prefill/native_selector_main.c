@@ -5,6 +5,11 @@
 #ifdef SELECTOR_PRODUCTION_PAIR
 #include "selector_baseline_runtime.h"
 #endif
+#ifdef SELECTOR_BLOCK_MAX_EXPERIMENT
+#define SELECTOR_MODE_FIELD "candidate"
+#else
+#define SELECTOR_MODE_FIELD "aligned"
+#endif
 
 extern const uint16_t prefill_mask[];
 static unsigned char selector_workspace[32768] __attribute__((aligned(64)));
@@ -36,10 +41,13 @@ int main(void) {
 #ifdef SELECTOR_PRODUCTION_PAIR
   printf("SELECTOR_BINDINGS value=shared_rvv_q8_0 baseline=frozen_selector candidate=current_shared\n");
 #endif
+#ifdef SELECTOR_BLOCK_MAX_EXPERIMENT
+  printf("SELECTOR_BINDINGS value=shared_rvv_q8_0 baseline=current_shared candidate=block_max\n");
+#endif
   const unsigned order[]={0,1,1,0};
   for(unsigned trial=0;trial<4;++trial) {
     unsigned aligned=order[trial];memset(&output,0xa5,sizeof(output));
-    printf("SELECTOR_BEGIN trial=%u aligned=%u\n",trial,aligned);
+    printf("SELECTOR_BEGIN trial=%u " SELECTOR_MODE_FIELD "=%u\n",trial,aligned);
     __asm__ volatile("vsetivli zero,1,e32,m1,ta,ma\nvmv.v.i v8,0\ncsrwi fcsr,0\ncsrwi vcsr,5" :::"memory","v8");
     drain();uint64_t begin=cycles();akv_quant_strided_report_t report;
 #ifdef SELECTOR_PRODUCTION_PAIR
@@ -63,7 +71,7 @@ int main(void) {
       } else errors+=bits(y)!=0xa5a5a5a5u;
     }
     for(unsigned i=0;i<64;++i)errors+=output.before[i]!=0xa5 || output.after[i]!=0xa5;
-    printf("SELECTOR_RESULT trial=%u aligned=%u cycles=%lu commands=%u groups=%u values=%u panels=%lu key_bytes=%lu fcsr=%lu vcsr=%lu errors=%u hex=",
+    printf("SELECTOR_RESULT trial=%u " SELECTOR_MODE_FIELD "=%u cycles=%lu commands=%u groups=%u values=%u panels=%lu key_bytes=%lu fcsr=%lu vcsr=%lu errors=%u hex=",
       trial,aligned,(unsigned long)elapsed,report.native.command_attempts,report.native.completed_groups,
       report.native.value_decodes,(unsigned long)report.key_panels,(unsigned long)report.key_bytes,
       (unsigned long)fc,(unsigned long)vc,errors);

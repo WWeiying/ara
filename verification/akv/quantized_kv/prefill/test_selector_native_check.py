@@ -19,6 +19,12 @@ class SelectorCheck(unittest.TestCase):
         for q4 in (0,1):
             self.assertEqual(check_log(fixture(q4),bytes(163840),q4)['speedup'],2.)
 
+    def test_explicit_candidate_field(self):
+        text=fixture().replace('aligned=','candidate=')
+        self.assertEqual(check_log(text,bytes(163840),1,mode_field='candidate')['trials'][1]['candidate'],1)
+        with self.assertRaises(ValueError):check_log(text,bytes(163840),1)
+        with self.assertRaises(ValueError):check_log(fixture(),bytes(163840),1,mode_field='candidate')
+
     def test_mutations(self):
         text=fixture()
         for old,new in [('commands=1','commands=0'),('groups=1','groups=0'),

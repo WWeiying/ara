@@ -32,7 +32,7 @@ def main():
         report=json.loads((build/'build.json').read_text())
         s.require(report['state']=='BUILT_NOT_EXECUTED' and report['commands_per_trial']==1 and
             report['outputs_per_trial']==256 and report['reused_objects']==0 and
-            report.get('aligned_selector') is True and report.get('rebuilt_objects')==17,'Build contract')
+            (report.get('aligned_selector') is True or report.get('selector_block_max') is True) and report.get('rebuilt_objects')==17,'Build contract')
         s.require(s.digest(build/'source-pins.json')==report['source_pins_sha256'],'Build pins')
         pins=json.loads((build/'source-pins.json').read_text())
         s.merge_pins(pins,report['artifacts']);s.merge_pins(pins,s.hashes([build/'build.json']))
@@ -62,7 +62,12 @@ def main():
                 owner.execute(helpers.helper.simulation_command(simv,elf,work),work/'console.log',10800,'RUNNING')
             s.require(not (out/'early-failure.json').exists(),'Unexpected exception/contract error')
             golden=ROOT/'verification/out/quant-prefill-capture-20261028-01'/report['kind']/'prefill/block/kqv_out-0.bin'
-            measured=check_log((work/'run.vcs.log').read_text(),golden.read_bytes(),int(report['kind']=='q4_0'))
+            measured=check_log((work/'run.vcs.log').read_text(),golden.read_bytes(),int(report['kind']=='q4_0'),
+                mode_field='candidate' if report.get('selector_block_max') else 'aligned')
+            if report.get('selector_block_max'):
+                s.require(report.get('value_binding')=='shared_rvv_q8_0' and
+                    (work/'run.vcs.log').read_text().splitlines().count('SELECTOR_BINDINGS value=shared_rvv_q8_0 baseline=current_shared candidate=block_max')==1,'Block-max binding marker')
+                measured.update(scope=report['scope'],comparison='current_vs_block_max',value_binding='shared_rvv_q8_0')
             if report.get('frozen_selector_baseline'):
                 s.require(report.get('value_binding')=='shared_rvv_q8_0' and
                     (work/'run.vcs.log').read_text().splitlines().count('SELECTOR_BINDINGS value=shared_rvv_q8_0 baseline=frozen_selector candidate=current_shared')==1,'Production binding marker')

@@ -4,7 +4,8 @@ import re
 import struct
 
 
-def check_log(text,golden,q4):
+def check_log(text,golden,q4,mode_field='aligned'):
+    if mode_field not in ('aligned','candidate'):raise ValueError('Unknown comparison field')
     lines=text.splitlines()
     for expected in (
         'SELECTOR_SCOPE whole_call=1 query=19 heads=2 dim=128 visible=20 token_major=1 trials=4',
@@ -17,11 +18,12 @@ def check_log(text,golden,q4):
             if pending is not None:raise ValueError('Nested trial')
             pending=line
         if not line.startswith('SELECTOR_RESULT '):continue
-        m=re.fullmatch(r'SELECTOR_RESULT trial=(\d+) aligned=(\d+) cycles=(\d+) commands=(\d+) groups=(\d+) values=(\d+) panels=(\d+) key_bytes=(\d+) fcsr=(\d+) vcsr=(\d+) errors=(\d+) hex=([0-9a-f]{2048})',line)
+        pattern=r'SELECTOR_RESULT trial=(\d+) aligned=(\d+) cycles=(\d+) commands=(\d+) groups=(\d+) values=(\d+) panels=(\d+) key_bytes=(\d+) fcsr=(\d+) vcsr=(\d+) errors=(\d+) hex=([0-9a-f]{2048})'
+        m=re.fullmatch(pattern.replace('aligned=',mode_field+'='),line)
         if not m:raise ValueError('Malformed trial')
         trial,aligned,cycles,commands,groups,values,panels,key_bytes,fc,vc,errors=map(int,m.groups()[:11])
         if trial!=len(rows) or trial>=4 or aligned!=(0,1,1,0)[trial]:raise ValueError('ABBA order')
-        if pending!=f'SELECTOR_BEGIN trial={trial} aligned={aligned}':raise ValueError('ROI pair')
+        if pending!=f'SELECTOR_BEGIN trial={trial} {mode_field}={aligned}':raise ValueError('ROI pair')
         pending=None
         if not cycles or (commands,groups,values,panels,key_bytes,vc,errors)!=(1,1,20,1,20*(72 if q4 else 136),5,0) or fc>31:
             raise ValueError('Activity/flags/status')
@@ -34,7 +36,7 @@ def check_log(text,golden,q4):
             if not math.isfinite(value) or not math.isfinite(expected) or error>2e-5+2e-5*abs(expected):
                 raise ValueError('Golden mismatch')
             maximum=max(maximum,error)
-        rows.append(dict(cycles=cycles,aligned=aligned,fcsr=fc,words=words,max_abs=maximum))
+        rows.append(dict(cycles=cycles,fcsr=fc,words=words,max_abs=maximum,**{mode_field:aligned}))
     if len(rows)!=4 or pending is not None:raise ValueError('Incomplete trials')
     old=(rows[0]['cycles']+rows[3]['cycles'])/2
     new=(rows[1]['cycles']+rows[2]['cycles'])/2
