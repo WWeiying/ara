@@ -48,11 +48,29 @@ VCSR 保持 5。输入验证与散写成本位于计时范围内；打印和结�
 | `build_full_native.py` | 核对已有 recipe 后重新编译全部对象，封存输入 |
 | `check_full_native.py` | 强制完整调用范围标记，再执行独立数值和活动检查 |
 | `test_check_full_native.py` | 拒绝缺失、重复、错序标记和错误结果 |
+| `run_full_native.py` | 独立进程选择完整入口检查器，复用原协议、异常和身份检查 |
+| `test_run_full_native.py` | 拒绝内部调度构建、对象复用和活动配置不符 |
 
-完整入口检查器及原数值检查器共 5 个 unittest 方法通过，包含多个反例。
-这些是检查器测试，不是 RTL 测试。完整入口检查器尚未接入正式执行 worker；
-启动完整入口仿真前应使用继任 worker 调用它，并保留现有协议与身份检查。
-不能修改当前运行中 worker 的已封存脚本。
+完整入口检查器、构建门控及原数值检查器共 6 个 unittest 方法通过，包含多个
+反例。这些是检查器测试，不是 RTL 测试。继任 worker 已接入完整入口检查器，
+并在独立进程中复用原 worker；没有修改当前运行中的已封存脚本。
+
+启动前核验记录位于 `verification/out/prefill-full-preflight-20261028-01/`：
+`state=PREFLIGHT_NOT_RUN`、`post_pins_match=true`、`performance_measured=false`。
+四个 worker/checker 文件均已纳入该核验的 source pins。此状态只表示输入与
+镜像身份核验通过；正式运行时仍须执行装载检查、仿真和协议验收。
+
+后续完整入口执行命令为：
+
+```sh
+python3 -B verification/akv/quantized_kv/prefill/run_full_native.py \
+  --build verification/out/prefill-full-q4-build-20261028-01 \
+  --output /absolute/path/to/new-output-directory \
+  --execute-reviewed
+```
+
+长仿真应由 systemd 用户服务直接拥有该 worker，不在临时终端内等待。
+输出目录必须新建；不加 `--execute-reviewed` 时不会启动仿真。
 
 ## 下一步验收
 
