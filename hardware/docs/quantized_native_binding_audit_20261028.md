@@ -71,3 +71,8 @@ PASS 仍成立，也没有把 QEMU 时间用作 RTL 性能。
 
 实际性能与热点以这两个新输出目录的最终 `result.json` 为准。只在它们
 完成后再作下一项优化，不沿用标量 V 版本占比作为当前后端瓶颈。
+
+两项补测现已完成，均 PASS。实际共享 RVV 回调下的同 ELF selector
+配对为 58718→47506.5 cycles，1.2359992843×；归因单调用为 48578 cycles。
+详细边界、热点和未接入候选见
+`quantized_native_production_binding_results_20261028.md`。
