@@ -56,3 +56,5 @@ QBS 数值参考，不提供 RTL 时间或模型速度。
 静态库和图测试程序，再并行执行互不写入的图、Qwen2.5 和 Qwen3 检查，
 各自使用独立输出目录。结果入口预定为
 `verification/out/selector-promotion-runtime-20261028-01/result.json`。
+该批次已全部完成并 PASS，详细模型比较边界和证据摘要见
+`quantized_kv_selector_promotion_acceptance_20261028.md`。
