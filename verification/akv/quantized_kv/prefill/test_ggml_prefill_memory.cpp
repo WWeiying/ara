@@ -1,13 +1,28 @@
 #include "ggml_map.h"
+#include "ggml_entry.h"
 #include "software/akv/experimental/quantized_kv/ggml_memory.h"
 #include "ggml-alloc.h"
 #include "ggml-cpu.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <initializer_list>
 
 static unsigned accepted, rejected;
+static unsigned command_attempts;
+
+static void zero_quant(const float *, void *dst, int64_t n) {
+    std::memset(dst,0,n/32*34);
+}
+static void unused_decode(const void *,float *,int64_t) { assert(false); }
+static void unused_scale(int,float *,float) { assert(false); }
+static void unused_mad(int,float *,const float *,float) { assert(false); }
+static qbs_status_t fail_command(void *,const qbs_descriptor_t *,unsigned,
+    const void *,float *,size_t,unsigned,int) {
+    ++command_attempts;
+    return QBS_STATUS_BAD_ARGUMENT;
+}
 
 static void run(unsigned dim, unsigned queries, unsigned gqa, bool q4) {
     ggml_init_params params{};
@@ -50,6 +65,29 @@ static void run(unsigned dim, unsigned queries, unsigned gqa, bool q4) {
     assert(plan.common.visible_tokens==queries);
     for(unsigned row=0; row<queries; ++row) assert(plan.visible[row]==row+1);
     ++accepted;
+
+    // Exercise the C entry from real C++ GGML objects. Forced execution failure
+    // is not numerical validation; it checks irreversible-failure ownership.
+    const size_t bytes=quant_prefill_ggml_workspace_bytes();
+    assert(quant_prefill_ggml_workspace_alignment()==64 && bytes%64==0);
+    void *workspace=std::aligned_alloc(64,bytes); assert(workspace);
+    akv_quant_native_bindings_t bindings={zero_quant,unused_decode,unused_scale,
+                                        unused_mad,fail_command,nullptr};
+    quant_prefill_ggml_report_t report{};
+    command_attempts=0;
+    assert(quant_prefill_ggml_execute(dst,&context,&bindings,workspace,bytes,&report)
+           ==AKV_QUANT_NATIVE_EXECUTION_FAILED);
+    assert(report.mapping_reason==AKV_QUANT_GGML_MAP_OK && report.memory_verified &&
+           report.runtime_called && command_attempts==1 && report.native.command_attempts==1);
+    context.nth=2;
+    assert(quant_prefill_ggml_execute(dst,&context,&bindings,workspace,bytes,&report)
+           ==AKV_QUANT_NATIVE_FALLBACK);
+    assert(!report.runtime_called && !report.memory_verified && command_attempts==1);
+    context.nth=1;
+    assert(quant_prefill_ggml_execute(dst,&context,&bindings,workspace,bytes-1,&report)
+           ==AKV_QUANT_NATIVE_FALLBACK);
+    assert(report.memory_verified && report.runtime_called && command_attempts==1);
+    std::free(workspace);
 
     // A hole in only the last active query must reject before any execution.
     auto before = plan;

@@ -34,8 +34,11 @@ class MemoryTest(unittest.TestCase):
             inc=['-I'+str(ROOT),'-I'+str(GGML),'-I'+str(ROOT/'software/qbs/include')]
             subprocess.run([cc,'-std=gnu11','-O2',*flags,*inc,'-c',
                             ROOT/'software/qbs/src/qbs_runtime.c','-o',runtime],check=True,timeout=120)
+            entry=Path(tmp)/'entry.o'
+            subprocess.run([cc,'-std=gnu11','-O2','-Wall','-Wextra','-Werror',*flags,*inc,
+                            '-c',HERE/'ggml_entry.c','-o',entry],check=True,timeout=120)
             subprocess.run([cxx,'-std=c++17','-O2','-Wall','-Wextra','-Werror',*flags,*inc,
-                            HERE/'test_ggml_prefill_memory.cpp',runtime,'-L'+str(libs),
+                            HERE/'test_ggml_prefill_memory.cpp',runtime,entry,'-L'+str(libs),
                             '-Wl,-rpath,'+str(libs),'-lggml-cpu','-lggml','-lggml-base',
                             '-pthread','-lm','-o',binary],check=True,timeout=120)
             run=subprocess.run([binary],capture_output=True,text=True,timeout=60,
