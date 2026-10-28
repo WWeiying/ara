@@ -12,8 +12,9 @@ ROOT=HERE.parents[3]
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('output',type=Path)
-    out=parser.parse_args().output.resolve();out.mkdir(parents=True,exist_ok=False)
-    build=ROOT/'verification/out/prefill-ggml-build-20261028-01'
+    parser.add_argument('--library-build',type=Path,default=ROOT/'verification/out/prefill-ggml-build-20261028-01')
+    args=parser.parse_args();out=args.output.resolve();out.mkdir(parents=True,exist_ok=False)
+    build=args.library_build.resolve(strict=True)
     receipt=json.loads((build/'result.json').read_text());assert receipt['state']=='PASS'
     pins=json.loads((build/'source-pins.json').read_text())
     assert digest(build/'source-pins.json')==receipt['source_pins_sha256']
