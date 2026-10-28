@@ -10,12 +10,19 @@ It reuses existing QBS hardware; no RTL changed in this integration.
 | Clean normal CMake build | PASS | Four normal libraries, 896 source inputs |
 | Paired GGML graphs | PASS | 24 graphs, 46272 paired output/state bytes |
 | Ordinary RVV strided inputs | PASS after diagnostic-schema audit | Four cases, 704 finite bit-exact outputs |
+| Normal-library expanded QBS layout matrix | PASS | 65 paired cases, 4024 outputs, 344 native commands |
 | Full-output Q/V/K VCS slice | PASS | 1659464 to 1166072 paired cycles, 1.4231231x |
 | Packed plus cache model pairing | Running | No completion or model speedup claim yet |
 
 All outputs are under `verification/out`, with prefixes
 `m4-packed-normal-{build,graph,stride,model}-20261028-01` and
 `m4-packed-normal-stride-audit-20261028-01`.
+The expanded matrix is `m4-packed-normal-expanded-20261028-01`: Q4_K,
+Q6_K, Q4_0 and Q8_0, M=1/3/4/7/8/15, one/two workers, row padding,
+non-unit element strides and wide-M selection. Packed is explicitly enabled;
+Q8_K producer records must identify tag 2 and include actual RVV execution.
+Weights in this matrix are deterministic test weights and activations come
+from a real capture; do not describe every matrix input as a real-model weight.
 
 The ordinary-RVV run initially received FAIL from the older checker because
 it rejected all `M4_SELECTED` records. Actual output mismatches were zero.
@@ -64,8 +71,8 @@ time fractions, tokens/s or whole-model acceleration.
 ## Next Work
 
 Finish normal-library packed/cache model pairing first, preserving the running
-source inventory. Then close normal-library multi-format strided-QBS tests
-and assess combined native-AKV coexistence separately. For further Attention
+source inventory. The normal-library multi-format strided-QBS tests are now
+closed for the matrix above. Assess combined native-AKV coexistence separately. For further Attention
 optimization, distinguish quantized Decode, quantized Prefill fallback and
 native AKV before selecting an implementation. The rejected grouped-PV
 candidate remains disabled: it did not improve complete-call VCS latency.
