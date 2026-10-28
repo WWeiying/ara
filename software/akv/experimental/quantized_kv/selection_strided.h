@@ -3,14 +3,19 @@
 
 #include "selection.h"
 
-/* Temporary successor while selection.h is sealed. The selector body is an
- * exact copy except its name and the K token_stride equality becoming a lower
- * bound. Shared view validation still proves head/token non-overlap and bounds.
+/* Strided successor: shared view validation proves alignment, head/token
+ * non-overlap and bounds before the scalar finite-value scans below.
  * Admission does NOT make strided K directly executable by row-major QBS:
  * the caller must gather each bounded panel before issuing its descriptor.
  * Host tests pin the source hash and verify the complete body transformation. */
 #define AKV_QUANT_SELECT_STRIDED_SOURCE_SHA256 \
   "d597ccdf8da49a14f029626825bdceb939af2029665216cd47a07c1acf00cff7"
+
+#if defined(__GNUC__) || defined(__clang__)
+#define AKV_QUANT_PROVEN_ALIGNMENT(p,n) __builtin_assume_aligned((p),(n))
+#else
+#define AKV_QUANT_PROVEN_ALIGNMENT(p,n) (p)
+#endif
 
 static inline int akv_quant_select_strided(const akv_quant_selection_input_t *p,
                                    akv_quant_selection_t *selection) {
@@ -100,8 +105,8 @@ static inline int akv_quant_select_strided(const akv_quant_selection_input_t *p,
       uint32_t maximum = 0;
       for (unsigned d = 0; d < 32; ++d) {
         uint32_t bits;
-        AKV_QUANT_FIELD_COPY(&bits, (const unsigned char *)p->query.data + head * p->query.head_stride +
-                          (block * 32u + d) * 4u, 4);
+        AKV_QUANT_FIELD_COPY(&bits, AKV_QUANT_PROVEN_ALIGNMENT((const unsigned char *)p->query.data + head * p->query.head_stride +
+                          (block * 32u + d) * 4u,4), 4);
         bits &= UINT32_C(0x7fffffff);
         if ((bits & UINT32_C(0x7f800000)) == UINT32_C(0x7f800000)) return AKV_QUANT_SELECT_NONFINITE;
         if (bits > maximum) maximum = bits;
@@ -120,8 +125,8 @@ static inline int akv_quant_select_strided(const akv_quant_selection_input_t *p,
       for (unsigned token = 0; token < visible; ++token)
         for (unsigned block = 0; block < dim / 32u; ++block) {
           uint16_t bits;
-          AKV_QUANT_FIELD_COPY(&bits, (const unsigned char *)view->data + head * view->head_stride +
-                           token * view->token_stride + block * block_bytes, 2);
+          AKV_QUANT_FIELD_COPY(&bits, AKV_QUANT_PROVEN_ALIGNMENT((const unsigned char *)view->data + head * view->head_stride +
+                           token * view->token_stride + block * block_bytes,2), 2);
           if ((bits & UINT16_C(0x7c00)) == UINT16_C(0x7c00)) return AKV_QUANT_SELECT_NONFINITE;
         }
   }
@@ -131,4 +136,5 @@ static inline int akv_quant_select_strided(const akv_quant_selection_input_t *p,
   return AKV_QUANT_SELECT_OK;
 }
 
+#undef AKV_QUANT_PROVEN_ALIGNMENT
 #endif

@@ -27,10 +27,19 @@ class StridedSelectionTest(unittest.TestCase):
         self.assertEqual(original.count('p->key.token_stride != key_row'), 1)
         expected = original.replace('akv_quant_select(', 'akv_quant_select_strided(', 1).replace(
             'p->key.token_stride != key_row', 'p->key.token_stride < key_row', 1)
+        expected = expected.replace(
+            'AKV_QUANT_FIELD_COPY(&bits, (const unsigned char *)p->query.data + head * p->query.head_stride +\n'
+            '                          (block * 32u + d) * 4u, 4);',
+            'AKV_QUANT_FIELD_COPY(&bits, AKV_QUANT_PROVEN_ALIGNMENT((const unsigned char *)p->query.data + head * p->query.head_stride +\n'
+            '                          (block * 32u + d) * 4u,4), 4);',1).replace(
+            'AKV_QUANT_FIELD_COPY(&bits, (const unsigned char *)view->data + head * view->head_stride +\n'
+            '                           token * view->token_stride + block * block_bytes, 2);',
+            'AKV_QUANT_FIELD_COPY(&bits, AKV_QUANT_PROVEN_ALIGNMENT((const unsigned char *)view->data + head * view->head_stride +\n'
+            '                           token * view->token_stride + block * block_bytes,2), 2);',1)
         successor = SUCCESSOR.read_text()
         self.assertIn('"' + SOURCE_SHA256 + '"', successor)
         self.assertIn('#include "selection.h"', successor)
-        actual = successor[successor.index('static inline int akv_quant_select_strided('):successor.rindex('\n#endif')].rstrip()
+        actual = successor[successor.index('static inline int akv_quant_select_strided('):successor.rindex('\n#undef AKV_QUANT_PROVEN_ALIGNMENT')].rstrip()
         self.assertEqual(actual, expected)
 
     def compile(self, source, binary, sanitized=False):

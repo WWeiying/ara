@@ -1,7 +1,8 @@
 #define main selector_fixture_main
 #include "verification/akv/quantized_kv/test_native.c"
 #undef main
-#include "selector_aligned.h"
+#include "selector_baseline.h"
+#include "software/akv/experimental/quantized_kv/selection_strided.h"
 #include <fenv.h>
 
 static unsigned char padded_keys[2*65*138] __attribute__((aligned(64)));
@@ -11,9 +12,9 @@ static int compare(const akv_quant_selection_input_t *p) {
   akv_quant_selection_t a,b,poison;memset(&poison,0xa5,sizeof(poison));
   memcpy(&a,&poison,sizeof(a));memcpy(&b,&poison,sizeof(b));
   feclearexcept(FE_ALL_EXCEPT);feraiseexcept(FE_DIVBYZERO);
-  int old=akv_quant_select_strided(p,&a),flags=fetestexcept(FE_ALL_EXCEPT);
+  int old=akv_quant_select_strided_baseline(p,&a),flags=fetestexcept(FE_ALL_EXCEPT);
   feclearexcept(FE_ALL_EXCEPT);feraiseexcept(FE_DIVBYZERO);
-  int now=akv_quant_select_strided_aligned(p,&b);
+  int now=akv_quant_select_strided(p,&b);
   assert(old==now && flags==FE_DIVBYZERO && fetestexcept(FE_ALL_EXCEPT)==flags);
   if(now==AKV_QUANT_SELECT_OK) {
     assert(a.group_heads==b.group_heads && a.kv_heads==b.kv_heads && a.dim==b.dim &&
