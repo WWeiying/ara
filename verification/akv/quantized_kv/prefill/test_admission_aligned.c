@@ -2,14 +2,15 @@
 #include "verification/akv/quantized_kv/test_native.c"
 #undef main
 #include "admission_aligned.h"
+#include "admission_baseline.h"
 #include <fenv.h>
 
 static int compare_admission(const quant_prefill_input_t *p,quant_prefill_admission_t *out) {
   quant_prefill_admission_t a,b;memset(&a,0xa5,sizeof(a));memset(&b,0xa5,sizeof(b));
   fenv_t before;assert(!fegetenv(&before));
-  int old=quant_prefill_admit(p,&a),flags=fetestexcept(FE_ALL_EXCEPT);
+  int old=quant_prefill_admit_baseline(p,&a),flags=fetestexcept(FE_ALL_EXCEPT);
   assert(!fesetenv(&before));
-  int now=quant_prefill_admit_aligned(p,&b);
+  int now=quant_prefill_admit(p,&b);
   assert(old==now && flags==fetestexcept(FE_ALL_EXCEPT) && !memcmp(&a,&b,sizeof(a)));
   if(now==AKV_QUANT_SELECT_OK)*out=b;
   return now;

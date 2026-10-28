@@ -73,6 +73,8 @@ static inline int quant_prefill_execute(const quant_prefill_input_t *request,
       akv_quant_online_plan_t plan={rows,dim,selection.visible_tokens,input->scale,
         &w->panel,quant_prefill_panel_qk,quant_prefill_panel_value,bindings->scale,bindings->mad};
       int status=quant_prefill_prefix_schedule(&plan,visible,w->output[0],AKV_QUANT_MAX_DIM,&w->core.online);
+      w->panel.native.visible=NULL;
+      w->panel.native.core.selection=NULL;
       report->alignment_copies+=w->panel.native.alignment_copies;
       report->key_panels+=w->panel.panels;report->key_bytes+=w->panel.copied_bytes;
       if(status!=AKV_QUANT_OK) return AKV_QUANT_NATIVE_EXECUTION_FAILED;

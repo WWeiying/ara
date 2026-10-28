@@ -17,6 +17,12 @@ typedef struct {
   unsigned visible[QUANT_PREFILL_MAX_QUERIES];
 } quant_prefill_admission_t;
 
+#if defined(__GNUC__) || defined(__clang__)
+#define PREFILL_CHECKED_ALIGNMENT(p,n) __builtin_assume_aligned((p),(n))
+#else
+#define PREFILL_CHECKED_ALIGNMENT(p,n) (p)
+#endif
+
 static inline int quant_prefill_admit(const quant_prefill_input_t *request,
                                       quant_prefill_admission_t *result) {
   if (!request || !result) return AKV_QUANT_SELECT_DISABLED;
@@ -56,8 +62,9 @@ static inline int quant_prefill_admit(const quant_prefill_input_t *request,
     unsigned hidden=0,visible=0;
     for(unsigned token=0;token<p->key.tokens;++token) {
       uint16_t bits;
-      AKV_QUANT_FIELD_COPY(&bits,(const unsigned char *)p->mask+
-          row*request->mask_row_stride+token*sizeof(bits),sizeof(bits));
+      /* Base and row stride were checked above; each token adds two bytes. */
+      AKV_QUANT_FIELD_COPY(&bits,PREFILL_CHECKED_ALIGNMENT((const unsigned char *)p->mask+
+          row*request->mask_row_stride+token*sizeof(bits),2),sizeof(bits));
       if(bits==0xfc00u) hidden=1;
       else if(bits==0 && !hidden) ++visible;
       else return AKV_QUANT_SELECT_MASK;
@@ -93,8 +100,9 @@ static inline int quant_prefill_admit(const quant_prefill_input_t *request,
         uint32_t amax=0;
         for(unsigned d=0;d<32;++d) {
           uint32_t bits;
-          AKV_QUANT_FIELD_COPY(&bits,(const unsigned char *)p->query.data+
-              row*p->query.token_stride+head*p->query.head_stride+(block*32+d)*4,4);
+          /* view_valid proved the base and both strides aligned to four. */
+          AKV_QUANT_FIELD_COPY(&bits,PREFILL_CHECKED_ALIGNMENT((const unsigned char *)p->query.data+
+              row*p->query.token_stride+head*p->query.head_stride+(block*32+d)*4,4),4);
           bits&=0x7fffffffu;
           if((bits&0x7f800000u)==0x7f800000u) return AKV_QUANT_SELECT_NONFINITE;
           if(bits>amax) amax=bits;
@@ -104,4 +112,5 @@ static inline int quant_prefill_admit(const quant_prefill_input_t *request,
   *result=candidate;
   return AKV_QUANT_SELECT_OK;
 }
+#undef PREFILL_CHECKED_ALIGNMENT
 #endif
