@@ -115,6 +115,7 @@ rv64uv_sc_tests = vaadd \
                   vadd \
                   vadd_coverage_smoke \
                   vfpu_coverage_smoke \
+                  rvv_complex_pipeline \
                   vsub \
                   vrsub \
                   vwaddu \

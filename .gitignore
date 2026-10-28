@@ -189,6 +189,7 @@ apps
 !/apps/riscv-tests/isa/rv64uv/vadd_coverage_smoke.c
 !/apps/riscv-tests/isa/rv64uv/vector_misaligned_trap.c
 !/apps/riscv-tests/isa/rv64uv/vfpu_coverage_smoke.c
+!/apps/riscv-tests/isa/rv64uv/rvv_complex_pipeline.c
 !/apps/riscv-tests/isa/rv64uv/vfredmax_boundary.c
 !/apps/riscv-tests/isa/rv64uv/vindexed_fault_vstart.c
 !/apps/riscv-tests/isa/rv64uv/vmask_dest_overlap_illegal.c
