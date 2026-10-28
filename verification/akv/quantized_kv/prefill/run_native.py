@@ -7,6 +7,7 @@ from pathlib import Path
 import signal
 import sys
 from check_native import check_log
+from early_guard import EarlyGuard
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
@@ -62,7 +63,9 @@ def main():
             manifest('manifest-before')
             owner.execute(['bash',ROOT/'hardware/scripts/llama_q4km_extract/check-sim-l2.sh',simv.parent,elf],
                 out/'image-contract.log',180,'IMAGE_CONTRACT')
-            owner.execute(helpers.helper.simulation_command(simv,elf,work),work/'console.log',10800,'RUNNING')
+            with EarlyGuard(owner,work/'console.log',s.atomic_json):
+                owner.execute(helpers.helper.simulation_command(simv,elf,work),work/'console.log',10800,'RUNNING')
+            s.require(not (out/'early-failure.json').exists(),'Unexpected exception/contract error')
             golden=ROOT/'verification/out/quant-prefill-capture-20261028-01'/report['kind']/'prefill/block/kqv_out-0.bin'
             measured=check_log((work/'run.vcs.log').read_text(),golden.read_bytes(),int(report['kind']=='q4_0'))
             owner.execute(original.uvm_command(simv,elf,work),work/'checker.log',600,'PROTOCOL_CHECK')

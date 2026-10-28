@@ -68,7 +68,9 @@ int main(void) {
     context.core = (akv_quant_native_context_t){&input, &bindings, &selection, &workspace, &report, 0};
     context.visible = visible;
     printf("PREFILL_BEGIN trial=%u shared=%u\n", trial, shared);
-    __asm__ volatile("csrwi fcsr,0; csrwi vcsr,5":::"memory");
+    /* The first drain is itself an RVV instruction: reset starts with vill. */
+    __asm__ volatile("vsetivli zero,1,e32,m1,ta,ma\nvmv.v.i v8,0\ncsrwi fcsr,0\ncsrwi vcsr,5"
+                     :::"memory","v8");
     drain();
     uint64_t start = cycles();
     for (unsigned row=0; row<ROWS; ++row) {
