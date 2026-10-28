@@ -57,3 +57,27 @@ timing and actual GGML/model acceptance before backend integration. The prior
 25.09% complete Q/V/K reuse gain remains separate and is not multiplied by a
 preparation-only speedup. No RTL, physical implementation or runtime default
 is changed here.
+
+## Accepted preparation result and complete-call successor
+
+The VCS preparation pair is complete and independently replayed:
+689108 baseline cycles versus 454221 packed cycles, speedup 1.51712x and
+34.0857% fewer cycles. Full bytes, CSR, guards and independent protocol checks
+pass. See `review-20261027.json`. This accepts the isolated candidate, not
+production integration or a whole-model speedup.
+
+`qkv_build.py` builds the next experiment from the accepted full-output Q/V/K
+slice. The baseline still recomputes with the original producer. Only the
+cache-miss computation in the candidate uses the packed producer; hits retain
+the original exact-input comparison and prepared-byte copy. The producer tag
+is safe in this isolated program because each trial starts with a fresh cache
+and no old producer can populate that candidate instance. It is not a design
+for mixing unequal producers in a persistent production cache.
+
+The successor preserves all full-output references, native command counts,
+cache/CSR accounting and included/excluded timing costs. It rebuilds affected
+main/producer objects for bare-metal and Linux functional gates, reusing other
+objects only after their complete accepted manifests match. Existing `qkv/`
+functional and VCS workers/checkers are reused without changes. Use fresh
+directories for build, functional gate, preflight and execution. Do not multiply
+the earlier cache and preparation speedups; measure the combination directly.
