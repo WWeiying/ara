@@ -2,6 +2,10 @@
 #include "workload_scan.c"
 #undef main
 #include "boundary_plan.h"
+#ifdef USE_BOUNDED_COST
+#include "boundary_cost_bounded.h"
+#define prefill_plan_boundaries prefill_plan_boundaries_bounded
+#endif
 
 int main(void) {
   unsigned cases=0,improved=0;

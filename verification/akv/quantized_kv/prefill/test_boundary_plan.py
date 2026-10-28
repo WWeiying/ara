@@ -14,7 +14,10 @@ class BoundaryTest(unittest.TestCase):
         outputs=[]
         with tempfile.TemporaryDirectory(prefix='prefill-boundaries-') as tmp:
             for label,cc,flags in [('gcc','/usr/bin/gcc',[]),('ubsan','/usr/bin/clang',
-                    ['-fsanitize=undefined','-fno-sanitize-recover=undefined'])]:
+                    ['-fsanitize=undefined','-fno-sanitize-recover=undefined']),
+                    ('bounded-gcc','/usr/bin/gcc',['-DUSE_BOUNDED_COST']),
+                    ('bounded-ubsan','/usr/bin/clang',['-DUSE_BOUNDED_COST',
+                    '-fsanitize=undefined','-fno-sanitize-recover=undefined'])]:
                 binary=Path(tmp)/label
                 subprocess.run([cc,'-std=gnu11','-O2','-Wall','-Wextra','-Werror',
                     '-fno-fast-math',*flags,'-I'+str(ROOT),'-I'+str(ROOT/'software/qbs/include'),
@@ -22,7 +25,7 @@ class BoundaryTest(unittest.TestCase):
                 run=subprocess.run([binary],capture_output=True,text=True,check=True,timeout=60)
                 self.assertEqual(run.stderr,'BOUNDARY_PLAN_PASS cases=160 improved=22 runtime_installed=0\n')
                 outputs.append(run.stdout)
-        self.assertEqual(outputs[0],outputs[1])
+        for output in outputs[1:]:self.assertEqual(outputs[0],output)
         rows=[{k:int(v) for k,v in row.items()} for row in csv.DictReader(io.StringIO(outputs[0]))]
         self.assertEqual(len(rows),160)
         for row in rows:
