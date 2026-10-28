@@ -56,4 +56,5 @@ int main(void) {
     printf("%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u\n",queries[qi],g,past[pi],
       a.commands,b.commands,a.values,b.values,a.panels,b.panels,a.key_rows,b.key_rows,expected);
   }
+  return 0;
 }
