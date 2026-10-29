@@ -34,6 +34,8 @@ def main():
     parser.add_argument('--execute-reviewed', action='store_true')
     parser.add_argument('--runtime', action='store_true',
                         help='Exercise full runtime adapter with QBS reference executor')
+    parser.add_argument('--fp-contract', choices=('off', 'fast'), default='off',
+                        help='Use fast to match the production GGML runtime build')
     args = parser.parse_args()
     out = args.output.resolve()
     if out.exists() or not out.is_relative_to(ROOT / 'verification/out'):
@@ -41,7 +43,7 @@ def main():
     out.mkdir(parents=True)
     pins, commands, trials = {}, [], []
     state = dict(state='PREPARING', functional_only=True, rtl_performance=False,
-                 production_enabled=False, trials=trials)
+                 production_enabled=False, fp_contract=args.fp_contract, trials=trials)
     env = dict(HOME='/home/wangwy', PATH='/usr/bin:/bin', LANG='C.UTF-8')
 
     def pin(path):
@@ -94,7 +96,7 @@ def main():
         for path in (Path(__file__), cc, source, init):
             pin(path)
         base = [cc, '-O3', '-static', '-march=rv64gcv_zfh_zvfh', '-mabi=lp64d',
-                '-fno-tree-vectorize', '-fno-fast-math', '-ffp-contract=off',
+                '-fno-tree-vectorize', '-fno-fast-math', '-ffp-contract=' + args.fp_contract,
                 '-frounding-math', '-Wall', '-Wextra', '-Werror', '-I' + str(ROOT),
                 '-I' + str(ROOT / 'software/qbs/include')]
         for program in ('cc1', 'as', 'ld'):
