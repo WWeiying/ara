@@ -10,13 +10,15 @@ Build options, in addition to existing RVV/QBS/AKV/quantized-KV options:
 
 ```text
 GGML_RISCV_AKV_QUANT_PREFILL=ON
-GGML_RISCV_AKV_PREFILL_DIR=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/prefill
 ```
 
 Runtime requires all existing quantized-KV opt-ins and the additional
 `GGML_RISCV_AKV_QUANT_PREFILL=1`. The CMake option defaults OFF. The explicit
-source-directory option points at the reviewed experimental kernel; this is
-not yet a self-contained upstream installation.
+source-directory option now defaults to
+`${GGML_RISCV_AKV_RUNTIME_DIR}/experimental/quantized_kv/prefill`. No explicit
+verification path is needed. The eight accepted C/H files live in software;
+their old verification paths are compatibility includes only. This integration
+still requires the existing QBS/AKV runtime and quantized-KV backend patches.
 
 For multiple query tokens, the new dispatch invokes the checked C entry under
 the existing QBS direct-run owner and outer AKV lock. It allocates a private
@@ -30,14 +32,15 @@ runtime entry, selection reason, commands, completed groups, V decodes, query
 quantizations, K gather bytes and workspace bytes. A trace candidate is not proof
 of successful execution: require status=0 and nonzero completed work.
 
-Validation so far: RISC-V GNU C++17 syntax check with `rv64gcv_zvfh` and both
-`GGML_USE_RISCV_QUANT_KV` / `GGML_USE_RISCV_QUANT_PREFILL` enabled. Existing host
-C-entry numerical tests passed separately. The initial manual syntax command
-omitted the existing quantized-KV macro and therefore lacked direct-run API
-declarations; repeating with the actual enabled configuration passed.
+The shared algorithm has passed normal CMake OFF/ON builds, real GGML graphs,
+and Qwen2.5/Qwen3 Prefill OFF/ON model comparisons with bitwise-identical logits
+and matching token/CSR results. The latest selector acceptance is documented in
+`hardware/docs/quantized_selector_block_max_acceptance_20261028.md`.
+Directory-relocation validation is a separate gate; see
+`hardware/docs/quantized_prefill_software_relocation_20261028.md`.
 
-Pending: normal CMake build with the option ON/OFF, real graph dispatch execution,
-enabled/disabled model comparisons, fallback regression and trace accounting.
-The new frontend's heap allocation and ownership/dispatch overhead have not been
-measured by the earlier C-entry RTL benchmark. Do not label that benchmark's
-1.455x as integrated graph or model speedup. No RTL changes were made here.
+Frontend heap allocation and ownership/graph dispatch are outside the earlier
+C-entry RTL ROI. Historical Prefill native measurements also used a scalar V
+callback; see `hardware/docs/quantized_native_binding_audit_20261028.md`.
+Do not label those measurements as integrated graph/model speedups. This
+directory relocation changes no RTL, ISA, arithmetic or dispatch policy.

@@ -4,11 +4,13 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import shlex
 import subprocess
 
 HERE=Path(__file__).resolve().parent
 ROOT=HERE.parents[3]
 LLAMA=Path('/home/wangwy/llama/llama.cpp')
+PRODUCTION=ROOT/'software/akv/experimental/quantized_kv/prefill'
 
 
 def digest(p):
@@ -44,18 +46,31 @@ def main():
         for mode in ('OFF','ON'):
             build=out/mode.lower();argv=json.loads(prior.read_text())
             argv[argv.index('-B')+1]=str(build)
-            argv.extend(['-DGGML_RISCV_AKV_QUANT_PREFILL='+mode,
-                         '-DGGML_RISCV_AKV_PREFILL_DIR='+str(HERE)])
+            assert not any('GGML_RISCV_AKV_PREFILL_DIR' in v for v in argv)
+            argv.extend(['-DGGML_RISCV_AKV_QUANT_PREFILL='+mode])
             run(argv,'configure-'+mode.lower())
             run(['cmake','--build',str(build),'--target','llama','-j','8'],'build-'+mode.lower())
             records=json.loads((build/'compile_commands.json').read_text())
-            entries=[r for r in records if Path(r['file']).resolve()==HERE/'ggml_entry.c']
+            entries=[r for r in records if Path(r['file']).resolve()==PRODUCTION/'ggml_entry.c']
             assert len(entries)==int(mode=='ON')
             frontend=next(r for r in records if r['file'].endswith('/arch/riscv/quant-kv.cpp'))
             assert ('-DGGML_USE_RISCV_QUANT_PREFILL' in frontend['command'])==(mode=='ON')
+            dependency_audits={}
+            if mode=='ON':
+                for label,entry in (('prefill',entries[0]),('frontend',frontend)):
+                    command=shlex.split(entry['command']);output_index=command.index('-o')
+                    deps=[v for i,v in enumerate(command) if i not in (output_index,output_index+1) and v!='-c']
+                    run([*deps,'-MM','-MT','object'],'deps-'+label)
+                    log=out/('deps-'+label+'.log');text=log.read_text()
+                    paths=[Path(p).resolve() for p in shlex.split(text.replace('\\\n',' ').split(':',1)[1])]
+                    assert PRODUCTION/'ggml_entry.h' in paths
+                    for p in paths:
+                        assert not (p.is_relative_to(ROOT/'verification') and not p.is_relative_to(ROOT/'verification/out')),p
+                    dependency_audits[label]=dict(paths=len(paths),log_sha256=digest(log),verification_sources=False)
             libraries={str(p):digest(p) for p in build.rglob('*.a')}
             assert any(p.endswith('/libllama.a') for p in libraries)
-            configurations[mode]=dict(libraries=libraries,prefill_source_count=len(entries))
+            configurations[mode]=dict(libraries=libraries,prefill_source_count=len(entries),
+                canonical_prefill=str(PRODUCTION),dependency_audits=dependency_audits)
         result.update(state='PASS',configurations=configurations,post_pins_match=True,
                       source_pins_sha256=digest(out/'source-pins.json'))
     except BaseException as exc:
