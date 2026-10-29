@@ -42,9 +42,13 @@ def main():
                         help='Test the successor entry guard before vectorized libc')
     parser.add_argument('--prefill-prefix', action='store_true',
                         help='Test the isolated causal Prefill register-PV schedule')
+    parser.add_argument('--group-sums', action='store_true',
+                        help='Test isolated QBS M4 activation group sums')
     parser.add_argument('--fp-contract', choices=('off', 'fast'), default='off',
                         help='Use fast to match the production GGML runtime build')
     args = parser.parse_args()
+    if args.group_sums and (args.prefill_prefix or args.runtime or args.entry_guards or args.shared_runtime or args.early_guard_candidate):
+        parser.error('--group-sums is a standalone arithmetic experiment')
     if args.prefill_prefix and (args.runtime or args.entry_guards or args.shared_runtime or args.early_guard_candidate):
         parser.error('--prefill-prefix is a standalone schedule experiment')
     if args.shared_runtime and not args.runtime:
@@ -63,6 +67,7 @@ def main():
                  entry_guards=args.entry_guards,
                  early_guard_candidate=args.early_guard_candidate,
                  prefill_prefix=args.prefill_prefix,
+                 group_sums=args.group_sums,
                  fp_contract=args.fp_contract, trials=trials)
     env = dict(HOME='/home/wangwy', PATH='/usr/bin:/bin', LANG='C.UTF-8')
 
@@ -111,6 +116,8 @@ def main():
             source = HERE / 'test_entry_guards.c'
         if args.prefill_prefix:
             source = HERE / 'test_prefill_prefix.c'
+        if args.group_sums:
+            source = ROOT / 'verification/qbs/m4_group_sums/test.c'
         sources = [source]
         if args.runtime:
             sources += [HERE / 'runtime_entry_guard_candidate.c' if args.early_guard_candidate else
@@ -171,6 +178,11 @@ def main():
                     (1024, 'REGISTER_PREFIX_PASS cases=1792 exact=1 flags=1 guards=1 qk_equal=1 causal=1'),
                     (256, 'REGISTER_PREFIX_UNSUPPORTED_VLEN_PASS no_effects=1'))
                 prefix = 'REGISTER_PREFIX_'
+            if args.group_sums:
+                markers = (
+                    (1024, 'GROUP_SUMS_PASS vlen=1024 cases=256 exact=1 strided=1 csr=1'),
+                    (256, 'GROUP_SUMS_PASS vlen=256 cases=128 exact=1 strided=1 csr=1'))
+                prefix = 'GROUP_SUMS_'
             for vlen, marker in markers:
                 name = 'qemu-vlen' + str(vlen)
                 text = run([qemu, '-M', 'virt', '-cpu',
