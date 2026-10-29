@@ -4,10 +4,11 @@
 
 This is an independent experiment, not the installed runtime. No RTL, ISA,
 GGML dispatch, production fallback or existing measurement inputs changed.
-The new schedule and regression source pass GNU RVV strict syntax checking.
-The new whole-schedule tests have NOT executed yet; there is no measured
-speedup for this schedule. The preceding 12,928 passing leaf tests do not
-establish whole-Attention correctness or performance.
+The new schedule passes 896 synthetic complete-schedule cases under RVV QEMU,
+including an independent scalar oracle. Unsupported-VLEN and non-RNE rejection
+also pass. There is no measured hardware speedup for this schedule. The
+preceding 12,928 passing leaf tests and these schedule cases do not establish
+real-model whole-Attention integration or hardware performance.
 
 ## Purpose and data path
 
@@ -40,7 +41,7 @@ QK and final scale callbacks remain active.
   output must never be retried through fallback. Sticky flags are observed
   only at call boundaries; floating-point traps are masked.
 
-## Prepared regression
+## Executed regression
 
 `verification/akv/quantized_kv/register_pv/test_online.c` compares the existing
 shared schedule with the candidate for 896 synthetic cases:
@@ -53,16 +54,34 @@ shared schedule with the candidate for 896 synthetic cases:
   candidate never calls the old V decoder.
 - A short-view rejection preserves output and flags without calling QK.
 - An injected QK failure propagates as terminal, not fallback.
+- An independent scalar head-major loop computes decoded values, softmax and
+  PV without the candidate/shared schedule or decode helpers; output and FCSR
+  match exactly. It uses the same libm expf/fmaf primitives, not a separate
+  high-precision mathematical oracle. Test scales are finite normal halves;
+  the earlier leaf suite covers additional scale/arithmetic boundaries.
+- RDN with sticky DZ rejects without QK/value calls or output/flag changes.
+- A separate boot of the same ELF at VLEN=256 confirms unsupported-VLEN
+  rejection without QK/value calls or output/flag changes.
 
 These are deterministic schedule tests with synthetic scores and values, not
-model or hardware-performance tests. They still need execution. The earlier
-leaf suite separately checks captured real V rows and arithmetic boundaries.
+model or hardware-performance tests. The earlier leaf suite separately checks
+captured real V rows and arithmetic boundaries.
+
+Evidence: `verification/out/register-online-reference-20261028-01/result.json`
+reports PASS, both guest exits zero and input hashes unchanged before/after.
+ELF SHA256:
+`0a4695f1f1e42651e41fc1577eac223f24f3c95b9c9edad8604d8a384c0187d6`.
+Input-pins SHA256:
+`49241378773f7f31e25a47a2d6db1c7e98d67df4c0e52a842e9da3e4bc4854c6`.
+The runner is `verification/akv/quantized_kv/register_pv/run_online.py`.
+Use a fresh output under `verification/out` and `--execute-reviewed` to run;
+without that flag it only builds and reports BUILT_NOT_EXECUTED.
 
 ## Remaining acceptance
 
-1. Execute the prepared schedule test and unsupported-VLEN/rounding rejection
-   tests. Add an independent scalar oracle for complete Attention, rather than
-   relying solely on two schedules sharing helpers.
+1. Synthetic complete-schedule comparison and unsupported-VLEN/rounding
+   rejection are complete. Real captured Q/K/V full-call validation remains;
+   synthetic QK callbacks are not evidence of QBS protocol correctness.
 2. Bind an independent full-call experiment to real captured Q/K/V, actual QBS
    commands and the current admission/query preparation path. Do not mutate
    the two in-flight Prefill workers' pinned sources.
