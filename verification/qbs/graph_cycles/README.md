@@ -29,3 +29,29 @@ application overhead. Do not subtract an assumed constant probe cost.
 Remaining integration gates: real-source OFF/ON builds; identical graph epochs,
 fusion/reuse decisions, outputs, CSR and command counts; bounded representative
 RTL paired run. Host record tests prove accounting only, not these gates.
+
+## Isolated integration
+
+`prepare.py` inserts compile-time-guarded probes into a fresh copy of
+`ggml-cpu.c`, rejecting ambiguous anchors. It never edits the source tree.
+Line directives preserve the original source location when the probe is OFF.
+`check_build.py` uses the accepted library's compile recipe to rebuild original,
+OFF and ON objects without replacing any library object.
+
+The 20261029 build in `verification/out/graph-cycles-compile-20261029-01`
+passed all three compilations. Original/OFF preprocessed text and object bytes
+are identical. Source SHA256:
+`2d9e4b8e4d38bb6cb64ca54abd4259f68c4aab7222fb2fb7391b973baf0958e3`.
+This does not yet establish ON runtime equivalence or timing overhead.
+
+Enable both compile macro `GGML_RISCV_NODE_CYCLES` and environment variable
+`GGML_RISCV_NODE_CYCLES=1` in an isolated experiment. Multithreaded graphs,
+model observation/dumps or known QBS/AKV trace printing disable collection.
+Allocation failure also disables collection and does not alter inference.
+Absence of a valid graph record is missing measurement, never zero cycles.
+
+Records include the unmodified no-op trace-function call inside the execution
+region when model tracing is disabled. Graph time starts after buffer allocation
+and ends after existing end-graph cleanup, before printing/freeing the buffer.
+It is not complete `llama_decode` time and excludes graph setup and allocation.
+No production file or previously accepted library was modified.
