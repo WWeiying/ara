@@ -34,17 +34,21 @@ and exclusive output/workspace ownership remain required.
   It is retained for the completed RTL receipts. `test_promotion.py` checks that
   the promoted arithmetic/runtime differs only in local include paths and a
   comment. Future production work belongs here, not in those frozen fixtures.
-- Shared runtime functional test: `register-shared-runtime-reference-20261028-01`
-  under `verification/out`; 288 cases pass, plus VLEN=256 no-effects rejection.
-- Library builds: `register-pv-ggml-build-20261028-01`; Prefill OFF and ON both
-  build with Register-PV enabled. Compiler dependency audits find no reference
-  to verification implementation sources in the production translation units.
-- RTL performance acceptance is documented in
-  `hardware/docs/register_pv_multishape_acceptance_20261028.md`.
-- Model OFF/ON regression is launched separately as
-  `register-pv-qwen3-model-20261028-01`. Its result must be read before claiming
-  model acceptance. It compares all logits, selected tokens and CSR state,
-  and requires trace evidence that both formats actually use Register-PV.
+- Guarded-entry functional tests: `register-early-entry-runtime-20261028-01`
+  and `register-early-entry-guards-20261028-01` under `verification/out`;
+  288 normal cases and 58 CSR/capability rejection cases pass.
+- Final libraries and models: `register-pv-final-models-20261028-01` is PASS.
+  Prefill OFF and ON libraries build with Register-PV support; dependency
+  audits find no verification implementation sources in production units.
+  Qwen2.5-1.5B and Qwen3-1.7B OFF/ON tests compare 1823232 logits bit-exactly,
+  with identical selected tokens and CSR state. Each model exercises both K
+  formats, with 112 Register-PV-enabled Decode completions in its ON mode.
+- Independent final replay rechecked 985 unique inputs and all three stage
+  receipts. See `hardware/docs/register_pv_guarded_acceptance_20261028.md`.
+- Guarded-entry RTL pair: `register-guarded-q4-vcs-20261028-01` gives 1.111664x
+  full-Decode-call speedup (47885.5 versus 43075.5 mean cycles), with bit-exact
+  paired outputs and independent protocol acceptance. Earlier unguarded
+  multi-format/context results are not substituted for this final entry.
 
 QEMU tests establish functional behavior, not RTL performance. These local
 optimizations do not by themselves establish an end-to-end model speedup.

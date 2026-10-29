@@ -55,9 +55,23 @@ the source-identity test permits only its include-path/comment relocation.
 The GGML build selects this public entry rather than compiling the internal
 runtime alone. The option remains OFF by default; ordinary fallbacks remain.
 
-After promotion, a fresh two-model campaign is owned by
-`register-pv-final-models-20261028-01.service`, with outputs under
-`verification/out/register-pv-final-models-20261028-01`. It rebuilds both library
-configurations and then runs the two model comparisons concurrently. Completion
-must be taken from its final receipts, not inferred from the earlier model
-results. No RTL was changed in this integration step.
+After promotion, the fresh two-model campaign
+`verification/out/register-pv-final-models-20261028-01` completed PASS. It
+rebuilt both library configurations and ran the two model comparisons
+concurrently. Both guarded-entry model executables passed all 911616 logit
+comparisons, selected-token/CSR equality and actual-path checks. Total paired
+logits are 1823232. No RTL was changed in this integration step.
+
+An independent final replay reran both log checkers, checked the stage-receipt
+hashes and verified 985 unique sealed inputs. Pipeline result SHA256:
+`f7971ad525a05f9ef97d3248993e1c6f0bf99388d859ad4aab462a5e5ef68508`.
+
+| Final model | Executable SHA256 | Log SHA256 |
+| --- | --- | --- |
+| Qwen2.5 | `b13fc006c5ba9fe93b3dc8f6a1e6a194cb573c653d8265d2be66b19b636ec155` | `9a8c9083f9154b715a265de38e782b8835fd788808c67eed0f2c2d5f2e50b6ef` |
+| Qwen3 | `1d1ba84fd403c9a278991997d2b48305f38cc7b7c3bb54b19b4b55521ad13df4` | `ef0ba6928302d4118b88330e2ce7f7540e63d6993b9f150fd2cbb96f5e490e52` |
+
+These model runs verify functionality, not end-to-end hardware speed. Their
+linked libraries include the guarded entry, unlike the earlier unguarded model
+receipts. The option remains disabled by default pending wider deployment;
+the original RVV fallback is retained.
