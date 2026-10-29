@@ -43,7 +43,45 @@ python3 -B verification/akv/quantized_kv/register_pv/run_online.py \
   --output verification/out/register-prefill-prefix-reference-new
 ```
 
-QEMU establishes functionality only. No speedup is established. The next gate
-is a complete-call, real-captured-data comparison against the current grouped
-Prefill runtime, including admission, K panel work and scatter. Production
-selection and the already accepted Decode path remain unchanged.
+## Complete-call RTL result and decision
+
+The real-data Q4_0 experiment completed PASS in
+`verification/out/register-prefill-q4-vcs-20261028-01`, followed by independent
+summary replay. It uses Qwen3 queries 16..19, GQA=2, D=128, causal visible
+prefixes 17/18/19/20 and Q8_0 values. The existing grouped Prefill is the
+baseline; it already uses the shared RVV value decoder.
+
+| Implementation | ABBA trial cycles | Mean cycles |
+| --- | --- | ---: |
+| Current grouped Prefill | 141165, 140680 | 140922.5 |
+| Register-resident Prefill | 139636, 139699 | 139667.5 |
+
+Measured speedup is 1.0089856x, or 0.89056% fewer cycles. Output words are
+bit-exact across all four trials; each trial emits 1024 words, four QBS
+commands, one K panel of 1440 bytes, and processes 20 value rows. FCSR=1 and
+VCSR=5 throughout. The complete C-call region includes admission, preparation,
+execution and scatter, not whole-model execution or C++ dispatch/allocation.
+
+The experiment does not establish a broadly significant Prefill improvement.
+Decode's larger gain cannot be transferred to this already value-sharing
+schedule. Vector-memory reductions alone do not prove that the critical path
+improves proportionally. More scalar work, register packing, per-row softmax
+and other costs remain; this pair does not isolate each contribution.
+
+Do not compare its absolute cycle counts against a different executable's
+earlier grouped-Prefill mean or multiply those gains. The valid comparison is
+the paired baseline in this executable. Baseline repetition range is 485
+cycles and candidate range 63 cycles; this small experiment is not a
+statistical characterization of all shapes.
+
+Decision: retain the existing production Prefill implementation. Keep this
+candidate isolated; do not add a runtime branch or launch a larger format
+matrix for this marginal gain. The accepted Decode integration is unchanged.
+
+- ELF SHA256: `7a476f8d0163ceee958754e16d03700e34ae6b6ad39dcb02f26d2311441bc8cf`.
+- Receipt SHA256: `8a32db0ca352e08fc676b88a640967066b857d3235fe81cc607a57e900f1fac5`.
+- Log SHA256: `97d53be38755ec95088d58d1f02312492b4333fdcb256705f980072b0220836d`.
+
+Replay with `summarize_prefill_pair.py --run <run-directory>` from this
+experiment's directory. The replay rechecks sealed source/ELF identities,
+protocol acceptance and captured-golden output, not just cycle arithmetic.
