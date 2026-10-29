@@ -70,3 +70,41 @@ that its changes are committed):
 First accept or reject the current retirement RTL using its matched SoC pair
 and ordinary RVV regression. Then measure these call-layer candidates with a
 fixed hardware image; changing both layers together would obscure attribution.
+
+## Graph-level instrumentation constraint
+
+Further inspection of `ggml/src/ggml-backend.cpp:1730` rules out using the
+standard evaluation callback as a transparent per-operator timer. With a
+callback installed, the scheduler walks nodes, constructs `ggml_graph_view`
+subgraphs and calls `ggml_backend_synchronize` before each requested result.
+Requesting every node therefore changes graph boundaries and synchronization.
+
+This matters for the current optimization: `m4-reuse-policy.h` searches neighbors
+in the supplied graph, while `ggml-cpu.c` assigns a graph epoch to each graph
+execution and calls `ggml_riscv_qbs_end_graph` at its end. Single-node graph
+views can remove reuse opportunities and change fusion eligibility. Their
+timings must not be presented as the cost of the normal optimized graph.
+
+The suitable measurement point is the existing CPU execution loop around
+`ggml_cpu_try_fuse_ops` and, for unfused nodes, `ggml_compute_forward`.
+Measure fused groups as groups; do not assign the same cycles to every member.
+Preserve graph epochs, task selection and all existing barriers. Initially
+support single-worker measurements only, since summing worker-local elapsed
+cycles does not give multithreaded wall latency.
+
+Instrumentation requirements before adding this probe:
+
+- Compile out by default, including buffer and clock-read overhead.
+- Buffer records outside the timed region; no per-node printing, digest or
+  tensor dumping during the timed graph.
+- Keep allocation, graph scheduling and end-graph cleanup outside node records
+  but include them in a separate complete-call measurement.
+- Record graph epoch, node/group indices, op, shape, elapsed cycles and clock
+  source. QEMU `rdcycle` cannot establish RTL execution performance.
+- Compare instrumentation OFF/ON outputs, CSR, command counts, graph epochs,
+  fusion decisions and reuse counts before using its cycle attribution.
+- Keep normal tracing/digest paths off for performance runs and collect their
+  correctness evidence separately; never silently change the execution graph.
+
+This is an implementation constraint derived from source, not a new timer or
+completed performance measurement. The accepted software paths remain unchanged.
