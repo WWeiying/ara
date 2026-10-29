@@ -32,6 +32,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--execute-reviewed', action='store_true')
+    parser.add_argument('--runtime', action='store_true',
+                        help='Exercise full runtime adapter with QBS reference executor')
     args = parser.parse_args()
     out = args.output.resolve()
     if out.exists() or not out.is_relative_to(ROOT / 'verification/out'):
@@ -82,21 +84,28 @@ def main():
     try:
         cc = PLATFORM / 'tools/bin/riscv64-linux-gcc'
         init = HERE.parent / 'ggml_live/init.c'
-        source = HERE / 'test_online.c'
+        source = HERE / ('test_runtime.c' if args.runtime else 'test_online.c')
+        sources = [source]
+        if args.runtime:
+            sources += [HERE / 'runtime_candidate.c',
+                ROOT / 'software/akv/experimental/quantized_kv/runtime.c',
+                ROOT / 'software/akv/experimental/quantized_kv/runtime_strided.c',
+                ROOT / 'software/qbs/src/qbs_runtime.c', ROOT / 'verification/qbs/qbs_ref.c']
         for path in (Path(__file__), cc, source, init):
             pin(path)
         base = [cc, '-O3', '-static', '-march=rv64gcv_zfh_zvfh', '-mabi=lp64d',
                 '-fno-tree-vectorize', '-fno-fast-math', '-ffp-contract=off',
-                '-frounding-math', '-Wall', '-Wextra', '-Werror', '-I' + str(ROOT)]
+                '-frounding-math', '-Wall', '-Wextra', '-Werror', '-I' + str(ROOT),
+                '-I' + str(ROOT / 'software/qbs/include')]
         for program in ('cc1', 'as', 'ld'):
             pin(run([cc, '-print-prog-name=' + program], 'locate-' + program).strip())
         for library in ('libm.a', 'libc.a', 'libgcc.a', 'libgcc_eh.a'):
             pin(run([cc, '-print-file-name=' + library], 'locate-' + library).strip())
-        for label, path in (('test', source), ('init', init)):
+        for label, path in [(str(i), p) for i, p in enumerate(sources)] + [('init', init)]:
             deps = run([*base, '-M', '-MT', 'object', path], label + '-dependencies')
             for dep in shlex.split(deps.replace('\\\n', ' ').split(':', 1)[1]):
                 pin(dep)
-        run([*base, source, '-lm', '-o', out / 'test'], 'build')
+        run([*base, *sources, '-lm', '-o', out / 'test'], 'build')
         run([cc, '-O2', '-static', '-march=rv64gc', '-mabi=lp64d',
              init, '-o', out / 'init'], 'init-build')
         for path in (out / 'test', out / 'init'):
@@ -115,9 +124,16 @@ def main():
             pin(path)
         save(out / 'input-pins.json', pins)
         if args.execute_reviewed:
-            for vlen, marker in (
+            markers = (
                 (1024, 'REGISTER_ONLINE_PASS cases=896 exact=1 flags=1 guards=1 terminal_error=1 scalar_oracle=1 rounding_reject=1'),
-                (256, 'REGISTER_ONLINE_UNSUPPORTED_VLEN_PASS no_effects=1')):
+                (256, 'REGISTER_ONLINE_UNSUPPORTED_VLEN_PASS no_effects=1'))
+            prefix = 'REGISTER_ONLINE_'
+            if args.runtime:
+                markers = (
+                    (1024, 'REGISTER_RUNTIME_PASS cases=288 exact=1 flags=1 panels=1 failure_no_retry=1'),
+                    (256, 'REGISTER_RUNTIME_UNSUPPORTED_VLEN_PASS no_effects=1'))
+                prefix = 'REGISTER_RUNTIME_'
+            for vlen, marker in markers:
                 name = 'qemu-vlen' + str(vlen)
                 text = run([qemu, '-M', 'virt', '-cpu',
                     f'rv64,v=true,vlen={vlen},elen=64,zfh=true,zvfh=true',
@@ -126,7 +142,7 @@ def main():
                     '-initrd', out / 'initramfs.cpio',
                     '-append', 'console=ttyS0 rdinit=/init'], name, 600)
                 lines = text.replace('\r\n', '\n').splitlines()
-                if ([line for line in lines if line.startswith('REGISTER_ONLINE_')] != [marker]
+                if ([line for line in lines if line.startswith(prefix)] != [marker]
                     or lines.count('GUEST_TEST_EXIT=0') != 1
                     or any('Kernel panic' in line for line in lines)):
                     raise ValueError('Numerical/guest completion mismatch: ' + name)
