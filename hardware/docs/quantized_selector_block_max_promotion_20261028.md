@@ -43,3 +43,7 @@ Prefill 主机回放需覆盖两种 K 格式和连续/带间隔 K；这些是功
 接入后 Decode/Prefill 两个真实数据回放目录均 PASS，各覆盖 Q4_0/Q8_0、
 连续/带间隔四组，每组 40960 个输出，输出和浮点标志保持一致。
 正常 CMake/模型回归尚未在此记录中宣称完成。
+
+该批后续已全部 PASS。两个模型累计 1823232 logits 逐位一致，token/CSR
+与 Decode 活动一致；完整验收范围及结果哈希见
+`quantized_selector_block_max_acceptance_20261028.md`。
