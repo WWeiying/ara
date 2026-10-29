@@ -73,6 +73,25 @@ def census_check(text):
                 reuse_counts_verified=False)
 
 
+def audit_calls(asm):
+    # GNU objdump prints unrelaxed RISC-V tail calls as `jr offset(t1)`.
+    transfer = r'\b(?:jal|jalr|j|jr)\s+[^\n]*<'
+    wrapped = re.findall(transfer + r'__wrap_qbs_native_execute_command>', asm)
+    if len(wrapped) < 2:
+        raise ValueError('Native bridge callsites not wrapped')
+    callers = []
+    function = ''
+    for line in asm.splitlines():
+        label = re.match(r'^[0-9a-f]+ <([^>]+)>:', line)
+        if label:
+            function = label[1]
+        if re.search(transfer + r'qbs_native_execute_command>', line):
+            callers.append(function)
+    if not callers or set(callers) != {'__wrap_qbs_native_execute_command'}:
+        raise ValueError('Unwrapped native callsite')
+    return len(wrapped)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
@@ -108,15 +127,7 @@ def main():
         objdump = '/home/wangwy/llama/platforms/cva6-qemu/tools/bin/riscv64-linux-objdump'
         owner.execute([objdump, '-d', out/'test'], out/'disassembly.log', 120, 'LINK_AUDIT')
         asm = (out/'disassembly.log').read_text()
-        wrapped = re.findall(r'\b(?:jal|jalr|j)\s+[^\n]*<__wrap_qbs_native_execute_command>', asm)
-        s.require(len(wrapped)>=2, 'Native bridge callsites not wrapped')
-        callers=[]; function=''
-        for line in asm.splitlines():
-            label=re.match(r'^[0-9a-f]+ <([^>]+)>:',line)
-            if label: function=label[1]
-            if re.search(r'\b(?:jal|jalr|j)\s+[^\n]*<qbs_native_execute_command>',line):
-                callers.append(function)
-        s.require(callers and set(callers)=={'__wrap_qbs_native_execute_command'}, 'Unwrapped native callsite')
+        wrapped = audit_calls(asm)
         (out/'initramfs.list').write_text((old/'initramfs.list').read_text().replace(str(old/'test'), str(out/'test')))
         cpio=Path('/home/wangwy/llama/platforms/cva6-qemu/sdk/buildroot/output/build/linux-6.19.6/usr/gen_init_cpio')
         with (out/'initramfs.cpio').open('wb') as image:
@@ -131,7 +142,7 @@ def main():
         owner.execute(qemu,out/'qemu.log',7200,'QEMU_FUNCTIONAL')
         measured=census_check((out/'qemu.log').read_text());s.verify_pins(pins)
         result.update(state='PASS',measured=measured,post_pins_match=True,
-                      wrapped_callsites=len(wrapped), source_pins_sha256=s.digest(out/'source-pins.json'))
+                      wrapped_callsites=wrapped, source_pins_sha256=s.digest(out/'source-pins.json'))
     except BaseException as exc:
         result['error']=repr(exc)
         raise

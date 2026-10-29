@@ -1,6 +1,6 @@
 import unittest
 from test_model_check import ModelCheck
-from run_census import census_check, transform
+from run_census import census_check, transform, audit_calls
 
 
 class CensusCheck(unittest.TestCase):
@@ -32,6 +32,21 @@ class CensusCheck(unittest.TestCase):
     def test_ambiguous_source(self):
         with self.assertRaises(ValueError):
             transform('int main() { return 0; }')
+
+    def test_link_audit(self):
+        text = '''00001000 <__wrap_qbs_native_execute_command>:
+1000: abc jr 126(t1) # 4000 <qbs_native_execute_command>
+1004: abc jalr 32(ra) # 4000 <qbs_native_execute_command>
+00002000 <direct>:
+2000: abc jr 716(t1) # 1000 <__wrap_qbs_native_execute_command>
+00003000 <projection>:
+3000: abc jalr 356(ra) # 1000 <__wrap_qbs_native_execute_command>
+'''
+        self.assertEqual(audit_calls(text), 2)
+        with self.assertRaises(ValueError):
+            audit_calls(text + '3004: abc jr 10(t1) # 4000 <qbs_native_execute_command>\n')
+        with self.assertRaises(ValueError):
+            audit_calls(text.replace('jr 716(t1)', 'nop'))
 
 
 if __name__ == '__main__':
