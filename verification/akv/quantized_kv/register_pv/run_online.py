@@ -34,16 +34,21 @@ def main():
     parser.add_argument('--execute-reviewed', action='store_true')
     parser.add_argument('--runtime', action='store_true',
                         help='Exercise full runtime adapter with QBS reference executor')
+    parser.add_argument('--shared-runtime', action='store_true',
+                        help='Use the promoted software runtime, not the frozen experiment')
     parser.add_argument('--fp-contract', choices=('off', 'fast'), default='off',
                         help='Use fast to match the production GGML runtime build')
     args = parser.parse_args()
+    if args.shared_runtime and not args.runtime:
+        parser.error('--shared-runtime requires --runtime')
     out = args.output.resolve()
     if out.exists() or not out.is_relative_to(ROOT / 'verification/out'):
         raise ValueError('Fresh independent output directory required')
     out.mkdir(parents=True)
     pins, commands, trials = {}, [], []
     state = dict(state='PREPARING', functional_only=True, rtl_performance=False,
-                 production_enabled=False, fp_contract=args.fp_contract, trials=trials)
+                 production_enabled=False, shared_runtime=args.shared_runtime,
+                 fp_contract=args.fp_contract, trials=trials)
     env = dict(HOME='/home/wangwy', PATH='/usr/bin:/bin', LANG='C.UTF-8')
 
     def pin(path):
@@ -89,7 +94,8 @@ def main():
         source = HERE / ('test_runtime.c' if args.runtime else 'test_online.c')
         sources = [source]
         if args.runtime:
-            sources += [HERE / 'runtime_candidate.c',
+            sources += [ROOT / 'software/akv/experimental/quantized_kv/register_pv/runtime.c'
+                if args.shared_runtime else HERE / 'runtime_candidate.c',
                 ROOT / 'software/akv/experimental/quantized_kv/runtime.c',
                 ROOT / 'software/akv/experimental/quantized_kv/runtime_strided.c',
                 ROOT / 'software/qbs/src/qbs_runtime.c', ROOT / 'verification/qbs/qbs_ref.c']
