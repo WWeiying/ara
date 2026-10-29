@@ -49,6 +49,28 @@ build record; mismatched query, visible count or captured output is rejected.
 
 ## What this permits next
 
+The accepted offload trace also reproduces reduced load/store/configuration
+instruction counts in both additional cases:
+
+| Case | Instruction class | Baseline | Register-PV |
+| --- | --- | ---: | ---: |
+| Q8_0/20 | Vector load | 177 | 130 |
+| Q8_0/20 | Vector store | 139 | 52 |
+| Q8_0/20 | vset | 158 | 71 |
+| Q8_0/20 | Vector arithmetic | 342 | 362 |
+| Q4_0/8 | Vector load | 81 | 58 |
+| Q4_0/8 | Vector store | 67 | 28 |
+| Q4_0/8 | vset | 86 | 47 |
+| Q4_0/8 | Vector arithmetic | 174 | 182 |
+
+Both repeats have identical instruction mixes. The traces contain 3327 and
+1695 total records respectively, below their verified 2,000,000-record limits.
+These counts cover UART BEGIN/RESULT windows, including setup and checking;
+they are not timed-ROI IPC, AXI read/write bytes, or functional-unit utilization.
+They support the expected reduction in scratch materialization and configuration
+work, while also showing extra vector arithmetic. They cannot assign the whole
+cycle reduction to one instruction class or prove memory bandwidth saturation.
+
 The benefit is not confined to one captured point. Proceed to an opt-in shared
 implementation and GGML integration, retaining the original path. This is not
 yet proof of benefit for all supported head dimensions, long contexts, or full
