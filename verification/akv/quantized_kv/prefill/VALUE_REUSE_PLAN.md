@@ -86,6 +86,39 @@ The host test uses a deterministic mock decoder to test storage and control.
 It does not establish Q8_0 decoder equivalence, complete attention output
 equivalence, RTL correctness, or performance. Production code is unchanged.
 
+### Whole-executor host differential
+
+`value_cache_sources.py` now derives a candidate executor from canonical
+`execute.h`, with exact single-anchor checks on transformations. It retains
+the same admission, QK scheduling, online update and output-scatter code.
+The additional caller-provided pure-decoder identity is an explicit
+attestation, not automatic proof of callback purity. This API remains confined
+to the experiment; the generic production bindings have not changed.
+
+`value_cache_host.py` runs both the original executor fixture and its candidate
+against the per-query reference. The fixture uses two KV heads, five queries,
+GQA=3, D=96, nonmonotone prefixes 1/33/65/32/20, and a seven-row final group.
+Every output byte and untouched padding agree. Actual mock-decoder calls fall
+from 260 to 196, consistent with a 32-token cache. It also checks invalid last
+queries, workspace overlap and size rejection before callbacks, failure on
+the first command, and failure after one completed group without incorrect
+fallback or output writes. Missing decoder eligibility rejects before reading
+the request. Host exception flags match with an initially set sticky flag.
+
+Latest accepted evidence:
+`verification/out/prefill-value-cache-executor-20261029-04/result.json`.
+ASan and UBSan were enabled. This verifies complete host fixture output using
+the QBS reference model and a simple exact quantizer/decoder, not real GGML
+quantization or RISC-V execution. The next gate remains real-input native
+execution and cycle measurement.
+
+Preserved attempts: `-01` exposed an overbroad test-source substitution and
+failed compilation; `-02` passed without exception checks; `-03` demonstrated
+that the reference model clears host flags for each command. For `-04`, the
+test's command adapter restores preexisting flags after the reference call,
+emulating sticky command flags. Neither the reference model nor production
+code was edited to obtain this result. No failed attempt is labeled PASS.
+
 ## Promotion gates
 
 1. Derive a candidate executor from canonical production sources; retain the
