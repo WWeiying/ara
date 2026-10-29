@@ -13,6 +13,7 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(members(archive()),members(archive(mtime=b'200')))
         self.assertNotEqual(members(archive()),members(archive(payload=b'abd')))
         self.assertNotEqual(members(archive()),members(archive(name=b'other.o/')))
+        self.assertNotEqual(members(archive()),members(archive().replace(b'3         ',b'0000000003',1)))
 
     def test_duplicate_members(self):
         raw=archive()+archive(payload=b'def')[8:]

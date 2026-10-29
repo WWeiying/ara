@@ -15,7 +15,7 @@ def members(data):
         count=int(size);start=offset+HEADER.size;end=start+count
         if end>len(data):raise ValueError('Truncated ar member')
         result.append(dict(name=name.hex(),uid=uid.hex(),gid=gid.hex(),mode=mode.hex(),
-            size=count,sha256=hashlib.sha256(view[start:end]).hexdigest()))
+            size=count,size_field=size.hex(),sha256=hashlib.sha256(view[start:end]).hexdigest()))
         offset=end
         if count&1:
             if data[offset:offset+1]!=b'\n':raise ValueError('Missing ar padding')

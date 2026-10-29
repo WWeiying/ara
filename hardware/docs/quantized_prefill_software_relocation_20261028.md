@@ -58,11 +58,13 @@ llama.cpp 其他本地修改未回退；项目中的 scoped CMake patch 已同�
 归档解析器的时间戳、重复名、内容改变、截断和坏格式反例测试均 PASS。
 若成员或 ELF 不相同，等价门会失败，必须在独立目录走正常执行回归，
 不能放宽条件把失败改成通过。
+最终还保留 size 头字段的原始字节，避免把不同数值编码当成字节相同；
+新增该反例后在独立 02 目录重新核验通过。01 目录及其原报告未覆盖。
 
 ## 文件与命令
 
 - 构建结果：`verification/out/prefill-software-layout-build-20261028-01/result.json`。
-- 等价结果：`verification/out/prefill-software-layout-proof-20261028-01/result.json`。
+- 等价结果：`verification/out/prefill-software-layout-proof-20261028-02/result.json`。
 - 版本控制摘要：`verification/akv/results/prefill-software-relocation-20261028.json`。
 - 正常构建器：`verification/akv/quantized_kv/prefill/build_ggml_integration.py`。
 - 等价核验器：`verification/akv/quantized_kv/prefill/verify_software_relocation.py`。
