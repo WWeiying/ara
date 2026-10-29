@@ -56,11 +56,68 @@ Evidence under `verification/out/`:
 - Candidate log SHA256: `431de651dc1b77a466e7aa683f653ec1bbd79915d278e149ccf9a1f3c6bf59a8`.
 - Candidate gap3 log SHA256: `5258d60b3ec2b290dee63ee09b96eae5287236d679aff7b6a6e3ff28f251aeba`.
 
-## Remaining gate
+## Capacity, pressure and fault completion gates
 
-Do not promote solely on these cases. Run capacity-bound context combinations
-and directed small-M subgroup-16 tails with result pressure, reset and faults.
-Then compile a fresh canonical SoC image, revalidate ordinary RVV/coexistence
-and compare the same real projection binary against the baseline image. Any
-hardware performance claim must come from that matched pair. No synthesis,
-timing or area improvement is established here.
+The candidate also passed the 448-case profile suite with
+`+QBS_STALL_RESULTS`. This drives the existing deterministic LFSR/result-ready
+gate; every case checks first and repeated integer/FP results and fflags.
+It covers nine profiles, M=1..4 and output-row counts 1..4. The original
+36-command engine suite additionally includes M=5/6/7/8 waves, including a
+short subgroup-16 tail, without changing the existing correction-drain guard.
+
+The capacity suite has 12 shapes: Q4_K and Q8_0, M=1/4/5/6/7/8, N=5 and the
+largest supported K-block count that fits the saved activation tile. The
+candidate passed gap=0, including FILL/REUSE/RELEASE, all six weight-fault
+retry combinations and next-block fault/reset recovery per shape.
+
+The unmodified capacity suite at gap=3 failed on BOTH baseline and candidate:
+case 1 (Q4_K M4 Kb4), REUSE, AXI response fault, at the assertion requiring
+the fault to interrupt active replay. This failure is retained, not counted
+as PASS. The observation-only baseline run provides the distinguishing events:
+
+| Cycle | Observation |
+| ---: | --- |
+| 90195 | First AXI R error response; replay still busy |
+| 90265 | Replay finishes |
+| 90336 | Read-engine fault becomes visible after burst drain |
+
+Thus the assertion's timing precondition does not hold at this response gap;
+the original log does not prove a functional fault/recovery failure.
+
+`replay_probe.sv` adds a separate, opt-in `+QBS_FAULT_REPLAY_HOLD` experiment.
+It forces the compute receiver's activation-ready low only during injected
+AXI context faults, before any replay can finish. Both adapter write-valid
+inputs are asserted low while held. Fault arrival releases the hold; the
+original bench, its mandatory-overlap assertion and all numerical/fault/retry
+checks remain unchanged. No RTL input data, arithmetic or context state is
+forced. It is a receiver-pressure test, not a performance benchmark.
+
+With gap=3 and this pressure, BOTH baseline and candidate pass all 12 shapes,
+with exactly 24 holds, 24 fault/replay overlaps and no outstanding hold at end.
+The strict collector reuses `run_tile_context_engine.check_log/check_geometry`
+and rejects missing, duplicate or failed cases. Additional mutation tests
+check exact profile geometry and complete held-replay accounting.
+
+New evidence under `verification/out/`:
+
+- `qbs-retire-profile-build-20261029-01/profile-stalls.log`: 448 cases.
+- `qbs-retire-boundary-build-20261029-01/candidate-context.log`: gap=0 capacity.
+- `qbs-baseline-replay-build-20261029-01/baseline-context-gap3-trace.log`:
+  original precondition failure with cycle evidence.
+- `qbs-baseline-replay-build-20261029-01/baseline-context-gap3-held.log`.
+- `qbs-retire-replay-build-20261029-01/candidate-context-gap3-held.log`.
+- `qbs-retire-replay-build-20261029-01/local-gates.json`: checked cases and
+  SHA256 evidence pins; explicitly not a complete compile-source inventory.
+
+## Production-source admission and remaining gate
+
+After the above gates, the integer-engine change is copied exactly to the
+verification branch's `hardware/src/vlsu/qbs/qbs_profile_engine_int.sv`.
+The isolated candidate remains as the exact tested reference. This is source
+admission for fresh SoC validation, not a claim of final performance acceptance.
+The main `ara_dsa` worktree is untouched.
+
+Next: compile a fresh canonical SoC image, revalidate ordinary RVV/coexistence
+and compare the same real projection binary against the baseline evidence.
+Any hardware performance claim must come from that matched binary/configuration
+pair. No synthesis, timing or area improvement is established here.

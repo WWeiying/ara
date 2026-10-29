@@ -266,6 +266,13 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
       (!tail_wave_requires_correction_drain ||
        correction_drain_empty);
   assign start_fire = start_valid_i && start_ready_o;
+  // The last registered dot is consumed on this edge. No decoder input or
+  // younger dot remains; keep the draining context valid for correction.
+  logic compute_pipeline_retiring;
+  assign compute_pipeline_retiring = !issue_active_q && !s0_valid_q &&
+      dot_valid && dot_metadata_valid_q[DotLatency-1] &&
+      !(|dot_metadata_valid_q[DotLatency-2:0]) &&
+      dot_context_q == compute_context_q;
   assign compute_pipeline_empty = !issue_active_q && !s0_valid_q &&
       !(|dot_metadata_valid_q) && !dot_valid;
   // Read SRAM on the edge that registers s0_k_base_q. Its data reaches the
@@ -710,7 +717,7 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
           context_valid_q[result_context] <= 1'b0;
       end
 
-      if (compute_active_q && compute_pipeline_empty) begin
+      if (compute_active_q && (compute_pipeline_empty || compute_pipeline_retiring)) begin
         compute_active_q <= 1'b0;
         done_o <= 1'b1;
       end
@@ -784,6 +791,8 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
       assert (!(context_valid_q[0] && context_valid_q[1] && start_ready_o))
         else $fatal(1, "QBS advertised a full tile-context queue as ready");
       if (done_o) begin
+        assert (compute_pipeline_empty)
+          else $fatal(1, "QBS early integer completion left dot work pending");
         assert (busy_q && context_valid_q[compute_context_q])
           else $fatal(1,
               "QBS compute completion lost its draining tile context");
