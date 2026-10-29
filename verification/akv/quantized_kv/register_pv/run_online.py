@@ -36,11 +36,19 @@ def main():
                         help='Exercise full runtime adapter with QBS reference executor')
     parser.add_argument('--shared-runtime', action='store_true',
                         help='Use the promoted software runtime, not the frozen experiment')
+    parser.add_argument('--entry-guards', action='store_true',
+                        help='Check actual rounding/vstart/VLEN rejection without effects')
+    parser.add_argument('--early-guard-candidate', action='store_true',
+                        help='Test the successor entry guard before vectorized libc')
     parser.add_argument('--fp-contract', choices=('off', 'fast'), default='off',
                         help='Use fast to match the production GGML runtime build')
     args = parser.parse_args()
     if args.shared_runtime and not args.runtime:
         parser.error('--shared-runtime requires --runtime')
+    if args.entry_guards and not (args.runtime and args.shared_runtime):
+        parser.error('--entry-guards requires --runtime --shared-runtime')
+    if args.early_guard_candidate and not (args.runtime and args.shared_runtime):
+        parser.error('--early-guard-candidate requires --runtime --shared-runtime')
     out = args.output.resolve()
     if out.exists() or not out.is_relative_to(ROOT / 'verification/out'):
         raise ValueError('Fresh independent output directory required')
@@ -48,6 +56,8 @@ def main():
     pins, commands, trials = {}, [], []
     state = dict(state='PREPARING', functional_only=True, rtl_performance=False,
                  production_enabled=False, shared_runtime=args.shared_runtime,
+                 entry_guards=args.entry_guards,
+                 early_guard_candidate=args.early_guard_candidate,
                  fp_contract=args.fp_contract, trials=trials)
     env = dict(HOME='/home/wangwy', PATH='/usr/bin:/bin', LANG='C.UTF-8')
 
@@ -92,9 +102,12 @@ def main():
         cc = PLATFORM / 'tools/bin/riscv64-linux-gcc'
         init = HERE.parent / 'ggml_live/init.c'
         source = HERE / ('test_runtime.c' if args.runtime else 'test_online.c')
+        if args.entry_guards:
+            source = HERE / 'test_entry_guards.c'
         sources = [source]
         if args.runtime:
-            sources += [ROOT / 'software/akv/experimental/quantized_kv/register_pv/runtime.c'
+            sources += [HERE / 'runtime_entry_guard_candidate.c' if args.early_guard_candidate else
+                ROOT / 'software/akv/experimental/quantized_kv/register_pv/runtime.c'
                 if args.shared_runtime else HERE / 'runtime_candidate.c',
                 ROOT / 'software/akv/experimental/quantized_kv/runtime.c',
                 ROOT / 'software/akv/experimental/quantized_kv/runtime_strided.c',
@@ -141,6 +154,11 @@ def main():
                     (1024, 'REGISTER_RUNTIME_PASS cases=288 exact=1 flags=1 panels=1 failure_no_retry=1'),
                     (256, 'REGISTER_RUNTIME_UNSUPPORTED_VLEN_PASS no_effects=1'))
                 prefix = 'REGISTER_RUNTIME_'
+            if args.entry_guards:
+                markers = (
+                    (1024, 'REGISTER_GUARD_PASS vlen=1024 cases=28 no_effects=1 csr_preserved=1'),
+                    (256, 'REGISTER_GUARD_PASS vlen=256 cases=30 no_effects=1 csr_preserved=1'))
+                prefix = 'REGISTER_GUARD_'
             for vlen, marker in markers:
                 name = 'qemu-vlen' + str(vlen)
                 text = run([qemu, '-M', 'virt', '-cpu',
