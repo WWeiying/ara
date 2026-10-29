@@ -87,3 +87,31 @@ a 19% time reduction. This experiment has no measured speedup.
 
 No production software, RTL, default switches or model dispatch policy has
 been changed by this experiment.
+
+## VCS cycle experiment
+
+`build.py` builds nine objects from source with the accepted GNU bare-metal
+recipes. `native.cpp` uses the first twelve captured Q/V/K activation rows,
+K=1536, as three M4 groups. The builder checks that Q, V and K contain identical
+activation tensors and that group zero matches the previously accepted input.
+It preserves the complete capture and metadata identities.
+
+Each of four ABBA trials prepares the same three groups for three consumers.
+Both versions have three quantizer executions, six hits and three stores. The
+ROI includes lookup, miss quantization, store, hit copies, hint maintenance,
+sticky FFLAGS restoration and final cache clearing. Reference generation and
+full byte/canary checks are outside the ROI. The reference is the existing
+generic quantizer executed before the trials, with group zero additionally
+checked against the archived golden. This is not an independent ISA-model
+check of every generated instruction.
+
+The paired experiment contains no matrix commands. It measures preparation
+cost, not linear-projection or model speedup. Constructors are outside the ROI
+in both variants; the candidate hint initialization is inside. Single-group
+and miss-only performance controls remain required before production promotion.
+
+`run.py` admits the previously reviewed SoC image, checks source and image pins
+before and after execution, runs the protocol checker, and accepts cycles only
+after `check.py` validates all four records and completion. `test_check.py`
+rejects missing/duplicate completion, modified flags, outputs, counters and
+invalid cycles. Use a fresh output directory for each build and run.
