@@ -46,9 +46,29 @@ python3 -B verification/akv/quantized_kv/register_pv/run_online.py \
 
 ## Remaining gates
 
-The candidate is not integrated into llama.cpp or the QBS RTL. Next compare
-the complete packed Q8_K activation bytes, scales, sums and FP flags using real
-model activations, then measure the entire preparation/projection call on VCS.
+Complete quantizer comparison also passed in
+`verification/out/m4-vector-sums-quantizer-reference-20261029-01`, at VLEN1024
+and VLEN256. Each run has 57 comparisons: nine real-data checks (three M4
+groups with three initial sticky flag states), plus 48 checks spanning K=256,
+512,1536,6144 and zero, alternating-sign and deterministic mixed-value inputs.
+All packed output bytes, guard bytes, input bytes, FCSR and VCSR match the
+existing RVV packed quantizer. The test requires actual vector-path execution.
+
+Real input is the first 12 of 15 captured Qwen2.5-1.5B projection activation
+rows, K=1536, from `blk_0_attn_q_weight/activation_f32.bin`. The entire 92160-byte
+capture is checked against the earlier accepted projection manifest before
+loading. The final three rows are not tested as an M4 group. This comparison
+uses the existing quantizer as the oracle; the independent integer scalar
+oracle belongs to the earlier group-sum leaf tests.
+
+Complete-test ELF SHA256:
+`b7d66d04d0605d9647b2104d9153f9fc571bb2d9d4c40efb3bf1098ffe7c49a2`.
+`test_source_identity.py` verifies that the experimental full quantizer differs
+only in namespace/include plumbing and its group-sum body. Quantization,
+signed-maximum selection, scales, rounding and fallback remain identical.
+
+The candidate is not integrated into llama.cpp or the QBS RTL. Next measure
+preparation and the entire projection call on VCS using real model activations.
 Instruction reduction alone is insufficient: strided-store cost, register
 pressure and generated spills can offset the eliminated scalar reductions.
 Do not substitute a synthetic standalone reduction ratio for model or full

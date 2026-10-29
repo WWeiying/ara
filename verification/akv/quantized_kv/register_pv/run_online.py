@@ -44,9 +44,13 @@ def main():
                         help='Test the isolated causal Prefill register-PV schedule')
     parser.add_argument('--group-sums', action='store_true',
                         help='Test isolated QBS M4 activation group sums')
+    parser.add_argument('--m4-quantizer', action='store_true',
+                        help='Check complete Q8_K M4 quantization on real activations')
     parser.add_argument('--fp-contract', choices=('off', 'fast'), default='off',
                         help='Use fast to match the production GGML runtime build')
     args = parser.parse_args()
+    if args.m4_quantizer and (args.group_sums or args.prefill_prefix or args.runtime or args.entry_guards or args.shared_runtime or args.early_guard_candidate):
+        parser.error('--m4-quantizer is a standalone quantizer experiment')
     if args.group_sums and (args.prefill_prefix or args.runtime or args.entry_guards or args.shared_runtime or args.early_guard_candidate):
         parser.error('--group-sums is a standalone arithmetic experiment')
     if args.prefill_prefix and (args.runtime or args.entry_guards or args.shared_runtime or args.early_guard_candidate):
@@ -68,6 +72,7 @@ def main():
                  early_guard_candidate=args.early_guard_candidate,
                  prefill_prefix=args.prefill_prefix,
                  group_sums=args.group_sums,
+                 m4_quantizer=args.m4_quantizer,
                  fp_contract=args.fp_contract, trials=trials)
     env = dict(HOME='/home/wangwy', PATH='/usr/bin:/bin', LANG='C.UTF-8')
 
@@ -110,6 +115,10 @@ def main():
 
     try:
         cc = PLATFORM / 'tools/bin/riscv64-linux-gcc'
+        init_cc=cc
+        link_libraries=[]
+        if args.m4_quantizer:
+            cc=PLATFORM/'tools/bin/riscv64-linux-g++'
         init = HERE.parent / 'ggml_live/init.c'
         source = HERE / ('test_runtime.c' if args.runtime else 'test_online.c')
         if args.entry_guards:
@@ -118,6 +127,8 @@ def main():
             source = HERE / 'test_prefill_prefix.c'
         if args.group_sums:
             source = ROOT / 'verification/qbs/m4_group_sums/test.c'
+        if args.m4_quantizer:
+            source = ROOT / 'verification/qbs/m4_group_sums/test_quantizer.cpp'
         sources = [source]
         if args.runtime:
             sources += [HERE / 'runtime_entry_guard_candidate.c' if args.early_guard_candidate else
@@ -132,22 +143,47 @@ def main():
                 '-fno-tree-vectorize', '-fno-fast-math', '-ffp-contract=' + args.fp_contract,
                 '-frounding-math', '-Wall', '-Wextra', '-Werror', '-I' + str(ROOT),
                 '-I' + str(ROOT / 'software/qbs/include')]
+        if args.m4_quantizer:
+            ggml=Path('/home/wangwy/llama/llama.cpp/ggml')
+            base+=['-isystem'+str(p) for p in (ggml/'include',ggml/'src',
+                ggml/'src/ggml-cpu',ggml/'src/ggml-cpu/arch/riscv')]
+            libraries=ROOT/'verification/out/register-pv-final-models-20261028-01/libraries'
+            report=json.loads((libraries/'result.json').read_text())
+            if report['state']!='PASS':raise ValueError('Unaccepted GGML libraries')
+            pin(libraries/'result.json')
+            for path,expected in report['configurations']['ON']['libraries'].items():
+                if digest(path)!=expected:raise ValueError('Library drift: '+path)
+                pin(path)
+            directory=libraries/'on/ggml/src'
+            link_libraries=['-Wl,--start-group',*[str(directory/name) for name in
+                ('libggml.a','libggml-cpu.a','libggml-base.a')],'-Wl,--end-group','-ldl','-pthread']
+            capture=Path('/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m/prefill/operators/blk_0_attn_q_weight/activation_f32.bin')
+            archived=ROOT/'verification/out/m4-packed-qkv-build-20261027-01/manifest.json'
+            pin(archived)
+            expected=json.loads(archived.read_text())[str(capture)]
+            if digest(capture)!=expected or capture.stat().st_size!=92160:
+                raise ValueError('Real activation identity')
+            pin(capture)
         for program in ('cc1', 'as', 'ld'):
             pin(run([cc, '-print-prog-name=' + program], 'locate-' + program).strip())
         for library in ('libm.a', 'libc.a', 'libgcc.a', 'libgcc_eh.a'):
             pin(run([cc, '-print-file-name=' + library], 'locate-' + library).strip())
+        if args.m4_quantizer:
+            pin(run([cc,'-print-file-name=libstdc++.a'],'locate-cxxlib').strip())
+            pin(run([cc,'-print-prog-name=cc1plus'],'locate-cxxcompiler').strip())
         for label, path in [(str(i), p) for i, p in enumerate(sources)] + [('init', init)]:
             deps = run([*base, '-M', '-MT', 'object', path], label + '-dependencies')
             for dep in shlex.split(deps.replace('\\\n', ' ').split(':', 1)[1]):
                 pin(dep)
-        run([*base, *sources, '-lm', '-o', out / 'test'], 'build')
-        run([cc, '-O2', '-static', '-march=rv64gc', '-mabi=lp64d',
+        run([*base, *sources, *link_libraries, '-lm', '-o', out / 'test'], 'build')
+        run([init_cc, '-O2', '-static', '-march=rv64gc', '-mabi=lp64d',
              init, '-o', out / 'init'], 'init-build')
         for path in (out / 'test', out / 'init'):
             pin(path)
         listing = out / 'initramfs.list'
         listing.write_text('dir /dev 755 0 0\nnod /dev/console 600 0 0 c 5 1\n' +
-            f'file /init {out / "init"} 755 0 0\nfile /test {out / "test"} 755 0 0\n')
+            f'file /init {out / "init"} 755 0 0\nfile /test {out / "test"} 755 0 0\n'+
+            (f'file /activation.bin {capture} 644 0 0\n' if args.m4_quantizer else ''))
         pin(listing)
         cpio = PLATFORM / 'sdk/buildroot/output/build/linux-6.19.6/usr/gen_init_cpio'
         with (out / 'initramfs.cpio').open('xb') as stream:
@@ -183,6 +219,10 @@ def main():
                     (1024, 'GROUP_SUMS_PASS vlen=1024 cases=256 exact=1 strided=1 csr=1'),
                     (256, 'GROUP_SUMS_PASS vlen=256 cases=128 exact=1 strided=1 csr=1'))
                 prefix = 'GROUP_SUMS_'
+            if args.m4_quantizer:
+                marker='M4_SUMS_QUANTIZER_PASS cases=57 real=9 exact=1 flags=1 guards=1'
+                markers=((1024,marker),(256,marker))
+                prefix='M4_SUMS_'
             for vlen, marker in markers:
                 name = 'qemu-vlen' + str(vlen)
                 text = run([qemu, '-M', 'virt', '-cpu',
