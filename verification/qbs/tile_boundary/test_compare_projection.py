@@ -42,3 +42,34 @@ class CompareTest(unittest.TestCase):
         reviewed['ordering']['state'] = 'ORDER_AUDIT_NEEDS_INCLUDE_REVIEW'
         with self.assertRaises(ValueError):
             compare(self.run, self.run, self.build, reviewed)
+
+    def test_reject_incomplete_work(self):
+        for key, value in (('commands', 255), ('result_bytes', 131071)):
+            with self.subTest(key=key):
+                new = copy.deepcopy(self.run)
+                new['measured']['traffic'][key] = value
+                with self.assertRaises(ValueError):
+                    compare(self.run, new, self.build, self.build)
+        new = copy.deepcopy(self.run)
+        new['measured']['trials'].pop()
+        with self.assertRaises(ValueError):
+            compare(self.run, new, self.build, self.build)
+
+    def test_reject_state_or_workload_drift(self):
+        for key in ('id', 'candidate', 'hits', 'misses', 'stores',
+                    'fcsr', 'vcsr', 'errors'):
+            with self.subTest(key=key):
+                new = copy.deepcopy(self.run)
+                new['measured']['trials'][1][key] += 1
+                with self.assertRaises(ValueError):
+                    compare(self.run, new, self.build, self.build)
+
+    def test_reject_matching_but_invalid_trials(self):
+        # Identical corruption in both records must not establish a valid pair.
+        for key, value in (('id', 9), ('candidate', 0), ('errors', 1),
+                           ('total', 0), ('prep', 0), ('execute', 0)):
+            with self.subTest(key=key):
+                bad = copy.deepcopy(self.run)
+                bad['measured']['trials'][1][key] = value
+                with self.assertRaises(ValueError):
+                    compare(bad, bad, self.build, self.build)
