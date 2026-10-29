@@ -1,0 +1,75 @@
+--- a/ggml/src/ggml-cpu/CMakeLists.txt
++++ b/ggml/src/ggml-cpu/CMakeLists.txt
+@@ -483,6 +483,20 @@
+                     ${GGML_QUANT_KV_DIR}/runtime.c
+                     ${GGML_QUANT_KV_DIR}/runtime_strided.c)
+                 option(GGML_RISCV_AKV_QUANT_PREFILL "Experimental grouped quantized Prefill Attention" OFF)
++                option(GGML_RISCV_AKV_REGISTER_PV "Opt-in register-resident quantized Decode PV" OFF)
++                if (GGML_RISCV_AKV_REGISTER_PV)
++                    if (NOT EXISTS "${GGML_QUANT_KV_DIR}/register_pv/entry.c")
++                        message(FATAL_ERROR "Register-PV requires the reviewed shared runtime")
++                    endif()
++                    get_filename_component(GGML_REGISTER_PV_ROOT "${GGML_QUANT_KV_DIR}/../../../.." ABSOLUTE)
++                    target_include_directories(${GGML_CPU_NAME} PRIVATE "${GGML_REGISTER_PV_ROOT}")
++                    target_compile_definitions(${GGML_CPU_NAME} PRIVATE GGML_USE_RISCV_REGISTER_PV)
++                    list(APPEND GGML_CPU_SOURCES "${GGML_QUANT_KV_DIR}/register_pv/entry.c")
++                    if (CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
++                        set_property(SOURCE "${GGML_QUANT_KV_DIR}/register_pv/entry.c"
++                            APPEND PROPERTY COMPILE_OPTIONS -fno-fast-math -ffp-contract=fast)
++                    endif()
++                endif()
+                 if (GGML_RISCV_AKV_QUANT_PREFILL)
+                     set(GGML_RISCV_AKV_PREFILL_DIR "${GGML_QUANT_KV_DIR}/prefill" CACHE PATH "Reviewed Prefill C entry source directory")
+                     if (NOT GGML_RISCV_AKV_PREFILL_DIR)
+--- a/ggml/src/ggml-cpu/arch/riscv/quant-kv.cpp
++++ b/ggml/src/ggml-cpu/arch/riscv/quant-kv.cpp
+@@ -5,6 +5,9 @@
+ #include "../../vec.h"
+ #include "ggml_entry_strided.h"
+ #include "q8_0_value.h"
++#ifdef GGML_USE_RISCV_REGISTER_PV
++#include "register_pv/ggml_entry.h"
++#endif
+ 
+ #include <array>
+ #include <cstdio>
+@@ -42,11 +45,18 @@
+     void * workspace;
+     size_t workspace_bytes;
+     bool grouped_pv;
++    bool register_pv;
+ };
+ 
+ static int execute(void * opaque, qbs_command_executor_t executor) {
+     auto & call = *static_cast<invocation *>(opaque);
+     call.bindings.execute = executor;
++#ifdef GGML_USE_RISCV_REGISTER_PV
++    if (call.register_pv) {
++        return quant_register_ggml_execute(call.dst, &call.context, &call.bindings,
++            call.workspace, call.workspace_bytes, &call.report);
++    }
++#endif
+     if (call.grouped_pv) {
+         return akv_quant_ggml_strided_execute_grouped_pv(call.dst, &call.context, &call.bindings, call.workspace, call.workspace_bytes, &call.report);
+     }
+@@ -168,12 +178,20 @@
+ #if defined(GGML_SIMD) && defined(__riscv_v_intrinsic) && defined(__riscv_vector)
+     call.grouped_pv = enabled("GGML_RISCV_AKV_GROUPED_PV");
+ #endif
++#ifdef GGML_USE_RISCV_REGISTER_PV
++    call.register_pv = enabled("GGML_RISCV_AKV_REGISTER_PV");
++    // Keep experiments mutually exclusive; neither choice changes Prefill.
++    if (call.register_pv && call.grouped_pv) {
++        return ggml_riscv_quant_kv_status::fallback;
++    }
++#endif
+     const int status = ggml_riscv_qbs_direct_run(execute, &call);
+     if (enabled("GGML_RISCV_AKV_TRACE")) {
+         const auto & native = call.report.execution.native;
+         std::fprintf(stderr, "GGML_RISCV_QUANT_KV status=%d mapping=%u memory=%u runtime_called=%u command_attempts=%u groups=%u value_decodes=%u executor_status=%u\n", status, call.report.mapping_reason, call.report.memory_verified, call.report.runtime_called, native.command_attempts, native.completed_groups, native.value_decodes, static_cast<unsigned>(native.executor_status));
+         std::fprintf(stderr, "GGML_RISCV_QUANT_KV_LAYOUT selection=%u key_panels=%zu key_bytes=%zu workspace=%zu k_token_stride=%zu k_head_stride=%zu\n", native.selection_reason, call.report.execution.key_panels, call.report.execution.key_bytes, bytes, key->nb[1], key->nb[2]);
+         std::fprintf(stderr, "GGML_RISCV_QUANT_KV_PV grouped=%u completed_groups=%u\n", unsigned(call.grouped_pv), native.completed_groups);
++        std::fprintf(stderr, "GGML_RISCV_QUANT_KV_REGISTER_PV enabled=%u status=%d completed_groups=%u\n", unsigned(call.register_pv), status, native.completed_groups);
+     }
+     if (status == AKV_QUANT_NATIVE_OK) {
+         return ggml_riscv_quant_kv_status::complete;
