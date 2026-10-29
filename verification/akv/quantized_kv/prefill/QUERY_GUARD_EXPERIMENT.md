@@ -52,3 +52,26 @@ Q4_0/Q8_0 K-cache configurations. Production code is unchanged.
 The cache-hint experiment was rejected after a measured regression. This
 candidate must pass the same actual-cycle criterion; host equivalence alone
 does not justify enabling it.
+
+## GNU code-generation check
+
+`query_guard_codegen.py` uses the accepted production Prefill compilation recipe
+with the same ISA and optimization flags. It builds separate original/candidate
+wrapper functions in one object and emits both relocation-aware disassembly and
+verbose source-correlated assembly. Output:
+`verification/out/prefill-query-codegen-20261029-01`.
+
+The compiler did not eliminate the original per-element check. Its inner loop
+contains an additional exponent-mask `and` followed by `bne` to the finite-value
+continuation. The candidate instead has one post-loop `bgeu` against the infinity
+bit pattern. Both retain the maximum-update branch and loop control. Address
+calculation and surrounding register allocation also differ, so static opcode
+counts alone cannot predict complete-call cycles.
+
+The next paired test must compare grouped Prefill with grouped Prefill, not the
+older per-query versus grouped comparison. Keep the four QBS commands, twenty
+V decodes, single gathered K panel, numerical output and FCSR/VCSR identical in
+both variants. Change only the extra-query admission scan. Include admission in
+the ROI and use both captured Q4_0 and Q8_0 K-cache inputs. Do not silently reuse
+the older experiment's checker, which expects 74 V decodes in its per-query
+baseline and therefore describes a different comparison.
