@@ -55,3 +55,40 @@ region when model tracing is disabled. Graph time starts after buffer allocation
 and ends after existing end-graph cleanup, before printing/freeing the buffer.
 It is not complete `llama_decode` time and excludes graph setup and allocation.
 No production file or previously accepted library was modified.
+
+## Linux counter admission
+
+The first Qwen3 probe run (`graph-cycles-model-20261029-02`) failed on the
+first ON timestamp: Linux rejected user `rdcycle` with cause 2. The OFF child
+had completed. This is a failed instrumentation run, not a model equivalence
+PASS or an RTL arithmetic failure.
+
+The pinned Linux 6.19.6 SBI PMU driver defaults to `perf_user_access=1` and
+initializes user counter access to time only. Its supported legacy value 2
+allows cycle/time/instret reads, but the driver also stops counters at startup
+until perf starts an event. Accordingly there are two separate requirements:
+
+1. Boot this isolated guest with `sysctl.kernel.perf_user_access=2`.
+2. Open a pinned `PERF_COUNT_HW_CPU_CYCLES` event on CPU 0 and retain its fd
+   throughout the test. This privileged, single-hart experiment includes kernel
+   time and is not a production-runtime permission policy.
+
+`counter_preflight.py` uses the same QEMU, firmware and kernel, without a model
+disk. The original preflight found that the permission switch alone produced
+identical counter values. Its FAIL result is retained. The successor preflight
+`verification/out/graph-cycles-counter-preflight-20261029-02` passes both checks:
+default policy rejects the child read with SIGILL; explicit permission plus
+the perf event allows two strictly increasing reads. Inputs and logs are hashed.
+
+`run_model.py --counter-preflight <that-directory> --output <fresh-directory>`
+requires this evidence and matching guest inputs. It starts the same event in
+the parent and checks that `rdcycle` advances **before loading the model**.
+Both OFF and ON children use the same counter policy and event. The probe
+itself still uses unmodified `rdcycle`; no timer fallback or QEMU patch is used.
+These QEMU values validate probe execution/accounting only. They must not be
+reported as RTL cycles, hardware speedup, or model-level cycle attribution.
+
+Ordinary Linux deployments need their own PMU access and scheduling assessment;
+raw cycle reads are not automatically a portable, per-thread execution metric.
+The complete-model ON/OFF result and a paired RTL overhead test remain separate
+acceptance gates.
