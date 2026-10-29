@@ -7,7 +7,7 @@ HERE=Path(__file__).resolve().parent
 class SourceIdentity(unittest.TestCase):
     def test_only_group_sum_changes(self):
         source=Path('/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/q8_K-m4-packed.h').read_text()
-        source=source.replace('namespace ggml_riscv_q8_K_m4_packed','namespace qbs_m4_parallel_sums')
+        source=source.replace('namespace ggml_riscv_q8_K_m4_packed','namespace qbs_m4_parallel_sums',1)
         source=source.replace('#include "q8_K-m4.h"','#include "q8_K-m4.h"\n#include "candidate.h"')
         first=source.index('inline void sums(')
         last=source.index('\n// Qualified',first)
