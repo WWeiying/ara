@@ -49,3 +49,14 @@ wrapping in its map/disassembly, capture and compare both modes' complete
 records, and retain exact logits/CSR checks. This preparation is not yet a
 model command-equivalence result and does not alter the already accepted
 graph-probe binary.
+
+`run_census.py --output <fresh-verification/out-directory>` prepares that
+successor from the accepted graph-probe binary's exact source and libraries.
+It retains the six complete-logit comparisons and adds full binary command
+record comparisons after every inference. A fixed 1048576-record capacity
+bounds memory; overflow fails evidence collection without suppressing commands.
+The same collector is enabled in both modes. The final ELF disassembly must
+show at least two wrapped callsites and no direct native-executor calls outside
+the wrapper before QEMU may start. No production source or archived library is
+rewritten. `test_census_check.py` exercises missing/mismatched/overflow records
+and numerical-check failures before the model run.
