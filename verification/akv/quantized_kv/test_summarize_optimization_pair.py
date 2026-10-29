@@ -1,6 +1,6 @@
 import copy
 import unittest
-from summarize_optimization_pair import numeric_summary
+from summarize_optimization_pair import numeric_summary, captured_query
 
 
 def receipt(mechanism):
@@ -17,6 +17,26 @@ def receipt(mechanism):
 
 
 class SummaryTest(unittest.TestCase):
+    def test_context_identity(self):
+        self.assertIsNone(captured_query({'register_pv': True}, {}))
+        for query in (0, 7, 19):
+            build = dict(context_pair=True, register_pv=True, query_index=query)
+            measured = dict(query_index=query, visible_tokens=query+1)
+            self.assertEqual(captured_query(build, measured), query)
+        for query in (-1, 20, True, 7.0, None):
+            with self.subTest(query=query), self.assertRaises(ValueError):
+                captured_query(dict(context_pair=True, register_pv=True,
+                                    query_index=query),
+                               dict(query_index=7, visible_tokens=8))
+        for measured in ({}, dict(query_index=19, visible_tokens=20),
+                         dict(query_index=7, visible_tokens=20),
+                         dict(query_index=7.0, visible_tokens=8)):
+            with self.subTest(measured=measured), self.assertRaises(ValueError):
+                captured_query(dict(context_pair=True, register_pv=True,
+                                    query_index=7), measured)
+        with self.assertRaises(ValueError):
+            captured_query({'register_pv': True}, {'query_index': 7})
+
     def test_pair(self):
         for mechanism in ('prefill', 'register-pv'):
             got = numeric_summary(receipt(mechanism), mechanism)

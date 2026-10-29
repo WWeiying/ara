@@ -53,6 +53,22 @@ def numeric_summary(receipt, mechanism):
         scope=m['scope'])
 
 
+def captured_query(build, measured):
+    """Bind a context experiment to its captured query, never infer from cycles."""
+    if build.get('context_pair') is not True:
+        if 'query_index' in measured or 'visible_tokens' in measured:
+            raise ValueError('Context receipt without context build')
+        return None
+    query = build.get('query_index')
+    if (build.get('register_pv') is not True or type(query) is not int or
+            not 0 <= query < 20 or
+            type(measured.get('query_index')) is not int or
+            type(measured.get('visible_tokens')) is not int or
+            measured['query_index'] != query or measured['visible_tokens'] != query+1):
+        raise ValueError('Captured query identity mismatch')
+    return query
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run', type=Path, required=True)
@@ -83,10 +99,16 @@ def main():
         from run_production_native import require_production_build
         require_production_build(build)
     else:
-        sys.path.insert(0, str(HERE/'register_pv'))
-        from check_native import check_log as check
         if build.get('register_pv') is not True:
             raise ValueError('Not a register-PV experiment')
+        query = captured_query(build, receipt['measured'])
+        if query is None:
+            from register_pv.check_native import check_log as check
+        else:
+            from register_pv.context_pair.check_native import check_log as context_check
+            def check(text, golden, q4):
+                return context_check(text, golden, q4, query)
+            summary.update(query_index=query, visible_tokens=query+1)
     golden = ROOT/'verification/out/quant-prefill-capture-20261028-01'/build['kind']/'prefill/block/kqv_out-0.bin'
     log = run/'work/run.vcs.log'
     checked = check(log.read_text(), golden.read_bytes(), int(build['kind']=='q4_0'))
