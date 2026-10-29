@@ -15,7 +15,11 @@ def compare(old, new, old_build, new_build):
     for run, build in ((old, old_build), (new, new_build)):
         require(run.get('state') == 'PASS' and run.get('post_pins_match') is True
                 and run.get('performance_measured') is True, 'Unaccepted execution')
-        require(build.get('state') == 'CANONICAL_SOC_BUILT_NOT_EXECUTED' and
+        accepted_build = build.get('state') == 'CANONICAL_SOC_BUILT_NOT_EXECUTED'
+        reviewed_build = (build.get('state') == 'ORDER_REVIEWED_SOC_BUILT_NOT_EXECUTED'
+                          and build.get('original_state') == 'FAIL'
+                          and build.get('ordering', {}).get('state') == 'ORDER_AUDIT_PASS')
+        require((accepted_build or reviewed_build) and
                 build.get('post_pins_match') is True, 'Unaccepted image build')
         require(run['image_pins'] == build['image_pins'], 'Run/image mismatch')
         measured = run['measured']

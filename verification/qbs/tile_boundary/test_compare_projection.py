@@ -33,3 +33,12 @@ class CompareTest(unittest.TestCase):
         changed['config']['vlen'] = '256'
         with self.assertRaises(ValueError):
             compare(self.run, self.run, self.build, changed)
+
+    def test_separate_review_receipt_required(self):
+        reviewed = copy.deepcopy(self.build)
+        reviewed.update(state='ORDER_REVIEWED_SOC_BUILT_NOT_EXECUTED',
+                        original_state='FAIL', ordering={'state': 'ORDER_AUDIT_PASS'})
+        compare(self.run, self.run, self.build, reviewed)
+        reviewed['ordering']['state'] = 'ORDER_AUDIT_NEEDS_INCLUDE_REVIEW'
+        with self.assertRaises(ValueError):
+            compare(self.run, self.run, self.build, reviewed)
