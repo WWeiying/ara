@@ -8,6 +8,14 @@ SHARED = HERE.parents[3] / 'software/akv/experimental/quantized_kv/register_pv'
 
 
 class PromotionTest(unittest.TestCase):
+    def test_guarded_entry_identity(self):
+        text=(HERE/'runtime_entry_guard_candidate.c').read_text()
+        text=text.replace('/* Successor experiment while the promoted runtime is sealed by model tests. */',
+                          '/* Public entry: sample CSRs before any potentially vectorized library call. */')
+        text=text.replace('"software/akv/experimental/quantized_kv/register_pv/runtime.h"','"runtime.h"')
+        text=text.replace('"software/akv/experimental/quantized_kv/register_pv/runtime.c"','"runtime.c"')
+        self.assertEqual((SHARED/'entry.c').read_text(),text)
+
     def test_cpp_c_linkage(self):
         root=HERE.parents[3]
         source='''#include "software/akv/experimental/quantized_kv/register_pv/runtime.h"

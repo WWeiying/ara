@@ -13,6 +13,11 @@ Both switches default to disabled. Selecting the older `GROUPED_PV` experiment
 at the same time returns fallback before commands/output. Prefill selection
 is unchanged and does not use this Decode implementation.
 
+Compile `entry.c`, not `runtime.c` separately. The public entry samples actual
+CSRs before report initialization can call a vectorized libc routine. It
+includes the internal runtime under a private entry name. This is the
+same early-guard implementation accepted in the independent RTL pair.
+
 The enclosing mapper and shared selector retain type, layout, backing-memory,
 alias, finite-value and workspace checks. Actual VLEN=1024, RNE and vstart=0
 are checked before work. Supported inputs use Q4_0 or Q8_0 keys and Q8_0 values,

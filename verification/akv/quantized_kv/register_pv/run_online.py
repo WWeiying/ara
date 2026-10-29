@@ -107,7 +107,7 @@ def main():
         sources = [source]
         if args.runtime:
             sources += [HERE / 'runtime_entry_guard_candidate.c' if args.early_guard_candidate else
-                ROOT / 'software/akv/experimental/quantized_kv/register_pv/runtime.c'
+                ROOT / 'software/akv/experimental/quantized_kv/register_pv/entry.c'
                 if args.shared_runtime else HERE / 'runtime_candidate.c',
                 ROOT / 'software/akv/experimental/quantized_kv/runtime.c',
                 ROOT / 'software/akv/experimental/quantized_kv/runtime_strided.c',

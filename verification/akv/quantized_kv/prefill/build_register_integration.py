@@ -56,7 +56,7 @@ def main():
             assert len(entries)==int(mode=='ON')
             frontend=next(r for r in records if r['file'].endswith('/arch/riscv/quant-kv.cpp'))
             assert ('-DGGML_USE_RISCV_QUANT_PREFILL' in frontend['command'])==(mode=='ON')
-            register_entries=[r for r in records if Path(r['file']).resolve()==PRODUCTION.parent/'register_pv/runtime.c']
+            register_entries=[r for r in records if Path(r['file']).resolve()==PRODUCTION.parent/'register_pv/entry.c']
             assert len(register_entries)==1
             assert '-DGGML_USE_RISCV_REGISTER_PV' in frontend['command']
             dependency_audits={}
