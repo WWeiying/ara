@@ -20,6 +20,12 @@ static void one(int k,bool real) {
     uintptr_t nc,nv;__asm__ volatile("frcsr %0;csrr %1,vcsr":"=r"(nc),"=r"(nv)::"memory");
     assert(old==candidate && fc==nc && vc==nv && nv==5);
     assert(!std::memcmp(expected,actual,sizeof(expected)));
+    std::memset(actual,0xa5,sizeof(actual));
+    __asm__ volatile("fscsr %0;csrwi vcsr,5"::"r"((uintptr_t)sticky):"memory");
+    const bool integrated=ggml_riscv_q8_K_m4_packed::quantize<true>(input,actual+1,k);
+    __asm__ volatile("frcsr %0;csrr %1,vcsr":"=r"(nc),"=r"(nv)::"memory");
+    assert(old==integrated && fc==nc && vc==nv && nv==5);
+    assert(!std::memcmp(expected,actual,sizeof(expected)));
     assert(!std::memcmp(input,saved,4*k*sizeof(float)));
     ++cases;real_cases+=real;vector_cases+=candidate;
   }
