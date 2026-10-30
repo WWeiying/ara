@@ -1,0 +1,18 @@
+{
+  "state": "restarted_not_yet_synthesis_accepted",
+  "windows_run": "D:/fpga_runs/ara_qbs_akv_release_20261030_02",
+  "source_commit": "dbe05080465d9e0db7a42fd5d5458aea8ca0d9be",
+  "previous_run": "D:/fpga_runs/ara_qbs_akv_release_20261030_01",
+  "evidence": "previous-evidence in the recovery directory; original attempt retained",
+  "observed_failure": "Synthesis report finished at 17:07; no DCP, unchanged worker CPU and logs for over three hours; four worker completion statistics present but one synthesis helper remained alive",
+  "hypothesis": "Vivado 2020.1 multi-process synthesis teardown wait; exact internal deadlock not proven by stack capture",
+  "recovery": "Stop identified stalled task tree; retain prepared IP and frozen package; clone fresh synthesis run with external successor pre-hook setting general.maxThreads=1 and synth.maxThreads=1",
+  "rtl_modified": false,
+  "frozen_package_modified": false,
+  "synthesis_run": "synth_a030dbe05082",
+  "gates": "Original synthesis driver checks, setup gate, reviewed physical exceptions, routed timing/DRC/CDC and bitgen checks retained",
+  "physical_reference": "Unchanged; matching only, not old functional netlist reuse",
+  "board_modified": false,
+  "task": "Ara QBS AKV release 20261030 02",
+  "local_recovery_scripts": "/home/wangwy/fpga_runs/ara_qbs_akv_release_20261030_02"
+}
