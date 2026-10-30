@@ -52,7 +52,7 @@
     "validated_handoff": "6/6 PASS; all 68 Ara source records, required new modules, exact adaptations, delivery-tag provenance replay, target defines and strict dispatcher rejection",
     "signoff_export": "3/3 PASS in the isolated pinned-dependency preparation; after transfer to ara_dsa, 2/3 PASS and the dependency comparison rejects the original local fpu_div_sqrt_mvp delta. The delivered FPGA package is unchanged; do not relabel the main-worktree dependency check as passing",
     "sync_tool": "26/26 PASS",
-    "package": "12/12 PASS; includes mocked protocol, not board execution",
+    "package": "12/12 PASS on the committed 1f72c645a package extracted with git archive; includes mocked protocol, not board execution. Original workspace check is 11/12 because preexisting ignored linux/out/initramfs symlinks fail the no-links check; those outputs are preserved and excluded from the committed build inputs",
     "tcl": "PASS mock syntax/source-list checks, not Vivado execution",
     "static_dual_ddr_ethernet": "PASS with exact existing vendor-IP exclusions; no non-vendor elaboration errors",
     "legacy_export_suite": "31/33 passed after first sync; two historical assumptions remain invalid: fixed count 57 instead of 68 and db90e341 provenance preimage. Original failures retained; current-delivery checks are separate, not relabeled legacy passes"
@@ -63,6 +63,8 @@
     "pre_integration_tag": "fpga-pre-qbs-akv-integration-20261030",
     "candidate_tag": "fpga-qbs-akv-source-20261030",
     "backup_directory": "/home/wangwy/fpga_runs/mainline_fpga_integration_20261030T062537Z",
+    "source_integration_commit": "1f72c645a",
+    "committed_package_check_inputs": "/home/wangwy/fpga_runs/mainline_fpga_integration_20261030T062537Z/committed-inputs/hardware/fpga/ara_dsa_vcu118",
     "preexisting_tracked_changes": 9,
     "preexisting_changes_committed": false,
     "original_dependency_warning": "hardware/deps/fpu_div_sqrt_mvp differs from its locked clean revision. Preserve it; do not use it to regenerate the delivered FPGA package. Future regeneration must first materialize and validate locked dependency build inputs plus registered patches",
