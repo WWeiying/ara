@@ -130,6 +130,25 @@ adapter 从当前 graph node 向后寻找下一条可用 QBS `MUL_MAT`；只有�
 验证记录间确实 byte-identical；这些昂贵检查只用于形成证据，不是正常执行路径的隐式命中
 条件。
 
+当前验证补充了矩阵调用边界：前瞻遇到 `MUL_MAT_ID`，或不能建立相同契约的
+`MUL_MAT` 时停止，不跨过这些节点保留 context。原因是中间的专家或尾行计算也可能
+使用唯一 context；若仍为后面的投影预留，会形成同一 graph 内的自等待。N36 专家
+夹在两个同源投影之间的原生 QEMU 图已复现该问题，修复后的 8 项夹层图和 48 项
+上下文图均通过，详见 `qbs_segmented_r4.md`。相邻兼容投影仍保留复用。
+
+前瞻还检查中间节点是否可能改写激活：普通计算节点的输出存储范围与源激活相交时，
+立即结束跨算子复用；纯 VIEW/RESHAPE/PERMUTE/TRANSPOSE 不写数据，允许跨过。
+自定义算子与优化器可能写到输出之外，保守作为屏障。不相交的普通写入不阻断复用。
+地址区间采用起点差值判断，避免计算末地址时溢出；该判断以合法、已分配的 GGML
+tensor 为前提，并非针对恶意构造 tensor 的内存安全验证。
+
+原地 SCALE 反例已实测：同一个 graph epoch 内将输入乘以 0.5，旧逻辑仍跳过第二次
+量化，输出 0.371987492 而参考值为 0.18599376677132584。修复后的 32 项原生 QEMU
+图覆盖整段写入、偏移 view 写入、不相交写入及纯 view，并核对输入变化和独立矩阵
+结果；另外 48 项上下文和 8 项专家夹层图通过。详见 `qbs_segmented_r4.md`。
+这些结果不等于任意自定义副作用、图取消或多 hart 并发都已验证；新增 GGML 算子
+若能写到结果 tensor 之外，必须加入副作用屏障审查。
+
 ## 5. RTL 数据与控制路径
 
 ### 5.1 建立 context
@@ -172,9 +191,13 @@ block adapter，后续 profile decoder、整数 dot、FP accumulation 和 atomic
 
 写入 steering 以四个 32-bit word 为单位，而不是展开成 16 条逐 byte 地址路径；这是由
 read engine 的 strobe 契约保证的。generic 仿真使用两个 `146x128` `tc_sram`。TSMC SRAM
-实现使用四个现有 `64x256` macro：每个 parity bank 使用两个 macro，每个 256-bit word
-承载两个逻辑 128-bit row。物理容量为 65536 bit（8 KiB），逻辑 payload 仍为 37376 bit；
+当前实现使用两个 `76x256` macro：每个 parity bank 使用一个 macro，每个 256-bit word
+承载两个逻辑 128-bit row。物理容量为 38912 bit（4864 B），逻辑 payload 仍为 37376 bit；
 容量差来自可用 macro 粒度，不是额外可寻址 context。
+
+多行/Q8_0 的 opt-in 存储扩展见 `qbs_activation_tile_context.md`。在完成端到端
+准入与执行验证之前，默认硬件 capability 和本节前述 M1 软件契约保持不变。
+后文四个 `64x256` 宏的 DC 数字属于早期映射实验，不是当前宏组织的 PPA 结果。
 
 ## 6. 正确性与故障规则
 

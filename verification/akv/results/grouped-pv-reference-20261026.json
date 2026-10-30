@@ -1,0 +1,37 @@
+{
+  "state": "EXPLICIT_RVV_LEAF_FUNCTIONAL_PASS",
+  "scope": "Isolated grouped PV arithmetic; not full online Attention or production integration",
+  "runs": [
+    {
+      "vlen": 1024,
+      "path": "verification/out/grouped-pv-rvv1024-20261026-01",
+      "result_sha256": "e501efab90536ac75fbd66e9516735f5bd953a93783b1acf1375567675178835"
+    },
+    {
+      "vlen": 256,
+      "path": "verification/out/grouped-pv-rvv256-20261026-01",
+      "result_sha256": "85ddb41ac6e5ad72e4e01645cdc19bc4889ae15ee590c8ebbdc7a6d03304de99"
+    }
+  ],
+  "elf_sha256": "31430c545a67348170eda9efb8251619c076c47d64c8f09610f1ccf2fcc0182c",
+  "cases_per_vlen": 13824,
+  "invalid_cases_per_vlen": 17,
+  "oracle": "Independent scalar per-head scale pass followed by fmaf pass; automatic vectorization disabled",
+  "checks": [
+    "all output bits",
+    "floating flags and RNE",
+    "FCSR and unchanged VCSR",
+    "output padding and guards",
+    "read-only value and coefficient buffers",
+    "invalid arguments rejected without output or CSR changes",
+    "zero, signed zero, subnormal, overflow, underflow and inactive sNaN scale",
+    "head counts 1..8, dimension and stride tails"
+  ],
+  "host_and_codegen_tests_passed": 4,
+  "real_model_input_used": false,
+  "full_attention_tested": false,
+  "production_enabled": false,
+  "rtl_changed": false,
+  "rtl_execution": false,
+  "performance_measured": false
+}

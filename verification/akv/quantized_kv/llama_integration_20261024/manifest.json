@@ -1,0 +1,16 @@
+{
+  "base_commit": "8ed9403e37f1ceb43c6279cdefef01354eac6fd3",
+  "patch_sha256": "f04acce916388b0296cd235c89460b5e71900a16b4501e8eaadaee15b31691c8",
+  "scope": "Full observed tracked working diff plus the two new adapter files; includes preexisting private changes, not a claim that all hunks were added in this step",
+  "source": "/home/wangwy/llama/llama.cpp",
+  "source_sha256": {
+    "ggml/src/ggml-cpu/CMakeLists.txt": "bab039a33c0ceaef169f9a1ea1aa3265234bdd4c669c4c3ef3c6f45559f8e05c",
+    "ggml/src/ggml-cpu/arch/riscv/akv.cpp": "a2382b3a19a9c035428181c22a131ca18aaa466c153d9dc8006d7b43a75f97fb",
+    "ggml/src/ggml-cpu/arch/riscv/qbs.cpp": "5de40095e57195b73c642f813ca3f3b7e9e1976d89149d177e5f0df7954ee180",
+    "ggml/src/ggml-cpu/arch/riscv/qbs.h": "1faba1d701b118ce8bbd326571e5d1bde84d6bae56f13a87fc35444940348861",
+    "ggml/src/ggml-cpu/arch/riscv/quant-kv.cpp": "203a5a5f7fa56a037ee86ea3f45ac712ea3fc8c0c33d88faaca3257cf41609ca",
+    "ggml/src/ggml-cpu/arch/riscv/quant-kv.h": "76d5142171953f0d69dea3707a4e048324a10011ee106d9b3ee193267d9b7030",
+    "ggml/src/ggml-cpu/repack.cpp": "a075a21276c8b7e1b26eaefaf0821cf31e9b427b3f5dc1a3c07b32256d433e9c",
+    "tests/test-ara-q4k-repack.cpp": "65b7deab55dc7e3828dfdb93c855255336ef6b5f935b05663256845e75a23fa6"
+  }
+}

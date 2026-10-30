@@ -3,6 +3,7 @@
 
 `include "axi/typedef.svh"
 `include "ara/intf_typedef.svh"
+`include "shared_reader_types.svh"
 
 package akv_engine_synth_types_pkg;
   localparam int unsigned AxiDataWidth = 128;
@@ -27,6 +28,8 @@ package akv_engine_synth_types_pkg;
   localparam config_pkg::cva6_cfg_t CVA6Cfg =
       build_config_pkg::build_config(cva6_config_pkg::cva6_cfg);
   `CVA6_TYPEDEF_EXCEPTION(exception_t, CVA6Cfg)
+  `QBS_AKV_SHARED_READER_TYPEDEF_REQ_T(shared_read_req_t, VAddrWidth)
+  `QBS_AKV_SHARED_READER_TYPEDEF_RSP_T(shared_read_rsp_t, AxiDataWidth, VAddrWidth, exception_t)
 endpackage
 
 // Measurement-only wrapper. Every functional input and output remains visible
@@ -120,7 +123,42 @@ module akv_engine_synth_wrapper import akv_engine_synth_types_pkg::*; (
     output logic [31:0]                  read_outstanding_full_cycles_o
   );
 
+  shared_read_req_t shared_req [2];
+  shared_read_rsp_t shared_rsp [2];
+  logic owner_q, command_fire;
+
+  assign shared_req[0] = '0;
+  assign command_fire = command_valid_i && command_ready_o;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) owner_q <= 1'b0;
+    else begin
+      if ((success_valid_o || fault_valid_o) && terminal_ready_i) owner_q <= 1'b0;
+      if (command_fire) owner_q <= 1'b1;
+    end
+  end
+
+  // Measurement wrapper only; the complete VLSU supplies the production owner.
+  // Reader counters are qualified by owner, unlike a persistent retired snapshot.
+  qbs_akv_shared_reader #(
+    .AxiDataWidth(AxiDataWidth), .AxiAddrWidth(AxiAddrWidth),
+    .VAddrWidth(VAddrWidth), .PAddrWidth(PAddrWidth),
+    .req_t(shared_read_req_t), .rsp_t(shared_read_rsp_t),
+    .axi_ar_t(axi_ar_t), .axi_r_t(axi_r_t), .exception_t(exception_t)
+  ) i_shared_reader (
+    .clk_i, .rst_ni,
+    .owner_i({owner_q, 1'b0}), .command_fire_i({command_fire, 1'b0}),
+    .client_req_i(shared_req), .client_rsp_o(shared_rsp),
+    .core_st_pending_i, .en_ld_st_translation_i,
+    .mmu_req_o, .mmu_vaddr_o, .mmu_is_store_o, .mmu_valid_i, .mmu_paddr_i,
+    .mmu_exception_valid_i, .mmu_exception_i,
+    .physical_check_valid_o, .physical_check_addr_o, .physical_check_bytes_o,
+    .physical_range_allowed_i,
+    .axi_ar_o, .axi_ar_valid_o, .axi_ar_ready_i,
+    .axi_r_i, .axi_r_valid_i, .axi_r_ready_o
+  );
+
   akv_engine #(
+    .reader_req_t(shared_read_req_t), .reader_rsp_t(shared_read_rsp_t),
     .AxiDataWidth (AxiDataWidth),
     .AxiAddrWidth (AxiAddrWidth),
     .VAddrWidth   (VAddrWidth),
@@ -132,5 +170,7 @@ module akv_engine_synth_wrapper import akv_engine_synth_types_pkg::*; (
     .axi_ar_t     (axi_ar_t),
     .axi_r_t      (axi_r_t),
     .exception_t  (exception_t)
-  ) i_akv_engine (.*);
+  ) i_akv_engine (
+    .reader_req_o(shared_req[1]), .reader_rsp_i(shared_rsp[1]), .*
+  );
 endmodule

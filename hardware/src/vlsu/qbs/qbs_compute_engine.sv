@@ -4,6 +4,9 @@
 module qbs_compute_engine
   import qbs_pkg::*;
   import fpnew_pkg::*;
+#(
+  parameter bit SeedRestoreEnable = 1'b0
+)
 (
   input  logic                    clk_i,
   input  logic                    rst_ni,
@@ -17,6 +20,17 @@ module qbs_compute_engine
   input  logic [3:0]              command_m_i,
   input  logic [5:0]              command_n_i,
   input  logic [8:0]              command_k_blocks_i,
+  input  logic                    command_activation_lookahead_i,
+
+  // Internal continuation interface. No architectural instruction selects it
+  // until its source dependency and lane/VLSU ownership route are integrated.
+  input  logic                    command_seed_i,
+  input  logic                    seed_valid_i,
+  output logic                    seed_ready_o,
+  input  logic [3:0]              seed_row_i,
+  input  logic [7:0]              seed_mask_i,
+  input  logic [31:0]             seed_data_i [8],
+  input  logic                    seed_done_i,
 
   // A fault stops new work. Work already admitted to the integer/FP pipelines
   // drains into hidden state before the command-local state is discarded.
@@ -33,6 +47,7 @@ module qbs_compute_engine
   input  logic [127:0]            weight_write_data_i,
   input  logic [15:0]             weight_write_strb_i,
   input  logic                    activation_write_valid_i,
+  input  logic [7:0]              activation_write_k_block_i,
   output logic                    activation_write_ready_o,
   input  logic [1:0]              activation_write_context_i,
   input  logic [11:0]             activation_write_offset_i,
@@ -42,6 +57,7 @@ module qbs_compute_engine
   // Logical block requested by the fixed K-block-major scheduler. The future
   // read engine uses these indices plus the command descriptor to form ranges.
   output logic [7:0]              expected_k_block_o,
+  output logic [7:0]              expected_activation_k_block_o,
   output logic [5:0]              expected_row_base_o,
   output logic [2:0]              expected_row_count_o,
   output logic                    expected_weight_bank_o,
@@ -91,7 +107,8 @@ module qbs_compute_engine
     QBS_FINAL_DRAIN,
     QBS_RESULT,
     QBS_FAULT_DRAIN,
-    QBS_FAULT_CLEAR
+    QBS_FAULT_CLEAR,
+    QBS_SEED
   } qbs_compute_state_e;
 
   qbs_compute_state_e state_q, state_d;
@@ -105,13 +122,20 @@ module qbs_compute_engine
   logic [7:0] k_block_q;
   logic [5:0] row_base_q;
   logic context_wave_q;
+  logic activation_lookahead_q;
+  logic seeded_q;
+  logic raw_seed_ready, raw_seed_valid;
+  logic activation_read_bank, activation_write_bank;
+  logic activation_write_current, activation_write_next;
+  logic activation_next_available, activation_next_complete;
+  logic activation_loading_state;
   logic wide_command;
   logic final_context_wave;
   logic [2:0] wave_m;
   logic [2:0] wave_context_base;
 
   logic [1:0] clear_weight;
-  logic clear_activation;
+  logic [1:0] clear_activation;
   logic clear_accumulator;
   logic [2:0] row_count;
   logic [2:0] load_row_count;
@@ -143,8 +167,8 @@ module qbs_compute_engine
   logic [7:0] weight_side [4][20], activation_side [4][36];
   assign weight_window = active_weight_bank_q ? weight_window_bank[1] : weight_window_bank[0];
   assign weight_side = active_weight_bank_q ? weight_side_bank[1] : weight_side_bank[0];
-  assign activation_window = context_wave_q ? activation_window_bank[1] : activation_window_bank[0];
-  assign activation_side = context_wave_q ? activation_side_bank[1] : activation_side_bank[0];
+  assign activation_window = activation_read_bank ? activation_window_bank[1] : activation_window_bank[0];
+  assign activation_side = activation_read_bank ? activation_side_bank[1] : activation_side_bank[0];
   logic [3:0] weight_complete [2];
   logic [3:0] activation_complete [2];
   logic all_weight_complete [2];
@@ -185,6 +209,51 @@ module qbs_compute_engine
   logic [31:0] fp_update_data;
 
 `ifndef SYNTHESIS
+  logic [127:0] seed_seen_q;
+  logic [15:0] seed_rows_q;
+  always_ff @(posedge clk_i or negedge rst_ni) begin : check_seed_ownership
+    logic [7:0] expected_mask;
+    if (!rst_ni) begin
+      seed_seen_q <= '0;
+      seed_rows_q <= '0;
+    end else if (state_q == QBS_INIT) begin
+      seed_seen_q <= '0;
+      seed_rows_q <= '0;
+    end
+    else if (state_q == QBS_SEED && !fault_i) begin
+      if (raw_seed_valid && raw_seed_ready) begin
+        expected_mask = '0;
+        for (int b = 0; b < 8; b++)
+          if (unsigned'(seed_row_i) / (wide_command ? 2:4) < unsigned'(m_q) &&
+              (unsigned'(seed_row_i) % (wide_command ? 2:4))*8+b < unsigned'(n_q))
+            expected_mask[b] = 1'b1;
+        assert (|seed_mask_i && seed_mask_i === expected_mask && !seed_rows_q[seed_row_i])
+          else $fatal(1, "QBS requires one complete active seed mask per row");
+        seed_rows_q[seed_row_i] <= 1'b1;
+        for (int b = 0; b < 8; b++) if (seed_mask_i[b]) begin
+          assert (unsigned'(seed_row_i) / (wide_command ? 2:4) < unsigned'(m_q) &&
+                  (unsigned'(seed_row_i) % (wide_command ? 2:4))*8+b < unsigned'(n_q))
+            else $fatal(1, "QBS seed writes outside active shape");
+          assert (!seed_seen_q[{seed_row_i, 3'(b)}])
+            else $fatal(1, "QBS seed word delivered twice");
+          seed_seen_q[{seed_row_i, 3'(b)}] <= 1'b1;
+        end
+      end
+      if (seed_done_i) begin
+        for (int r = 0; r < 8; r++)
+          for (int c = 0; c < 32; c++)
+            if (r < unsigned'(m_q) && c < unsigned'(n_q))
+              assert (seed_seen_q[r*(wide_command ? 16:32)+c] ||
+                      (raw_seed_valid && raw_seed_ready &&
+                       unsigned'(seed_row_i) == (r*(wide_command ? 16:32)+c)/8 &&
+                       seed_mask_i[c%8]))
+                else $fatal(1, "QBS computation started before all seeds arrived");
+      end
+      assert (!integer_busy && !integer_result_valid && !fp_busy)
+        else $fatal(1, "QBS seed phase overlapped compute");
+    end
+  end
+
   // Observation-only counters. Each blocked counter requires an actual
   // valid/ready failure; occupancy counters are named separately.
   logic [31:0] probe_context_start_blocked_cycles_q;
@@ -211,6 +280,13 @@ module qbs_compute_engine
   endfunction
 
   assign wide_command = unsigned'(m_q) >= QbsWideMMin;
+  assign activation_read_bank = activation_lookahead_q ? k_block_q[0] : context_wave_q;
+  assign activation_write_bank = activation_lookahead_q ? activation_write_k_block_i[0] : 1'b0;
+  assign activation_write_current = activation_write_k_block_i == k_block_q;
+  assign activation_next_available = {1'b0, k_block_q} + 9'd1 < k_blocks_q;
+  assign activation_write_next = activation_next_available &&
+      activation_write_k_block_i == k_block_q + 8'd1;
+  assign activation_next_complete = all_activation_complete_bank[~k_block_q[0]];
   assign final_context_wave = !wide_command || context_wave_q;
 
   always_comb begin
@@ -225,15 +301,16 @@ module qbs_compute_engine
     for (int context_index = 0; context_index < 4; context_index++) begin
       for (int byte_index = 0; byte_index < QbsMaxActivationBlockBytes;
            byte_index++) begin
-        activation_block[context_index][byte_index] = context_wave_q
+        activation_block[context_index][byte_index] = activation_read_bank
             ? activation_block_bank1[context_index][byte_index]
             : activation_block_bank0[context_index][byte_index];
       end
     end
   end
 
-  assign all_activation_complete =
-      all_activation_complete_bank[0] && all_activation_complete_bank[1];
+  assign all_activation_complete = wide_command
+      ? all_activation_complete_bank[0] && all_activation_complete_bank[1]
+      : all_activation_complete_bank[activation_read_bank];
 
   always_comb begin
     row_count = rows_from_base(row_base_q);
@@ -271,8 +348,16 @@ module qbs_compute_engine
   assign expected_row_base_o = load_row_base;
   assign expected_row_count_o = load_row_count;
   assign expected_weight_bank_o = write_weight_bank;
-  assign activation_block_needed_o =
-      state_q == QBS_LOAD_TILE && !fault_i && !all_activation_complete;
+  assign activation_loading_state = state_q inside {
+      QBS_LOAD_TILE, QBS_COMPUTE_TILE, QBS_WAIT_WEIGHT,
+      QBS_START_WEIGHT, QBS_CLEAR_BLOCK};
+  assign expected_activation_k_block_o = activation_lookahead_q &&
+      all_activation_complete && activation_next_available
+      ? k_block_q + 8'd1 : k_block_q;
+  assign activation_block_needed_o = !fault_i && (activation_lookahead_q
+      ? activation_loading_state && (!all_activation_complete ||
+          (activation_next_available && !activation_next_complete))
+      : state_q == QBS_LOAD_TILE && !all_activation_complete);
   assign current_weight_complete = all_weight_complete[active_weight_bank_q];
   assign load_weight_complete = all_weight_complete[write_weight_bank];
   assign weight_block_needed_o =
@@ -280,8 +365,13 @@ module qbs_compute_engine
       (state_q inside {QBS_COMPUTE_TILE, QBS_WAIT_WEIGHT,
                        QBS_START_CONTEXT_WAVE} &&
        next_row_available && !load_weight_complete));
-  assign activation_write_ready_o = activation_block_needed_o &&
-                                    (&adapter_activation_ready);
+  assign activation_write_ready_o = activation_lookahead_q
+      ? !fault_i && activation_loading_state &&
+          (activation_write_current || activation_write_next) &&
+          !clear_activation[activation_write_bank] &&
+          !all_activation_complete_bank[activation_write_bank] &&
+          adapter_activation_ready[activation_write_bank]
+      : activation_block_needed_o && (&adapter_activation_ready);
 
   always_comb begin
     clear_weight = '0;
@@ -290,8 +380,16 @@ module qbs_compute_engine
     else if (state_q == QBS_START_WEIGHT)
       clear_weight[~active_weight_bank_q] = 1'b1;
   end
-  assign clear_activation = state_q inside {QBS_INIT, QBS_CLEAR_BLOCK,
-                                            QBS_FAULT_CLEAR};
+  always_comb begin
+    clear_activation = '0;
+    if (state_q inside {QBS_INIT, QBS_FAULT_CLEAR})
+      clear_activation = '1;
+    else if (state_q == QBS_CLEAR_BLOCK) begin
+      // k_block_q already names the next block. Retire only its predecessor.
+      if (activation_lookahead_q) clear_activation[~k_block_q[0]] = 1'b1;
+      else clear_activation = '1;
+    end
+  end
   assign clear_accumulator = state_q inside {QBS_INIT, QBS_FAULT_CLEAR};
 
   always_comb begin
@@ -327,7 +425,7 @@ module qbs_compute_engine
     .clk_i,
     .rst_ni,
     .clear_weight_i               (clear_weight[0]),
-    .clear_activation_i           (clear_activation),
+    .clear_activation_i           (clear_activation[0]),
     .weight_profile_i             (weight_profile_q),
     .activation_profile_i         (activation_profile_q),
     .weight_row_count_i           (bank0_row_count),
@@ -336,7 +434,7 @@ module qbs_compute_engine
     .weight_write_ready_o         (adapter_weight_ready[0]),
     .activation_write_ready_o     (adapter_activation_ready[0]),
     .weight_read_i                (buffer_read_valid && !active_weight_bank_q),
-    .activation_read_i            (buffer_read_valid && !context_wave_q),
+    .activation_read_i            (buffer_read_valid && !activation_read_bank),
     .read_k_i                     (buffer_read_k_base),
     .weight_write_valid_i         (weight_write_fire &&
                                    weight_write_bank_i == 1'b0),
@@ -346,7 +444,8 @@ module qbs_compute_engine
     .weight_write_data_i,
     .weight_write_strb_i,
     .activation_write_valid_i     (activation_write_valid_i &&
-                                   activation_write_ready_o),
+                                   activation_write_ready_o &&
+                                   (!activation_lookahead_q || !activation_write_bank)),
     .activation_write_context_i,
     .activation_write_offset_i,
     .activation_write_data_i,
@@ -364,12 +463,13 @@ module qbs_compute_engine
   );
 
   qbs_block_adapter #(
-    .ActivationContextBase (4), .NativeView(1'b0), .UniqueInputBytes(1'b1)
+    .ActivationContextBase (4), .NarrowActivationAlias(1'b1),
+    .NativeView(1'b0), .UniqueInputBytes(1'b1)
   ) i_block_adapter_bank1 (
     .clk_i,
     .rst_ni,
     .clear_weight_i               (clear_weight[1]),
-    .clear_activation_i           (clear_activation),
+    .clear_activation_i           (clear_activation[1]),
     .weight_profile_i             (weight_profile_q),
     .activation_profile_i         (activation_profile_q),
     .weight_row_count_i           (bank1_row_count),
@@ -378,7 +478,7 @@ module qbs_compute_engine
     .weight_write_ready_o         (adapter_weight_ready[1]),
     .activation_write_ready_o     (adapter_activation_ready[1]),
     .weight_read_i                (buffer_read_valid && active_weight_bank_q),
-    .activation_read_i            (buffer_read_valid && context_wave_q),
+    .activation_read_i            (buffer_read_valid && activation_read_bank),
     .read_k_i                     (buffer_read_k_base),
     .weight_write_valid_i         (weight_write_fire &&
                                    weight_write_bank_i == 1'b1),
@@ -388,7 +488,8 @@ module qbs_compute_engine
     .weight_write_data_i,
     .weight_write_strb_i,
     .activation_write_valid_i     (activation_write_valid_i &&
-                                   activation_write_ready_o),
+                                   activation_write_ready_o &&
+                                   (activation_lookahead_q ? activation_write_bank : wide_command)),
     .activation_write_context_i,
     .activation_write_offset_i,
     .activation_write_data_i,
@@ -454,7 +555,7 @@ module qbs_compute_engine
     .start_context_base_i          (wave_context_base),
     .start_row_count_i             (row_count),
     .start_row_base_i              (row_base_q),
-    .start_first_block_i           (k_block_q == 0),
+    .start_first_block_i           (k_block_q == 0 && !seeded_q),
     .busy_o                        (integer_busy),
     .done_o                        (integer_done),
     .result_valid_o                (integer_result_valid),
@@ -500,7 +601,10 @@ module qbs_compute_engine
   end
   assign integer_result_ready = fp_request_ready;
 
-  qbs_fp_accumulator i_fp_accumulator (
+  assign raw_seed_valid = SeedRestoreEnable && state_q == QBS_SEED && !fault_i && seed_valid_i;
+  assign seed_ready_o = SeedRestoreEnable && state_q == QBS_SEED && !fault_i && raw_seed_ready;
+
+  qbs_fp_accumulator #(.RawSeedEnable(SeedRestoreEnable)) i_fp_accumulator (
     .clk_i,
     .rst_ni,
     .clear_i                       (clear_accumulator),
@@ -522,6 +626,11 @@ module qbs_compute_engine
     .bank_read_row_i               (result_bank_read_row_i),
     .bank_read_valid_o             (result_bank_read_valid_o),
     .bank_read_data_o              (result_bank_read_data_o),
+    .raw_seed_valid_i              (raw_seed_valid),
+    .raw_seed_ready_o              (raw_seed_ready),
+    .raw_seed_row_i                (seed_row_i),
+    .raw_seed_mask_i               (seed_mask_i),
+    .raw_seed_data_i               (seed_data_i),
     .update_valid_o                (fp_update_valid),
     .update_index_o                (fp_update_index),
     .update_data_o                 (fp_update_data),
@@ -543,7 +652,14 @@ module qbs_compute_engine
         if (command_valid_i)
           state_d = QBS_INIT;
       end
-      QBS_INIT: state_d = QBS_LOAD_TILE;
+      QBS_INIT: begin
+        if (seeded_q && fault_i) state_d = QBS_FAULT_DRAIN;
+        else state_d = seeded_q ? QBS_SEED : QBS_LOAD_TILE;
+      end
+      QBS_SEED: begin
+        if (fault_i) state_d = QBS_FAULT_DRAIN;
+        else if (seed_done_i) state_d = QBS_LOAD_TILE;
+      end
       QBS_LOAD_TILE: begin
         if (fault_i)
           state_d = QBS_FAULT_DRAIN;
@@ -622,6 +738,8 @@ module qbs_compute_engine
       k_block_q <= '0;
       row_base_q <= '0;
       context_wave_q <= 1'b0;
+      activation_lookahead_q <= 1'b0;
+      seeded_q <= 1'b0;
       active_weight_bank_q <= 1'b0;
       weight_bank_row_count_q[0] <= '0;
       weight_bank_row_count_q[1] <= '0;
@@ -646,6 +764,8 @@ module qbs_compute_engine
         k_block_q <= '0;
         row_base_q <= '0;
         context_wave_q <= 1'b0;
+        activation_lookahead_q <= command_activation_lookahead_i && command_m_i <= 4;
+        seeded_q <= SeedRestoreEnable && command_seed_i;
         active_weight_bank_q <= 1'b0;
         weight_bank_row_count_q[0] <= '0;
         weight_bank_row_count_q[1] <= '0;
@@ -671,8 +791,9 @@ module qbs_compute_engine
             weight_bytes_o + adapter_weight_bytes[active_weight_bank_q];
         if (row_base_q == 0)
           activation_bytes_o <=
-              activation_bytes_o + adapter_activation_bytes[0] +
-                                   adapter_activation_bytes[1];
+              activation_bytes_o + (wide_command
+                  ? adapter_activation_bytes[0] + adapter_activation_bytes[1]
+                  : adapter_activation_bytes[activation_read_bank]);
       end
 
       if (state_q == QBS_COMPUTE_TILE && integer_done) begin
@@ -705,6 +826,12 @@ module qbs_compute_engine
             weight_prefetch_wait_cycles_o + 1'b1;
 
 `ifndef SYNTHESIS
+      if (activation_lookahead_q && activation_write_valid_i && activation_write_ready_o) begin
+        assert (activation_write_current || activation_write_next)
+          else $fatal(1, "QBS activation response lost its K-block identity");
+        assert (!(buffer_read_valid && activation_write_bank == activation_read_bank))
+          else $fatal(1, "QBS activation write overwrites active compute bank");
+      end
       if (state_q == QBS_IDLE && command_valid_i) begin
         assert (qbs_weight_block_bytes(command_weight_profile_i) != 0);
         assert (qbs_profiles_compatible(command_weight_profile_i,
@@ -820,11 +947,13 @@ module qbs_compute_engine
         end
       end
 
-      if (i_fp_accumulator.fp_in_valid && !i_fp_accumulator.fp_in_ready)
+      if ((i_fp_accumulator.fp_in_valid && !i_fp_accumulator.fp_in_ready) ||
+          (i_fp_accumulator.cast_found && !i_fp_accumulator.cast_ready))
         probe_fp_input_blocked_cycles_q <=
             probe_fp_input_blocked_cycles_q + 1'b1;
       if (i_fp_accumulator.entry_occupancy != 0 &&
-          !i_fp_accumulator.fp_in_valid)
+          !i_fp_accumulator.fp_in_valid && !i_fp_accumulator.cast_found &&
+          !i_fp_accumulator.half_found)
         probe_fp_no_schedulable_uop_cycles_q <=
             probe_fp_no_schedulable_uop_cycles_q + 1'b1;
       if (fp_busy)

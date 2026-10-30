@@ -3,6 +3,7 @@
 
 module qbs_block_adapter import qbs_pkg::*; #(
   parameter int unsigned ActivationContextBase = 0,
+  parameter bit NarrowActivationAlias = 1'b0,
   parameter bit NativeView = 1'b1,
   // The integrated range reader/replay writes each block byte once between
   // clears. Generic clients may rewrite bytes and retain bitmap tracking.
@@ -177,7 +178,8 @@ module qbs_block_adapter import qbs_pkg::*; #(
   end
 
   qbs_payload_buffer #(.NativeView(NativeView), .PredecodedWriteLocations(1'b1),
-      .StreamWriteData(1'b1), .ActivationContextBase(ActivationContextBase)) i_payload_buffer (
+      .StreamWriteData(1'b1), .ActivationContextBase(ActivationContextBase),
+      .NarrowActivationAlias(NarrowActivationAlias)) i_payload_buffer (
     .clk_i, .rst_ni, .weight_profile_i, .activation_profile_i,
     .weight_valid_i(weight_source_valid), .activation_valid_i(activation_source_valid),
     .weight_mask_i(weight_mask), .activation_mask_i(activation_mask),
@@ -358,7 +360,8 @@ module qbs_block_adapter import qbs_pkg::*; #(
   // Constant mapping helper stays at module scope for VCS/DC elaboration.
   function automatic int activation_valid_index(
       input int index, block_bytes, scale_bytes, quant_bytes, contexts);
-    int ctx, offset, relative;
+    int ctx, offset, relative, context_base;
+    context_base = NarrowActivationAlias && contexts != 8 ? 0 : ActivationContextBase;
     if (contexts == 1) begin
       ctx = index / block_bytes;
       offset = index % block_bytes;
@@ -376,9 +379,9 @@ module qbs_block_adapter import qbs_pkg::*; #(
       ctx = (relative / 2) % contexts;
       offset = scale_bytes + quant_bytes + (relative / (2 * contexts)) * 2 + relative % 2;
     end
-    if ((contexts == 1 && ctx >= 4) || ctx < ActivationContextBase ||
-        ctx >= ActivationContextBase + 4) return -1;
-    return (ctx - ActivationContextBase) * QbsMaxActivationBlockBytes + offset;
+    if ((contexts == 1 && ctx >= 4) || ctx < context_base ||
+        ctx >= context_base + 4) return -1;
+    return (ctx - context_base) * QbsMaxActivationBlockBytes + offset;
   endfunction
 
   // These views only permute existing valid bits into source byte order.
@@ -513,7 +516,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
     activation_context_count = '0;
     if (activation_layout_i == QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED)
       activation_context_count = 3'd4;
-    else if (ActivationContextBase == 0 && unsigned'(m_i) <= 4)
+    else if ((ActivationContextBase == 0 || NarrowActivationAlias) && unsigned'(m_i) <= 4)
       activation_context_count = 3'(m_i);
 
     for (int row = 0; row < 4; row++) begin
@@ -685,9 +688,15 @@ module qbs_block_adapter import qbs_pkg::*; #(
         end
       end
 
-      target_local_context = target_context - ActivationContextBase;
-      mapping_valid &= target_context >= ActivationContextBase &&
-                       target_context < ActivationContextBase + 4;
+      if (NarrowActivationAlias &&
+          activation_layout_i != QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED) begin
+        target_local_context = target_context;
+        mapping_valid &= target_context < 4;
+      end else begin
+        target_local_context = target_context - ActivationContextBase;
+        mapping_valid &= target_context >= ActivationContextBase &&
+                         target_context < ActivationContextBase + 4;
+      end
       activation_input_target[beat_byte].valid = activation_input.strb[beat_byte] &&
           mapping_valid && target_local_context < 4 && target_offset < block_bytes;
       activation_input_target[beat_byte].ctx = 2'(target_local_context);
@@ -877,7 +886,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
                  QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED)
           assert (m_i inside {[QbsWideMMin:QbsMaxM]})
             else $fatal(1, "QBS M8 activation layout requires M=5..8");
-        else if (ActivationContextBase == 0)
+        else if (ActivationContextBase == 0 || NarrowActivationAlias)
           assert (activation_write_context_i < m_i)
             else $fatal(1, "QBS activation beat targets inactive context");
       end

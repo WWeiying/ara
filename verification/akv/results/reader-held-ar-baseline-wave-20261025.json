@@ -1,0 +1,28 @@
+{
+  "state": "BASELINE_LOG_UVM_AND_FULL_WAVE_CHECKED_NOT_PAIRED_ACCEPTANCE",
+  "original_run_state": "FAIL",
+  "first_recovery_state": "FAIL",
+  "original_failures_preserved": true,
+  "baseline_simulations_repeated": 0,
+  "candidate_executed": false,
+  "profile_change": "Exactly 45 packed-member selectors: slash hierarchy followed by dotted member names; aliases, required flags, sampling and frozen wave checker unchanged",
+  "cycles": 121433,
+  "signals": 202,
+  "program_commands": 71,
+  "uvm": {"read_transactions_completed": 58, "read_beats": 435, "writes_matched": 70, "pending_reads": 0, "pending_writes": 0, "backend_allocations": 151, "backend_completions": 151, "contract_protocol_errors": 0},
+  "wave": {"reader_held_samples": 20, "cut_held_samples": 0, "empty_outstanding_held_ar_samples": 6, "injected_beats": 1, "drained_beats": 18, "response_drain_samples": 9, "reader_faults": 1, "other_owner_recovered": true, "reader_ar": 4, "reader_r_beats": 38, "bus_ar": 4, "bus_r_beats": 38},
+  "evidence_sha256": {
+    "verification/out/reader-held-ar-run-20261025-01/baseline/reader.fsdb": "5abceabebb8cafcbe63839b8e3d910078ce323822d5c89ace6f4b8b34e3a3b69",
+    "verification/out/reader-held-ar-run-20261025-01/baseline/run.vcs.log": "a91e87d9a4cd5db87073114d07e510dceab45d8f26095aa9a7d94b9d1c9990cb",
+    "verification/out/reader-member-full-baseline-20261025-01/profile.json": "a6582e2e957c0e6bae6e21c5b2b6c9f8534675f9bb79b2763302dd6c9cd3565a",
+    "verification/out/reader-member-full-baseline-20261025-01/cycles/cycles.csv": "6aa6a1147e4157079c50542546a39362bf178f772702fb6517eb7a5d7027cbb2",
+    "verification/out/reader-member-full-baseline-20261025-01/cycles/metadata.json": "aaca42263a77b9ef2f012138dee968122fa05c96c67d0ac8843f226764d78397",
+    "verification/out/reader-member-full-baseline-20261025-01/cycles/fsdbreport.raw.csv": "a9de6fd19c40b1e378a9d042bc27d0aa7a2ae891f41c095777502c6f8ca8e8a2",
+    "verification/out/reader-held-ar-recovery-20261025-01/baseline-audit/uvm_result.json": "89fd4c3a285dbeec904ec6582c15eebca0a1b3d15b6844c4660be656c9a9a6d1"
+  },
+  "export_note": "Tool reported that the requested 250000ns upper bound exceeds the FSDB's natural simulation-finish time; all required signals were present and the complete saved run was sampled. No missing-member warning remains.",
+  "mmu_covered": false,
+  "production_promoted": false,
+  "performance_claim": false,
+  "pending": "Fresh candidate execution, full UVM/wave validation and all-71-record baseline/candidate comparison"
+}

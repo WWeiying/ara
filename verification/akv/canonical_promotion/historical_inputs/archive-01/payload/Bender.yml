@@ -1,0 +1,143 @@
+package:
+  name: ara
+  authors:
+    - "Matheus Cavalcante <matheusd@iis.ee.ethz.ch>"
+    - "Matteo Perotti <mperotti@iis.ee.ethz.ch>"
+    - "Basile Bougenot <basileb@student.ethz.ch>"
+    - "Nils Wistoff <nwistoff@iis.ee.ethz.ch>"
+    - "Paul Scheffler <paulsc@iis.ee.ethz.ch>"
+
+dependencies:
+  axi:                { git: "https://github.com/pulp-platform/axi.git",                version: 0.39.10 }
+  common_cells:       { git: "https://github.com/pulp-platform/common_cells.git",       version: 1.38.0 }
+  cva6:               { git: "git@github.com:WWeiying/cva6.git",                        rev: b29fd3cf906e7f4c71da4c2f46451c4c60a4487f }
+  fpu_div_sqrt_mvp:   { git: "https://github.com/pulp-platform/fpu_div_sqrt_mvp.git",   version: 1.0.4 }
+  tech_cells_generic: { git: "https://github.com/pulp-platform/tech_cells_generic.git", version: 0.2.13 }
+  apb:                { git: "https://github.com/pulp-platform/apb.git",                version: 0.2.4  }
+
+workspace:
+  checkout_dir: "hardware/deps"
+
+export_include_dirs:
+  - hardware/include
+
+sources:
+  include_dirs:
+    # Headers
+    - hardware/include
+  files:
+    # Packages
+    - hardware/include/rvv_pkg.sv
+    - hardware/include/qbs_pkg.sv
+    - hardware/include/akv_pkg.sv
+    - hardware/include/ara_pkg.sv
+
+    # Sources
+    # Compatibility primitive required by the current lane sequencer.
+    - hardware/src/common_cells_compat/fall_through_register_v1.sv
+
+    # Level 0
+    - hardware/src/segment_sequencer.sv
+    # Level 1
+    - hardware/src/ctrl_registers.sv
+    - hardware/src/cva6_accel_first_pass_decoder.sv
+    - hardware/src/ara_dispatcher.sv
+    - hardware/src/vlsu/akv/akv_refill_order_guard.sv
+    - hardware/src/ara_sequencer.sv
+    - hardware/src/axi_inval_filter.sv
+    - hardware/src/lane/lane_sequencer.sv
+    - hardware/src/lane/operand_queue.sv
+    - hardware/src/lane/operand_requester.sv
+    - hardware/src/lane/simd_alu.sv
+    - hardware/src/lane/simd_div.sv
+    - hardware/src/lane/simd_mul.sv
+    - hardware/src/lane/vector_regfile.sv
+    - hardware/src/lane/power_gating_generic.sv
+    - hardware/src/masku/masku_operands.sv
+    - hardware/src/sldu/p2_stride_gen.sv
+    - hardware/src/sldu/sldu_op_dp.sv
+    - hardware/src/sldu/sldu.sv
+    - hardware/src/vlsu/addrgen.sv
+    - hardware/src/vlsu/vldu.sv
+    - hardware/src/vlsu/vstu.sv
+    - hardware/src/vlsu/qbs/qbs_profile_decoder.sv
+    - hardware/src/vlsu/qbs/qbs_dot_array.sv
+    - hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv
+    - hardware/src/vlsu/qbs/qbs_read_engine.sv
+    - hardware/src/vlsu/qbs/qbs_activation_context.sv
+    - hardware/src/vlsu/qbs/qbs_payload_sram.sv
+    - hardware/src/vlsu/qbs/qbs_payload_buffer.sv
+    - hardware/src/vlsu/qbs/qbs_block_adapter.sv
+    - hardware/src/vlsu/qbs/qbs_profile_engine_int.sv
+    - hardware/src/vlsu/qbs/qbs_half_scale.sv
+    - hardware/src/vlsu/qbs/qbs_fp_accumulator.sv
+    - hardware/src/vlsu/qbs/qbs_compute_engine.sv
+    - hardware/src/vlsu/qbs/qbs_commit.sv
+    - hardware/src/vlsu/qbs/qbs_vrf_seed_mapper.sv
+    - hardware/src/vlsu/qbs/qbs_seed_stream_router.sv
+    - hardware/src/vlsu/qbs/qbs_engine.sv
+    - hardware/src/vlsu/akv/akv_context.sv
+    - hardware/src/vlsu/akv/akv_v2_context.sv
+    - hardware/src/vlsu/akv/akv_engine.sv
+    # Level 2
+    - hardware/src/lane/operand_queues_stage.sv
+    - hardware/src/lane/valu.sv
+    - hardware/src/lane/vmfpu.sv
+    - hardware/src/lane/fixed_p_rounding.sv
+    - hardware/src/vlsu/store_load_lookahead.sv
+    - hardware/src/vlsu/store_load_lookahead_pair.sv
+    - hardware/src/vlsu/vlsu.sv
+    - hardware/src/masku/masku.sv
+    # Level 3
+    - hardware/src/lane/vector_fus_stage.sv
+    # Level 4
+    - hardware/src/lane/lane.sv
+    # Level 5
+    - hardware/src/vsetvl_preview.sv
+    - hardware/src/ara.sv
+    # Level 6
+    - hardware/src/ara_system.sv
+    # Level 7
+    - hardware/src/ara_soc.sv
+
+    - target: ara_test
+      files:
+        # Verification-only retirement and accelerator-interface tracing
+        - hardware/deps/cva6/core/cva6_rvfi.sv
+        - hardware/tb/ara_commit_monitor.sv
+        - hardware/tb/llm_perf_monitor.sv
+        # Level 1
+        - hardware/deps/cva6/corev_apu/tb/common/mock_uart.sv
+        - hardware/tb/ara_testharness.sv
+        # Level 2
+        - hardware/tb/ara_tb.sv
+        - hardware/tb/vrf_perf_monitor.sv
+        # Level 3
+        - hardware/src/accel_dispatcher_ideal.sv
+
+    - target: verilator
+      files:
+        - hardware/deps/cva6/corev_apu/tb/common/mock_uart.sv
+        - hardware/tb/ara_testharness.sv
+        - hardware/tb/ara_tb_verilator.sv
+
+    - target: spyglass
+      files:
+        - hardware/spyglass/src/ara_soc_wrap.sv
+
+    - target: sram_blackbox
+      files:
+        - backend/blackbox/ts1n28hpcpuhdsvtb76x256m1swbso_170a_tt0p9v25c.v
+        - backend/blackbox/ts1n28hpcpuhdsvtb96x256m1swbso_170a_tt0p9v25c.v
+        - backend/blackbox/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.v
+        - backend/blackbox/ts1n28hpcpuhdsvtb8x128m1swbso_170a_tt0p9v25c.v
+        - backend/blackbox/ts1n28hpcpuhdsvtb8x256m1swbso_170a_tt0p9v25c.v
+        - backend/blackbox/ts1n28hpcpsvtb8192x128m4swbaso_180a_tt0p9v25c.v
+        - backend/blackbox/ts1n28hpcpuhdsvtb16x64m1swbso_170a_tt0p9v25c.v
+        - backend/blackbox/ts1n28hpcpuhdsvtb64x128m4swbso_170a_tt0p9v25c.v
+        - backend/blackbox/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.v
+        - backend/blackbox/ts1n28hpcpuhdsvtb64x48m4swbso_170a_tt0p9v25c.v
+
+    - target: saif 
+      files:
+        - backend/syn/ara_soc/v1-dc/outputs/ara_soc_dc.v

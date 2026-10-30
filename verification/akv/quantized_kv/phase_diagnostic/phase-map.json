@@ -1,0 +1,23 @@
+{
+  "schema": "quantkv_phase_map_v1",
+  "functions": {
+    "threeway_quantize": "query_quantization",
+    "quantize_row_q8_0": "query_quantization",
+    "ggml_vec_dot_q4_0_q8_0": "rvv_qk_dot",
+    "ggml_vec_dot_q8_0_q8_0": "rvv_qk_dot",
+    "threeway_qk": "rvv_qk_callback_validation_and_scheduling",
+    "strided_qk": "key_gather_descriptor_and_qk_scheduling",
+    "strided_value_decode": "quantized_value_decode",
+    "threeway_value": "value_callback",
+    "strided_value": "value_callback",
+    "quant_kv_ggml_mad_f32": "pv_vector_update",
+    "quant_kv_ggml_scale_f32": "output_rescale",
+    "expf": "softmax_exponential",
+    "__ieee754_expf": "softmax_exponential",
+    "qbs_native_execute_command": "native_submission_and_result_store",
+    "akv_quant_view_valid": "view_validation",
+    "memcpy": "shared_copy",
+    "memset": "shared_initialization"
+  },
+  "ranges": []
+}

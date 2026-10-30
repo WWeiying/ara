@@ -1,0 +1,102 @@
+{
+  "auditor_sha256": "500a523770f1f887a65980aa6558e74330fa12228e4d2179a4d284c560d3d84f",
+  "baseline_evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-prefill-20261024-01/image-contract.log": "14480248f9ae2d28fa34425d9defcc9fcdb4d4f9d663d63021e26606f1730e52",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-prefill-20261024-01/manifest-after.log": "c6a72d5e6f123ed23bfba178fdc19d4e0fd52a6d0e56a1c5d06263d53b4fd2ed",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-prefill-20261024-01/manifest-before.log": "c6a72d5e6f123ed23bfba178fdc19d4e0fd52a6d0e56a1c5d06263d53b4fd2ed",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-prefill-20261024-01/source-pins.json": "e8b904c71906e1b9d0776d5150d790bfbcd5016d84d62c6979ec2b47ee97430c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-prefill-20261024-01/work/run.vcs.log": "1f738581608b31290fcf181742ce6a9fcd5a2fd93edd15d62798f47f8aac13f5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-prefill-20261024-01/work/uvm_result.json": "2ba9c814d099ceb64cbf58d0a4fa30d4b3afba397c0c5a549fe95dccbf8d81da",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-prefill-20261024-01/work/vector_trace.csv": "ac7e3bc684e8a1787852c9506032b702b198c36ba117ade7e2fe9ece0f17ea7f"
+  },
+  "comparison": {
+    "calls": [
+      {
+        "baseline_cycles": 202315,
+        "candidate_cycles": 202315,
+        "case": null,
+        "cycle_delta": 0,
+        "mode": 0,
+        "trial": 0
+      },
+      {
+        "baseline_cycles": 190069,
+        "candidate_cycles": 190069,
+        "case": null,
+        "cycle_delta": 0,
+        "mode": 1,
+        "trial": 1
+      },
+      {
+        "baseline_cycles": 190352,
+        "candidate_cycles": 190352,
+        "case": null,
+        "cycle_delta": 0,
+        "mode": 1,
+        "trial": 2
+      },
+      {
+        "baseline_cycles": 201779,
+        "candidate_cycles": 201779,
+        "case": null,
+        "cycle_delta": 0,
+        "mode": 0,
+        "trial": 3
+      }
+    ],
+    "command_comparison": {
+      "changed_commands": 0,
+      "commands": 13380,
+      "differences_truncated": false,
+      "first_differences": [],
+      "identical": true
+    },
+    "complete_call_cycles_available": true,
+    "complete_call_no_regression": true,
+    "complete_operator_performance_accepted": true,
+    "matched": {
+      "calls": 4,
+      "command_counters_available": false,
+      "command_counters_identical": null,
+      "output_signatures_and_csrs_identical": true,
+      "per_call_counters_available": true,
+      "per_call_counters_identical": true,
+      "task_cycles_available": true,
+      "task_cycles_identical": true
+    },
+    "per_call_counter_equivalence": true,
+    "resource_regression_gate_pass": true,
+    "whole_model_performance": false
+  },
+  "current_inputs_match": true,
+  "elf_sha256": "ebf4dfe0d8ff64ca63da3db68ec5d8d01b3d7392e3e60ca4e5bad99e082e3cff",
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-prefill-20261025-01/image-contract.log": "14480248f9ae2d28fa34425d9defcc9fcdb4d4f9d663d63021e26606f1730e52",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-prefill-20261025-01/manifest-after.log": "89e75880ce283338e60b4529ba00db3107b5aa9d60cfa088b0fcd215d38b9a2b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-prefill-20261025-01/manifest-before.log": "89e75880ce283338e60b4529ba00db3107b5aa9d60cfa088b0fcd215d38b9a2b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-prefill-20261025-01/source-pins.json": "c6fa3f4179df562f783463f3ffcce2d0d16cf9d1fb45abf9f56bc094528d54fe",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-prefill-20261025-01/work/run.vcs.log": "d8724e65c6c29721219dd4f81b49bd16b67d4c4f4f487542345112a42f5fa4a7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-prefill-20261025-01/work/uvm_result.json": "8a8d12865604ac77466543a73856d6bb491ed1887188fd4366319fa756634f75",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-prefill-20261025-01/work/vector_trace.csv": "ac7e3bc684e8a1787852c9506032b702b198c36ba117ade7e2fe9ece0f17ea7f"
+  },
+  "fixture_scope": "Complete real Prefill slice native API, all9 Query/3 KV heads, positions32--35; not full M64/GGML admission/model timing",
+  "independent_protocol_checked": true,
+  "kind": "prefill",
+  "model_execution": false,
+  "ppa_measured": false,
+  "prior": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-prefill-20261024-01",
+  "production_promoted": false,
+  "receipts": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-prefill-20261024-01/result.json": "c7e7980058c430dc138d1a0aab1addde5b7906ac9a12d1e77386e673fc526622",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-prefill-20261024-01/source-pins.json": "e8b904c71906e1b9d0776d5150d790bfbcd5016d84d62c6979ec2b47ee97430c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-prefill-20261024-01/status.json": "050a62874bcdbdb7f35566fafe7f1d53b5e7bfca188b2f546330b07777bb90d4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-prefill-20261025-01/result.json": "4aa8c43436994a28af867d86e5252624dd547f41a8bd15624df010668b6657f3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-prefill-20261025-01/source-pins.json": "c6fa3f4179df562f783463f3ffcce2d0d16cf9d1fb45abf9f56bc094528d54fe",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-prefill-20261025-01/status.json": "b41a0176a0c319e8aaf67cc4379b94b521e02046919df0f9758c5cc83da42b3a"
+  },
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-prefill-20261025-01",
+  "same_elf": true,
+  "snapshot_sha256": "609eac8e5e689121b11d382f6e4606505efd74cf2202597cd02d805c22862483",
+  "state": "REAL_RUNTIME_PAIRED_RAW_RECHECKED",
+  "storage_variant": null
+}

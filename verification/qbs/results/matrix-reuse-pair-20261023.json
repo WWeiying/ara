@@ -1,0 +1,41 @@
+{
+  "status": "PASS",
+  "scope": "Equal-output standalone VCS engine comparison; not SoC or model latency",
+  "rtl_revision": "fd49e48f",
+  "raw_root": "verification/out/qbs-matrix-reuse-pair-20261023-01",
+  "raw_status_sha256": "e0db546be16ae499ef8eb95a68b157df843ff2c283eb952ea3e759de3760f749",
+  "artifact_pins_rechecked": 338,
+  "cases_passed": 8,
+  "response_gap": 0,
+  "same_outputs_per_profile": 256,
+  "paired_output_bits_equal": true,
+  "paired_fflags": 1,
+  "profiles": {
+    "q4_K": {
+      "shape_mnk": [8, 32, 1536],
+      "m4_cycles": 13850,
+      "m8_cycles": 15456,
+      "m4_payload_bytes": 69344,
+      "m8_payload_bytes": 55712,
+      "m4_activation_phase_cycles": 158,
+      "m8_activation_phase_cycles": 1824,
+      "m4_weight_phase_cycles": 492,
+      "m8_weight_phase_cycles": 432,
+      "compute_plus_overlap_cycles_each": 12864,
+      "dot_issue_cycles_each": 12288
+    },
+    "q6_K": {
+      "shape_mnk": [8, 32, 8960],
+      "m4_cycles": 80078,
+      "m8_cycles": 90152,
+      "m4_payload_bytes": 552192,
+      "m8_payload_bytes": 398752,
+      "m4_activation_phase_cycles": 158,
+      "m8_activation_phase_cycles": 10640,
+      "m4_weight_phase_cycles": 4118,
+      "m8_weight_phase_cycles": 3710,
+      "compute_plus_overlap_cycles_each": 75040,
+      "dot_issue_cycles_each": 71680
+    }
+  }
+}

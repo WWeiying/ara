@@ -1,0 +1,24 @@
+{
+  "state": "PASS",
+  "scope": "SOFTWARE_DIRECTORY_RELOCATION",
+  "canonical_directory": "software/akv/experimental/quantized_kv/prefill",
+  "previous_commit": "661e47d64",
+  "body_identity": "Eight files identical outside comments; five byte-identical and three comment-only changes",
+  "fresh_model_execution": false,
+  "performance_measured": false,
+  "build_result": "verification/out/prefill-software-layout-build-20261028-01/result.json",
+  "build_result_sha256": "e029c73b10ea075b11828d5c0b6d457f8469bedaf01ac97f723c61d61cdc3e36",
+  "proof_result": "verification/out/prefill-software-layout-proof-20261028-02/result.json",
+  "proof_result_sha256": "afc399ce3b08b3bc71d868904cf82d095972923397e19cc60592e2832f21a3c4",
+  "validation": "IDENTICAL_ELF_EVIDENCE_REUSE",
+  "archive_entries": 447,
+  "archive_comparison": "All member bytes, names, order and non-timestamp header fields identical; only ar timestamps ignored",
+  "byte_identical_elfs": {
+    "graph-off": "973aed8158a7d30d086084fd6ac7f1f2e4abc748448c91e47d5c64081c3f30d9",
+    "graph-on": "0529f4de52920d1270546175412689086267d30e2572cc328d5ee53deea6a768",
+    "qwen25": "b24333d20eb499cef30763e11c73d067f0af8844e2e6f252e5fc90d7947b2c48",
+    "qwen3": "ad868421310d611fbca94de3845dba8e8fdadf70a61ca9938cf3f79076a2e36a"
+  },
+  "previous_run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/block-max-promotion-runtime-20261028-01",
+  "post_pins_match": true
+}

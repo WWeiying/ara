@@ -1,0 +1,40 @@
+{
+  "checksum": "a7bc111334389dea",
+  "cycle_increase_percent": 1.8970189701897011,
+  "cycles": [
+    106641,
+    108664
+  ],
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-pair-20261023-01/manifest.json": "3bee853a2284034a4188a607807d2f6d335577fb4d4542c547889f2b34f39d04",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-pair-20261023-01/result.json": "336ee380e87e4da6914416e837c3bc7cf5871ca12ad7eb7dbe54e5c9cd7e2957",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-pair-20261023-01/schedule0/input.elf": "5e737af33a893d5318142f8d69ba08bb891476040a321846e6eba23fd2424a05",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-pair-20261023-01/schedule0/run.vcs.log": "443ad13ba15fa70935ba6e4bbf638da6dc02b68f2035fda69dc3ae9cb20250b9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-pair-20261023-01/schedule0/uvm_result.json": "b0399cab52e10cca43a77de38b6e8e5087216043b9bdd5dba183092e9838d4f1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-pair-20261023-01/schedule0/vector_trace.csv": "d9037ff194032b076b319cf5104b14fe5098be0388418008bde9e7f8e2cea21b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-pair-20261023-01/schedule1/input.elf": "19375efa739b9b1704019b4bee521d1a4c36cf98748b8f9553a7fe6f48616c8a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-pair-20261023-01/schedule1/run.vcs.log": "e0bb1a252459ab4f1bf1c63a470ac9f61ffd434e715d93c477f8f76c5783e0bc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-pair-20261023-01/schedule1/uvm_result.json": "ec5de8f29a7c70da3d8f6288315cf7701cd9937364435fea78829a50ad6bed16",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-pair-20261023-01/schedule1/vector_trace.csv": "0f579f108b39ff1aaa02ce2ff2d294fb067207f5b0faaef25b444a5740d0111b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-attention-pair-20261023-01/status.json": "59c5efe2871475def7d56123cf55abab45e562cd88c63fcfecd880d5ad7d2c82"
+  },
+  "fcsr": [
+    3,
+    3
+  ],
+  "functional_state": "PASS",
+  "kv_addresses": [
+    {
+      "llama_input_b_start": 2147514880,
+      "llama_input_c_start": 2147645952
+    },
+    {
+      "llama_input_b_start": 2147515584,
+      "llama_input_c_start": 2147646656
+    }
+  ],
+  "observed_extra_axi_ar": 32,
+  "performance_acceptance": "NOT_ACCEPTED_PENDING_FIXED_ADDRESS_ABBA",
+  "predicted_extra_page_splits": 32,
+  "scope": "Separate ELFs have different tensor addresses; 32 extra bursts explained, not the entire 2023-cycle slowdown"
+}

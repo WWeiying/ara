@@ -1,0 +1,30 @@
+{
+  "state": "STARTUP_PROBE_PASS",
+  "run": "verification/out/akv-quantkv-attention-startup-20261024-05",
+  "build": "verification/out/akv-quantkv-attention-startup-build-20261024-03",
+  "result_sha256": "9d2a6181002f6219fdac235c8990affc271ac00dabac49bcd147304c4ed05c04",
+  "source_pins_sha256": "ad4701537e160e39ea46a931fe700436413b6eb8da1185da6a831d1b87857a49",
+  "elf_sha256": "aa99f36029a171beaba9393c52a2725356b1d417000457ef04df456cbeae81dc",
+  "simulator_exit_code": 0,
+  "before_vill": 1,
+  "after_vtype": "d0",
+  "after_vl": 1,
+  "fcsr": 0,
+  "vcsr": 5,
+  "independent_protocol_checked": true,
+  "backend_allocations": 1,
+  "backend_completions": 1,
+  "post_pins_match": true,
+  "rtl_changed": false,
+  "full_attention_numerical_acceptance": false,
+  "scope": "Startup-only correction of the measurement drain; not an Attention speedup result",
+  "archived_runs": [
+    "verification/out/akv-quantkv-attention-q8-20261024-02",
+    "verification/out/akv-quantkv-attention-q4-20261024-02"
+  ],
+  "archived_run_state": "INTERRUPTED",
+  "successor_runs": [
+    "verification/out/akv-quantkv-attention-q8-20261024-03",
+    "verification/out/akv-quantkv-attention-q4-20261024-03"
+  ]
+}

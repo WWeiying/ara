@@ -84,6 +84,14 @@ module qbs_compute_engine_tb;
     .command_m_i                    (command_m),
     .command_n_i                    (command_n),
     .command_k_blocks_i             (command_k_blocks),
+    .command_activation_lookahead_i  (1'b0),
+    .command_seed_i                 (1'b0),
+    .seed_valid_i                   (1'b0),
+    .seed_ready_o                   (),
+    .seed_row_i                     ('0),
+    .seed_mask_i                    ('0),
+    .seed_data_i                    ('{default:'0}),
+    .seed_done_i                    (1'b0),
     .fault_i                        (fault),
     .fault_done_o                   (fault_done),
     .weight_write_valid_i           (weight_valid),
@@ -96,12 +104,14 @@ module qbs_compute_engine_tb;
     .weight_write_data_i            (weight_data),
     .weight_write_strb_i            (weight_strb),
     .activation_write_valid_i       (activation_valid),
+    .activation_write_k_block_i     (expected_k_block),
     .activation_write_ready_o       (activation_ready),
     .activation_write_context_i     (activation_context),
     .activation_write_offset_i      (activation_offset),
     .activation_write_data_i        (activation_data),
     .activation_write_strb_i        (activation_strb),
     .expected_k_block_o             (expected_k_block),
+    .expected_activation_k_block_o  (),
     .expected_row_base_o            (expected_row_base),
     .expected_row_count_o           (expected_row_count),
     .expected_weight_bank_o         (expected_weight_bank),
@@ -345,9 +355,9 @@ module qbs_compute_engine_tb;
         if (rc != 4 || token != "T")
           $fatal(1, "case %0d: bad T record", case_id);
         while (!(busy && (activation_needed || weight_needed))) @(posedge clk);
-        if (expected_k_block != expected_k ||
-            expected_row_base != expected_row ||
-            expected_row_count != expected_rows)
+        if (expected_k_block !== expected_k ||
+            expected_row_base !== expected_row ||
+            expected_row_count !== expected_rows)
           $fatal(1,
                  "case %0d: scheduler cursor got=(%0d,%0d,%0d) expected=(%0d,%0d,%0d)",
                  case_id, expected_k_block, expected_row_base,
@@ -415,18 +425,18 @@ module qbs_compute_engine_tb;
         @(posedge clk);
         monitor_cycles++;
       end
-      if (!result_valid) $fatal(1, "case %0d: result timeout", case_id);
+      if (result_valid !== 1'b1) $fatal(1, "case %0d: result timeout", case_id);
 
       case_errors = 0;
-      if (result_fflags != expected_flags[4:0] ||
-          tiles_computed != expected_tiles ||
-          weight_bytes != expected_weight_bytes ||
-          activation_bytes != expected_activation_bytes ||
-          useful_pairs != expected_useful_pairs ||
-          pair_capacity != expected_pair_capacity ||
-          dot_active_cycles != expected_dot_cycles ||
-          fp_uops != expected_fp_uops ||
-          accumulator_updates != expected_updates) begin
+      if (result_fflags !== expected_flags[4:0] ||
+          tiles_computed !== expected_tiles ||
+          weight_bytes !== expected_weight_bytes ||
+          activation_bytes !== expected_activation_bytes ||
+          useful_pairs !== expected_useful_pairs ||
+          pair_capacity !== expected_pair_capacity ||
+          dot_active_cycles !== expected_dot_cycles ||
+          fp_uops !== expected_fp_uops ||
+          accumulator_updates !== expected_updates) begin
         $error("case %0d: command counter/flags mismatch", case_id);
         case_errors++;
       end
@@ -435,10 +445,10 @@ module qbs_compute_engine_tb;
           result_read_index = index[6:0];
           result_bank_row = index[6:3];
           #1;
-          if (!result_read_valid ||
-              result_read_data != expected_output[index] ||
-              !result_bank_valid[index[2:0]] ||
-              result_bank_data[index[2:0]] != expected_output[index]) begin
+          if (result_read_valid !== 1'b1 ||
+              result_read_data !== expected_output[index] ||
+              result_bank_valid[index[2:0]] !== 1'b1 ||
+              result_bank_data[index[2:0]] !== expected_output[index]) begin
             $error("case %0d: output %0d got=%h valid=%0b expected=%h",
                    case_id, index, result_read_data, result_read_valid,
                    expected_output[index]);

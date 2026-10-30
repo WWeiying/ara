@@ -1,0 +1,32 @@
+{
+  "state": "GENERIC_AND_MACRO_STORAGE_UNIT_RAW_RECHECKED",
+  "current_inputs_match": true,
+  "production_integrated": false,
+  "ppa_measured": false,
+  "logical_payload_bytes": {"previous": 38912, "candidate": 34816, "saved": 4096},
+  "candidate_composition": "One 2-KiB Q SRAM plus one unchanged 32-KiB v2 K/V bank set; accepted legacy repacker",
+  "runs": {
+    "tc": {
+      "directory": "verification/out/akv-unified-storage-unit-tc-20261025-01",
+      "manifest_sha256": "16b9b1b3c4844a16d7a14a998c1abc0694287aaab6d6a4da01660406acc23a0e",
+      "result_sha256": "569fd5372c6294f2b356b12c0e7234315432b170d0f10f7115db5449f173633c"
+    },
+    "macro": {
+      "directory": "verification/out/akv-unified-storage-unit-macro-20261025-01",
+      "manifest_sha256": "68bf0c7ea188c655fa51f4fa5c6b4866a966327eb91a6dad166139d48812d4e8",
+      "result_sha256": "989b35caa3c7f4ffa0bda4e92edb9bb9c1a0d4550acfcfc7fb49712ec17e7f35"
+    }
+  },
+  "checked_per_run": {
+    "complete_rows": 105, "final_write_latency_checks": 105,
+    "repacked_writes": 1361, "direct_writes": 2048, "row_words": 2704,
+    "column_outputs": 72, "aborts": 9, "q_drain_direct_kv_overlap_cycles": 2
+  },
+  "independent_byte_oracle": true,
+  "original_legacy_and_v2_comparators": true,
+  "v2_direct_write_bank_controls_cycle_equal": true,
+  "q_preserved_across_kv_abort": true,
+  "macro_functional_only": true,
+  "macro_timing_checks_enabled": false,
+  "scope": "Storage composition and byte/layout/latency/abort behavior only; not engine metadata, SoC faults, real-model performance, area or timing signoff"
+}

@@ -1,0 +1,15 @@
+{
+  "state": "ACTUAL_GGML_QUANTIZED_V_PRIMITIVES_COMPILED",
+  "build": "verification/out/akv-quantkv-pv-primitives-20261024-01",
+  "result_sha256": "1f9f962a2fa5a8c03ba59bda1936da7c7d8df2338c094c27df9461966d5d6968",
+  "source_pins_sha256": "afdc227a7e8eb2af58d26023f928bad525001111d6b35af2544c567f672bfb59",
+  "independent_source_and_artifact_recheck": "PASS",
+  "original_decoder": "ggml/src/ggml-quants.c:dequantize_row_q8_0",
+  "production_inline_calls": ["ggml_vec_mad_f32", "ggml_vec_scale_f32"],
+  "compiled_decoder_loop": "scalar fcvt.s.w, fmul.s and fsw in this compiler configuration",
+  "compiled_pv_helpers": "RVV F32 dynamic-VL FMA and multiply",
+  "compiler_contract": "O3, no fast-math, explicit ffp-contract=fast",
+  "source_modified": false,
+  "native_execution": false,
+  "performance_measured": false
+}

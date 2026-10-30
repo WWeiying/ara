@@ -1,0 +1,75 @@
+{
+  "auditor_sha256": "724e70049aee44295a167cc77e9f61edf7b084396700ea6e8b8d4a298dde608f",
+  "baseline": {
+    "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01",
+    "evidence_sha256": {
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/cycles/cycles.csv": "bdedc5a73ce128cb55ffb491beef02845594b3c0d272a03166713c4279f1245f",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/cycles/fsdbreport.raw.csv": "811f54cf38fcd362bedd9519da8136234483828e40ed1ce3cc897dad8f47bd96",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/cycles/metadata.json": "dec348a024356aec7ee5d42d30ee14b4309911007bd2a5af6655e664cdfc6fb6",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/probe.tcl": "7d25a8d420f56333bfdcabed6860d40c3e31d042289bcc713c512b873c1ce426",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/profile.json": "2c695468e1d9875e32e093a61c57efeedaa58f220606aad0ec0416257e039561",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/source-pins.json": "ea07c5823a7f2efbb8391929f0f1cbcfe10277733d5c5a6746afdc288389b3cc",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/work/reader.fsdb": "7ed804d0b927a5af8c0ba72b77c455ba29c3d84deac2c8d637514a18442e135b",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/work/run.vcs.log": "bbbcd0c432ff34d267c3ffe9085ae7dd906a578773f85a4dc3ae88239a2d8833",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/work/uvm_result.json": "0170efdc16be89cc94e57de3dd57912d10dd36a6f62808579600933b8c5b9984",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/reader-reverse-fault-baseline-20261025-01/work/vector_trace.csv": "9967b182e3b6addbc427987e51289d0bfc06cc1881b17f8b3250aada0ebded17"
+    },
+    "result_sha256": "c91a991756a20e5c396705a19d70d9d505a47051c11ef2adf6d84e453c5f3ad8",
+    "source_pins_sha256": "ea07c5823a7f2efbb8391929f0f1cbcfe10277733d5c5a6746afdc288389b3cc",
+    "status_sha256": "a0515bf4d8786af22d0639ecfe251106a6750491f8ee4eff4bf6bd9f91e74796",
+    "wave": {
+      "commands": 14,
+      "faults": 1,
+      "foreign_context_samples": 301,
+      "q_write_samples_before_fault": 52,
+      "sampling": "Settled negedge",
+      "shared_image": false,
+      "stalled_ar_fault": false,
+      "state": "READER_FAULT_WAVE_CHECKED"
+    }
+  },
+  "cause": 5,
+  "command_counters_identical": true,
+  "commands_per_image": 14,
+  "current_inputs_match": true,
+  "elf_sha256": "d91c4cc5e726e6c0d83250872e65e4fa65a441c3fbf55af64910007e1e31bc91",
+  "exact_trap_pc_checked": true,
+  "fault_kind": "PMA",
+  "fault_owner": "akv",
+  "independent_protocol_checked": true,
+  "model_performance": false,
+  "ppa_measured": false,
+  "production_promoted": false,
+  "qbs_context_reuse_after_foreign_fault": true,
+  "same_elf": true,
+  "shared": {
+    "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-reverse-fault-20261025-01",
+    "evidence_sha256": {
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-reverse-fault-20261025-01/cycles/cycles.csv": "686013ad13538835960ecd3dcf8548d42c2870009bf60b07914c0d0e68bfeb48",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-reverse-fault-20261025-01/cycles/fsdbreport.raw.csv": "6f7cf2d957b3aad92a0b2e7ad7899d4e2dfad1c34c862fb0c776ad3bbcbdeb32",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-reverse-fault-20261025-01/cycles/metadata.json": "033400f9fb0ef445514172f1d4b9e46e25212f20700fce3120ebbe169b5915f1",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-reverse-fault-20261025-01/probe.tcl": "f8d869995b67a2d6b45f0ef9f7b357f03f2e4bda694eb01fb3f6feb7917016f1",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-reverse-fault-20261025-01/profile.json": "305831e2459ff498596c89dc06176cf6ce5296f68b4eb8ea986fe14469bf4193",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-reverse-fault-20261025-01/source-pins.json": "6755d4fdacdd5b3dd54682b265f28882e3947784e0fc157d828b2223d2030f1e",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-reverse-fault-20261025-01/work/reader.fsdb": "ba17d104360da51af6de3e552a5d09d88b720c2a7a1720eff6aff547f03b75ff",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-reverse-fault-20261025-01/work/run.vcs.log": "7d6b771313113040814d0b44cd534f603f006a4bc1cfa64c8410b13b191b758b",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-reverse-fault-20261025-01/work/uvm_result.json": "e7271796c5139dfb93d10a30a95d01a8b96438d2f97320f7329375f6575bdce6",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-reverse-fault-20261025-01/work/vector_trace.csv": "9967b182e3b6addbc427987e51289d0bfc06cc1881b17f8b3250aada0ebded17"
+    },
+    "result_sha256": "fc14b4faa8f087150cf560a1c32780f7c6add2aa032d1cfcd6d294eed9fb1b83",
+    "source_pins_sha256": "6755d4fdacdd5b3dd54682b265f28882e3947784e0fc157d828b2223d2030f1e",
+    "status_sha256": "0c982c1f10360f54d2b05c34d9aac7222e6198f931f09ef9ebc5fa20d7e58487",
+    "wave": {
+      "commands": 14,
+      "faults": 1,
+      "foreign_context_samples": 301,
+      "q_write_samples_before_fault": 52,
+      "sampling": "Settled negedge",
+      "shared_image": true,
+      "stalled_ar_fault": false,
+      "state": "READER_FAULT_WAVE_CHECKED"
+    }
+  },
+  "state": "REVERSE_READER_FAULT_PAIRED_RAW_RECHECKED",
+  "tval": 0
+}

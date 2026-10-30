@@ -1,0 +1,35 @@
+{
+  "baseline": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-overlap-probe-20261023-01",
+  "candidate": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-integration-run-20261023-01/probe",
+  "elf_sha256": "9f95541228e9c158059acba2bc516c49d59e6f824fd19023a3eee46ff372281f",
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/results/refill-overlap-baseline-20261023.json": "a29af710f91d002885bd3a2fe7d4479694fa5536d7c1adf4a871b98de74f4b61",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-integration-run-20261023-01/probe/result.json": "3d710f63fe6f69a4c7fc5cadc356e4819912c74d61709fc590b5d5a6b0553142",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-integration-run-20261023-01/probe/uvm_result.json": "7a0d474067c29434c5488551a1ff07e3a6a7d19ff0bbbd51d2efd7a83492c79c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-integration-run-20261023-01/probe/work/commit_trace.csv": "cc07d36050bb3cdf3635cfe22862b1f5c9d6587efc4d9705870acdea219afb0c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-integration-run-20261023-01/probe/work/run.vcs.log": "c5eb74556cafa01f7eb34866f4859b4f369044386f177725d7d39cc57735c945",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-refill-integration-run-20261023-01/probe/work/vector_trace.csv": "59ad585e210269ad84f7432397f339a4a0d1a0c15663ddb3d992f4d02ce15f7e"
+  },
+  "modes": {
+    "immediate": {
+      "accepted_read_overlap_cycles": 41,
+      "baseline_joint_cycles": 756,
+      "candidate_joint_cycles": 707,
+      "cycle_reduction_percent": 6.481481481481482,
+      "first_payload_ar_cycle": 121457,
+      "older_arithmetic_last_done_cycle": 121498,
+      "refill_done_cycle": 121721
+    },
+    "serial": {
+      "accepted_read_overlap_cycles": 0,
+      "baseline_joint_cycles": 756,
+      "candidate_joint_cycles": 756,
+      "cycle_reduction_percent": 0.0,
+      "first_payload_ar_cycle": 353059,
+      "older_arithmetic_last_done_cycle": 353051,
+      "refill_done_cycle": 353323
+    }
+  },
+  "scope": "Same sealed arithmetic/refill probe, not real Attention speedup",
+  "state": "PASS"
+}

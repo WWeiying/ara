@@ -15,14 +15,22 @@ RTL_COMMIT_BUILD := rtl_commit_build
 RTL_ENGINE_BUILD := rtl_engine_build
 RTL_CONTEXT_BUILD := rtl_context_build
 RTL_CONTEXT_MACRO_BUILD := rtl_context_macro_build
+RTL_TILE_CONTEXT_BUILD ?= rtl_tile_context_build
+RTL_TILE_CONTEXT_MACRO_BUILD ?= rtl_tile_context_macro_build
+RTL_TILE_CONTEXT_COMPILE_TIMEOUT ?= 300
+RTL_TILE_CONTEXT_RUN_TIMEOUT ?= 120
 RTL_RUN_TIMEOUT ?= 10800
 RTL_EXTRA_SOURCES ?=
 RTL_ENGINE_DEFINES ?=
+RTL_STANDALONE_GENERATOR := $(ROOT)/verification/akv/canonical_promotion/generate_standalone.py
 RTL_MACRO_VCS_FLAGS ?=
+RTL_FP_BUILD ?= rtl_fp_build
+RTL_HALF_BUILD ?= rtl_half_build
 RTL_BLOCK_ADAPTER_SOURCE ?= $(ROOT)/hardware/src/vlsu/qbs/qbs_block_adapter.sv
 RTL_VECTOR_FILE := $(abspath qbs_rtl_vectors.txt)
 RTL_COMMAND_VECTOR_FILE := $(abspath qbs_command_vectors.txt)
-RTL_INCLUDES := +incdir+$(ROOT)/hardware/deps/common_cells/include \
+RTL_INCLUDES := +incdir+$(ROOT)/hardware/include \
+	+incdir+$(ROOT)/hardware/deps/common_cells/include \
 	+incdir+$(ROOT)/hardware/deps/axi/include
 RTL_SOURCES := \
 	$(ROOT)/hardware/deps/common_cells/src/cf_math_pkg.sv \
@@ -44,15 +52,19 @@ RTL_SOURCES := \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_dot_array.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_read_engine.sv \
+	$(ROOT)/hardware/src/vlsu/qbs_akv_shared_reader.sv \
 	$(ROOT)/hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_activation_context.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_payload_sram.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_payload_buffer.sv \
 	$(RTL_BLOCK_ADAPTER_SOURCE) \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_profile_engine_int.sv \
+	$(ROOT)/hardware/src/vlsu/qbs/qbs_half_scale.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_fp_accumulator.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_compute_engine.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_commit.sv \
+	$(ROOT)/hardware/src/vlsu/qbs/qbs_vrf_seed_mapper.sv \
+	$(ROOT)/hardware/src/vlsu/qbs/qbs_seed_stream_router.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_engine.sv
 RTL_SOURCES += $(RTL_EXTRA_SOURCES)
 RTL_PROFILE_SOURCES := $(RTL_SOURCES) $(abspath qbs_profile_engine_tb.sv)
@@ -60,7 +72,9 @@ RTL_COMMAND_SOURCES := $(RTL_SOURCES) $(abspath qbs_compute_engine_tb.sv)
 RTL_DESCRIPTOR_SOURCES := $(RTL_SOURCES) $(abspath qbs_descriptor_decoder_tb.sv)
 RTL_READ_SOURCES := $(RTL_SOURCES) $(abspath qbs_read_engine_tb.sv)
 RTL_COMMIT_SOURCES := $(RTL_SOURCES) $(abspath qbs_commit_tb.sv)
-RTL_ENGINE_SOURCES := $(RTL_SOURCES) $(abspath qbs_engine_tb.sv)
+RTL_ENGINE_SOURCES := $(RTL_SOURCES) \
+	$(abspath $(RTL_ENGINE_BUILD)/standalone/composed_engine.sv) \
+	$(abspath $(RTL_ENGINE_BUILD)/standalone/original_suite.sv)
 RTL_CONTEXT_SOURCES := \
 	$(ROOT)/hardware/include/qbs_pkg.sv \
 	$(ROOT)/hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv \
@@ -71,6 +85,16 @@ RTL_CONTEXT_MACRO_SOURCES := \
 	$(abspath qbs_context_sram_macro_model.sv) \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_activation_context.sv \
 	$(abspath qbs_activation_context_tb.sv)
+RTL_TILE_CONTEXT_SOURCES := \
+	$(ROOT)/hardware/include/qbs_pkg.sv \
+	$(ROOT)/hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv \
+	$(ROOT)/hardware/src/vlsu/qbs/qbs_activation_context.sv \
+	$(abspath qbs_activation_tile_context_tb.sv)
+RTL_TILE_CONTEXT_MACRO_SOURCES := \
+	$(ROOT)/hardware/include/qbs_pkg.sv \
+	$(abspath qbs_context_sram_macro_model.sv) \
+	$(ROOT)/hardware/src/vlsu/qbs/qbs_activation_context.sv \
+	$(abspath qbs_activation_tile_context_tb.sv)
 
 .PHONY: all clean check generated-check real-check activation-context-evidence-check
 
@@ -183,8 +207,10 @@ rtl-commit-check: rtl-commit-compile
 	grep -q "QBS commit PASS" $(RTL_COMMIT_BUILD)/run.log
 	! grep -Eq "Fatal:|Error:" $(RTL_COMMIT_BUILD)/run.log
 
-rtl-engine-compile: qbs_command_vectors.txt $(RTL_ENGINE_SOURCES)
+rtl-engine-compile: qbs_command_vectors.txt $(RTL_SOURCES) $(abspath qbs_engine_tb.sv) $(RTL_STANDALONE_GENERATOR)
 	mkdir -p $(RTL_ENGINE_BUILD)
+	python3 -B $(RTL_STANDALONE_GENERATOR) --source-root $(ROOT) --kind qbs \
+		--tb $(abspath qbs_engine_tb.sv) --output $(abspath $(RTL_ENGINE_BUILD)/standalone)
 	cd $(RTL_ENGINE_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
 		+lint=TFIPC-L $(RTL_ENGINE_DEFINES) -l compile.log $(RTL_INCLUDES) $(RTL_ENGINE_SOURCES) \
 		-top qbs_engine_tb -o simv
@@ -194,6 +220,30 @@ rtl-engine-check: rtl-engine-compile
 		+QBS_COMMAND_VECTOR_FILE=$(RTL_COMMAND_VECTOR_FILE)
 	grep -q "QBS engine PASS:" $(RTL_ENGINE_BUILD)/run.log
 	! grep -Eq "Fatal:|Error:" $(RTL_ENGINE_BUILD)/run.log
+
+.PHONY: rtl-fp-split-compile rtl-fp-split-check
+rtl-fp-split-compile: $(RTL_SOURCES) qbs_fp_split_tb.sv
+	mkdir -p $(RTL_FP_BUILD)
+	cd $(RTL_FP_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
+		+lint=TFIPC-L -l compile.log $(RTL_INCLUDES) $(RTL_SOURCES) \
+		$(abspath qbs_fp_split_tb.sv) -top qbs_fp_split_tb -o simv
+
+rtl-fp-split-check: rtl-fp-split-compile
+	cd $(RTL_FP_BUILD) && timeout --foreground 120 ./simv -l run.log
+	grep -q "QBS FP split PASS:" $(RTL_FP_BUILD)/run.log
+	! grep -Eq "Fatal:|Error:" $(RTL_FP_BUILD)/run.log
+
+.PHONY: rtl-half-scale-compile rtl-half-scale-check
+rtl-half-scale-compile: $(RTL_SOURCES) qbs_half_scale_tb.sv
+	mkdir -p $(RTL_HALF_BUILD)
+	cd $(RTL_HALF_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
+		+lint=TFIPC-L -l compile.log $(RTL_INCLUDES) $(RTL_SOURCES) \
+		$(abspath qbs_half_scale_tb.sv) -top qbs_half_scale_tb -o simv
+
+rtl-half-scale-check: rtl-half-scale-compile
+	cd $(RTL_HALF_BUILD) && timeout --foreground 600 ./simv -l run.log
+	grep -q "QBS half scale PASS:" $(RTL_HALF_BUILD)/run.log
+	! grep -Eq "Fatal:|Error:" $(RTL_HALF_BUILD)/run.log
 
 rtl-context-compile: $(RTL_CONTEXT_SOURCES)
 	mkdir -p $(RTL_CONTEXT_BUILD)
@@ -217,6 +267,33 @@ rtl-context-macro-check: rtl-context-macro-compile
 	cd $(RTL_CONTEXT_MACRO_BUILD) && timeout --foreground $(RTL_RUN_TIMEOUT) ./simv -l run.log
 	grep -q "QBS activation context PASS" $(RTL_CONTEXT_MACRO_BUILD)/run.log
 	! grep -Eq "Fatal:|Error:" $(RTL_CONTEXT_MACRO_BUILD)/run.log
+
+.PHONY: rtl-tile-context-compile rtl-tile-context-check \
+	rtl-tile-context-macro-compile rtl-tile-context-macro-check
+rtl-tile-context-compile: $(RTL_TILE_CONTEXT_SOURCES)
+	mkdir -p $(RTL_TILE_CONTEXT_BUILD)
+	cd $(RTL_TILE_CONTEXT_BUILD) && timeout --foreground $(RTL_TILE_CONTEXT_COMPILE_TIMEOUT) \
+		vcs -full64 -sverilog -timescale=1ns/1ps +lint=TFIPC-L -l compile.log \
+		$(RTL_TILE_CONTEXT_SOURCES) -top qbs_activation_tile_context_tb -o simv
+	! grep -Ei '(^|[^[:alnum:]_])(fatal|error)([^[:alnum:]_]|$$)' $(RTL_TILE_CONTEXT_BUILD)/compile.log
+
+rtl-tile-context-check: rtl-tile-context-compile
+	cd $(RTL_TILE_CONTEXT_BUILD) && timeout --foreground $(RTL_TILE_CONTEXT_RUN_TIMEOUT) ./simv -l run.log
+	grep -Eq '^QBS activation tile context PASS: cases=198 ' $(RTL_TILE_CONTEXT_BUILD)/run.log
+	! grep -Ei '(^|[^[:alnum:]_])(fatal|error)([^[:alnum:]_]|$$)' $(RTL_TILE_CONTEXT_BUILD)/run.log
+
+rtl-tile-context-macro-compile: $(RTL_TILE_CONTEXT_MACRO_SOURCES)
+	mkdir -p $(RTL_TILE_CONTEXT_MACRO_BUILD)
+	cd $(RTL_TILE_CONTEXT_MACRO_BUILD) && timeout --foreground $(RTL_TILE_CONTEXT_COMPILE_TIMEOUT) \
+		vcs -full64 -sverilog -timescale=1ns/1ps +define+TARGET_SRAM_MC \
+		$(RTL_MACRO_VCS_FLAGS) +lint=TFIPC-L -l compile.log \
+		$(RTL_TILE_CONTEXT_MACRO_SOURCES) -top qbs_activation_tile_context_tb -o simv
+	! grep -Ei '(^|[^[:alnum:]_])(fatal|error)([^[:alnum:]_]|$$)' $(RTL_TILE_CONTEXT_MACRO_BUILD)/compile.log
+
+rtl-tile-context-macro-check: rtl-tile-context-macro-compile
+	cd $(RTL_TILE_CONTEXT_MACRO_BUILD) && timeout --foreground $(RTL_TILE_CONTEXT_RUN_TIMEOUT) ./simv -l run.log
+	grep -Eq '^QBS activation tile context PASS: cases=198 ' $(RTL_TILE_CONTEXT_MACRO_BUILD)/run.log
+	! grep -Ei '(^|[^[:alnum:]_])(fatal|error)([^[:alnum:]_]|$$)' $(RTL_TILE_CONTEXT_MACRO_BUILD)/run.log
 
 rtl-check: rtl-profile-check rtl-command-check rtl-descriptor-check \
 	rtl-read-check rtl-commit-check rtl-context-check rtl-context-macro-check \

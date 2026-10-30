@@ -7,6 +7,7 @@ module qbs_sram_ingress_checker (
   input logic clk_i, rst_ni,
   input logic weight_write_valid_i, weight_write_ready_o, weight_write_bank_i,
   input logic activation_write_valid_i, activation_write_ready_o,
+  input logic activation_lookahead_q, activation_write_bank,
   input logic [1:0] adapter_weight_ready, adapter_activation_ready
 );
   int wfire, afire, wblocked, ablocked, wbuffer_blocked, abuffer_blocked;
@@ -22,7 +23,8 @@ module qbs_sram_ingress_checker (
       if (activation_write_ready_o) afire++;
       else begin
         ablocked++;
-        if (!(&adapter_activation_ready)) abuffer_blocked++;
+        if (activation_lookahead_q ? !adapter_activation_ready[activation_write_bank]
+                                   : !(&adapter_activation_ready)) abuffer_blocked++;
       end
     end
   end

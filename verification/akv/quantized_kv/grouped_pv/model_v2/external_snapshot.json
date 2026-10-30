@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "source": "/home/wangwy/llama/llama.cpp",
+  "inventory": ["ggml", "cmake", "src", "include", "vendor", "CMakeLists.txt"],
+  "tree_sha256": "339ac43cc9cab0db8a072473f45d56f47394525cf2bb40e6eb7412ae46a974ab",
+  "graph_snapshot_sha256": "7371350964297fc77ba5714a8ebbf41118a229365b6b811f4eb0531e3fd9bdf8",
+  "adapter_sha256": "5983f866063e0d65b920b48ce53bc3d4eb866313949101afd1b8d724dbb1a24b"
+}

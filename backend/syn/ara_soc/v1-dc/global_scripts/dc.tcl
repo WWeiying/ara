@@ -247,17 +247,59 @@ report_hierarchy -noleaf > ../reports/hierarchy.rpt
 if { $GUI_DCG_MODE } { set report_area_phy_opt "-physical" }
 eval report_area $report_area_phy_opt $hierarchy_opt > ../reports/area.rpt
 
-set akv_v1_macro_ref TS1N28HPCPUHDSVTB96X256M1SWBSO
-set akv_v2_macro_ref TS1N28HPCPUHDSVTB128X256M1SWBSO
+# Classify actual AKV-owned macro instances; Q is never counted as legacy V1.
+# */i_akv_engine excludes unrelated CPU/QBS macros with the same library reference.
 set akv_context_macros [get_cells -quiet -hierarchical -filter \
-    "(ref_name == $akv_v1_macro_ref || ref_name == $akv_v2_macro_ref) && full_name =~ */i_akv_engine/*"]
-set akv_v1_macros [get_cells -quiet -hierarchical -filter \
-    "ref_name == $akv_v1_macro_ref && full_name =~ */i_akv_engine/i_context/*"]
-set akv_v2_macros [get_cells -quiet -hierarchical -filter \
-    "ref_name == $akv_v2_macro_ref && full_name =~ */i_akv_engine/i_v2_context/*"]
+    "ref_name =~ TS1N28HPCPUHDSVTB* && full_name =~ */i_akv_engine/*"]
+set akv_q_macros [get_cells -quiet -hierarchical -filter \
+    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ */i_akv_engine/i_unified_context/i_q_store/*"]
+set akv_kv_macros [get_cells -quiet -hierarchical -filter \
+    "ref_name == TS1N28HPCPUHDSVTB128X256M1SWBSO && full_name =~ */i_akv_engine/i_unified_context/i_kv_store/*"]
+set akv_old64_v1 [get_cells -quiet -hierarchical -filter \
+    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ */i_akv_engine/i_context/*"]
+set akv_old64_v2 [get_cells -quiet -hierarchical -filter \
+    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ */i_akv_engine/i_v2_context/*"]
+set akv_split_v1 [get_cells -quiet -hierarchical -filter \
+    "ref_name == TS1N28HPCPUHDSVTB96X256M1SWBSO && full_name =~ */i_akv_engine/i_context/*"]
+set akv_split_v2 [get_cells -quiet -hierarchical -filter \
+    "ref_name == TS1N28HPCPUHDSVTB128X256M1SWBSO && full_name =~ */i_akv_engine/i_v2_context/*"]
 set akv_macro_count [sizeof_collection $akv_context_macros]
-set akv_v1_macro_count [sizeof_collection $akv_v1_macros]
-set akv_v2_macro_count [sizeof_collection $akv_v2_macros]
+set akv_q_macro_count [sizeof_collection $akv_q_macros]
+set akv_kv_count [sizeof_collection $akv_kv_macros]
+set akv_old64_v1_count [sizeof_collection $akv_old64_v1]
+set akv_old64_v2_count [sizeof_collection $akv_old64_v2]
+set akv_split_v1_count [sizeof_collection $akv_split_v1]
+set akv_split_v2_count [sizeof_collection $akv_split_v2]
+set akv_partition [list $akv_macro_count $akv_q_macro_count $akv_kv_count \
+    $akv_old64_v1_count $akv_old64_v2_count $akv_split_v1_count $akv_split_v2_count]
+switch -- $akv_partition {
+  {9 1 8 0 0 0 0} {
+    set akv_organization unified_q64x256_kv128x256
+    set akv_v1_macro_count 0
+    set akv_v2_macro_count 8
+    set akv_capacity_bits [expr {(1 * 64 + 8 * 128) * 256}]
+  }
+  {10 0 0 0 0 2 8} {
+    set akv_organization split_v1_96x256_v2_128x256
+    set akv_v1_macro_count 2
+    set akv_v2_macro_count 8
+    set akv_capacity_bits [expr {(2 * 96 + 8 * 128) * 256}]
+  }
+  {20 0 0 4 16 0 0} {
+    set akv_organization legacy_v1_v2_64x256
+    set akv_v1_macro_count 4
+    set akv_v2_macro_count 16
+    set akv_capacity_bits [expr {(4 + 16) * 64 * 256}]
+  }
+  {0 0 0 0 0 0 0} {
+    set akv_organization not_instantiated
+    set akv_v1_macro_count 0
+    set akv_v2_macro_count 0
+    set akv_capacity_bits 0
+  }
+  default {error "unexpected AKV SRAM hierarchy/organization: $akv_partition"}
+}
+
 # A design object has no area attribute in this DC version. Use the total
 # already emitted by report_area, including macro instances exactly once.
 set area_file [open ../reports/area.rpt r]
@@ -296,10 +338,12 @@ set physical_summary [open ../reports/physical_summary.rpt w]
 puts $physical_summary "scope=ara_soc_integrated"
 puts $physical_summary "clock_period_ns=1.0"
 puts $physical_summary "clock_uncertainty_ns=0.15"
+puts $physical_summary "akv_sram_organization=$akv_organization"
 puts $physical_summary "akv_sram_macro_count=$akv_macro_count"
+puts $physical_summary "akv_q_sram_macro_count=$akv_q_macro_count"
 puts $physical_summary "akv_v1_sram_macro_count=$akv_v1_macro_count"
 puts $physical_summary "akv_v2_sram_macro_count=$akv_v2_macro_count"
-puts $physical_summary "physical_sram_capacity_bits=[expr {($akv_v1_macro_count * 96 + $akv_v2_macro_count * 128) * 256}]"
+puts $physical_summary "physical_sram_capacity_bits=$akv_capacity_bits"
 puts $physical_summary "design_total_area_um2=$design_total_area"
 puts $physical_summary "worst_setup_slack_ns=$worst_setup_slack"
 puts $physical_summary "worst_reg_to_reg_setup_slack_ns=$worst_reg_slack"

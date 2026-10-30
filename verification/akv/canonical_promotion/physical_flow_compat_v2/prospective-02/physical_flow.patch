@@ -1,0 +1,507 @@
+--- a/backend/syn/ara_soc/v1-dc/global_scripts/dc.tcl
++++ b/backend/syn/ara_soc/v1-dc/global_scripts/dc.tcl
+@@ -247,17 +247,59 @@
+ if { $GUI_DCG_MODE } { set report_area_phy_opt "-physical" }
+ eval report_area $report_area_phy_opt $hierarchy_opt > ../reports/area.rpt
+ 
+-set akv_v1_macro_ref TS1N28HPCPUHDSVTB96X256M1SWBSO
+-set akv_v2_macro_ref TS1N28HPCPUHDSVTB128X256M1SWBSO
++# Classify actual AKV-owned macro instances; Q is never counted as legacy V1.
++# */i_akv_engine excludes unrelated CPU/QBS macros with the same library reference.
+ set akv_context_macros [get_cells -quiet -hierarchical -filter \
+-    "(ref_name == $akv_v1_macro_ref || ref_name == $akv_v2_macro_ref) && full_name =~ */i_akv_engine/*"]
+-set akv_v1_macros [get_cells -quiet -hierarchical -filter \
+-    "ref_name == $akv_v1_macro_ref && full_name =~ */i_akv_engine/i_context/*"]
+-set akv_v2_macros [get_cells -quiet -hierarchical -filter \
+-    "ref_name == $akv_v2_macro_ref && full_name =~ */i_akv_engine/i_v2_context/*"]
++    "ref_name =~ TS1N28HPCPUHDSVTB* && full_name =~ */i_akv_engine/*"]
++set akv_q_macros [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ */i_akv_engine/i_unified_context/i_q_store/*"]
++set akv_kv_macros [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB128X256M1SWBSO && full_name =~ */i_akv_engine/i_unified_context/i_kv_store/*"]
++set akv_old64_v1 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ */i_akv_engine/i_context/*"]
++set akv_old64_v2 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ */i_akv_engine/i_v2_context/*"]
++set akv_split_v1 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB96X256M1SWBSO && full_name =~ */i_akv_engine/i_context/*"]
++set akv_split_v2 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB128X256M1SWBSO && full_name =~ */i_akv_engine/i_v2_context/*"]
+ set akv_macro_count [sizeof_collection $akv_context_macros]
+-set akv_v1_macro_count [sizeof_collection $akv_v1_macros]
+-set akv_v2_macro_count [sizeof_collection $akv_v2_macros]
++set akv_q_macro_count [sizeof_collection $akv_q_macros]
++set akv_kv_count [sizeof_collection $akv_kv_macros]
++set akv_old64_v1_count [sizeof_collection $akv_old64_v1]
++set akv_old64_v2_count [sizeof_collection $akv_old64_v2]
++set akv_split_v1_count [sizeof_collection $akv_split_v1]
++set akv_split_v2_count [sizeof_collection $akv_split_v2]
++set akv_partition [list $akv_macro_count $akv_q_macro_count $akv_kv_count \
++    $akv_old64_v1_count $akv_old64_v2_count $akv_split_v1_count $akv_split_v2_count]
++switch -- $akv_partition {
++  {9 1 8 0 0 0 0} {
++    set akv_organization unified_q64x256_kv128x256
++    set akv_v1_macro_count 0
++    set akv_v2_macro_count 8
++    set akv_capacity_bits [expr {(1 * 64 + 8 * 128) * 256}]
++  }
++  {10 0 0 0 0 2 8} {
++    set akv_organization split_v1_96x256_v2_128x256
++    set akv_v1_macro_count 2
++    set akv_v2_macro_count 8
++    set akv_capacity_bits [expr {(2 * 96 + 8 * 128) * 256}]
++  }
++  {20 0 0 4 16 0 0} {
++    set akv_organization legacy_v1_v2_64x256
++    set akv_v1_macro_count 4
++    set akv_v2_macro_count 16
++    set akv_capacity_bits [expr {(4 + 16) * 64 * 256}]
++  }
++  {0 0 0 0 0 0 0} {
++    set akv_organization not_instantiated
++    set akv_v1_macro_count 0
++    set akv_v2_macro_count 0
++    set akv_capacity_bits 0
++  }
++  default {error "unexpected AKV SRAM hierarchy/organization: $akv_partition"}
++}
++
+ # A design object has no area attribute in this DC version. Use the total
+ # already emitted by report_area, including macro instances exactly once.
+ set area_file [open ../reports/area.rpt r]
+@@ -296,10 +338,12 @@
+ puts $physical_summary "scope=ara_soc_integrated"
+ puts $physical_summary "clock_period_ns=1.0"
+ puts $physical_summary "clock_uncertainty_ns=0.15"
++puts $physical_summary "akv_sram_organization=$akv_organization"
+ puts $physical_summary "akv_sram_macro_count=$akv_macro_count"
++puts $physical_summary "akv_q_sram_macro_count=$akv_q_macro_count"
+ puts $physical_summary "akv_v1_sram_macro_count=$akv_v1_macro_count"
+ puts $physical_summary "akv_v2_sram_macro_count=$akv_v2_macro_count"
+-puts $physical_summary "physical_sram_capacity_bits=[expr {($akv_v1_macro_count * 96 + $akv_v2_macro_count * 128) * 256}]"
++puts $physical_summary "physical_sram_capacity_bits=$akv_capacity_bits"
+ puts $physical_summary "design_total_area_um2=$design_total_area"
+ puts $physical_summary "worst_setup_slack_ns=$worst_setup_slack"
+ puts $physical_summary "worst_reg_to_reg_setup_slack_ns=$worst_reg_slack"
+--- a/verification/akv/synthesis/akv_engine_dc.tcl
++++ b/verification/akv/synthesis/akv_engine_dc.tcl
+@@ -13,12 +13,28 @@
+ define_design_lib WORK -path [file join $output_dir work]
+ 
+ set std_library "/home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140_180a_nldm/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp12t40p140_180a/tcbn28hpcplusbwp12t40p140tt0p9v25c.db"
++# AKV_STANDALONE_STORAGE_SELECTION_V2
++set selected_organization split_v1_96x256_v2_128x256
++if {[info exists ::env(AKV_STORAGE_ORGANIZATION)]} {
++  set selected_organization $::env(AKV_STORAGE_ORGANIZATION)
++}
++switch -- $selected_organization {
++  split_v1_96x256_v2_128x256 {
+ set context_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb96x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb96x256m1swbso_170a_tt0p9v25c.db"
+ set kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"
++    set storage_libraries [list $context_sram_library $kv_sram_library]
++  }
++  unified_q64x256_kv128x256 {
++set q_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db"
++set kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"
++    set storage_libraries [list $q_sram_library $kv_sram_library]
++  }
++  default {error "unsupported AKV_STORAGE_ORGANIZATION: $selected_organization"}
++}
++# END_AKV_STANDALONE_STORAGE_SELECTION_V2
+ set synthetic_library "/home/wangwy/software/synopsys/install/syn/syn/T-2022.03-SP2/libraries/syn/dw_foundation.sldb"
+ 
+-foreach required_file [list $dc_filelist $wrapper $project_sdc $std_library \
+-                            $context_sram_library $kv_sram_library $synthetic_library] {
++foreach required_file [concat [list $dc_filelist $wrapper $project_sdc $std_library $synthetic_library] $storage_libraries] {
+   if {![file isfile $required_file]} {
+     error "missing standalone synthesis input: $required_file"
+   }
+@@ -26,7 +42,7 @@
+ 
+ set_app_var target_library $std_library
+ set_app_var synthetic_library $synthetic_library
+-set_app_var link_library "* $std_library $context_sram_library $kv_sram_library $synthetic_library"
++set_app_var link_library [concat [list * $std_library] $storage_libraries [list $synthetic_library]]
+ set_host_options -max_cores 8
+ set hdlin_check_no_latch true
+ set compile_seqmap_propagate_constants false
+@@ -62,18 +78,56 @@
+ redirect [file join $output_dir references.rpt] {report_reference -hierarchy}
+ redirect [file join $output_dir resources.rpt] {report_resources}
+ 
+-set v1_macro_ref TS1N28HPCPUHDSVTB96X256M1SWBSO
+-set v2_macro_ref TS1N28HPCPUHDSVTB128X256M1SWBSO
+-set context_macros [get_cells -hierarchical -filter "ref_name == $v1_macro_ref || ref_name == $v2_macro_ref"]
+-set v1_macros [get_cells -hierarchical -filter \
+-    "ref_name == $v1_macro_ref && full_name =~ i_akv_engine/i_context/*"]
+-set v2_macros [get_cells -hierarchical -filter \
+-    "ref_name == $v2_macro_ref && full_name =~ i_akv_engine/i_v2_context/*"]
++# Classify actual AKV-owned macro instances; Q is never counted as legacy V1.
++# i_akv_engine excludes unrelated CPU/QBS macros with the same library reference.
++set context_macros [get_cells -quiet -hierarchical -filter \
++    "ref_name =~ TS1N28HPCPUHDSVTB* && full_name =~ i_akv_engine/*"]
++set q_macros [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ i_akv_engine/i_unified_context/i_q_store/*"]
++set kv_macros [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB128X256M1SWBSO && full_name =~ i_akv_engine/i_unified_context/i_kv_store/*"]
++set old64_v1 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ i_akv_engine/i_context/*"]
++set old64_v2 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ i_akv_engine/i_v2_context/*"]
++set split_v1 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB96X256M1SWBSO && full_name =~ i_akv_engine/i_context/*"]
++set split_v2 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB128X256M1SWBSO && full_name =~ i_akv_engine/i_v2_context/*"]
+ set macro_count [sizeof_collection $context_macros]
+-set v1_macro_count [sizeof_collection $v1_macros]
+-set v2_macro_count [sizeof_collection $v2_macros]
+-if {$macro_count != 10 || $v1_macro_count != 2 || $v2_macro_count != 8} {
+-  error "unexpected AKV SRAM organization: total=$macro_count v1=$v1_macro_count v2=$v2_macro_count"
++set q_macro_count [sizeof_collection $q_macros]
++set kv_count [sizeof_collection $kv_macros]
++set old64_v1_count [sizeof_collection $old64_v1]
++set old64_v2_count [sizeof_collection $old64_v2]
++set split_v1_count [sizeof_collection $split_v1]
++set split_v2_count [sizeof_collection $split_v2]
++set partition [list $macro_count $q_macro_count $kv_count \
++    $old64_v1_count $old64_v2_count $split_v1_count $split_v2_count]
++switch -- $partition {
++  {9 1 8 0 0 0 0} {
++    set organization unified_q64x256_kv128x256
++    set v1_macro_count 0
++    set v2_macro_count 8
++    set capacity_bits [expr {(1 * 64 + 8 * 128) * 256}]
++  }
++  {10 0 0 0 0 2 8} {
++    set organization split_v1_96x256_v2_128x256
++    set v1_macro_count 2
++    set v2_macro_count 8
++    set capacity_bits [expr {(2 * 96 + 8 * 128) * 256}]
++  }
++  {20 0 0 4 16 0 0} {
++    set organization legacy_v1_v2_64x256
++    set v1_macro_count 4
++    set v2_macro_count 16
++    set capacity_bits [expr {(4 + 16) * 64 * 256}]
++  }
++
++  default {error "unexpected AKV SRAM hierarchy/organization: $partition"}
++}
++
++if {$organization ne $selected_organization} {
++  error "AKV SRAM selection/hierarchy mismatch: selected=$selected_organization actual=$organization"
+ }
+ 
+ set macro_area 0.0
+@@ -92,10 +146,12 @@
+ puts $report_file "clock_period_ns=1.0"
+ puts $report_file "clock_uncertainty_ns=0.15"
+ puts $report_file "scope=akv_engine_standalone"
++puts $report_file "akv_sram_organization=$organization"
+ puts $report_file "akv_sram_macro_count=$macro_count"
++puts $report_file "akv_q_sram_macro_count=$q_macro_count"
+ puts $report_file "akv_v1_sram_macro_count=$v1_macro_count"
+ puts $report_file "akv_v2_sram_macro_count=$v2_macro_count"
+-puts $report_file "physical_sram_capacity_bits=[expr {($v1_macro_count * 96 + $v2_macro_count * 128) * 256}]"
++puts $report_file "physical_sram_capacity_bits=$capacity_bits"
+ puts $report_file "design_total_area_um2=$total_area"
+ puts $report_file "design_macro_area_um2=$macro_area"
+ puts $report_file "design_logic_area_um2=$logic_area"
+--- a/hardware/scripts/akv/check-synthesis-preflight.py
++++ b/hardware/scripts/akv/check-synthesis-preflight.py
+@@ -84,6 +84,45 @@
+ )
+ 
+ 
++UNIFIED_AKV_ORGANIZATION = "unified_q64x256_kv128x256"
++SPLIT_AKV_ORGANIZATION = "split_v1_96x256_v2_128x256"
++UNIFIED_AKV_SOURCES = (
++    "hardware/src/vlsu/qbs_akv_shared_reader.sv",
++    "hardware/src/vlsu/akv/akv_legacy_repacker.sv",
++    "hardware/src/vlsu/akv/akv_q_store.sv",
++    "hardware/src/vlsu/akv/akv_unified_context.sv",
++)
++AKV_Q_SRAM_BLACKBOX = "backend/blackbox/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.v"
++DEFAULT_AKV_Q_SRAM_DB = Path(
++    "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/"
++    "ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db"
++)
++
++
++def check_storage_selection(options, sources):
++    selected = options.akv_storage_organization
++    if selected not in (SPLIT_AKV_ORGANIZATION, UNIFIED_AKV_ORGANIZATION):
++        raise PreflightError("unknown AKV storage organization")
++    unified = selected == UNIFIED_AKV_ORGANIZATION
++    if not (options.require_akv or options.require_akv_v2) and not unified:
++        # Bender may list unused AKV modules during a QBS-only preflight.
++        return False
++    has_unified = _has_source(sources, UNIFIED_AKV_SOURCES[-1])
++    if unified != has_unified:
++        raise PreflightError("AKV storage organization does not match source graph; select explicitly")
++    if unified:
++        if not (options.require_akv or options.require_akv_v2):
++            raise PreflightError("unified storage requires explicit AKV enablement")
++        # Storage uses v2_context even when only legacy commands are enabled.
++        _require_sources(sources, UNIFIED_AKV_SOURCES + AKV_V2_SOURCES)
++        for before in (*UNIFIED_AKV_SOURCES[1:3], AKV_V2_SOURCES[0]):
++            _check_order(sources, before, UNIFIED_AKV_SOURCES[-1])
++        _check_order(sources, UNIFIED_AKV_SOURCES[-1], "hardware/src/vlsu/akv/akv_engine.sv")
++        _check_order(sources, "hardware/src/vlsu/qbs/qbs_read_engine.sv", UNIFIED_AKV_SOURCES[0])
++        _check_order(sources, UNIFIED_AKV_SOURCES[0], "hardware/src/vlsu/vlsu.sv")
++    return unified
++
++
+ class PreflightError(ValueError):
+     """A synthesis input does not satisfy the requested configuration."""
+ 
+@@ -95,6 +134,8 @@
+     setup: Path
+     sram_db: Path
+     qbs_sram_db: Path = DEFAULT_QBS_SRAM_DB
++    akv_q_sram_db: Path = DEFAULT_AKV_Q_SRAM_DB
++    akv_storage_organization: str = SPLIT_AKV_ORGANIZATION
+     akv_v2_sram_db: Path = EXTRA_SRAM_DBS["akv_v2_sram_db"]
+     qbs_context_sram_db: Path = EXTRA_SRAM_DBS["qbs_context_sram_db"]
+     qbs_weight_sram_db: Path = EXTRA_SRAM_DBS["qbs_weight_sram_db"]
+@@ -246,6 +287,7 @@
+     sdc_text = _read(options.sdc, "SDC")
+     setup_text = _read(options.setup, "DC setup")
+     defines, sources = _filelist_entries(filelist_text)
++    unified_storage = check_storage_selection(options, sources)
+ 
+     _require_define(defines, "SYNTHESIS")
+     _require_define(defines, "TARGET_SYNTHESIS")
+@@ -287,7 +329,7 @@
+         _require_define(defines, "TARGET_SRAM_MC")
+         _require_define(defines, "TARGET_SRAM_BLACKBOX")
+         _require_define(defines, "TARGET_TECH_CELLS_GENERIC_EXCLUDE_TC_SRAM")
+-        _require_sources(sources, (AKV_SRAM_BLACKBOX,))
++        _require_sources(sources, (AKV_Q_SRAM_BLACKBOX if unified_storage else AKV_SRAM_BLACKBOX,))
+         generic_sram = (
+             "hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv",
+             "hardware/deps/tech_cells_generic/src/rtl/tc_sram_impl.sv",
+@@ -298,10 +340,12 @@
+                 "macro-SRAM filelist still contains generic SRAM implementations: "
+                 + ", ".join(present_generic)
+             )
+-        if not options.sram_db.is_file():
+-            raise PreflightError(f"missing AKV SRAM DB: {options.sram_db}")
+-        if str(options.sram_db) not in setup_text:
+-            raise PreflightError("DC setup does not include the AKV 96x256 SRAM DB")
++        akv_db = options.akv_q_sram_db if unified_storage else options.sram_db
++        akv_shape = "64x256 Q" if unified_storage else "96x256"
++        if not akv_db.is_file():
++            raise PreflightError(f"missing AKV {akv_shape} SRAM DB: {akv_db}")
++        if str(akv_db) not in setup_text:
++            raise PreflightError(f"DC setup does not include the AKV {akv_shape} SRAM DB")
+         if options.require_qbs:
+             _require_sources(sources, (QBS_SRAM_BLACKBOX,))
+             if not options.qbs_sram_db.is_file():
+@@ -309,7 +353,7 @@
+             if str(options.qbs_sram_db) not in setup_text:
+                 raise PreflightError("DC setup does not include the QBS 8x256 SRAM DB")
+         for key, name in EXTRA_SRAM_NAMES.items():
+-            required = options.require_akv_v2 if key == "akv_v2_sram_db" else options.require_qbs
++            required = (options.require_akv_v2 or unified_storage) if key == "akv_v2_sram_db" else options.require_qbs
+             if required:
+                 _require_sources(sources, (f"backend/blackbox/{name}_tt0p9v25c.v",))
+                 path = getattr(options, key)
+@@ -322,6 +366,7 @@
+     _check_integrated_flow(options)
+     return {
+         "filelist": str(options.filelist),
++        "akv_storage_organization": options.akv_storage_organization,
+         "defines": len(defines),
+         "sources": len(sources),
+         "clock_period_ns": 1,
+@@ -340,6 +385,10 @@
+     parser.add_argument("--dc-script", type=Path, default=DEFAULT_DC_SCRIPT)
+     parser.add_argument("--dc-runner", type=Path, default=DEFAULT_DC_RUNNER)
+     parser.add_argument("--sram-db", type=Path, default=DEFAULT_AKV_SRAM_DB)
++    parser.add_argument("--akv-q-sram-db", type=Path, default=DEFAULT_AKV_Q_SRAM_DB)
++    parser.add_argument("--akv-storage-organization",
++                        choices=(SPLIT_AKV_ORGANIZATION, UNIFIED_AKV_ORGANIZATION),
++                        default=SPLIT_AKV_ORGANIZATION)
+     parser.add_argument("--qbs-sram-db", type=Path, default=DEFAULT_QBS_SRAM_DB)
+     for key, path in EXTRA_SRAM_DBS.items():
+         parser.add_argument("--" + key.replace("_", "-"), type=Path, default=path)
+--- a/hardware/scripts/akv/collect-synthesis-results.py
++++ b/hardware/scripts/akv/collect-synthesis-results.py
+@@ -21,8 +21,48 @@
+     "clock_period_ns": 1.0,
+     "setup_uncertainty_ns": 0.15,
+ }
+-# Keep historical reports readable without accepting mixed macro organizations.
+-AKV_SRAM_ORGANIZATIONS = {(20, 4, 16): 327680, (10, 2, 8): 311296}
++# Counts are physical instances, not area or measured timing evidence.
++AKV_SRAM_ORGANIZATIONS = {
++    "legacy_v1_v2_64x256": (20, 4, 16, 0, 327680),
++    "split_v1_96x256_v2_128x256": (10, 2, 8, 0, 311296),
++    "unified_q64x256_kv128x256": (9, 0, 8, 1, 278528),
++}
++LEGACY_AKV_SRAM_ORGANIZATIONS = {
++    (20, 4, 16): "legacy_v1_v2_64x256",
++    (10, 2, 8): "split_v1_96x256_v2_128x256",
++}
++
++
++def validate_sram_organization(values, capacity_key):
++    def integer(key):
++        value = values.get(key)
++        if type(value) is int and value >= 0:
++            return value
++        if type(value) is str and re.fullmatch(r"0|[1-9][0-9]*", value):
++            return int(value)
++        raise CollectionError(f"invalid SRAM organization integer: {key}")
++
++    counts = tuple(integer(key) for key in (
++        "akv_sram_macro_count", "akv_v1_sram_macro_count", "akv_v2_sram_macro_count"))
++    capacity = integer(capacity_key)
++    label_present = "akv_sram_organization" in values
++    q_present = "akv_q_sram_macro_count" in values
++    if label_present != q_present:
++        raise CollectionError("SRAM organization and independent Q count must appear together")
++    if label_present:
++        label = values["akv_sram_organization"]
++        if type(label) is not str or label not in AKV_SRAM_ORGANIZATIONS:
++            raise CollectionError("unknown SRAM organization discriminator")
++        q_count = integer("akv_q_sram_macro_count")
++    else:
++        # Only the two exact historical organizations may omit new metadata.
++        label = LEGACY_AKV_SRAM_ORGANIZATIONS.get(counts)
++        if label is None:
++            raise CollectionError("SRAM organization requires explicit discriminator and Q count")
++        q_count = 0
++    if (*counts, q_count, capacity) != AKV_SRAM_ORGANIZATIONS[label]:
++        raise CollectionError("SRAM organization counts/capacity disagree with discriminator")
++    return label, q_count
+ 
+ 
+ class CollectionError(ValueError):
+@@ -156,11 +196,23 @@
+     return digest.hexdigest()
+ 
+ 
+-def library_inputs(source_inputs: tuple[Path, ...]) -> list[Path]:
++def selected_standalone_libraries(text, organization):
++    marker = '# AKV_STANDALONE_STORAGE_SELECTION_V2'
++    block = '# AKV_STANDALONE_STORAGE_SELECTION_V2\nset selected_organization split_v1_96x256_v2_128x256\nif {[info exists ::env(AKV_STORAGE_ORGANIZATION)]} {\n  set selected_organization $::env(AKV_STORAGE_ORGANIZATION)\n}\nswitch -- $selected_organization {\n  split_v1_96x256_v2_128x256 {\nset context_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb96x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb96x256m1swbso_170a_tt0p9v25c.db"\nset kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"\n    set storage_libraries [list $context_sram_library $kv_sram_library]\n  }\n  unified_q64x256_kv128x256 {\nset q_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db"\nset kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"\n    set storage_libraries [list $q_sram_library $kv_sram_library]\n  }\n  default {error "unsupported AKV_STORAGE_ORGANIZATION: $selected_organization"}\n}\n# END_AKV_STANDALONE_STORAGE_SELECTION_V2\n'
++    if marker not in text:
++        return text
++    branches = {'split_v1_96x256_v2_128x256': 'set context_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb96x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb96x256m1swbso_170a_tt0p9v25c.db"\nset kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"\n', 'unified_q64x256_kv128x256': 'set q_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db"\nset kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"\n'}
++    if text.count(marker) != 1 or text.count(block) != 1 or organization not in branches:
++        raise CollectionError("ambiguous standalone SRAM library selection")
++    return text.replace(block, branches[organization], 1)
++
++
++def library_inputs(source_inputs: tuple[Path, ...], organization: str | None = None) -> list[Path]:
+     libraries: set[Path] = set()
+     pattern = re.compile(r"(/[A-Za-z0-9_./+:-]+\.(?:db|sldb))(?=\s|\"|$)")
+     for source in source_inputs:
+         text = source.read_text(encoding="utf-8", errors="replace")
++        text = selected_standalone_libraries(text, organization)
+         active = "\n".join(
+             line for line in text.splitlines() if not line.lstrip().startswith("#")
+         )
+@@ -175,6 +227,10 @@
+     compact = all(any(shape in name for name in names) for shape in ("96x256", "128x256"))
+     if not (legacy or compact):
+         raise CollectionError("AKV SRAM DBs were not identified")
++    if organization == "unified_q64x256_kv128x256" and not all(
++        any(shape in name for name in names) for shape in ("64x256", "128x256")
++    ):
++        raise CollectionError("unified AKV requires independent Q64 and KV128 DBs")
+     return sorted(libraries, key=lambda path: str(path.resolve()))
+ 
+ 
+@@ -195,13 +251,7 @@
+     v1_count = required_int(values, "akv_v1_sram_macro_count")
+     v2_count = required_int(values, "akv_v2_sram_macro_count")
+     capacity = required_int(values, "physical_sram_capacity_bits")
+-    organization = (macro_count, v1_count, v2_count)
+-    if organization not in AKV_SRAM_ORGANIZATIONS:
+-        raise CollectionError(
+-            f"wrong AKV SRAM organization: total={macro_count}, v1={v1_count}, v2={v2_count}"
+-        )
+-    if capacity != AKV_SRAM_ORGANIZATIONS[organization]:
+-        raise CollectionError(f"wrong AKV SRAM physical capacity: {capacity}")
++    organization, q_count = validate_sram_organization(values, "physical_sram_capacity_bits")
+ 
+     report_total, report_macro = parse_area_report(area_rpt)
+     summary_total = required_float(values, "design_total_area_um2")
+@@ -228,6 +278,8 @@
+         "scope": expected_scope,
+         "clock_period_ns": clock,
+         "setup_uncertainty_ns": uncertainty,
++        "akv_sram_organization": organization,
++        "akv_q_sram_macro_count": q_count,
+         "akv_sram_macro_count": macro_count,
+         "akv_v1_sram_macro_count": v1_count,
+         "akv_v2_sram_macro_count": v2_count,
+@@ -311,7 +363,9 @@
+ def collect(spec: CollectionSpec) -> dict[str, object]:
+     if not spec.filelist.is_file():
+         raise CollectionError(f"missing DC filelist: {spec.filelist}")
+-    libraries = library_inputs(spec.source_inputs)
++    values = read_key_values(spec.summary_rpt)
++    organization, _ = validate_sram_organization(values, "physical_sram_capacity_bits")
++    libraries = library_inputs(spec.source_inputs, organization)
+     synthesis_inputs = [
+         spec.filelist,
+         *filelist_inputs(spec.filelist),
+@@ -331,7 +385,6 @@
+             + ", ".join(str(path) for path in stale)
+         )
+ 
+-    values = read_key_values(spec.summary_rpt)
+     metrics = validate_metrics(spec.mode, values, spec.area_rpt)
+     summary = {
+         "schema_version": 1,
+@@ -381,7 +434,9 @@
+             raise CollectionError(f"synthesis artifact changed: {item.get('path')}")
+ 
+     source_inputs = tuple(resolve_recorded(raw, root) for raw in summary.get("source_inputs", []))
+-    observed_libraries = library_inputs(source_inputs)
++    metrics = summary.get("metrics", {})
++    organization, _ = validate_sram_organization(metrics, "akv_sram_capacity_bits")
++    observed_libraries = library_inputs(source_inputs, organization)
+     recorded_libraries = {
+         resolve_recorded(str(item.get("path", "")), root).resolve()
+         for item in summary.get("library_artifacts", [])
+@@ -392,14 +447,8 @@
+     if observed_digest != summary.get("source_digest"):
+         raise CollectionError("current RTL or synthesis inputs differ from synthesized sources")
+ 
+-    metrics = summary.get("metrics", {})
+-    organization = (metrics.get("akv_sram_macro_count"),
+-                    metrics.get("akv_v1_sram_macro_count"),
+-                    metrics.get("akv_v2_sram_macro_count"))
+     if (
+-        organization not in AKV_SRAM_ORGANIZATIONS
+-        or metrics.get("akv_sram_capacity_bits") != AKV_SRAM_ORGANIZATIONS.get(organization)
+-        or float(metrics.get("design_total_area_um2", 0)) <= 0
++        float(metrics.get("design_total_area_um2", 0)) <= 0
+         or float(metrics.get("design_logic_area_um2", 0)) <= 0
+     ):
+         raise CollectionError("synthesis summary metrics violate the AKV physical contract")
+--- a/hardware/Makefile
++++ b/hardware/Makefile
+@@ -606,6 +606,9 @@
+ 	@cd ../backend/flist && cat packages.temp >> ara_soc_dc.f
+ 	@cd ../backend/flist && cat rtl.temp      >> ara_soc_dc.f
+ 
++# Promoted resource package; override explicitly for a legacy source graph.
++dc_akv_storage_organization ?= $(if $(filter 1,$(akv) $(akv_v2)),unified_q64x256_kv128x256,split_v1_96x256_v2_128x256)
++
+ dc_preflight_locked: dc_flist_locked
+ 	@python3 scripts/akv/check-synthesis-preflight.py \
+ 		--filelist ../backend/flist/ara_soc_dc.f \
+@@ -614,6 +617,7 @@
+ 		$(if $(filter 1,$(qbs)),--require-qbs,) \
+ 		$(if $(filter 1,$(akv) $(akv_v2)),--require-akv,) \
+ 		$(if $(filter 1,$(akv_v2)),--require-akv-v2,) \
++		$(if $(filter 1,$(akv) $(akv_v2)),--akv-storage-organization $(dc_akv_storage_organization),) \
+ 		$(if $(filter 1,$(mc)),--require-macro-sram,) \
+ 		--nr-lanes $(nr_lanes) --vlen $(vlen)
+ 

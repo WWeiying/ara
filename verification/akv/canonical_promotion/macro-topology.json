@@ -1,0 +1,76 @@
+{
+  "admitted_compile_warnings": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-resource-wrapper-generic-topology-negative-20261025-01/compile.log": {
+      "code": "IPDW",
+      "count": 1,
+      "identifier": "i",
+      "previous_line": 168,
+      "redeclaration_line": 458,
+      "source": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/source/hardware/deps/cva6/core/cva6_mmu/cva6_shared_tlb.sv",
+      "source_sha256": "2e46b236d59f27fb23e5e073daaa665a4a3ca5fb22d8a17a867e6504b575576a"
+    },
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-resource-wrapper-macro-topology-20261025-02/compile.log": {
+      "code": "IPDW",
+      "count": 1,
+      "identifier": "i",
+      "previous_line": 168,
+      "redeclaration_line": 458,
+      "source": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/source/hardware/deps/cva6/core/cva6_mmu/cva6_shared_tlb.sv",
+      "source_sha256": "2e46b236d59f27fb23e5e073daaa665a4a3ca5fb22d8a17a867e6504b575576a"
+    }
+  },
+  "clocks_driven": false,
+  "compile_exit_codes": [
+    0,
+    0
+  ],
+  "computation_verified": false,
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/akv_engine_synth_wrapper.sv": "2f5f41c46118610e6dcfcc231206159f555708467eb99de08ecc6003fda83557",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/check_macro_topology.py": "1512666de4c930f375a6778034e277092bce6f657848c64fe87db3fc9f5a0cd1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/macro_topology_probe.sv": "c2fa229ae9d53d6b212f5b82f795bb408b0d8a78c1109c564f64819b259c1538",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/canonical_promotion/test_macro_topology.py": "0188fd3f9aec3c8fa079b958a6bf1b20417e89285dbba0946e454dc0d3c85f0d",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/manifest.json": "035ac16298960fafbe2de94a764af5ad80bf08e0c62fdd0d424369d800b3b72f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/vlsu_sources.f": "7d0a24c7537ac2ce2e9174fe3dbb31f30f8bb1475cceb28e23be5483e858a653",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-resource-wrapper-generic-topology-negative-20261025-01/compile.log": "c4276da73a2102a1a622d751274476d53559ea7743c4e4818e11298a64a66937",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-resource-wrapper-generic-topology-negative-20261025-01/simv": "3de74b187152fbf89f8c6750eaae4935f33a61426f7440aa803ebff17517995a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-resource-wrapper-generic-topology-negative-20261025-01/topology.log": "b70e2de8e41cc6c4b079373f1195cb555ead65ab8e07e20af874e96ff8f6de68",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-resource-wrapper-macro-topology-20261025-02/compile.log": "671188604e362832142e444153e4958f1e7d3e1f7ad23ed0b9b5c81f70310c92",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-resource-wrapper-macro-topology-20261025-02/simv": "b4d0c7d047ad39b539f957a5718f62f9c41438b697ab0dafe9cf65add02caa79",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-resource-wrapper-macro-topology-20261025-02/topology.log": "10340ce379359d054caa3f2a5b594ad15e73f9e7592cf502d94df9f69c615c8a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/qbs/qbs_context_sram_macro_model.sv": "02746ec0c2395660d38e07f407bf2fbba80d56a2675f46bf6b1fd71693026e65"
+  },
+  "functional_macro_model_only": true,
+  "macros": {
+    "kv128x256": 8,
+    "q64x256": 1
+  },
+  "negative_output": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-resource-wrapper-generic-topology-negative-20261025-01",
+  "negative_rejected": true,
+  "negative_rejection": "Need exactly one Q64x256 and eight KV128x256 bound identities",
+  "physical_library_qualified": false,
+  "positive": {
+    "computation_verified": false,
+    "kv_macros": 8,
+    "logical_capacity_bytes": 34816,
+    "ppa_measured": false,
+    "q_macros": 1,
+    "state": "BOUND_FUNCTIONAL_MACRO_TOPOLOGY_PASS"
+  },
+  "positive_output": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-resource-wrapper-macro-topology-20261025-02",
+  "ppa_measured": false,
+  "prior_probe_failure": {
+    "output": "verification/out/akv-resource-wrapper-macro-topology-20261025-01",
+    "reason": "VCS does not admit the hierarchical memory-array $size used by the initial compile-only probe; only the testbench probe changed, not RTL"
+  },
+  "production_promoted": false,
+  "schema": "akv_resource_macro_topology_smoke_v1",
+  "simulation_duration_ns": 1,
+  "simulation_exit_codes": [
+    0,
+    0
+  ],
+  "snapshot_artifact_pins_post_match": true,
+  "state": "BOUND_FUNCTIONAL_MACRO_TOPOLOGY_PASS",
+  "static_and_packaging_host_tests": 17
+}

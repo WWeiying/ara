@@ -1,0 +1,42 @@
+{
+  "state": "SHARED_READER_UNIT_RAW_RECHECKED",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-akv-shared-reader-unit-20261024-03",
+  "current_inputs_match": true,
+  "unit_results": {
+    "BAD_FIRE": {
+      "rejected": "BAD_FIRE",
+      "marker": "SHARED_READER_BAD_COMMAND_FIRE"
+    },
+    "BAD_OWNER": {
+      "rejected": "BAD_OWNER",
+      "marker": "SHARED_READER_OWNER_CHANGED_LIVE"
+    },
+    "BAD_READMIT": {
+      "rejected": "BAD_READMIT",
+      "marker": "SHARED_READER_OWNER_NOT_ADMITTED"
+    },
+    "positive": {
+      "cases": 10,
+      "faults": 4,
+      "completions": 7,
+      "payload_bytes": 4247,
+      "zero_owner_clears": 10,
+      "compared_cycles": 445
+    }
+  },
+  "integrated": false,
+  "formal_equivalence": false,
+  "ppa_measured": false,
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-akv-shared-reader-unit-20261024-03/BAD_FIRE.log": "4b5ea31901f6d1cff8ca10e9f235bcb867ff56cab21d5e49d415ff8467bcd5ff",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-akv-shared-reader-unit-20261024-03/BAD_OWNER.log": "8d248c2eb56dda3cbd1529611ceedf3ce49c791a7717d20f78c0a92f28efd8ae",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-akv-shared-reader-unit-20261024-03/BAD_READMIT.log": "a3b17c74ab32ff929571dd3630c0142db76b4f2ae1b6968aeb03c9d2d429822a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-akv-shared-reader-unit-20261024-03/build-command.json": "a2598de4e056857f4c099113d4d6dea92ca2178e243d71961d9ac1002780eab5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-akv-shared-reader-unit-20261024-03/compile.log": "d4585a1c996bb37825bdc9d627e01c5947bc385e515a6c9c40ff04832374746a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-akv-shared-reader-unit-20261024-03/positive.log": "d1dff4c5c8b9ec5b37d9f4555ee91bcac717110adf1411c970c2320ae52bc679",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-akv-shared-reader-unit-20261024-03/simv": "eb2d1880eff8a8f6c50aac62dff1b836b4231188ec867019f244d66832bb2b1b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-akv-shared-reader-unit-20261024-03/result.json": "ecd8d87c4926b7b6cb9635ae004bd7d6eb720a912debafffa0115555a8583b5a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-akv-shared-reader-unit-20261024-03/source-pins.json": "bbb2672bb897c52cd49e09a3a344a64af4b65dd936fdf677f2af8fd468a2b95b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-akv-shared-reader-unit-20261024-03/status.json": "5032c99dc5b3611388d17c280813aa56b1bdfec2cdf973c4d090bf6b1bf34bb8"
+  }
+}

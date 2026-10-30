@@ -24,6 +24,7 @@ include $(ARA_DIR)/config/sram.mk
 # intentionally separate from the synthesized 1 MiB L2 and SRAM-macro flow.
 mc ?= 0
 qbs ?= 0
+qbs_vrf_continuation ?= 0
 akv ?= 0
 akv_v2 ?= 0
 qbs_perf ?= 0
@@ -128,6 +129,15 @@ endif
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
 ifeq ($(qbs),1)
 bender_defs += --define ARA_QBS_ENABLE=1
+endif
+ifeq ($(qbs_vrf_continuation),1)
+ifneq ($(qbs),1)
+$(error qbs_vrf_continuation=1 requires qbs=1)
+endif
+ifneq ($(nr_lanes)/$(vlen),4/1024)
+$(error QBS VRF continuation currently requires nr_lanes=4 vlen=1024)
+endif
+bender_defs += --define ARA_QBS_VRF_CONTINUATION=1
 endif
 ifeq ($(akv),1)
 bender_defs += --define ARA_AKV_ENABLE=1
@@ -263,6 +273,7 @@ compile: bender dpi ../Bender.yml
 		'nr_lanes=$(nr_lanes)' \
 		'vlen=$(vlen)' \
 		'qbs=$(qbs)' \
+		'qbs_vrf_continuation=$(qbs_vrf_continuation)' \
 		'akv=$(akv)' \
 		'akv_v2=$(akv_v2)' \
 		'qbs_enabled=$(qbs)' \
@@ -595,6 +606,9 @@ dc_flist_locked: | dc_require_lock
 	@cd ../backend/flist && cat packages.temp >> ara_soc_dc.f
 	@cd ../backend/flist && cat rtl.temp      >> ara_soc_dc.f
 
+# Promoted resource package; override explicitly for a legacy source graph.
+dc_akv_storage_organization ?= $(if $(filter 1,$(akv) $(akv_v2)),unified_q64x256_kv128x256,split_v1_96x256_v2_128x256)
+
 dc_preflight_locked: dc_flist_locked
 	@python3 scripts/akv/check-synthesis-preflight.py \
 		--filelist ../backend/flist/ara_soc_dc.f \
@@ -603,6 +617,7 @@ dc_preflight_locked: dc_flist_locked
 		$(if $(filter 1,$(qbs)),--require-qbs,) \
 		$(if $(filter 1,$(akv) $(akv_v2)),--require-akv,) \
 		$(if $(filter 1,$(akv_v2)),--require-akv-v2,) \
+		$(if $(filter 1,$(akv) $(akv_v2)),--akv-storage-organization $(dc_akv_storage_organization),) \
 		$(if $(filter 1,$(mc)),--require-macro-sram,) \
 		--nr-lanes $(nr_lanes) --vlen $(vlen)
 

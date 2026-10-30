@@ -1,0 +1,16 @@
+{
+  "state": "ACTUAL_GGML_RVV_PRIMITIVES_COMPILED",
+  "build": "verification/out/akv-quantkv-rvv-primitives-20261024-01",
+  "source_sha256": "0ed9aa4fa1f8b04bce0391e7127a6d5d11e09fc51ae3af68d6cf6d157357cf73",
+  "object_sha256": "f4f88bed6d877698b0f6e96f9acfbec319b7fc5d84a85d3268bc32198bced11b",
+  "compiler_contract": "GNU RV64GCV+Zfh+Zvfh, O3, no-fast-math, explicit ffp-contract=fast",
+  "functions": ["quantize_row_q8_0", "ggml_vec_dot_q4_0_q8_0", "ggml_vec_dot_q8_0_q8_0"],
+  "source_reimplemented": false,
+  "actual_vector_instructions_present": true,
+  "observed_q8_0_order": "scale product then fused integer-dot accumulation",
+  "observed_q4_0_order": "integer-dot times first scale then fused second-scale accumulation",
+  "native_execution": false,
+  "numerical_accepted": false,
+  "rtl_performance": false,
+  "scope": "Whole untouched production translation unit compilation and disassembly only"
+}

@@ -2,9 +2,18 @@
 #include "../include/akv/akv_features.h"
 #include "akv_prefill_internal.h"
 #include "akv_online_internal.h"
+#include "akv_refill_schedule.h"
 
 #include <stdint.h>
 #include <string.h>
+
+/* Enable only in paired evaluation until the real Attention gate passes. */
+#ifndef AKV_REFILL_OVERLAP
+#define AKV_REFILL_OVERLAP 0
+#endif
+#if AKV_REFILL_OVERLAP != 0 && AKV_REFILL_OVERLAP != 1
+#error "AKV_REFILL_OVERLAP must be 0 or 1"
+#endif
 
 #ifndef AKV_PROFILE_PHASE
 #define AKV_PROFILE_PHASE(phase) do { (void)(phase); } while (0)
@@ -45,6 +54,9 @@ static inline int common_v2_plan_is_valid(
 extern void akv_v2_compute_scores_f16_d128_gqa6(
     const uint16_t *query, float *score, uint32_t tile_tokens,
     size_t q_row_stride_bytes);
+extern void akv_v2_compute_scores_f16_d128_gqa6_panel4(
+    const uint16_t *query, float *score, uint32_t tile_tokens,
+    size_t q_row_stride_bytes);
 extern void akv_v2_compute_scores_f16_d128_gqa6_q2(
     const uint16_t *query0, const uint16_t *query1, float *score,
     uint32_t tile_tokens);
@@ -54,6 +66,9 @@ extern void akv_v2_compute_scores_f16_d128_gqa6_q2_panel4(
 extern void akv_v2_update_outputs_f16_d128_gqa6(
     const float *score, uint16_t *accumulator, const float *old_scale,
     uint32_t tile_tokens);
+extern void akv_v2_update_outputs_f16_d128_gqa6_refill(
+    const float *score, uint16_t *accumulator, const float *old_scale,
+    uint32_t tile_tokens, uint64_t next_tile_start);
 extern void akv_v2_compute_scores_f16_generic(
     const uint16_t *query, float *score, uint32_t tile_tokens,
     size_t q_row_stride_bytes, uint32_t q_rows, uint32_t head_dim);
@@ -84,6 +99,30 @@ extern void akv_v2_update_outputs_f16_d256_generic(
 extern void akv_v2_update_outputs_f16_d256_online(
     const float *score, uint16_t *accumulator, const float *token_scale,
     uint32_t tile_tokens, uint32_t q_rows);
+
+/* Optional on freestanding targets: no environment provider means OFF. */
+extern char *getenv(const char *name) __attribute__((weak));
+#include "../experimental/paired_heads/f32_pv/runtime.h"
+#include "../experimental/paired_heads/native_selection.h"
+
+static int qk_panel4_enabled_for_plan(const akv_attention_plan_t *plan) {
+  if (plan->descriptor.element_format != AKV_ELEMENT_FORMAT_F16 ||
+      plan->descriptor.q_rows != AKV_ATTENTION_KERNEL_Q_ROWS ||
+      plan->descriptor.head_dim != AKV_HEAD_DIM_128 || getenv == NULL)
+    return 0;
+  const char *const value = getenv("AKV_QK_PANEL4");
+  if (value == NULL || value[0] != '1' || value[1] != '\0')
+    return 0;
+  akv_device_t device;
+  if (akv_device_query(akv_native_info, NULL, &device) != AKV_STATUS_OK)
+    return 0;
+  return device.capabilities.valid && device.capabilities.f16_payload &&
+         device.capabilities.head_dim_128 &&
+         device.capabilities.max_q_rows >= AKV_ATTENTION_KERNEL_Q_ROWS &&
+         device.capabilities.token_axis_valid &&
+         device.capabilities.token_axis_tail &&
+         device.capabilities.token_axis_column_panel4;
+}
 
 static inline float negative_infinity_f32(void) {
   const uint32_t bits = UINT32_C(0xff800000);
@@ -569,6 +608,13 @@ akv_status_t akv_attention_execute_v2_with_features_native(
   const size_t output_row_stride_bytes = plan->output_row_stride_bytes;
   const float scale = plan->scale;
 
+  const int overlap_refill = AKV_REFILL_OVERLAP &&
+      akv_refill_workspace_disjoint(&plan->descriptor, workspace, sizeof(*workspace));
+  const int qk_panel4 = qk_panel4_enabled_for_plan(plan);
+  const int paired_heads = akv_pair_candidate_enabled_for_plan(plan);
+  void (*const compute_scores_d128_gqa6)(const uint16_t *, float *, uint32_t, size_t) =
+      qk_panel4 ? akv_v2_compute_scores_f16_d128_gqa6_panel4
+                : akv_v2_compute_scores_f16_d128_gqa6;
   initialize_workspace(workspace, q_rows, head_dim);
   if (features != NULL && features->sinks_enabled) {
     for (uint32_t head = 0; head < q_rows; ++head) {
@@ -582,16 +628,16 @@ akv_status_t akv_attention_execute_v2_with_features_native(
         akv_v2_tile_length(kv_length, tile_start);
     if (tile_start == 0u)
       issue_full(&plan->descriptor, 0u);
-    else
+    else if (!overlap_refill)
       issue_refill(tile_start);
 
     if (q_rows == AKV_ATTENTION_KERNEL_Q_ROWS &&
         head_dim == AKV_HEAD_DIM_128) {
-      akv_v2_compute_scores_f16_d128_gqa6(
+      compute_scores_d128_gqa6(
           query, &workspace->score[0][0], tile_tokens,
           query_row_stride_bytes);
     } else {
-      akv_v2_compute_scores_f16_generic(
+      akv_pair_qk_f16_dispatch(paired_heads,
           query, &workspace->score[0][0], tile_tokens,
           query_row_stride_bytes, q_rows, head_dim);
     }
@@ -599,11 +645,16 @@ akv_status_t akv_attention_execute_v2_with_features_native(
                                  tile_tokens, q_rows, features);
     if (q_rows == AKV_ATTENTION_KERNEL_Q_ROWS &&
         head_dim == AKV_HEAD_DIM_128) {
-      akv_v2_update_outputs_f16_d128_gqa6(
-          &workspace->score[0][0], &workspace->accumulator[0][0],
-          workspace->old_scale, tile_tokens);
+      if (overlap_refill && kv_length - tile_start > AKV_V2_TILE_TOKENS)
+        akv_v2_update_outputs_f16_d128_gqa6_refill(
+            &workspace->score[0][0], &workspace->accumulator[0][0],
+            workspace->old_scale, tile_tokens, (uint64_t)tile_start + AKV_V2_TILE_TOKENS);
+      else
+        akv_v2_update_outputs_f16_d128_gqa6(
+            &workspace->score[0][0], &workspace->accumulator[0][0],
+            workspace->old_scale, tile_tokens);
     } else {
-      akv_v2_update_outputs_f16_generic(
+      akv_pair_pv_f16_dispatch(paired_heads,
           &workspace->score[0][0], &workspace->accumulator[0][0],
           workspace->old_scale, tile_tokens, q_rows, head_dim);
     }
@@ -636,6 +687,7 @@ akv_status_t akv_attention_execute_v2_prefill_native(
 #if defined(__riscv) && __riscv_xlen == 64 && defined(__riscv_vector) &&       \
     defined(__riscv_zvfh) && !defined(SPIKE)
   const uint32_t q_rows = problem->query_heads / problem->kv_heads;
+  const int paired_pv = akv_prefill_pair_pv_enabled(device, q_rows, problem->head_dim);
   const uint32_t query_stride_bytes = sizeof(workspace->query[0][0]);
   const uint32_t output_stride_bytes = problem->head_dim * sizeof(float);
 
@@ -831,7 +883,7 @@ akv_status_t akv_attention_execute_v2_prefill_native(
                   &workspace->score[compute_slot][0][0], output,
                   workspace->old_scale[compute_slot], active_tokens);
             } else {
-              akv_v2_update_outputs_f32_generic(
+              akv_prefill_pair_pv_dispatch(paired_pv,
                   &workspace->score[compute_slot][0][0], output,
                   workspace->old_scale[compute_slot], active_tokens, q_rows,
                   problem->head_dim);

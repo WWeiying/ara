@@ -1,0 +1,22 @@
+{
+  "state": "PROMOTED_SOURCE_COMPILE_PASS",
+  "runtime_gate": "verification/qbs/results/q8k-signed-max-runtime-20261026.json",
+  "rtl_gate": "verification/qbs/results/q8k-signed-max-projection-20261026.json",
+  "production_header": "software/qbs/ggml/q8_K-m4.h",
+  "production_helper": "software/qbs/ggml/q8_K-signed-max.h",
+  "header_sha256": "5ff0dce85d5d2d1c5e8eec99d369d2a6a6c6badd6323866f1347c60690b501d2",
+  "helper_sha256": "f6d442fc7b5a0f73423719c10db223433fdb5b7c69d5db47963365892e2b5917",
+  "external_headers_equal": true,
+  "external_directory": "/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv",
+  "compile_output": "verification/out/q8k-signed-max-promotion-20261026-01",
+  "compiled_configurations": ["rv64gcv_zfh_zvfh", "rv64gc", "rv64gcv_zfh_zvfh_fast_math"],
+  "text_bytes": 218186,
+  "text_sha256": "dc6ceef8a20409a388125d3e8adb3047acd71fedd3ca03541544dd333f6091dc",
+  "text_matches_tested_candidate": true,
+  "whole_object_identity": false,
+  "canonical_tests_passed": 4,
+  "default_selection_changed": false,
+  "runtime_executables_overwritten": false,
+  "rtl_changed": false,
+  "external_unrelated_edits_preserved": true
+}

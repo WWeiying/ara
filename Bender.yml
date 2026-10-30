@@ -42,6 +42,7 @@ sources:
     - hardware/src/ctrl_registers.sv
     - hardware/src/cva6_accel_first_pass_decoder.sv
     - hardware/src/ara_dispatcher.sv
+    - hardware/src/vlsu/akv/akv_refill_order_guard.sv
     - hardware/src/ara_sequencer.sv
     - hardware/src/axi_inval_filter.sv
     - hardware/src/lane/lane_sequencer.sv
@@ -63,17 +64,24 @@ sources:
     - hardware/src/vlsu/qbs/qbs_dot_array.sv
     - hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv
     - hardware/src/vlsu/qbs/qbs_read_engine.sv
+    - hardware/src/vlsu/qbs_akv_shared_reader.sv
     - hardware/src/vlsu/qbs/qbs_activation_context.sv
     - hardware/src/vlsu/qbs/qbs_payload_sram.sv
     - hardware/src/vlsu/qbs/qbs_payload_buffer.sv
     - hardware/src/vlsu/qbs/qbs_block_adapter.sv
     - hardware/src/vlsu/qbs/qbs_profile_engine_int.sv
+    - hardware/src/vlsu/qbs/qbs_half_scale.sv
     - hardware/src/vlsu/qbs/qbs_fp_accumulator.sv
     - hardware/src/vlsu/qbs/qbs_compute_engine.sv
     - hardware/src/vlsu/qbs/qbs_commit.sv
+    - hardware/src/vlsu/qbs/qbs_vrf_seed_mapper.sv
+    - hardware/src/vlsu/qbs/qbs_seed_stream_router.sv
     - hardware/src/vlsu/qbs/qbs_engine.sv
     - hardware/src/vlsu/akv/akv_context.sv
     - hardware/src/vlsu/akv/akv_v2_context.sv
+    - hardware/src/vlsu/akv/akv_legacy_repacker.sv
+    - hardware/src/vlsu/akv/akv_q_store.sv
+    - hardware/src/vlsu/akv/akv_unified_context.sv
     - hardware/src/vlsu/akv/akv_engine.sv
     # Level 2
     - hardware/src/lane/operand_queues_stage.sv

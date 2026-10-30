@@ -1,0 +1,22 @@
+{
+  "state": "PASS",
+  "scope": "Isolated combined-Zvfh production Q8_K M4 selector, functional byte/CSR comparison only",
+  "run": "verification/out/q8k-combined-native-20261026-01",
+  "build": "verification/out/q8k-combined-native-build-20261026-02",
+  "cases": 50,
+  "real_cases": 6,
+  "checks": 4000,
+  "vlen": 1024,
+  "off": {"checks": 2000, "vector": 0, "generic": 2000},
+  "on": {"checks": 2000, "vector": 312, "generic": 1688},
+  "packed_bytes_scales_bsums": "exact",
+  "paired_fcsr_vcsr": "exact",
+  "input_and_canaries": "unchanged",
+  "independent_raw_log_recheck": "PASS",
+  "log_sha256": "5b766a3a14005721f48f80061eccb50053bd1bca066f237393bf791b90605053",
+  "manifest_sha256": "ea4c54feb157041a79773e57c1ba135019e5d7aaf3668c1d9fd48aa313d59e50",
+  "elf_sha256": "bce7c726ba4235970d4965d7a4988ad0e4ee15b9646471fb90112debe026ce72",
+  "production_patch_applied": false,
+  "rtl_performance_measured": false,
+  "remaining": ["Current combined GGML graph integration", "Current RTL complete-projection performance", "Production deployment decision"]
+}

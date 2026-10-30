@@ -1,0 +1,162 @@
+{
+  "audit_sources": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/qbs/audit_pack_projection.py": "7604525f31aeb70179e263c506cec476fe5fefd8cd4131b7214bbc6425e13abd",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/qbs/audit_projection_soc_pair.py": "0fb7dbcd1d724112c0d0d4803fd058aff17d91bb4335daabbf30233fa4c62bae",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/qbs/run_half_scale_soc.py": "7ddcf48bab34f6e06c62782347c1a25eb8b0d934e4064c8a1155e92185c704df"
+  },
+  "baseline": {
+    "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-context-projection-soc-20261023-02",
+    "elf_sha256": "ebc3363158f73c181bd5644c74b25a23cc28a3e6548747fd972927b6c53471da",
+    "image_pins_sha256": "d8cc082d9acda56b9877b4a13c65d792e86c2a3c412cde6475c73b2bdab2f858",
+    "input_pins_sha256": "22e068f40da68e238cfb33d45b013b560035c871f479270e3ffbf3f241de080f",
+    "log_sha256": "799f5a2369212657adfabce7e0f1fe615cde5971f982cf07bcfd4b5dc3b0ca00",
+    "original_worker_state": "failed",
+    "projection": {
+      "logical_read_components": {
+        "activations": 106624,
+        "descriptors": 448,
+        "quantization_input": 14336,
+        "weights": 852992
+      },
+      "oracle": {
+        "kind": "scalar_fp64_offline",
+        "max_abs_bits": "0x35400000",
+        "mismatches": "0",
+        "outputs": "3584",
+        "quant_byte_mismatches": "0"
+      },
+      "preflight": {
+        "context_capacity": "4672",
+        "layout": "2",
+        "packed_bytes": "3808",
+        "planned_direct": "28",
+        "planned_fill": "0",
+        "planned_release": "0",
+        "planned_reuse": "0",
+        "tiles": "28"
+      },
+      "result": {
+        "activation_context": "0",
+        "checksum": "0xa6e8082b37dbf573",
+        "compute_cycles": "256975",
+        "context_generation": "0",
+        "cross_op_reuse": "0",
+        "cycles_per_output_x1000": "71700",
+        "descriptor_setup_cycles": "0",
+        "descriptor_setup_cycles_valid": "0",
+        "inputs": "4",
+        "k": "896",
+        "logical_read_bytes": "974400",
+        "matmul_cycles": "168457",
+        "max_abs_bits": "0x35800000",
+        "max_rel_bits": "0x39ba2c01",
+        "mismatches": "0",
+        "operations": "1",
+        "outputs": "3584",
+        "outputs_per_operation": "3584",
+        "pack_cycles": "62462",
+        "qbs_status": "0",
+        "quantizations": "1",
+        "quantize_cycles": "26056",
+        "result": "PASS",
+        "result_count": "3584",
+        "rows": "896",
+        "setup_included": "1",
+        "tiles": "28",
+        "timed_cycles": "256975",
+        "timed_cycles_per_output_x1000": "71700",
+        "timing_scope": "production_command"
+      }
+    },
+    "report_sha256": "828926edfa78ed0fb9bc9504eaa285e051e82f76a804ead1e4f85d2e4b16b790"
+  },
+  "build_report_sha256": "116cae7c1c89405b5cbc399ef2ee058c8e8a6f13e0766e6d2e4519fbb298df14",
+  "candidate": {
+    "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-pack-projection-20261023-01/soc",
+    "elf_sha256": "5417686c10c620d760ac137c26492879599b2ef522cb2e90d5c704555ef8f4bf",
+    "image_pins_sha256": "d8cc082d9acda56b9877b4a13c65d792e86c2a3c412cde6475c73b2bdab2f858",
+    "input_pins_sha256": "d096712bc72b8e8410881a82d0ebfa778424ba9fe402dfb2dd9e15f392a5839d",
+    "log_sha256": "7f9aef86e66cd08df9168c0400ec90b543ccfc8afc65cf0eb254b3ab0e0ccd15",
+    "original_worker_state": "passed",
+    "projection": {
+      "logical_read_components": {
+        "activations": 106624,
+        "descriptors": 448,
+        "quantization_input": 14336,
+        "weights": 852992
+      },
+      "oracle": {
+        "kind": "scalar_fp64_offline",
+        "max_abs_bits": "0x35400000",
+        "mismatches": "0",
+        "outputs": "3584",
+        "quant_byte_mismatches": "0"
+      },
+      "preflight": {
+        "context_capacity": "4672",
+        "layout": "2",
+        "packed_bytes": "3808",
+        "planned_direct": "28",
+        "planned_fill": "0",
+        "planned_release": "0",
+        "planned_reuse": "0",
+        "tiles": "28"
+      },
+      "result": {
+        "activation_context": "0",
+        "checksum": "0xa6e8082b37dbf573",
+        "compute_cycles": "210923",
+        "context_generation": "0",
+        "cross_op_reuse": "0",
+        "cycles_per_output_x1000": "58851",
+        "descriptor_setup_cycles": "0",
+        "descriptor_setup_cycles_valid": "0",
+        "inputs": "4",
+        "k": "896",
+        "logical_read_bytes": "974400",
+        "matmul_cycles": "168451",
+        "max_abs_bits": "0x35800000",
+        "max_rel_bits": "0x39ba2c01",
+        "mismatches": "0",
+        "operations": "1",
+        "outputs": "3584",
+        "outputs_per_operation": "3584",
+        "pack_cycles": "16409",
+        "qbs_status": "0",
+        "quantizations": "1",
+        "quantize_cycles": "26063",
+        "result": "PASS",
+        "result_count": "3584",
+        "rows": "896",
+        "setup_included": "1",
+        "tiles": "28",
+        "timed_cycles": "210923",
+        "timed_cycles_per_output_x1000": "58851",
+        "timing_scope": "production_command"
+      }
+    },
+    "report_sha256": "c56be858f0c7c2e9878e72d461b44cdac3a4f928ca1764bb1d4dcbbf65b97243"
+  },
+  "phases": {
+    "matmul_cycles": {
+      "baseline": 168457,
+      "candidate": 168451
+    },
+    "pack_cycles": {
+      "baseline": 62462,
+      "candidate": 16409
+    },
+    "quantize_cycles": {
+      "baseline": 26056,
+      "candidate": 26063
+    },
+    "timed_cycles": {
+      "baseline": 256975,
+      "candidate": 210923
+    }
+  },
+  "scope": "Real M4/N896/K896 row-quantize plus packing projection, not fused GGML M4 or whole model",
+  "state": "PASS",
+  "total_cycle_reduction_percent": 17.92080941725849,
+  "total_speedup": 1.2183356011435453
+}

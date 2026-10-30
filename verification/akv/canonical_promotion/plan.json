@@ -1,0 +1,106 @@
+{
+  "schema": "shared_resource_canonical_rtl_patch_plan_v1",
+  "state": "PREPARED_NOT_APPLIED_NOT_AUTHORIZED_BY_LIVE_PIN_BARRIER",
+  "snapshot": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03",
+  "snapshot_manifest_sha256": "035ac16298960fafbe2de94a764af5ad80bf08e0c62fdd0d424369d800b3b72f",
+  "files": [
+    {
+      "target": "hardware/src/vlsu/qbs/qbs_engine.sv",
+      "source": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/source/hardware/src/vlsu/qbs/qbs_engine.sv",
+      "source_sha256": "b61461807afa3942b5078c63543cd2a6c948aa415f9b0e50cba6864f1eeb099e",
+      "before_sha256": "70c97021aa34fd0565150e0a39a8da88a87140e4909e9908f0f6e57305da1024",
+      "after_sha256": "b61461807afa3942b5078c63543cd2a6c948aa415f9b0e50cba6864f1eeb099e",
+      "action": "replace"
+    },
+    {
+      "target": "hardware/src/vlsu/akv/akv_engine.sv",
+      "source": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/source/hardware/src/vlsu/akv/akv_engine.sv",
+      "source_sha256": "3d3d56c70a4929cee9041a1f10e7d869616e44ca7d191f34371a9fd25bd0a723",
+      "before_sha256": "fb7f3f647b734ce639ddf81366b9d5121b25225aad9bcb43e6d97ec5d5ac9bf4",
+      "after_sha256": "3d3d56c70a4929cee9041a1f10e7d869616e44ca7d191f34371a9fd25bd0a723",
+      "action": "replace"
+    },
+    {
+      "target": "hardware/src/vlsu/vlsu.sv",
+      "source": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/source/hardware/src/vlsu/vlsu.sv",
+      "source_sha256": "50c557701d72c50576605ccc0f8810f7a588fd05f2cf1d8b023552129c9ed7b5",
+      "before_sha256": "39f9b9a76c438fa8fa11762302b3ce2a75df6d223250d041614eefa4546a9443",
+      "after_sha256": "50c557701d72c50576605ccc0f8810f7a588fd05f2cf1d8b023552129c9ed7b5",
+      "action": "replace"
+    },
+    {
+      "target": "hardware/src/vlsu/qbs_akv_shared_reader.sv",
+      "source": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/support/qbs_akv_shared_reader.sv",
+      "source_sha256": "3151e11d1f1abc175af1d6cbea85b2b5858aed0f9b59196c43604fccbdf169d6",
+      "before_sha256": null,
+      "after_sha256": "3151e11d1f1abc175af1d6cbea85b2b5858aed0f9b59196c43604fccbdf169d6",
+      "action": "add"
+    },
+    {
+      "target": "hardware/src/vlsu/akv/akv_legacy_repacker.sv",
+      "source": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/support/akv_legacy_repacker.sv",
+      "source_sha256": "78ce01557cfdc226b1d6102f88e47afbfef45f54b7735206b88f73e3f45f0a3b",
+      "before_sha256": null,
+      "after_sha256": "78ce01557cfdc226b1d6102f88e47afbfef45f54b7735206b88f73e3f45f0a3b",
+      "action": "add"
+    },
+    {
+      "target": "hardware/src/vlsu/akv/akv_q_store.sv",
+      "source": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/support/akv_q_store.sv",
+      "source_sha256": "537717ae9a91c18322b32382d93d63427e8d427dc424443a34ce406395662334",
+      "before_sha256": null,
+      "after_sha256": "537717ae9a91c18322b32382d93d63427e8d427dc424443a34ce406395662334",
+      "action": "add"
+    },
+    {
+      "target": "hardware/src/vlsu/akv/akv_unified_context.sv",
+      "source": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/support/akv_unified_context.sv",
+      "source_sha256": "fb7554adb8a6366c5b0a50a4151c96936f6ad0974d7bbcd4c471dc8531aac033",
+      "before_sha256": null,
+      "after_sha256": "fb7554adb8a6366c5b0a50a4151c96936f6ad0974d7bbcd4c471dc8531aac033",
+      "action": "add"
+    },
+    {
+      "target": "hardware/include/shared_reader_types.svh",
+      "source": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/support/shared_reader_types.svh",
+      "source_sha256": "a99d5531502637d17c9709923c418c2a3c8d0d16b5ca8b43f38d2d8a7f595101",
+      "before_sha256": null,
+      "after_sha256": "a99d5531502637d17c9709923c418c2a3c8d0d16b5ca8b43f38d2d8a7f595101",
+      "action": "add"
+    },
+    {
+      "target": "hardware/include/vlsu_shared_reader.svh",
+      "source": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/support/vlsu_shared_reader.svh",
+      "source_sha256": "fecec85a6ab07461dedd898fb2e9efa7f52fb961fca7c34930f4bbfb2b6b9ac9",
+      "before_sha256": null,
+      "after_sha256": "fecec85a6ab07461dedd898fb2e9efa7f52fb961fca7c34930f4bbfb2b6b9ac9",
+      "action": "add"
+    },
+    {
+      "target": "hardware/include/admission_assertions.svh",
+      "source": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/support/admission_assertions.svh",
+      "source_sha256": "a4d1bbeb6e384f2d037f4e54ead3deedd56cefc67e0afb46558eeb3d5fd31c88",
+      "before_sha256": null,
+      "after_sha256": "a4d1bbeb6e384f2d037f4e54ead3deedd56cefc67e0afb46558eeb3d5fd31c88",
+      "action": "add"
+    },
+    {
+      "target": "Bender.yml",
+      "source": null,
+      "before_sha256": "c503ebedf85924cc1add30fcadc7179a9b8fb7b53a03c5ee7139b3b0f3da2e1a",
+      "after_sha256": "06e7e75a5183b33d237e0f88ed9ba34f7fbb43035a3603ad73a4b737a338f4f0",
+      "action": "four_dependency_ordered_source_insertions"
+    }
+  ],
+  "production_promoted": false,
+  "compiler_invoked": false,
+  "hardware_behavior_changed_by_preparation": false,
+  "scope": "Three exact accepted RTL replacements, seven support files and Bender source ordering only; standalone Makefiles and synthesis wrapper adaptation remain separate required packaging work",
+  "requirements_before_application": [
+    "All live old-source/image pin consumers terminal and audited",
+    "Original and candidate evidence preserved independently",
+    "Ordinary RVV Attention and integrated held-AR/error-drain gates reviewed",
+    "Standalone source/interface and synthesis-wrapper packaging included in final coherent promotion"
+  ],
+  "patch_sha256": "f0ddeb180b7869d9dd42c38ff858f8bac38718b49ced9107157e9dd4e22a8c13"
+}

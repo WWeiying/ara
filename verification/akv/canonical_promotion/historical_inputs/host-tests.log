@@ -1,0 +1,22 @@
+test_archive_added_header_rejected (test_archive.ArchiveTests) ... ok
+test_archive_wrong_data_rejected (test_archive.ArchiveTests) ... ok
+test_changed_current_root_still_consumes_old_sha (test_archive.ArchiveTests) ... ok
+test_exact_copies_and_all_six_receipts (test_archive.ArchiveTests) ... ok
+test_existing_header_change_not_exempt (test_archive.ArchiveTests) ... ok
+test_filelist_bytes_preserved_and_not_rebased (test_archive.ArchiveTests) ... ok
+test_live_added_header_is_not_historical (test_archive.ArchiveTests) ... ok
+test_new_header_cannot_be_archived_as_original (test_archive.ArchiveTests) ... ok
+test_no_overwrite (test_archive.ArchiveTests) ... ok
+test_nonmapped_pin_still_verified (test_archive.ArchiveTests) ... ok
+test_original_receipt_mutation_rejected (test_archive.ArchiveTests) ... ok
+test_relocated_archive_uses_relative_payload (test_archive.ArchiveTests) ... ok
+test_software_pins_are_not_canonical_mappings (test_archive.ArchiveTests) ... ok
+test_symlink_replacement_rejected (test_archive.ArchiveTests) ... ok
+test_unknown_changed_hash_rejected (test_archive.ArchiveTests) ... ok
+test_wrong_receipt_not_admitted (test_archive.ArchiveTests) ... ok
+test_wrong_reviewed_manifest_hash (test_archive.ArchiveTests) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 0.623s
+
+OK

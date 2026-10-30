@@ -425,6 +425,7 @@ static int parse_unsigned(const char *text, unsigned *value) {
 }
 
 static unsigned parse_profile(const char *text) {
+  if (strcmp(text, "q8_0") == 0) return QBS_WEIGHT_PROFILE_Q8_0_WEIGHT;
   if (strcmp(text, "q4_K") == 0) return QBS_WEIGHT_PROFILE_Q4_K;
   if (strcmp(text, "q6_K") == 0) return QBS_WEIGHT_PROFILE_Q6_K;
   if (strcmp(text, "q2_K") == 0) return QBS_WEIGHT_PROFILE_Q2_K;
@@ -436,6 +437,7 @@ static unsigned parse_profile(const char *text) {
 
 static const char *real_weight_filename(unsigned profile) {
   switch (profile) {
+    case QBS_WEIGHT_PROFILE_Q8_0_WEIGHT: return "weight_q8_0.bin";
     case QBS_WEIGHT_PROFILE_Q4_K: return "weight_q4_K.bin";
     case QBS_WEIGHT_PROFILE_Q6_K: return "weight_q6_K.bin";
     case QBS_WEIGHT_PROFILE_Q2_K: return "weight_q2_K.bin";
@@ -463,7 +465,7 @@ static int read_slice(const char *path, size_t offset, void *data,
   return ok;
 }
 
-static int emit_real_case(FILE *output, unsigned profile,
+static int emit_real_case(FILE *output, unsigned case_id, unsigned profile,
                           const char *directory, unsigned full_n, unsigned k,
                           unsigned input_start, unsigned m,
                           unsigned output_start, unsigned n) {
@@ -518,8 +520,7 @@ static int emit_real_case(FILE *output, unsigned profile,
         ? QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED
         : (m == 4 ? QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED
                   : QBS_ACTIVATION_LAYOUT_ROW_MAJOR);
-    fprintf(output, "QBSCMD1 1\n");
-    ok = emit_case_data(output, 0, profile,
+    ok = emit_case_data(output, case_id, profile,
                         QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
                         activation_layout, m, n, k_blocks,
                         weights, activations, golden) == 0;
@@ -531,10 +532,11 @@ static int emit_real_case(FILE *output, unsigned profile,
 }
 
 int main(int argc, char **argv) {
-  if (argc != 2 && argc != 11) {
+  if (argc != 2 && argc != 11 &&
+      !(argc == 3 && strcmp(argv[2], "--context-suite") == 0)) {
     fprintf(stderr,
             "usage: %s OUTPUT\n"
-            "       %s OUTPUT --real q4_K|q6_K|q2_K|q4_0|q5_0|iq4_nl "
+            "       %s OUTPUT --real[-projection] q4_K|q6_K|q8_0|q2_K|q4_0|q5_0|iq4_nl "
             "DIRECTORY FULL_N K "
             "INPUT_START M OUTPUT_START N\n",
             argv[0], argv[0]);
@@ -545,10 +547,34 @@ int main(int argc, char **argv) {
     perror(argv[1]);
     return 2;
   }
+  if (argc == 3) {
+    fprintf(output, "QBSCMD1 12\n");
+    unsigned case_id = 0;
+    int failed = 0;
+    for (unsigned compact = 0; compact < 2; ++compact) {
+      for (unsigned m = 1; m <= 8; ++m) {
+        if (m == 2 || m == 3) continue;
+        const unsigned rows = m == 1 ? 1 : m == 4 ? 4 : 8;
+        const unsigned bytes = compact ? QBS_Q8_0_BLOCK_BYTES : QBS_Q8_K_BLOCK_BYTES;
+        unsigned blocks = QBS_ACTIVATION_CONTEXT_CAPACITY_BYTES / (rows * bytes);
+        if (blocks > QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS)
+          blocks = QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS;
+        failed |= emit_case(output, case_id++,
+            compact ? QBS_WEIGHT_PROFILE_Q8_0_WEIGHT : QBS_WEIGHT_PROFILE_Q4_K,
+            QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+            m == 1 ? QBS_ACTIVATION_LAYOUT_ROW_MAJOR : m == 4
+                ? QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED : QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED,
+            m, 5, blocks);
+      }
+    }
+    fclose(output);
+    return failed ? 1 : 0;
+  }
   if (argc == 11) {
     unsigned profile = parse_profile(argv[3]);
     unsigned full_n, k, input_start, m, output_start, n;
-    int failed = strcmp(argv[2], "--real") != 0 ||
+    const int projection = strcmp(argv[2], "--real-projection") == 0;
+    int failed = (!projection && strcmp(argv[2], "--real") != 0) ||
                  profile == QBS_WEIGHT_PROFILE_INVALID ||
                  !parse_unsigned(argv[5], &full_n) ||
                  !parse_unsigned(argv[6], &k) ||
@@ -556,16 +582,29 @@ int main(int argc, char **argv) {
                  !parse_unsigned(argv[8], &m) ||
                  !parse_unsigned(argv[9], &output_start) ||
                  !parse_unsigned(argv[10], &n);
-    if (!failed)
-      failed = emit_real_case(output, profile, argv[4], full_n, k,
+    if (!failed && projection) {
+      if (output_start != 0 || n == 0 || full_n < 2 * (size_t)n ||
+          n > QBS_MAX_N || full_n % n != 0) {
+        fprintf(stderr, "projection requires complete equal-size output tiles\n");
+        failed = 1;
+      } else {
+        fprintf(output, "QBSCMD1 %u\n", full_n / n);
+        for (unsigned tile = 0; tile < full_n / n && !failed; ++tile)
+          failed = emit_real_case(output, tile, profile, argv[4], full_n, k,
+                                  input_start, m, tile * n, n);
+      }
+    } else if (!failed) {
+      fprintf(output, "QBSCMD1 1\n");
+      failed = emit_real_case(output, 0, profile, argv[4], full_n, k,
                               input_start, m, output_start, n);
+    }
     fclose(output);
     if (failed) return 1;
     printf("wrote real QBS command slice to %s\n", argv[1]);
     return 0;
   }
 
-  fprintf(output, "QBSCMD1 33\n");
+  fprintf(output, "QBSCMD1 36\n");
   int failed = 0;
   failed |= emit_case(output, 0, QBS_WEIGHT_PROFILE_Q4_K,
                       QBS_WEIGHT_LAYOUT_ROW_MAJOR,
@@ -672,8 +711,18 @@ int main(int argc, char **argv) {
   failed |= emit_case(output, 32, QBS_WEIGHT_PROFILE_IQ4_NL,
                       QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
                       QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED, 5, 11, 1);
+  // Alternating activation banks: final 8-bit K tag and multi-block wide controls.
+  failed |= emit_case(output, 33, QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
+                      QBS_WEIGHT_LAYOUT_ROW_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 1, 1, 256);
+  failed |= emit_case(output, 34, QBS_WEIGHT_PROFILE_Q4_K,
+                      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED, 5, 7, 3);
+  failed |= emit_case(output, 35, QBS_WEIGHT_PROFILE_Q6_K,
+                      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED, 8, 16, 3);
   fclose(output);
   if (failed) return 1;
-  printf("wrote 33 QBS command cases to %s\n", argv[1]);
+  printf("wrote 36 QBS command cases to %s\n", argv[1]);
   return 0;
 }

@@ -346,6 +346,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
         end
         VFU_LoadUnit: begin
           pe_req_ready = (!operand_request_valid_o[MaskM] || operand_request_ready_i[MaskM]) &&
+                         (!(qbs_pkg::QbsVrfContinuationEnable && pe_req.op == VQBEXEC && pe_req.use_vs1) ||
+                          !operand_request_valid_o[StA] || operand_request_ready_i[StA]) &&
                          (!(pe_req.op == VLXE) || (!operand_request_valid_o[SlideAddrGenA] || operand_request_ready_i[SlideAddrGenA]));
         end
         VFU_SlideUnit: begin
@@ -652,6 +654,26 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           automatic int unsigned idx_elems_per_aggregate_word;
           automatic int unsigned idx_first_aggregate_word;
           automatic int unsigned idx_aggregate_word_count;
+
+          // QBACC reads its old destination before any result is committed.
+          // EW32 and full per-row VL give balanced four-lane register words.
+          if (qbs_pkg::QbsVrfContinuationEnable && pe_req.op == VQBEXEC && pe_req.use_vs1) begin
+            operand_request[StA] = '{
+              id: pe_req.id,
+              vs: pe_req.vs1,
+              eew: pe_req.old_eew_vs1,
+              conv: pe_req.conversion_vs1,
+              scale_vl: pe_req.scale_vl,
+              vtype: pe_req.vtype,
+              vl: vfu_operation_d.vl,
+              vstart: vfu_operation_d.vstart,
+              hazard: pe_req.hazard_vs1 | pe_req.hazard_vd,
+              target_fu: ALU_SLDU,
+              cvt_resize: CVT_SAME,
+              default: '0
+            };
+            operand_request_push[StA] = 1'b1;
+          end
 
           // This vector instruction uses masks
           operand_request[MaskM] = '{

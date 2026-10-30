@@ -1,0 +1,11 @@
+{
+  "state": "PASS",
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-vrf-panel-data-20261023-01",
+  "manifest_sha256": "d1c0a16471e03499f29d0c0e7b470ce8e4fbfc15e772af8241953c45256b15ef",
+  "shape": {"m": 4, "n": 64, "k": 8960, "k_blocks": 35},
+  "outputs": 256,
+  "checked_weight_bytes": 470400,
+  "checked_weight_blocks": 2240,
+  "panel_fflags": [1, 1],
+  "scope": "Real model data, full-K reference and exact captured llama outputs; reference-quantized activation, not production GGML preparation or native RTL execution"
+}

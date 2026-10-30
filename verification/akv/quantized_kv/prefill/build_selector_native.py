@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Fresh Decode pair using an archived recipe, never its old object/source identity."""
+import argparse
+import json
+from pathlib import Path
+import re
+import shlex
+import subprocess
+from run_replay import digest
+
+HERE=Path(__file__).resolve().parent
+ROOT=HERE.parents[3]
+
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--recipe-build',type=Path,required=True)
+    parser.add_argument('--output',type=Path,required=True)
+    mode=parser.add_mutually_exclusive_group()
+    mode.add_argument('--profile-current',action='store_true',help='One current production call, not an old/new pair')
+    mode.add_argument('--pair-production-bindings',action='store_true',help='Frozen old selector versus current, shared runtime V decoder')
+    mode.add_argument('--block-max-experiment',action='store_true',help='Current shared selector versus independent block-max experiment')
+    args=parser.parse_args();prior=args.recipe_build.resolve(strict=True);out=args.output.resolve()
+    if args.block_max_experiment or args.pair_production_bindings:
+        assert 'if (maximum >= UINT32_C(0x7f800000))' not in (ROOT/'software/akv/experimental/quantized_kv/selection_strided.h').read_text(), 'Historical comparison is sealed after block-max promotion; use --profile-current'
+    if not args.profile_current and not args.pair_production_bindings and not args.block_max_experiment:
+        assert 'AKV_QUANT_PROVEN_ALIGNMENT' not in (ROOT/'software/akv/experimental/quantized_kv/selection_strided.h').read_text(), 'Historical pair is sealed; use --profile-current after promotion'
+    report=json.loads((prior/'build.json').read_text())
+    assert report['state']=='BUILT_NOT_EXECUTED' and report.get('token_major') is True
+    records_path=prior/'commands.json'
+    assert digest(records_path)==report['artifacts'][str(records_path)]
+    old_pins_path=prior/'source-pins.json'
+    assert digest(old_pins_path)==report['source_pins_sha256']
+    old_pins=json.loads(old_pins_path.read_text());old_pins.update(report['artifacts'])
+    records=json.loads(records_path.read_text())
+    compiles=[list(r['argv']) for r in records if r['label'].startswith('compile-')]
+    assert len(compiles)==16 and report['kind'] in ('q4_0','q8_0')
+    out.mkdir(parents=True,exist_ok=False);pins={};commands=[]
+    def pin(p):
+        p=Path(p).resolve(strict=True);h=digest(p)
+        assert str(p) not in pins or pins[str(p)]==h,str(p)
+        pins[str(p)]=h
+    for p in (Path(__file__),HERE/'run_replay.py',prior/'build.json',records_path,old_pins_path):pin(p)
+    # Historical assembly and its binary payloads are immutable recipe inputs.
+    # C/header sources are freshly dependency-scanned and independently pinned below.
+    for cmd in compiles:
+        source=Path(cmd[cmd.index('-c')+1])
+        if source.suffix=='.S':
+            if str(source) in old_pins:assert digest(source)==old_pins[str(source)],source
+            pin(source)
+            for payload in re.findall(r'\.incbin\s+"([^"]+)"',source.read_text()):
+                assert digest(payload)==old_pins[payload],payload
+                pin(payload)
+    compiles[1][compiles[1].index('-c')+1]=str(HERE/('native_decode_profile.c' if args.profile_current else 'native_selector_main.c'))
+    if args.pair_production_bindings:compiles[1].insert(1,'-DSELECTOR_PRODUCTION_PAIR=1')
+    if args.block_max_experiment:compiles[1].insert(1,'-DSELECTOR_BLOCK_MAX_EXPERIMENT=1')
+    runtime='selector_baseline_runtime.c' if args.pair_production_bindings else 'selector_block_max_runtime.c' if args.block_max_experiment else 'selector_runtime.c'
+    candidate=list(compiles[15]);candidate[candidate.index('-c')+1]=str(HERE/runtime)
+    compiles.append(candidate)
+    def run(argv,label):
+        argv=list(map(str,argv));pin(argv[0]);commands.append(dict(label=label,argv=argv))
+        (out/'commands.json').write_text(json.dumps(commands,indent=2)+'\n')
+        with (out/(label+'.log')).open('w') as log:
+            subprocess.run(argv,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,check=True,timeout=180)
+        return (out/(label+'.log')).read_text()
+    objects=[]
+    for i,cmd in enumerate(compiles):
+        obj=out/f'{i}.o';objects.append(str(obj));cmd[cmd.index('-o')+1]=str(obj)
+        deps=[v for j,v in enumerate(cmd) if j not in (cmd.index('-c'),cmd.index('-o'),cmd.index('-o')+1)]
+        text=run([*deps,'-M','-MT','object'],'deps-'+str(i))
+        for p in shlex.split(text.replace('\\\n',' ').split(':',1)[1]):pin(p)
+        run(cmd,'compile-'+str(i))
+    link=list(next(r['argv'] for r in records if r['label']=='link'))
+    link=[v for v in link if not v.endswith('.o')]
+    link[link.index('-Wl,--gc-sections'):link.index('-Wl,--gc-sections')]=objects
+    elf=out/'selector.elf';link[link.index('-o')+1]=str(elf)
+    link=['-Wl,-Map='+str(out/'link.map') if v.startswith('-Wl,-Map=') else v for v in link]
+    run(link,'link')
+    dis=run([Path(link[0]).with_name('riscv64-unknown-elf-objdump'),'-d',elf],'disassembly')
+    for symbol in ('qbs_native_execute_command','akv_quant_strided_execute','main'):
+        assert '<'+symbol+'>:' in dis,symbol
+    if args.profile_current:
+        run([Path(link[0]).with_name('riscv64-unknown-elf-nm'),'-n','-S','--defined-only',elf],'symbols')
+        for marker in ('decode_profile_begin','decode_profile_end'):assert '<'+marker+'>:' in dis,marker
+    elif args.pair_production_bindings:assert '<akv_quant_baseline_execute>:' in dis
+    else:assert '<akv_quant_selector_execute>:' in dis
+    assert '<dequantize_row_q8_0>:' not in dis,'Scalar V binding drift'
+    assert '<qbs_ref_execute>:' not in dis
+    for p,h in pins.items():assert digest(p)==h,p
+    (out/'source-pins.json').write_text(json.dumps(pins,indent=2)+'\n')
+    result=dict(state='BUILT_NOT_EXECUTED',kind=report['kind'],elf=str(elf),elf_sha256=digest(elf),
+      source_pins_sha256=digest(out/'source-pins.json'),commands_per_trial=1,outputs_per_trial=256,
+      value_decodes=[20]*4,reused_objects=0,rebuilt_objects=17,whole_call=True,aligned_selector=True,
+      recipe_only=str(prior),historical_source_identity_reused=False,
+      scope='Qwen3 query19 GQA2 D128 token-major Decode original versus aligned selector',
+      performance_measured=False,artifacts={str(p):digest(p) for p in out.iterdir() if p.is_file()})
+    if args.profile_current:
+        result.update(current_decode_profile=True,aligned_selector=False,trials=1,value_decodes=[20],
+          scope='One current shared Decode call; retirement-PC attribution, not paired speedup')
+    result['value_binding']='shared_rvv_q8_0'
+    if args.pair_production_bindings:
+        result.update(frozen_selector_baseline=True,scope='Frozen original versus current selector with production shared RVV V decoder')
+    if args.block_max_experiment:
+        result.update(aligned_selector=False,selector_block_max=True,
+          scope='Current shared selector versus block-max experiment; whole Decode call, not whole model')
+    (out/'build.json').write_text(json.dumps(result,indent=2)+'\n')
+    print('SELECTOR_BUILT_NOT_EXECUTED '+str(elf))
+
+
+if __name__=='__main__':main()

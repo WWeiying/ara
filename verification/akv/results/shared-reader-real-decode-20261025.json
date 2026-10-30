@@ -1,0 +1,166 @@
+{
+  "auditor_sha256": "500a523770f1f887a65980aa6558e74330fa12228e4d2179a4d284c560d3d84f",
+  "baseline_evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-decode-20261024-01/image-contract.log": "060d1d0d487975247f4e53ca8673f7ce9d3215e39b3a63f11cf5150a3fce2f97",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-decode-20261024-01/manifest-after.log": "c6a72d5e6f123ed23bfba178fdc19d4e0fd52a6d0e56a1c5d06263d53b4fd2ed",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-decode-20261024-01/manifest-before.log": "c6a72d5e6f123ed23bfba178fdc19d4e0fd52a6d0e56a1c5d06263d53b4fd2ed",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-decode-20261024-01/source-pins.json": "31afdd8fb2e96ebfbdfc675383bf755f2dfb77fdb72f91c1e228fcf39696feb7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-decode-20261024-01/work/run.vcs.log": "def195c6c6a3c2f466df1ca23bbefc541ee6f16422ad5237d16c02d14062ddb9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-decode-20261024-01/work/uvm_result.json": "7bd8de4aba62e9f1b85431465a19419376a8a20eceb66cd910b8d4ffbae82b46",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-decode-20261024-01/work/vector_trace.csv": "965b48592695f02e029af6e175426792ef6392b1df48c87b20134ab7ed3c9d48"
+  },
+  "comparison": {
+    "calls": [
+      {
+        "baseline_cycles": null,
+        "candidate_cycles": null,
+        "case": 0,
+        "cycle_delta": null,
+        "mode": 0,
+        "trial": 0
+      },
+      {
+        "baseline_cycles": null,
+        "candidate_cycles": null,
+        "case": 0,
+        "cycle_delta": null,
+        "mode": 1,
+        "trial": 1
+      },
+      {
+        "baseline_cycles": null,
+        "candidate_cycles": null,
+        "case": 0,
+        "cycle_delta": null,
+        "mode": 0,
+        "trial": 2
+      },
+      {
+        "baseline_cycles": null,
+        "candidate_cycles": null,
+        "case": 1,
+        "cycle_delta": null,
+        "mode": 0,
+        "trial": 0
+      },
+      {
+        "baseline_cycles": null,
+        "candidate_cycles": null,
+        "case": 1,
+        "cycle_delta": null,
+        "mode": 1,
+        "trial": 1
+      },
+      {
+        "baseline_cycles": null,
+        "candidate_cycles": null,
+        "case": 1,
+        "cycle_delta": null,
+        "mode": 0,
+        "trial": 2
+      },
+      {
+        "baseline_cycles": null,
+        "candidate_cycles": null,
+        "case": 2,
+        "cycle_delta": null,
+        "mode": 0,
+        "trial": 0
+      },
+      {
+        "baseline_cycles": null,
+        "candidate_cycles": null,
+        "case": 2,
+        "cycle_delta": null,
+        "mode": 1,
+        "trial": 1
+      },
+      {
+        "baseline_cycles": null,
+        "candidate_cycles": null,
+        "case": 2,
+        "cycle_delta": null,
+        "mode": 0,
+        "trial": 2
+      },
+      {
+        "baseline_cycles": null,
+        "candidate_cycles": null,
+        "case": 3,
+        "cycle_delta": null,
+        "mode": 0,
+        "trial": 0
+      },
+      {
+        "baseline_cycles": null,
+        "candidate_cycles": null,
+        "case": 3,
+        "cycle_delta": null,
+        "mode": 1,
+        "trial": 1
+      },
+      {
+        "baseline_cycles": null,
+        "candidate_cycles": null,
+        "case": 3,
+        "cycle_delta": null,
+        "mode": 0,
+        "trial": 2
+      }
+    ],
+    "command_comparison": {
+      "changed_commands": 0,
+      "commands": 3680,
+      "differences_truncated": false,
+      "first_differences": [],
+      "identical": true
+    },
+    "complete_call_cycles_available": false,
+    "complete_call_no_regression": null,
+    "complete_operator_performance_accepted": false,
+    "matched": {
+      "calls": 12,
+      "command_counters_available": false,
+      "command_counters_identical": null,
+      "output_signatures_and_csrs_identical": true,
+      "per_call_counters_available": true,
+      "per_call_counters_identical": true,
+      "task_cycles_available": false,
+      "task_cycles_identical": true
+    },
+    "per_call_counter_equivalence": true,
+    "resource_regression_gate_pass": true,
+    "whole_model_performance": false
+  },
+  "current_inputs_match": true,
+  "elf_sha256": "c9af1c993ed793d001ed7f1cc13444222f52ba13522a23117e98f61be9a4a042",
+  "evidence_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-decode-20261025-01/image-contract.log": "060d1d0d487975247f4e53ca8673f7ce9d3215e39b3a63f11cf5150a3fce2f97",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-decode-20261025-01/manifest-after.log": "89e75880ce283338e60b4529ba00db3107b5aa9d60cfa088b0fcd215d38b9a2b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-decode-20261025-01/manifest-before.log": "89e75880ce283338e60b4529ba00db3107b5aa9d60cfa088b0fcd215d38b9a2b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-decode-20261025-01/source-pins.json": "15f1471878ceca89a4b0fcb1e46acc72721b2d04a8330bb69828e4480b69d9a4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-decode-20261025-01/work/run.vcs.log": "956c5453d565ae6bd945db354e4af0bc8197fcc58520240e106440c2d2868f43",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-decode-20261025-01/work/uvm_result.json": "19a27194d7b8bb730e649c0949ba5055b1e9c3192fc81c2ee13007edae7444a1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-decode-20261025-01/work/vector_trace.csv": "965b48592695f02e029af6e175426792ef6392b1df48c87b20134ab7ed3c9d48"
+  },
+  "fixture_scope": "Derived real-data full native OFF/ON/OFF; not independent full Attention oracle or performance evidence",
+  "independent_protocol_checked": true,
+  "kind": "decode",
+  "model_execution": false,
+  "ppa_measured": false,
+  "prior": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-decode-20261024-01",
+  "production_promoted": false,
+  "receipts": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-decode-20261024-01/result.json": "1ba008cc522f2f790c0e00a5c5230ac9bd9ceff52f64b0e31ae280953fd8a682",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-decode-20261024-01/source-pins.json": "31afdd8fb2e96ebfbdfc675383bf755f2dfb77fdb72f91c1e228fcf39696feb7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-live-decode-20261024-01/status.json": "f7795d2d15a1116e5dda220c945183aaf22377f45ad0adf05f131ca85ff6e5ef",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-decode-20261025-01/result.json": "f6a6d6e95320f890e4840f948b9f7ce92b549677e6dd7d1454997a7500e8bc78",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-decode-20261025-01/source-pins.json": "15f1471878ceca89a4b0fcb1e46acc72721b2d04a8330bb69828e4480b69d9a4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-decode-20261025-01/status.json": "f66cb691f5b74b9df5ded36b61056d89ab805a4d32293d0b327abda0bdf9463b"
+  },
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-reader-real-decode-20261025-01",
+  "same_elf": true,
+  "snapshot_sha256": "609eac8e5e689121b11d382f6e4606505efd74cf2202597cd02d805c22862483",
+  "state": "REAL_RUNTIME_PAIRED_RAW_RECHECKED",
+  "storage_variant": null
+}

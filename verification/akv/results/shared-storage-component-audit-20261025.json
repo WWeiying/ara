@@ -1,0 +1,121 @@
+{
+  "state": "PASS",
+  "scope": "Independent offline component and source-overlay audit; no new SoC jobs inspected",
+  "production_promoted": false,
+  "ppa_measured": false,
+  "new_soc_dynamic_acceptance_audited": false,
+  "method": [
+    "Rehash snapshot input/artifact pins, every component source manifest and result evidence entry, and full-SoC build source/artifact pins.",
+    "Require compile/suite exit=0, unique exact suite marker, and no Fatal/Error/TIMEOUT in raw unit logs.",
+    "Require raw QBS case identifiers exactly 0..35 and one PASS for each validation/MMU/AXI/PMA fault class.",
+    "Reproduce each test-only wrapper from canonical header and inverse-transform each adapted TB to exact original bytes.",
+    "Compare all 461 copied originals; compare snapshot03 against snapshot02 and reproduce the precise AKV storage transform and storage.patch.",
+    "Compare full-SoC warning blocks after normalizing only snapshot-02/snapshot-03 path roots."
+  ],
+  "snapshot": {
+    "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/snapshot-03/manifest.json",
+    "sha256": "035ac16298960fafbe2de94a764af5ad80bf08e0c62fdd0d424369d800b3b72f",
+    "input_pins": 532,
+    "artifact_pins": 474
+  },
+  "components": {
+    "tc": {
+      "result": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-unified-storage-unit-tc-20261025-01/result.json",
+      "result_sha256": "569fd5372c6294f2b356b12c0e7234315432b170d0f10f7115db5449f173633c",
+      "manifest_sha256": "16b9b1b3c4844a16d7a14a998c1abc0694287aaab6d6a4da01660406acc23a0e",
+      "log_sha256": "76113c8aecfd7dc18aba529e5ad2614b55a95e6913a2632195f8504824daf358",
+      "all_pins_verified": true,
+      "exit_code": 0
+    },
+    "macro": {
+      "result": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-unified-storage-unit-macro-20261025-01/result.json",
+      "result_sha256": "989b35caa3c7f4ffa0bda4e92edb9bb9c1a0d4550acfcfc7fb49712ec17e7f35",
+      "manifest_sha256": "68bf0c7ea188c655fa51f4fa5c6b4866a966327eb91a6dad166139d48812d4e8",
+      "log_sha256": "6bed44332ae4fe6ab5a37c3e10d6ea1943d64cc241dfb017d64e3ec41617463d",
+      "all_pins_verified": true,
+      "exit_code": 0
+    },
+    "standalone_qbs": {
+      "result": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-standalone-qbs-20261025-01/result.json",
+      "result_sha256": "7f331316d7c20b0782d11e45d1491be6d754a18616f4a57754fd9badac82ce6d",
+      "source_pins_sha256": "3ef653e7e233325ebfe45b971559c7ede5bf8866e3aa211daaadb2f8794374f6",
+      "log_sha256": "356b06193b06ce52ce0960dd12ea813fc6212d5752692dc7ef5deca37cd11436",
+      "all_pins_verified": true,
+      "exit_code": 0,
+      "marker": "QBS engine PASS: 36 functional cases plus four fault classes",
+      "tb_inverse_transform_exact": true,
+      "wrapper_reproduction_exact": true
+    },
+    "standalone_akv": {
+      "result": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-standalone-akv-20261025-01/result.json",
+      "result_sha256": "8706f74d63c4ab5c2dc26602f8d63a4f9eab878b34c1e8d0d573eb89483a81a0",
+      "source_pins_sha256": "f1dcafb6586dff0b14d2008cbe67efdb3cdd4b14a79e524b1026154ca791d231",
+      "log_sha256": "acc3f8ff8fafb4cdadb78dc66c66785850db88107ed6e28806c8b489aa5394d7",
+      "all_pins_verified": true,
+      "exit_code": 0,
+      "marker": "AKV engine PASS: v1 D64/D128 plus v2 D64/D96/D128 and segmented D256 row/column views, tails, counters, validation, and faults",
+      "tb_inverse_transform_exact": true,
+      "wrapper_reproduction_exact": true
+    },
+    "vlsu_compile": {
+      "result": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-integration-compile-20261025-01/result.json",
+      "result_sha256": "a79c3121237861a73b77ffdbf71d9a10f0fa7252a4ed09b1a4b5ff9e7d2fe267",
+      "state": "COMPILE_PASS_NOT_EXECUTED",
+      "all_pins_verified": true
+    },
+    "soc_build": {
+      "result": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared-storage-integration-soc-build-20261025-01/result.json",
+      "result_sha256": "265c0f71a748d3d97e9983609004e9865cda40d121bc7017bd435022d60969be",
+      "state": "SOC_BUILT_NOT_EXECUTED",
+      "all_pins_verified": true
+    }
+  },
+  "counts_per_storage_unit": {
+    "legacy_rows": 105,
+    "latency_checks": 105,
+    "legacy_writes": 1361,
+    "direct_writes": 2048,
+    "row_checks": 2704,
+    "column_checks": 72,
+    "aborts": 9,
+    "q_direct_overlap": 2,
+    "q_bytes": 2048,
+    "kv_bytes": 32768
+  },
+  "overlay": {
+    "canonical_changed_modules": [
+      "hardware/src/vlsu/akv/akv_engine.sv",
+      "hardware/src/vlsu/qbs/qbs_engine.sv",
+      "hardware/src/vlsu/vlsu.sv"
+    ],
+    "additional_changed_module_vs_snapshot02": "hardware/src/vlsu/akv/akv_engine.sv",
+    "qbs_vlsu_shared_reader_byte_identical_to_snapshot02": true,
+    "akv_outside_storage_instances_and_busy_assignment_byte_identical": true,
+    "candidate_support_copies_byte_identical": {
+      "akv_legacy_repacker.sv": "78ce01557cfdc226b1d6102f88e47afbfef45f54b7735206b88f73e3f45f0a3b",
+      "akv_q_store.sv": "537717ae9a91c18322b32382d93d63427e8d427dc424443a34ce406395662334",
+      "akv_unified_context.sv": "fb7554adb8a6366c5b0a50a4151c96936f6ad0974d7bbcd4c471dc8531aac033"
+    },
+    "storage_patch_sha256": "f41d8369c4876cab8cba6688d6b22e6fff81252e1de0fb9552a968c626de557a",
+    "complete_patch_sha256": "cb13e5c18e4957b7aa5351f8c3f92ef1466e0f01bf1d7a71719e0aec8795b46b",
+    "original_source_count": 461
+  },
+  "soc_build_warning_comparison": {
+    "baseline_count": 124,
+    "successor_count": 124,
+    "added_blocks": [],
+    "removed_blocks": []
+  },
+  "owned_sources": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/STORAGE_README.md": "9f688db89e637a96c2c12fdb9de7bfef1d0fd42e1cda8daa9d171e44c2de6138",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/build_storage_soc.py": "30355a79af7a17e325dcbcf87f57919afd453383426cc2b72d57f538b488eac6",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/compile_storage.py": "9a82d2ef6cdb01b38b8c6249d4b110bc54de3876d184ef71bf54e5b661a8db35",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/prepare_storage.py": "6eab3c654886c64ff5b893b8d3006bfff41f0f02f44019126976e2fc352ff54c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/shared_reader_integration/test_prepare_storage.py": "2b9efdce2485a6ffd1003015633cd0f2a775db1f600be76a18338464e31f0b2c"
+  },
+  "limitations": [
+    "Standalone post-terminal monitoring reads real physical single-client reader counters; it does not prove inactive client metric zeroing or dual-owner routing.",
+    "Macro unit uses +nospecify and +notimingcheck; functional model proof only.",
+    "No new shared-storage 71/14-command or real-runtime SoC result consumed; parent owns those audits."
+  ]
+}

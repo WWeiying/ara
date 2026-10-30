@@ -1,0 +1,28 @@
+--- a/ggml/src/ggml-cpu/CMakeLists.txt
++++ b/ggml/src/ggml-cpu/CMakeLists.txt
+@@ -482,6 +482,25 @@
+                     ggml-cpu/arch/riscv/quant-kv.h
+                     ${GGML_QUANT_KV_DIR}/runtime.c
+                     ${GGML_QUANT_KV_DIR}/runtime_strided.c)
++                option(GGML_RISCV_AKV_QUANT_PREFILL "Experimental grouped quantized Prefill Attention" OFF)
++                if (GGML_RISCV_AKV_QUANT_PREFILL)
++                    set(GGML_RISCV_AKV_PREFILL_DIR "${GGML_QUANT_KV_DIR}/prefill" CACHE PATH "Reviewed Prefill C entry source directory")
++                    if (NOT GGML_RISCV_AKV_PREFILL_DIR)
++                        set(GGML_RISCV_AKV_PREFILL_DIR "${GGML_QUANT_KV_DIR}/prefill")
++                    endif()
++                    if (NOT EXISTS "${GGML_RISCV_AKV_PREFILL_DIR}/ggml_entry.c")
++                        message(FATAL_ERROR "GGML_RISCV_AKV_PREFILL_DIR must contain the reviewed Prefill entry")
++                    endif()
++                    get_filename_component(GGML_PREFILL_PARENT "${GGML_RISCV_AKV_PREFILL_DIR}/.." ABSOLUTE)
++                    get_filename_component(GGML_PREFILL_ROOT "${GGML_QUANT_KV_DIR}/../../../.." ABSOLUTE)
++                    target_include_directories(${GGML_CPU_NAME} PRIVATE "${GGML_PREFILL_PARENT}" "${GGML_PREFILL_ROOT}")
++                    target_compile_definitions(${GGML_CPU_NAME} PRIVATE GGML_USE_RISCV_QUANT_PREFILL)
++                    list(APPEND GGML_CPU_SOURCES "${GGML_RISCV_AKV_PREFILL_DIR}/ggml_entry.c")
++                    if (CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
++                        set_property(SOURCE "${GGML_RISCV_AKV_PREFILL_DIR}/ggml_entry.c"
++                            APPEND PROPERTY COMPILE_OPTIONS -fno-fast-math -ffp-contract=fast)
++                    endif()
++                endif()
+                 if (CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+                     set_property(SOURCE ggml-cpu/arch/riscv/quant-kv.cpp ${GGML_QUANT_KV_DIR}/runtime.c ${GGML_QUANT_KV_DIR}/runtime_strided.c
+                         APPEND PROPERTY COMPILE_OPTIONS -fno-fast-math -ffp-contract=fast)

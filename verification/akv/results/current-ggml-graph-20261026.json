@@ -1,0 +1,30 @@
+{
+  "state": "CURRENT_SHARED_SDK_GGML_GRAPH_FUNCTIONAL_PASS",
+  "run": "verification/out/quantkv-current-graph-20261026-01",
+  "build": "verification/out/quantkv-current-graph-build-20261026-01",
+  "result_sha256": "ebf1291dd5558aeac10a3659259e8bc7a35436bb1d7ca1a2c82c4e6a83ef7f36",
+  "source_pins_sha256": "d4be2e7e2eeae1f5c3acd29e732b6ad5a19a65054f5fad8b9ef494a501a227c8",
+  "log_sha256": "d91294e865cf138e32d424466413b1a2a109202db6e1e57cb853e7eec92b830f",
+  "parent_raw_checker_replayed": true,
+  "field_copy_dependency_observed_in_rebuilt_objects": [
+    "quant-kv.cpp",
+    "runtime.c",
+    "runtime_strided.c"
+  ],
+  "key_formats": ["Q4_0", "Q8_0"],
+  "value_format": "Q8_0",
+  "layouts": ["contiguous", "strided"],
+  "visible_prefixes": [128, 5],
+  "native_calls": 16,
+  "native_command_attempts": 160,
+  "fallback_cases": 6,
+  "key_panels": 40,
+  "copied_key_payload_bytes": 110656,
+  "value_decodes": 2128,
+  "current_inputs_match": true,
+  "rtl_performance": false,
+  "whole_model": false,
+  "new_context_or_qbacc_abi_proven": false,
+  "external_sources_modified": false,
+  "note": "Fresh real GGML build under native-QBS QEMU. DIRECT compatibility only; not evidence of current extended RTL context ABI, model quality, or end-to-end speedup."
+}

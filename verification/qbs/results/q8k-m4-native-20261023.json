@@ -1,0 +1,23 @@
+{
+  "state": "PASS",
+  "scope": "Isolated Q8_K M4 candidate versus linked production generic; numerical acceptance, not RTL performance or production selection",
+  "run": "verification/out/qbs-q8k-m4-native-20261023-01",
+  "build": "verification/out/qbs-q8k-m4-native-build-20261023-01",
+  "status_sha256": "49fffaad9bd77c67e1cb9bab2befc0014183c459905e12cc04b3b4d1e4ee4bf6",
+  "manifest_sha256": "8edcf8a755b9172e6d8086cf7f085b8be7fd196eed9e9fcc83640cfc3fe7a093",
+  "binary_sha256": "e87687950ac1be0caf5cdc24e17f6c503d7662629af6d51551fe34d3b3d43802",
+  "checks": 12000,
+  "candidate_checks": 1872,
+  "fallback_checks": 10128,
+  "datasets_per_vlen": 50,
+  "real_datasets_per_vlen": 6,
+  "vlens": [128, 1024],
+  "cross_vlen_digests_equal": true,
+  "manifest_unchanged": true,
+  "independent_raw_log_recheck": "PASS",
+  "logs": {
+    "qemu-128.log": "f4f1c19febee8c2291ba2000f80069e8c8dd2473d28c3c8c0c9ac716e671632e",
+    "qemu-1024.log": "57079c3ea47590e423d001f7be6a00c50382c4e2b64608e7106aea70fc283d65"
+  },
+  "remaining": ["production GGML integration and actual-TU check", "VCS preparation performance including preflight", "same-image full-projection correctness and performance"]
+}

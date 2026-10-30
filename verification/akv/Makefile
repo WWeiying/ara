@@ -6,6 +6,9 @@ SYNTH_WRAPPER_BUILD := rtl_synth_wrapper_build
 FILELIST := $(abspath $(BUILD)/bender.f)
 MACRO_FILELIST := $(abspath $(MACRO_BUILD)/bender.f)
 TB := $(abspath akv_engine_tb.sv)
+RTL_STANDALONE_GENERATOR := $(ROOT)/verification/akv/canonical_promotion/generate_standalone.py
+COMPOSED_TB := $(abspath $(BUILD)/standalone/composed_engine.sv) $(abspath $(BUILD)/standalone/original_suite.sv)
+MACRO_COMPOSED_TB := $(abspath $(MACRO_BUILD)/standalone/composed_engine.sv) $(abspath $(MACRO_BUILD)/standalone/original_suite.sv)
 MACRO_MODEL := $(abspath ../qbs/qbs_context_sram_macro_model.sv)
 SYNTH_WRAPPER := $(abspath synthesis/akv_engine_synth_wrapper.sv)
 SYNTH_SDC := $(abspath synthesis/akv_engine.sdc)
@@ -51,22 +54,26 @@ $(MACRO_FILELIST): $(ROOT)/Bender.yml Makefile
 	cd $(ROOT) && $(BENDER) script verilator $(BENDER_TARGETS) \
 		$(BENDER_DEFINES) > $(MACRO_FILELIST)
 
-rtl-compile: $(FILELIST) $(TB) $(RTL_EXTRA_SOURCES)
+rtl-compile: $(FILELIST) $(TB) $(RTL_EXTRA_SOURCES) $(RTL_STANDALONE_GENERATOR)
+	python3 -B $(RTL_STANDALONE_GENERATOR) --source-root $(ROOT) --kind akv \
+		--tb $(TB) --output $(abspath $(BUILD)/standalone)
 	cd $(BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
 		+define+ARA_AKV_ENABLE=1 +define+ARA_AKV_V2_ENABLE=1 \
 		+lint=TFIPC-L -l compile.log \
-		$(RTL_EXTRA_DEFINES) -f $(FILELIST) $(TB) $(RTL_EXTRA_SOURCES) -top akv_engine_tb -o simv
+		$(RTL_EXTRA_DEFINES) -f $(FILELIST) $(COMPOSED_TB) $(RTL_EXTRA_SOURCES) -top akv_engine_tb -o simv
 
 rtl-check: rtl-compile
 	cd $(BUILD) && timeout --foreground $(RTL_RUN_TIMEOUT) ./simv -l run.log
 	grep -q "AKV engine PASS" $(BUILD)/run.log
 	! grep -Eq "Fatal:|Error:" $(BUILD)/run.log
 
-rtl-macro-compile: $(MACRO_FILELIST) $(TB) $(MACRO_MODEL)
+rtl-macro-compile: $(MACRO_FILELIST) $(TB) $(MACRO_MODEL) $(RTL_EXTRA_SOURCES) $(RTL_STANDALONE_GENERATOR)
+	python3 -B $(RTL_STANDALONE_GENERATOR) --source-root $(ROOT) --kind akv \
+		--tb $(TB) --output $(abspath $(MACRO_BUILD)/standalone)
 	cd $(MACRO_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
 		+define+ARA_AKV_ENABLE=1 +define+ARA_AKV_V2_ENABLE=1 \
 		+define+TARGET_SRAM_MC $(RTL_MACRO_VCS_FLAGS) +lint=TFIPC-L \
-		-l compile.log -f $(MACRO_FILELIST) $(MACRO_MODEL) $(TB) \
+		-l compile.log $(RTL_EXTRA_DEFINES) -f $(MACRO_FILELIST) $(MACRO_MODEL) $(MACRO_COMPOSED_TB) $(RTL_EXTRA_SOURCES) \
 		-top akv_engine_tb -o simv
 
 rtl-macro-check: rtl-macro-compile
@@ -74,19 +81,22 @@ rtl-macro-check: rtl-macro-compile
 	grep -q "AKV engine PASS" $(MACRO_BUILD)/run.log
 	! grep -Eq "Fatal:|Error:" $(MACRO_BUILD)/run.log
 
-synth-wrapper-compile: $(MACRO_FILELIST) $(MACRO_MODEL) $(SYNTH_WRAPPER)
+synth-wrapper-compile: $(MACRO_FILELIST) $(MACRO_MODEL) $(SYNTH_WRAPPER) $(RTL_EXTRA_SOURCES)
 	mkdir -p $(SYNTH_WRAPPER_BUILD)
 	cd $(SYNTH_WRAPPER_BUILD) && vcs -full64 -sverilog \
 		+define+ARA_AKV_ENABLE=1 +define+ARA_AKV_V2_ENABLE=1 \
-		+define+TARGET_SRAM_MC +lint=TFIPC-L -l compile.log \
-		-f $(MACRO_FILELIST) $(MACRO_MODEL) $(SYNTH_WRAPPER) \
+		+define+TARGET_SRAM_MC $(RTL_MACRO_VCS_FLAGS) +lint=TFIPC-L -l compile.log \
+		$(RTL_EXTRA_DEFINES) -f $(MACRO_FILELIST) $(MACRO_MODEL) $(SYNTH_WRAPPER) $(RTL_EXTRA_SOURCES) \
 		-top akv_engine_synth_wrapper -o simv
 
+dc_akv_storage_organization ?= unified_q64x256_kv128x256
+
 synth-preflight: synth-wrapper-compile
-	$(MAKE) -C $(ROOT)/hardware dc_preflight mc=1 qbs=1 akv_v2=1
+	$(MAKE) -C $(ROOT)/hardware dc_preflight mc=1 qbs=1 akv_v2=1 dc_akv_storage_organization=$(dc_akv_storage_organization)
 	python3 $(SYNTH_CHECKER) --filelist $(DC_FILELIST) --sdc $(SYNTH_SDC) \
 		--setup $(DC_SETUP) --require-qbs --require-akv --require-akv-v2 \
-		--require-macro-sram --nr-lanes 4 --vlen 1024
+		--require-macro-sram --nr-lanes 4 --vlen 1024 \
+		--akv-storage-organization $(dc_akv_storage_organization)
 
 context-synth:
 	./synthesis/run_context_dc.sh

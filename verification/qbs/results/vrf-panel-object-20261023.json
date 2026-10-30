@@ -1,0 +1,11 @@
+{
+  "state": "PASS",
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/software/qbs/experimental/vrf_panel/build-gnu-01",
+  "result_sha256": "6b2733b61e99c70924b3eb78df2497ba5724d2425b64f004c2494a062b3f4ab3",
+  "object_sha256": "db334b44d5da28f1d13b94045c77174d0705e8ac380226610a8a6faf3bc977a8",
+  "preflight_cases": 1573,
+  "scope": "Experimental M4 two-tile leaf assembly, host mock preflight and GNU object/disassembly checks only",
+  "isa_execution_accepted": false,
+  "performance_accepted": false,
+  "production_enabled": false
+}

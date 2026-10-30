@@ -1,0 +1,24 @@
+{
+  "state": "PARTIAL_TWO_CALL_NUMERICAL_CHECK_NOT_ACCEPTANCE",
+  "run_log": "verification/akv/quantized_kv/tail_split/out/coordinator-fasthex-v3-01/threeway-q8/work/run.vcs.log",
+  "immutable_closed_prefix_bytes": 63980454,
+  "prefix_sha256": "6ae10b3fbda55b5a344f160f7c5b588996f9c9f3915454e85624fdb05183a480",
+  "capture": "verification/out/akv-quantkv-host-capture-20261024-01/capture-k-q8_0-v-q8_0/decode/block/kqv_out-0.bin",
+  "capture_sha256": "7f6a8d18047bcbdacf7130110d78f258c161081c85a231d4e1e8f8c59e0636ff",
+  "completed_forward_calls": [
+    {"trial": 0, "mode": "head_major_rvv", "cycles": 1613333, "qk_callbacks": 768, "rvv_dots": 768, "value_decodes": 768, "qbs_commands": 0},
+    {"trial": 1, "mode": "shared_schedule_rvv", "cycles": 824296, "qk_callbacks": 8, "rvv_dots": 768, "value_decodes": 128, "qbs_commands": 0}
+  ],
+  "single_forward_ratio": 1.9572253171190932,
+  "all_768_output_bits_equal": true,
+  "original_capture_tolerance_checked": true,
+  "reported_error_metrics_recomputed": true,
+  "fcsr_both": 1,
+  "vcsr_both": 5,
+  "final_suite_accepted": false,
+  "independent_protocol_accepted": false,
+  "mirror_repeats_checked": false,
+  "qbs_incremental_performance_measured": false,
+  "whole_model_performance": false,
+  "interpretation": "A diagnostic observation only. H/S includes fewer callback-local validations and Value decodes; it is not isolated memory benefit or QBS arithmetic benefit. The complete H,S,B,B,S,H run and independent protocol/source checks remain required. No unclosed UART result line is accepted, and no mutable whole-log hash is asserted."
+}

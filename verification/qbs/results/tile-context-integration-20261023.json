@@ -1,0 +1,716 @@
+{
+  "acceptance_manifest_sha256": "658ad459b4bf2732335f872525c28cd4d7a404326ca1b597204875fc71081d0f",
+  "baseline_manifest_sha256": "659eebbab6f7f5065f437b60746460fb888fb04c4aaf5328678caa6c5d79a1de",
+  "compile_log_sha256": "e3ecb5c125169c21a7aa9410c668eb7fcabb53e2adce0db8391c2848af5ae47a",
+  "engine_cases": {
+    "context": {
+      "contexts": [
+        [
+          0,
+          1,
+          16,
+          4672,
+          2274,
+          1969
+        ],
+        [
+          1,
+          4,
+          4,
+          4672,
+          1598,
+          1442
+        ],
+        [
+          2,
+          5,
+          2,
+          4672,
+          1109,
+          1031
+        ],
+        [
+          3,
+          6,
+          2,
+          4672,
+          1239,
+          1161
+        ],
+        [
+          4,
+          7,
+          2,
+          4672,
+          1498,
+          1420
+        ],
+        [
+          5,
+          8,
+          2,
+          4672,
+          1504,
+          1426
+        ],
+        [
+          6,
+          1,
+          32,
+          1088,
+          1369,
+          1242
+        ],
+        [
+          7,
+          4,
+          32,
+          4352,
+          2314,
+          2026
+        ],
+        [
+          8,
+          5,
+          17,
+          4624,
+          1847,
+          1642
+        ],
+        [
+          9,
+          6,
+          17,
+          4624,
+          1917,
+          1712
+        ],
+        [
+          10,
+          7,
+          17,
+          4624,
+          2157,
+          1952
+        ],
+        [
+          11,
+          8,
+          17,
+          4624,
+          2159,
+          1954
+        ]
+      ],
+      "direct": [
+        [
+          0,
+          1,
+          1,
+          5,
+          16,
+          2,
+          1,
+          1988
+        ],
+        [
+          1,
+          1,
+          4,
+          5,
+          4,
+          2,
+          2,
+          1379
+        ],
+        [
+          2,
+          1,
+          5,
+          5,
+          2,
+          2,
+          3,
+          1109
+        ],
+        [
+          3,
+          1,
+          6,
+          5,
+          2,
+          2,
+          3,
+          1239
+        ],
+        [
+          4,
+          1,
+          7,
+          5,
+          2,
+          2,
+          3,
+          1498
+        ],
+        [
+          5,
+          1,
+          8,
+          5,
+          2,
+          2,
+          3,
+          1504
+        ],
+        [
+          6,
+          6,
+          1,
+          5,
+          32,
+          2,
+          1,
+          1245
+        ],
+        [
+          7,
+          6,
+          4,
+          5,
+          32,
+          2,
+          2,
+          2035
+        ],
+        [
+          8,
+          6,
+          5,
+          5,
+          17,
+          2,
+          3,
+          1847
+        ],
+        [
+          9,
+          6,
+          6,
+          5,
+          17,
+          2,
+          3,
+          1917
+        ],
+        [
+          10,
+          6,
+          7,
+          5,
+          17,
+          2,
+          3,
+          2157
+        ],
+        [
+          11,
+          6,
+          8,
+          5,
+          17,
+          2,
+          3,
+          2159
+        ]
+      ],
+      "log_sha256": "f7e2800cbadcd0c5449d4026d7cfc7e0f204d6baaafd72bf0fb6a04ae8127944",
+      "response_gap": 0,
+      "vector_sha256": "7c25cf422fbef0432adabfb01426d805d35f3fd06515e51934414fc7f38c9d50"
+    },
+    "direct": {
+      "contexts": [
+        [
+          0,
+          1,
+          2,
+          584,
+          314,
+          276
+        ]
+      ],
+      "direct": [
+        [
+          0,
+          1,
+          1,
+          5,
+          2,
+          1,
+          1,
+          295
+        ],
+        [
+          1,
+          1,
+          4,
+          7,
+          2,
+          2,
+          2,
+          793
+        ],
+        [
+          2,
+          2,
+          3,
+          3,
+          2,
+          1,
+          1,
+          473
+        ],
+        [
+          3,
+          2,
+          4,
+          8,
+          3,
+          2,
+          2,
+          1129
+        ],
+        [
+          4,
+          1,
+          1,
+          9,
+          3,
+          2,
+          1,
+          568
+        ],
+        [
+          5,
+          3,
+          1,
+          5,
+          3,
+          1,
+          1,
+          159
+        ],
+        [
+          6,
+          3,
+          4,
+          7,
+          4,
+          2,
+          2,
+          290
+        ],
+        [
+          7,
+          3,
+          1,
+          1,
+          65,
+          1,
+          1,
+          1330
+        ],
+        [
+          8,
+          4,
+          1,
+          5,
+          2,
+          1,
+          1,
+          311
+        ],
+        [
+          9,
+          4,
+          4,
+          7,
+          3,
+          2,
+          2,
+          1130
+        ],
+        [
+          10,
+          5,
+          1,
+          5,
+          2,
+          1,
+          1,
+          277
+        ],
+        [
+          11,
+          5,
+          4,
+          7,
+          3,
+          2,
+          2,
+          1046
+        ],
+        [
+          12,
+          6,
+          1,
+          5,
+          3,
+          1,
+          1,
+          165
+        ],
+        [
+          13,
+          6,
+          4,
+          7,
+          4,
+          2,
+          2,
+          306
+        ],
+        [
+          14,
+          1,
+          2,
+          3,
+          2,
+          2,
+          1,
+          304
+        ],
+        [
+          15,
+          3,
+          3,
+          5,
+          3,
+          2,
+          1,
+          222
+        ],
+        [
+          16,
+          7,
+          1,
+          5,
+          2,
+          1,
+          1,
+          271
+        ],
+        [
+          17,
+          7,
+          4,
+          7,
+          3,
+          2,
+          2,
+          1061
+        ],
+        [
+          18,
+          8,
+          1,
+          5,
+          3,
+          1,
+          1,
+          161
+        ],
+        [
+          19,
+          8,
+          4,
+          7,
+          4,
+          2,
+          2,
+          294
+        ],
+        [
+          20,
+          9,
+          1,
+          5,
+          3,
+          1,
+          1,
+          159
+        ],
+        [
+          21,
+          9,
+          4,
+          7,
+          4,
+          2,
+          2,
+          290
+        ],
+        [
+          22,
+          1,
+          5,
+          15,
+          1,
+          2,
+          3,
+          949
+        ],
+        [
+          23,
+          2,
+          8,
+          16,
+          1,
+          2,
+          3,
+          1352
+        ],
+        [
+          24,
+          1,
+          6,
+          11,
+          1,
+          2,
+          3,
+          867
+        ],
+        [
+          25,
+          2,
+          7,
+          13,
+          1,
+          2,
+          3,
+          1324
+        ],
+        [
+          26,
+          4,
+          8,
+          9,
+          1,
+          2,
+          3,
+          1061
+        ],
+        [
+          27,
+          5,
+          5,
+          16,
+          1,
+          2,
+          3,
+          945
+        ],
+        [
+          28,
+          6,
+          8,
+          7,
+          1,
+          2,
+          3,
+          166
+        ],
+        [
+          29,
+          3,
+          6,
+          12,
+          1,
+          2,
+          3,
+          189
+        ],
+        [
+          30,
+          7,
+          7,
+          15,
+          1,
+          2,
+          3,
+          1331
+        ],
+        [
+          31,
+          8,
+          8,
+          16,
+          1,
+          2,
+          3,
+          267
+        ],
+        [
+          32,
+          9,
+          5,
+          11,
+          1,
+          2,
+          3,
+          181
+        ],
+        [
+          33,
+          6,
+          1,
+          1,
+          256,
+          1,
+          1,
+          5407
+        ],
+        [
+          34,
+          1,
+          5,
+          7,
+          3,
+          2,
+          3,
+          1670
+        ],
+        [
+          35,
+          2,
+          8,
+          16,
+          3,
+          2,
+          3,
+          3924
+        ]
+      ],
+      "log_sha256": "471f64ecf10fa6b7608a2145b28b44e875d39914fafe929d77aa9df65c75c3aa",
+      "response_gap": 0,
+      "vector_sha256": "0df880f9f7d4e08ac1a3549caa913430254fd35eecabd38d7fad428a7ad0947f"
+    },
+    "real": {
+      "contexts": [
+        [
+          0,
+          4,
+          28,
+          3808,
+          5905,
+          5653
+        ]
+      ],
+      "direct": [
+        [
+          0,
+          6,
+          4,
+          32,
+          28,
+          2,
+          2,
+          5662
+        ]
+      ],
+      "log_sha256": "afcc414e05884cdee81a5dfb04305db63c5fd44d5113ea2fc88c2f6dfd4b167f",
+      "response_gap": 0,
+      "vector_sha256": "ef9b55efdda71c9964d46dde79b86abd08f68ae1bf3075b50b42380214496936"
+    },
+    "real_gap4": {
+      "contexts": [
+        [
+          0,
+          4,
+          28,
+          3808,
+          12933,
+          11673
+        ]
+      ],
+      "direct": [
+        [
+          0,
+          6,
+          4,
+          32,
+          28,
+          2,
+          2,
+          12825
+        ]
+      ],
+      "log_sha256": "2d384831da3033daee60d00dff0a574a295e7d8438d10d96bbed1a0482ba8f2b",
+      "response_gap": 4,
+      "vector_sha256": "ef9b55efdda71c9964d46dde79b86abd08f68ae1bf3075b50b42380214496936"
+    }
+  },
+  "engine_sha256": "1379c65929227a33b23555ef46740feebeb192719a4d336b88c7d82f2a5c7a96",
+  "logs_sha256": {
+    "verification/out/qbs-tile-integration-20261023-05/acceptance/context/run.log": "f7e2800cbadcd0c5449d4026d7cfc7e0f204d6baaafd72bf0fb6a04ae8127944",
+    "verification/out/qbs-tile-integration-20261023-05/acceptance/direct/run.log": "471f64ecf10fa6b7608a2145b28b44e875d39914fafe929d77aa9df65c75c3aa",
+    "verification/out/qbs-tile-integration-20261023-05/acceptance/real/run.log": "afcc414e05884cdee81a5dfb04305db63c5fd44d5113ea2fc88c2f6dfd4b167f",
+    "verification/out/qbs-tile-integration-20261023-05/acceptance/real_gap4/run.log": "2d384831da3033daee60d00dff0a574a295e7d8438d10d96bbed1a0482ba8f2b",
+    "verification/out/qbs-tile-integration-20261023-05/extended/run.log": "d3295912fc2723c14afd0a0b14a07a62b7c8ab1a081602e74ca9cc86f0e1794f",
+    "verification/out/qbs-tile-integration-20261023-05/extended_macro/run.log": "1522ab5534eb7f7da1236f5dffc4139dec282cbf937aba592bdae0be4a81e7dd",
+    "verification/out/qbs-tile-integration-20261023-05/legacy/run.log": "a749bd2391151e0f3c7091777a901b6cdaed03a5e03b2009ad067f0fdfcac012",
+    "verification/out/qbs-tile-integration-20261023-05/legacy_macro/run.log": "0087ceff0f7bc6abe43aa86bd380bc9b075245c9b4ec39a8ee6272282a29fb71"
+  },
+  "normal_cycles_identical_to_pre_repair": true,
+  "primitive_per_model": {
+    "cases": 198,
+    "checked_bytes": 1464884,
+    "replay_cancellations": 396,
+    "replays": 3318
+  },
+  "raw_root": "verification/out/qbs-tile-integration-20261023-05",
+  "remaining_gates": [
+    "DIRECT with distinct activation data must preserve resident tile",
+    "real full-N projection with one fill and changing output tiles, including preparation",
+    "fresh SoC RVV/QBS/AKV regression and updated QEMU/GGML admission",
+    "long-K bounded residency with partial-output lifecycle"
+  ],
+  "reproducer": {
+    "directory": "verification/out/qbs-tile-integration-20261023-04-repro",
+    "log_sha256": "8ddf9767d6f8883fb8281d9f41a0f6e0b1b806d145448d38769f66e0642bd1a5",
+    "observed": "M1 REUSE weight MMU fault, replay offset48, busy remains1 after terminal acknowledgement"
+  },
+  "schema": 1,
+  "source_sha256": {
+    "apps/common/qbs_abi.h": "4d7bf2d7f78c44bab494d86aee4163a02087b6ad10a43f1ed0752ff3a98fa117",
+    "hardware/include/qbs_pkg.sv": "4b179505ab70385a5c502279b9aba804a721b7126775eb0d9e4cbb803300aff9",
+    "hardware/src/vlsu/qbs/qbs_activation_context.sv": "4f584a2ad2b000b3225ed423b4cce3d3255762b85849cf511390243852672e81",
+    "hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv": "1ffa0d74dfa80bfdab2fd1c2162841d6efe872a10d280e1cd286343379c36a98",
+    "hardware/src/vlsu/qbs/qbs_engine.sv": "3cca4c6c6f955f20e7df182066ad848ae65966ef66a998b880f465a2d13e76eb",
+    "software/qbs/src/qbs_runtime.c": "fa076236d98e4f9dced39ed93c13498b514778fcb9087c0290486b621b5e919c",
+    "software/qbs/tests/qbs_runtime_test.c": "c3e4dccb76a99c66c1ed7f78361ed4e5a01901bedbe314f388c352a24d1b91dd",
+    "verification/qbs/qbs_activation_tile_context_tb.sv": "b78bb78b783e483d83303c5bab726f2230abc61d7c034e99f27f1305f7251c9f",
+    "verification/qbs/qbs_engine_tb.sv": "c4964deac07ef1f78786c3e250b85299d3e9045433121cb576b965067f48a846",
+    "verification/qbs/qbs_ref_test.c": "d26b5b3b6ca789f587b13b64981293ee33ae571c4f02c4b75a1676447f8aeb1f",
+    "verification/qbs/run_tile_context_engine.py": "320f60fdef3685be44ad58e74f657a7e179e08608916992994a66b87ddfea150",
+    "verification/qbs/test_tile_context_engine.py": "25b2917b8f014b4608bff1ab8e136ef2598d656f095abd4a8e0f2b09ecef463e"
+  },
+  "stage": "capacity-bounded engine/runtime integration and interrupted-replay repair; not full-operator/SoC acceptance",
+  "status": "PASS",
+  "weight_fault_retry_counts": {
+    "context": 72,
+    "direct": 6,
+    "real": 6,
+    "real_gap4": 6
+  }
+}

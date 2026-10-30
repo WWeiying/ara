@@ -1,0 +1,8 @@
+{
+  "scope": "Synthetic host fixtures only; no measured PPA",
+  "cases": [
+    {"akv_sram_organization": "legacy_v1_v2_64x256", "akv_sram_macro_count": 20, "akv_v1_sram_macro_count": 4, "akv_v2_sram_macro_count": 16, "akv_q_sram_macro_count": 0, "physical_sram_capacity_bits": 327680},
+    {"akv_sram_organization": "split_v1_96x256_v2_128x256", "akv_sram_macro_count": 10, "akv_v1_sram_macro_count": 2, "akv_v2_sram_macro_count": 8, "akv_q_sram_macro_count": 0, "physical_sram_capacity_bits": 311296},
+    {"akv_sram_organization": "unified_q64x256_kv128x256", "akv_sram_macro_count": 9, "akv_v1_sram_macro_count": 0, "akv_v2_sram_macro_count": 8, "akv_q_sram_macro_count": 1, "physical_sram_capacity_bits": 278528}
+  ]
+}

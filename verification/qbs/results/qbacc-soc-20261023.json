@@ -1,0 +1,13 @@
+{
+  "state": "PASS",
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbacc-soc-accept-20261023-02",
+  "result_sha256": "882ae6b25726365a126744da432b53f9508d5bc93db0e2b879a2b0b1d3724f50",
+  "probe": {"commands": 13, "computed": 12, "validation_faults": 1,
+    "source_words_per_lane": 248, "maintenance_allocations": 33,
+    "maintenance_vrf_bytes": 4224, "qbs_result_vrf_bytes": 4312},
+  "neighbors": ["qbs_akv_handoff_smoke", "rv64uv-ara-vfmacc"],
+  "scope": "Actual optional QBACC SoC, mixed old EEW, CSR/padding/tail policy, descriptor fault and subsequent store, plus two unchanged neighbor tests",
+  "default_enabled": false,
+  "performance_accepted": false,
+  "independent_instruction_model_accepted": false
+}

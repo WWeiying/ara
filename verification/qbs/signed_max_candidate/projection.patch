@@ -1,0 +1,40 @@
+--- a/projection.cpp
++++ b/projection.cpp
+@@ -16,6 +16,8 @@
+ alignas(64) static block_q8_Kx4 packed[8];
+ alignas(64) static float output[6144 + 32];
+ 
++extern "C" bool candidate_prepare(const float *, void *, int64_t);
++
+ static uint64_t cycle() {
+     uint64_t value;
+     asm volatile("fence rw, rw; rdcycle %0" : "=r"(value) : : "memory");
+@@ -135,8 +137,8 @@
+             printf("Q8K_CURRENT_FAIL reason=plan_or_context\n");
+             return 1;
+         }
+-        if (vector[trial]) used = prepare();
+-        else ggml_quantize_mat_q8_K_4x1_ara_generic(projection_input, packed + 1, 1536);
++        used = vector[trial] ? candidate_prepare(projection_input, packed + 1, 1536)
++                             : prepare();
+         const unsigned prep_fcsr = fcsr(), prep_vcsr = vcsr();
+         const uint64_t prepared = cycle();
+         const auto execution = qbs_execute(&plan, projection_weights, 1327104, packed + 1, 7008,
+@@ -146,7 +148,7 @@
+         const uint64_t finished = cycle();
+         asm volatile("fscsr zero" ::: "memory");
+ 
+-        unsigned local = execution != QBS_STATUS_OK || used != vector[trial] ||
++        unsigned local = execution != QBS_STATUS_OK || !used ||
+             prep_fcsr != Q8K_GOLDEN_FCSR || prep_vcsr != 5 || final_vcsr != 5 || final_fcsr > 31;
+         local += check_plan(plan);
+         local += std::memcmp(packed + 1, projection_golden, 7008) != 0;
+@@ -182,7 +184,7 @@
+         printf("Q8K_CURRENT_TRIAL id=%u path=%s admit=%lu prep=%lu execute=%lu total=%lu "
+                "used=%u context=%u wide=0 segment=256 commands=48 prep_fcsr=%u final_fcsr=%u "
+                "prep_vcsr=%u final_vcsr=%u input=%016lx weights=%016lx packed=%016lx output=%016lx errors=%u\n",
+-               trial, vector[trial] ? "canonical" : "generic", (unsigned long)(admitted - begin),
++               trial, vector[trial] ? "signed_max" : "accepted_vector", (unsigned long)(admitted - begin),
+                (unsigned long)(prepared - admitted), (unsigned long)(finished - prepared),
+                (unsigned long)(finished - begin), unsigned(used), unsigned(context), prep_fcsr, final_fcsr,
+                prep_vcsr, final_vcsr, (unsigned long)ih, (unsigned long)weights_baseline, (unsigned long)ph,

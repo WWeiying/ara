@@ -1,0 +1,334 @@
+{
+  "schema_version": 1,
+  "scope": "native QBS QEMU GGML functional graphs and same-image VCS row views; not whole-model speedup",
+  "runs": [
+    {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-ggml-context-20261023-01",
+      "state": "PASS",
+      "suite": "context",
+      "sha256": {
+        "status.json": "b37632bf6d129e2457df73cb499cd8dce6fae32588cadd286ae6d3dc9606c784",
+        "manifest.json": "7b967fa80ce82df711f42e38871458250e9cf7b09314b9cf4ec4084054083bfd",
+        "qemu.log": "463411700d358f196b84fb674efb46b39cfd30a3181e3a3dc15906c1795f417e",
+        "llama.patch": "b9601ac1363a7fa1f9c144f5c9d36e32e9d13ffbe487c0243332fe06f7c6814f"
+      },
+      "waits": [],
+      "policies": [
+        {
+          "segment": 0,
+          "wide": 0,
+          "cross_op_enabled": [
+            "1"
+          ],
+          "graphs_passed": 12,
+          "expert_checks": 0,
+          "quantization_skips": 4,
+          "native_commands": 80,
+          "max_error": 1.20467493e-06
+        },
+        {
+          "segment": 3,
+          "wide": 0,
+          "cross_op_enabled": [
+            "1"
+          ],
+          "graphs_passed": 12,
+          "expert_checks": 0,
+          "quantization_skips": 2,
+          "native_commands": 224,
+          "max_error": 1.21031933e-06
+        },
+        {
+          "segment": 256,
+          "wide": 0,
+          "cross_op_enabled": [
+            "1"
+          ],
+          "graphs_passed": 12,
+          "expert_checks": 0,
+          "quantization_skips": 4,
+          "native_commands": 80,
+          "max_error": 1.20467493e-06
+        },
+        {
+          "segment": 256,
+          "wide": 0,
+          "cross_op_enabled": [
+            "0"
+          ],
+          "graphs_passed": 12,
+          "expert_checks": 0,
+          "quantization_skips": 0,
+          "native_commands": 80,
+          "max_error": 1.20467493e-06
+        }
+      ]
+    },
+    {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-ggml-barrier-probe-20261023-01",
+      "state": "FAIL",
+      "suite": "barrier",
+      "sha256": {
+        "status.json": "9e5dca6084f994aa39a25ea74bc04c4651b49c2047861eb12bf60b0b263af609",
+        "manifest.json": "c82cb01666d2bbe59855731e139476a97a95d17ed29c6bd1694cc2952181624e",
+        "qemu.log": "943fafded0f30b112581d60c076b0b3f37f726b5d5e5625a4b8e904d6ccf7a2d",
+        "llama.patch": "0c3fe93c432ebd538b5d3ddd86b590f803dc657b28ef53deeb26704a4f26169f"
+      },
+      "waits": [],
+      "policies": [
+        {
+          "segment": 0,
+          "wide": 0,
+          "cross_op_enabled": [
+            "1"
+          ],
+          "graphs_passed": 2,
+          "expert_checks": 2,
+          "quantization_skips": 2,
+          "native_commands": 10,
+          "max_error": 2.68491593e-07
+        },
+        {
+          "segment": 3,
+          "wide": 0,
+          "cross_op_enabled": [
+            "1"
+          ],
+          "graphs_passed": 2,
+          "expert_checks": 2,
+          "quantization_skips": 2,
+          "native_commands": 10,
+          "max_error": 2.68491593e-07
+        },
+        {
+          "segment": 256,
+          "wide": 0,
+          "cross_op_enabled": [
+            "1"
+          ],
+          "graphs_passed": 2,
+          "expert_checks": 2,
+          "quantization_skips": 2,
+          "native_commands": 10,
+          "max_error": 2.68491593e-07
+        },
+        {
+          "segment": 256,
+          "wide": 0,
+          "cross_op_enabled": [
+            "0"
+          ],
+          "graphs_passed": 2,
+          "expert_checks": 2,
+          "quantization_skips": 0,
+          "native_commands": 10,
+          "max_error": 2.68491593e-07
+        }
+      ]
+    },
+    {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-ggml-barrier-probe-20261023-02",
+      "state": "FAIL",
+      "suite": "barrier",
+      "sha256": {
+        "status.json": "e309791373a229f3ea105398d761212da8585ea3cd6d631907cf759df6713bc7",
+        "manifest.json": "4ba400817ef7aefbfcc6f103d17bb719d5f6fe86b9ed479dbca4d02d37d5c4dd",
+        "qemu.log": "8499058d5f997bfef86dbc8ef74f5f5476c1bbd7658c92aa125e20206d65bfb6",
+        "llama.patch": "bf546b8f24200f19c5a69e3bd08ef8dba9ca9aa3de5572ac72e0d4bc5f279ece"
+      },
+      "waits": [],
+      "policies": []
+    },
+    {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-ggml-barrier-wait-20261023-01",
+      "state": "FAIL",
+      "suite": "barrier",
+      "sha256": {
+        "status.json": "e750cf1638858e58accf8aeea66c597050bec37f11939771efabb9050c6af563",
+        "manifest.json": "39e0275c2146c2f714a6fdf745dbceea7b61cde5b18ccf31a36129d4064239bf",
+        "qemu.log": "010c2067f12957a5f0e64e9c00434ac7bdb7ab9bdc3cb07a1c5190f9cdab7762",
+        "llama.patch": "9d73f439205bcd749f24fcea09340026415607a90219a07b545c29be2aa6f405"
+      },
+      "waits": [
+        "GGML_RISCV_QBS_CONTEXT_WAIT graph_epoch=1 owner_epoch=1 generation=0 m=1 n=36 k_blocks=2"
+      ],
+      "policies": []
+    },
+    {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-ggml-barrier-fixed-20261023-01",
+      "state": "PASS",
+      "suite": "barrier",
+      "sha256": {
+        "status.json": "a7fe858a128833e87fa3b602b5f87db052c2618271d8277e03608dae44bec05f",
+        "manifest.json": "4d71df2e345638e728d1b73b4072cb7f6456c51fbe6d5147b3501116728948ae",
+        "qemu.log": "41af26078176667a809394c8b04b691f1e9995941990563226c0700775c50c6b",
+        "llama.patch": "f3ef9a3a3adcb3668894b0d551d06d3bba953f1efedff36576ad12a42b015071"
+      },
+      "waits": [],
+      "policies": [
+        {
+          "segment": 0,
+          "wide": 0,
+          "cross_op_enabled": [
+            "1"
+          ],
+          "graphs_passed": 2,
+          "expert_checks": 2,
+          "quantization_skips": 0,
+          "native_commands": 12,
+          "max_error": 2.68491593e-07
+        },
+        {
+          "segment": 3,
+          "wide": 0,
+          "cross_op_enabled": [
+            "1"
+          ],
+          "graphs_passed": 2,
+          "expert_checks": 2,
+          "quantization_skips": 0,
+          "native_commands": 12,
+          "max_error": 2.68491593e-07
+        },
+        {
+          "segment": 256,
+          "wide": 0,
+          "cross_op_enabled": [
+            "1"
+          ],
+          "graphs_passed": 2,
+          "expert_checks": 2,
+          "quantization_skips": 0,
+          "native_commands": 12,
+          "max_error": 2.68491593e-07
+        },
+        {
+          "segment": 256,
+          "wide": 0,
+          "cross_op_enabled": [
+            "0"
+          ],
+          "graphs_passed": 2,
+          "expert_checks": 2,
+          "quantization_skips": 0,
+          "native_commands": 12,
+          "max_error": 2.68491593e-07
+        }
+      ]
+    },
+    {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-ggml-context-fixed-20261023-01",
+      "state": "PASS",
+      "suite": "context",
+      "sha256": {
+        "status.json": "662b52be5fdc3023016ef034677f3bf6d9ed4e8be5edfb7ecd3ffed905afdd7e",
+        "manifest.json": "4d71df2e345638e728d1b73b4072cb7f6456c51fbe6d5147b3501116728948ae",
+        "qemu.log": "0bbf67092686d75c36a90bf719fdd9938c52e920fffa94c871c2ef7fe313cae9",
+        "llama.patch": "f3ef9a3a3adcb3668894b0d551d06d3bba953f1efedff36576ad12a42b015071"
+      },
+      "waits": [],
+      "policies": [
+        {
+          "segment": 0,
+          "wide": 0,
+          "cross_op_enabled": [
+            "1"
+          ],
+          "graphs_passed": 12,
+          "expert_checks": 0,
+          "quantization_skips": 4,
+          "native_commands": 80,
+          "max_error": 1.20467493e-06
+        },
+        {
+          "segment": 3,
+          "wide": 0,
+          "cross_op_enabled": [
+            "1"
+          ],
+          "graphs_passed": 12,
+          "expert_checks": 0,
+          "quantization_skips": 2,
+          "native_commands": 224,
+          "max_error": 1.21031933e-06
+        },
+        {
+          "segment": 256,
+          "wide": 0,
+          "cross_op_enabled": [
+            "1"
+          ],
+          "graphs_passed": 12,
+          "expert_checks": 0,
+          "quantization_skips": 4,
+          "native_commands": 80,
+          "max_error": 1.20467493e-06
+        },
+        {
+          "segment": 256,
+          "wide": 0,
+          "cross_op_enabled": [
+            "0"
+          ],
+          "graphs_passed": 12,
+          "expert_checks": 0,
+          "quantization_skips": 0,
+          "native_commands": 80,
+          "max_error": 1.20467493e-06
+        }
+      ]
+    }
+  ],
+  "native_rtl_views": {
+    "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-segmented-view-soc-20261023-02",
+    "state": "passed",
+    "sha256": {
+      "status.json": "b7760e01d2368c5de5687610f8fd6ed447ff46f20e6c6c664fbadd9629c5f467",
+      "llama_qwen25_q8_0_segmented_qbs/uvm_result.json": "39f06081a26382565e1d477344663bf237f2fafe2a92b68bfda3c7f8354df7f0",
+      "llama_qwen25_q8_0_segmented_qbs/work/run.vcs.log": "2e616a3ef36937f31222dd40f5aac303861fa91210e02133e25bce9d07a182b5"
+    },
+    "paired_results": [
+      "QBS_SEGMENTED PASS segment=16 m=3 n=33 k=896 old_cycles=50288 new_cycles=18264 flags=1 exact_outputs=99 forced_split=1",
+      "QBS_SEGMENTED_VIEW PASS segment=16 views=5 exact_outputs=114 guards=PASS flags=1",
+      "QBS_SEGMENTED PASS segment=3 m=3 n=33 k=896 old_cycles=271064 new_cycles=76411 flags=1 exact_outputs=99 forced_split=1",
+      "QBS_SEGMENTED_VIEW PASS segment=3 views=5 exact_outputs=114 guards=PASS flags=1"
+    ],
+    "elf_sha256": "563bfe60b1f9b619e5acc6918af563bbc0aad013ef4c1678c3861cf25587c024",
+    "simv_sha256": "381b3b62f969c755597e4562938021226ffc3dc92b6bca4fa698a0ed8a1a007c",
+    "checker_status": "PASS",
+    "contract": {
+      "exceptions": 0,
+      "mmu_request_cycles": 0,
+      "outstanding": 0,
+      "protocol_errors": 0,
+      "req_stalled": 0,
+      "requests": 2101,
+      "resp_stalled": 0,
+      "responses": 2101
+    },
+    "backend": {
+      "aborted": 0,
+      "allocations": 1524,
+      "completions": 1524,
+      "max_live": 3
+    },
+    "reads": {
+      "aborted": 0,
+      "ar": 4667,
+      "completed": 4667,
+      "max_pending": 2,
+      "pending": 0,
+      "r_beats": 22200
+    },
+    "writes": {
+      "aborted": 0,
+      "aw": 661,
+      "b": 661,
+      "matched": 661,
+      "max_pending": 2,
+      "pending": 0,
+      "w_beats": 1996,
+      "w_bursts": 661
+    }
+  }
+}

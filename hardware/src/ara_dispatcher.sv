@@ -45,6 +45,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     input  ara_resp_t                            ara_resp_i,
     input  logic                                 ara_resp_valid_i,
     input  logic                                 ara_idle_i,
+    input  logic                                 akv_refill_overlap_safe_i = 1'b0,
     input  logic                                 sldu_idle_i,
     output logic                                 sldu_drain_o,
     // Interface with the lanes
@@ -4896,6 +4897,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
           //////////////////////////////////////
           QbsOpcodeCustom2: begin : custom2
             automatic logic is_qbexec;
+            automatic logic qbs_accumulate;
             automatic logic is_qbinfo;
             automatic logic is_akvfill;
             automatic logic is_akvload;
@@ -4926,6 +4928,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
             is_akv2fill = instr.rtype.funct3 == AkvV2FillFunct3;
             is_akv2column = instr.rtype.funct3 == AkvV2ColumnLoadFunct3;
             qbs_funct7 = 7'(instr.rtype.funct7);
+            qbs_accumulate = qbs_funct7[QbsQbaccFunct7Bit];
             akv_funct7 = 7'(instr.rtype.funct7);
             qbs_m = unsigned'(qbs_funct7[2:0]) + 1;
             qbs_destination_regs = qbs_m == 1 ? 1 :
@@ -4994,9 +4997,21 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                 default: ara_req.emul = LMUL_8;
               endcase
 
+              // QBACC explicitly reads the previous architectural destination.
+              // Its source geometry is fixed by M/EW32, not the caller's vset.
+              if (QbsVrfContinuationEnable && qbs_accumulate) begin
+                ara_req.use_vs1 = 1'b1;
+                ara_req.vs1 = instr.rtype.rd;
+                ara_req.eew_vs1 = EW32;
+                ara_req.old_eew_vs1 = EW32;
+                ara_req.vtype.vlmul = ara_req.emul;
+                lmul_vs1 = ara_req.emul;
+              end
+
               // These checks are intentionally in front of descriptor fetch:
               // destination reservation cannot depend on unread memory.
-              if (qbs_funct7[6:3] != '0 ||
+              if (qbs_funct7[6:4] != '0 ||
+                  (qbs_accumulate && (!QbsVrfContinuationEnable || NrLanes != 4 || VLEN != 1024)) ||
                   (unsigned'(instr.rtype.rd) & (qbs_destination_regs - 1)) != 0 ||
                   unsigned'(instr.rtype.rd) + qbs_destination_regs > 32 ||
                   csr_vstart_q != '0 || !acc_req_i.acc_cons_en ||
@@ -5150,7 +5165,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                   csr_vstart_q != '0 || !acc_req_i.acc_cons_en)
                 illegal_insn = 1'b1;
 
-              if (!ara_idle_i) begin
+              // Only REFILL may start alongside older independent arithmetic.
+              // The sequencer still delays its terminal response until that
+              // older work retires. Unknown/unconnected safety is conservative.
+              if (!ara_idle_i &&
+                  !(akv_fill_is_refill && (akv_refill_overlap_safe_i === 1'b1))) begin
                 ara_req_valid = 1'b0;
                 acc_resp_o.req_ready = 1'b0;
                 state_d = WAIT_IDLE;
@@ -5375,7 +5394,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                 : active_group_needs_reshuffle(
                     ara_req.vs1, is_vstore ? ara_req.emul : lmul_vs1,
                     ara_req.eew_vs1, ara_req.vstart, ara_req.vl)) &&
-            (in_lane_op ||
+            (in_lane_op || (ara_req.op == VQBEXEC && ara_req.use_vs1) ||
              (is_vstore && (is_segment_mem_op ||
                             (csr_vstart_q != '0) || !is_same_eew))),
           ara_req.use_vs2 &&

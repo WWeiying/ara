@@ -91,6 +91,7 @@ typedef struct {
   uint8_t activation_context_access_modes;
   uint16_t activation_context_profiles;
   uint16_t activation_context_layouts;
+  uint32_t activation_context_capacity_bytes;
 } qbs_capabilities_t;
 
 typedef struct {
@@ -135,6 +136,12 @@ typedef struct {
   uint8_t activation_context_count;
   uint8_t activation_context_generation_bits;
   size_t workspace_bytes;
+  /* Software storage metadata only; zero means the original global R4 layout. */
+  uint16_t weight_segment_k_blocks;
+  /* Segmented views keep the complete storage base; output coordinates remain
+     local. Zero storage rows denotes the original whole-matrix contract. */
+  uint32_t weight_storage_rows;
+  uint32_t weight_row_start;
 } qbs_plan_t;
 
 typedef struct {
@@ -143,7 +150,7 @@ typedef struct {
 } qbs_activation_context_token_t;
 
 typedef enum {
-  /* Preserve the original per-execution FILL ... RELEASE behavior. */
+  /* Each input tile independently executes FILL ... RELEASE. */
   QBS_ACTIVATION_CONTEXT_SCOPE_OPERATION = 0,
   /* Fill a new logical activation and leave it resident after this call. */
   QBS_ACTIVATION_CONTEXT_SCOPE_FILL_KEEP = 1,
@@ -222,8 +229,19 @@ qbs_status_t qbs_repack_weight_r4(unsigned weight_profile,
                                   size_t row_major_bytes, size_t n,
                                   size_t k_blocks, void *r4,
                                   size_t r4_bytes);
+/* Each K segment contains all padded output rows in ordinary R4 order.
+   Use the same segment_k_blocks in qbs_plan_create_segmented_r4. This is
+   software tiling, not a new hardware profile or descriptor layout. */
+qbs_status_t qbs_repack_weight_r4_segmented(
+    unsigned weight_profile, const void *row_major, size_t row_major_bytes,
+    size_t n, size_t k_blocks, unsigned segment_k_blocks,
+    void *r4, size_t r4_bytes);
 /* Packs exactly four complete row-major activation rows. A runtime appends a
-   final 1--3-row tail unchanged, as specified by M4_GROUPED storage. */
+   final 1--3-row tail unchanged, as specified by M4_GROUPED storage.
+   Both activation packers require nonoverlapping buffers. RVV builds require
+   enabled vector state and vstart=0; vl/vtype are clobbered, fcsr/vcsr preserved.
+   Define QBS_PACK_FORCE_SCALAR when compiling the runtime to disable explicit
+   RVV packing. Byte-unaligned buffers are supported. */
 qbs_status_t qbs_pack_activation_m4(unsigned activation_profile,
                                     const void *row_major,
                                     size_t row_major_bytes, size_t k_blocks,
@@ -244,10 +262,24 @@ qbs_activation_storage_t qbs_recommend_activation_storage(
     size_t k_elements);
 
 /* A successful plan is immutable and may be reused for the same device
-   contract and logical problem. Only qbs_plan_create may initialize it. */
+   contract and logical problem. Initialize it through a plan constructor. */
 qbs_status_t qbs_plan_create(const qbs_device_t *device,
                              const qbs_problem_t *problem,
                              qbs_plan_t *plan);
+/* Opt-in segment-major R4 storage, packed with the matching helper above.
+   Segment size is fixed by storage and must fit this device; it is never
+   silently changed. Ordinary qbs_plan_create retains the original layout. */
+qbs_status_t qbs_plan_create_segmented_r4(
+    const qbs_device_t *device, const qbs_problem_t *problem,
+    unsigned segment_k_blocks, qbs_plan_t *plan);
+/* A contiguous output-row view of a complete segment-major weight matrix.
+   row_start must be R4-aligned; problem->n rows must fit storage_rows.
+   qbs_execute receives the FULL packed weight base/capacity, but local
+   activations, output and workspace. Segment size belongs to stored data. */
+qbs_status_t qbs_plan_create_segmented_r4_view(
+    const qbs_device_t *device, const qbs_problem_t *problem,
+    unsigned segment_k_blocks, uint32_t storage_rows, uint32_t row_start,
+    qbs_plan_t *plan);
 void qbs_plan_cursor_reset(qbs_plan_cursor_t *cursor);
 qbs_status_t qbs_plan_next(const qbs_plan_t *plan,
                            qbs_plan_cursor_t *cursor,
@@ -265,13 +297,17 @@ qbs_status_t qbs_execute(const qbs_plan_t *plan, const void *weights,
                          qbs_command_executor_t executor,
                          void *executor_context);
 
-/* Context reuse is explicit: the caller owns token generation and must not
-   reuse a generation for a different logical activation. OPERATION preserves
-   the original per-call FILL ... RELEASE scope. The KEEP scopes allow a
-   serialized adapter to span one activation across multiple calls; that
-   adapter must eventually use REUSE_RELEASE or supersede the generation with
-   a new FILL. Unsupported plans return CONTEXT_UNSUPPORTED; qbs_execute()
-   remains the always-DIRECT fallback. */
+/* Context reuse is explicit; the caller must exclusively own the context for
+   the entire blocking execution. OPERATION fills and releases each input tile
+   separately, reusing the token only after the previous tile was released.
+   Every tile must fit the context and have at least two N commands; eligibility
+   is checked for the complete plan before execution. Cross-call scopes require
+   exactly one input tile. Their caller owns generation/activation identity and
+   must eventually use REUSE_RELEASE or supersede the generation with a new
+   FILL. After executor failure, do not assume release occurred or blindly retry
+   a REUSE scope; recover with a new FILL. Unsupported plans/scopes return
+   CONTEXT_UNSUPPORTED before submitting commands; qbs_execute() remains the
+   always-DIRECT fallback. */
 qbs_status_t qbs_execute_with_options(
     const qbs_plan_t *plan, const void *weights, size_t weights_bytes,
     const void *activations, size_t activations_bytes, float *output,

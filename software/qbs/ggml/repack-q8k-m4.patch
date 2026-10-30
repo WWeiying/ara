@@ -1,0 +1,34 @@
+diff --git a/ggml/src/ggml-cpu/repack.cpp b/ggml/src/ggml-cpu/repack.cpp
+index cf743f2e..21a0f26a 100644
+--- a/ggml/src/ggml-cpu/repack.cpp
++++ b/ggml/src/ggml-cpu/repack.cpp
+@@ -14,6 +14,7 @@
+ #if defined(GGML_USE_RISCV_QBS)
+ #include "arch/riscv/qbs.h"
+ #include "arch/riscv/q8_0-m4.h"
++#include "arch/riscv/q8_K-m4.h"
+ #endif
+
+ #include <cmath>
+@@ -386,7 +387,21 @@ template <> void ggml_quantize_mat_t<1, GGML_TYPE_Q8_0>(const float * GGML_RESTR
+ template <> void ggml_quantize_mat_t<1, GGML_TYPE_Q8_K>(const float * GGML_RESTRICT x, void * GGML_RESTRICT vy, int64_t nrow, int64_t n_per_row) {
+     assert(nrow == 4);
+     UNUSED(nrow);
++#if defined(GGML_USE_RISCV_QBS) && !defined(__riscv_zvfh)
++    const bool enabled = qbs_m4_prepare_enabled();
++    bool vector_used = false;
++    if (enabled) {
++        vector_used = ggml_riscv_q8_K_m4::quantize(x, vy, n_per_row);
++    } else {
++        ggml_quantize_mat_q8_K_4x1_ara_generic(x, vy, n_per_row);
++    }
++    if (qbs_m4_prepare_trace_enabled()) {
++        std::fprintf(stderr, "GGML_RISCV_QBS_Q8K_M4_PREPARE enabled=%d path=%s k=%lld\n",
++                     int(enabled), vector_used ? "rvv" : "generic", (long long) n_per_row);
++    }
++#else
+     ggml_quantize_mat_q8_K_4x1_ara_generic(x, vy, n_per_row);
++#endif
+ }
+
+ template <int M, int N>

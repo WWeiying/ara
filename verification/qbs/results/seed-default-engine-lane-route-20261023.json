@@ -1,0 +1,14 @@
+{
+  "state": "PASS",
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-seed-default-engine-20261023-02",
+  "result_sha256": "a6e39192de659e6abd2960f3225fb0a28092465691bed5314700ee97da4ed59f",
+  "default_cycles_identical": true,
+  "baseline": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-tile-integration-20261023-05/acceptance",
+  "groups": {
+    "context": {"direct": 12, "contexts": 12, "response_gap": 0},
+    "direct": {"direct": 36, "contexts": 1, "response_gap": 0},
+    "real": {"direct": 1, "contexts": 1, "response_gap": 0},
+    "real_gap4": {"direct": 1, "contexts": 1, "response_gap": 4}
+  },
+  "scope": "Fresh default-disabled QBS controller after Lane-route integration; exact accepted data/traffic/cycles, not full-SoC RVV signoff"
+}

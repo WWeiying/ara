@@ -1,0 +1,68 @@
+{
+  "deployment_approved": false,
+  "full_projection_speedup": 1.1319342237095875,
+  "log_sha256": "1a79a3cadf2d2279d97f0df780eea3a7de4fd38e5309bf91d3a3a8e2671da97a",
+  "manifest_sha256": "07c95eb6086d628841a9063d1369349262057f25b2de53936f381f32d79badc2",
+  "preparation_speedup": 1.362240300599105,
+  "result_sha256": "6b47070d7c1b01132175fa40ca2cc83bf9ab3c8c75727e72ea2ad42a0488f2bd",
+  "scope": "Real full M4/N1536/K1536 Q projection, same QBS commands, only preparation differs; not model speedup",
+  "state": "PASS",
+  "status_sha256": "684b7426c2bab8d7ac95c3d84a4ee55b901caa04e04f3875622bc28891e5d484",
+  "sums": {
+    "generic": {
+      "matmul": 685347,
+      "prep": 533659,
+      "total": 1219006
+    },
+    "vector": {
+      "matmul": 685172,
+      "prep": 391751,
+      "total": 1076923
+    }
+  },
+  "trace_sha256": "685783dc12384d0ff004794eeae3a06432c7da0e36702382aeae5efc65b8101d",
+  "traffic": {
+    "commands": 192,
+    "result_bytes": 98304
+  },
+  "trials": [
+    {
+      "checksum": "fbb83bb6df5ca009",
+      "fcsr": 1,
+      "matmul_cycles": 342770,
+      "path": "generic",
+      "prep_cycles": 266942,
+      "total_cycles": 609712,
+      "trial": 0
+    },
+    {
+      "checksum": "fbb83bb6df5ca009",
+      "fcsr": 1,
+      "matmul_cycles": 342586,
+      "path": "vector",
+      "prep_cycles": 196032,
+      "total_cycles": 538618,
+      "trial": 1
+    },
+    {
+      "checksum": "fbb83bb6df5ca009",
+      "fcsr": 1,
+      "matmul_cycles": 342586,
+      "path": "vector",
+      "prep_cycles": 195719,
+      "total_cycles": 538305,
+      "trial": 2
+    },
+    {
+      "checksum": "fbb83bb6df5ca009",
+      "fcsr": 1,
+      "matmul_cycles": 342577,
+      "path": "generic",
+      "prep_cycles": 266717,
+      "total_cycles": 609294,
+      "trial": 3
+    }
+  ],
+  "uvm_sha256": "c4a2c49dd68a639d51c7e0d8bbb8d0ffa5ddfe34cb38cbccd1fd57461afc839b",
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-q8k-vla-projection-soc-20261023-01"
+}

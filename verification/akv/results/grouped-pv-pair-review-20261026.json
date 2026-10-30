@@ -1,0 +1,22 @@
+{
+  "schema": "grouped_pv_parent_review_v1",
+  "state": "FUNCTIONAL_PASS_PERFORMANCE_REGRESSION",
+  "source_result": "verification/out/grouped-pv-vcs-pair-20261026-01/result.json",
+  "raw_log": "verification/out/grouped-pv-vcs-pair-20261026-01/work/run.vcs.log",
+  "raw_log_sha256": "e940854901a07452c8793eaa76d9ffcf7d0bcd6f1ecc6e30eb86c5ac74cb4f53",
+  "parent_raw_checker_replay_matches": true,
+  "parent_source_pins_match": true,
+  "scope": "Same-ELF complete Attention-call ABBA; not whole-model performance",
+  "off_cycles": [480064, 479632],
+  "on_cycles": [490982, 491371],
+  "off_sum": 959696,
+  "on_sum": 982353,
+  "speedup": 0.9769359894050306,
+  "cycle_regression_percent": 2.3608517697270903,
+  "all_trial_output_digest": "1b3e2d628adedc63",
+  "qbs_busy_cycles_by_trial": [8805, 8805, 8804, 8805],
+  "numerical_host_recompute": false,
+  "numerical_check": "On-target full output/gold/guard/CSR comparison, compact UART digest",
+  "deployment_approved": false,
+  "decision": "Keep grouped-PV default OFF; unchanged native busy time does not identify the specific software stall cause."
+}

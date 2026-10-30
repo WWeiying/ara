@@ -63,6 +63,7 @@ QBS_SOURCES = (
     "hardware/src/vlsu/qbs/qbs_payload_buffer.sv",
     "hardware/src/vlsu/qbs/qbs_block_adapter.sv",
     "hardware/src/vlsu/qbs/qbs_profile_engine_int.sv",
+    "hardware/src/vlsu/qbs/qbs_half_scale.sv",
     "hardware/src/vlsu/qbs/qbs_fp_accumulator.sv",
     "hardware/src/vlsu/qbs/qbs_compute_engine.sv",
     "hardware/src/vlsu/qbs/qbs_commit.sv",
@@ -83,6 +84,45 @@ QBS_SRAM_BLACKBOX = (
 )
 
 
+UNIFIED_AKV_ORGANIZATION = "unified_q64x256_kv128x256"
+SPLIT_AKV_ORGANIZATION = "split_v1_96x256_v2_128x256"
+UNIFIED_AKV_SOURCES = (
+    "hardware/src/vlsu/qbs_akv_shared_reader.sv",
+    "hardware/src/vlsu/akv/akv_legacy_repacker.sv",
+    "hardware/src/vlsu/akv/akv_q_store.sv",
+    "hardware/src/vlsu/akv/akv_unified_context.sv",
+)
+AKV_Q_SRAM_BLACKBOX = "backend/blackbox/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.v"
+DEFAULT_AKV_Q_SRAM_DB = Path(
+    "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/"
+    "ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db"
+)
+
+
+def check_storage_selection(options, sources):
+    selected = options.akv_storage_organization
+    if selected not in (SPLIT_AKV_ORGANIZATION, UNIFIED_AKV_ORGANIZATION):
+        raise PreflightError("unknown AKV storage organization")
+    unified = selected == UNIFIED_AKV_ORGANIZATION
+    if not (options.require_akv or options.require_akv_v2) and not unified:
+        # Bender may list unused AKV modules during a QBS-only preflight.
+        return False
+    has_unified = _has_source(sources, UNIFIED_AKV_SOURCES[-1])
+    if unified != has_unified:
+        raise PreflightError("AKV storage organization does not match source graph; select explicitly")
+    if unified:
+        if not (options.require_akv or options.require_akv_v2):
+            raise PreflightError("unified storage requires explicit AKV enablement")
+        # Storage uses v2_context even when only legacy commands are enabled.
+        _require_sources(sources, UNIFIED_AKV_SOURCES + AKV_V2_SOURCES)
+        for before in (*UNIFIED_AKV_SOURCES[1:3], AKV_V2_SOURCES[0]):
+            _check_order(sources, before, UNIFIED_AKV_SOURCES[-1])
+        _check_order(sources, UNIFIED_AKV_SOURCES[-1], "hardware/src/vlsu/akv/akv_engine.sv")
+        _check_order(sources, "hardware/src/vlsu/qbs/qbs_read_engine.sv", UNIFIED_AKV_SOURCES[0])
+        _check_order(sources, UNIFIED_AKV_SOURCES[0], "hardware/src/vlsu/vlsu.sv")
+    return unified
+
+
 class PreflightError(ValueError):
     """A synthesis input does not satisfy the requested configuration."""
 
@@ -94,6 +134,8 @@ class Options:
     setup: Path
     sram_db: Path
     qbs_sram_db: Path = DEFAULT_QBS_SRAM_DB
+    akv_q_sram_db: Path = DEFAULT_AKV_Q_SRAM_DB
+    akv_storage_organization: str = SPLIT_AKV_ORGANIZATION
     akv_v2_sram_db: Path = EXTRA_SRAM_DBS["akv_v2_sram_db"]
     qbs_context_sram_db: Path = EXTRA_SRAM_DBS["qbs_context_sram_db"]
     qbs_weight_sram_db: Path = EXTRA_SRAM_DBS["qbs_weight_sram_db"]
@@ -245,6 +287,7 @@ def audit(options: Options) -> dict[str, int | str]:
     sdc_text = _read(options.sdc, "SDC")
     setup_text = _read(options.setup, "DC setup")
     defines, sources = _filelist_entries(filelist_text)
+    unified_storage = check_storage_selection(options, sources)
 
     _require_define(defines, "SYNTHESIS")
     _require_define(defines, "TARGET_SYNTHESIS")
@@ -286,7 +329,7 @@ def audit(options: Options) -> dict[str, int | str]:
         _require_define(defines, "TARGET_SRAM_MC")
         _require_define(defines, "TARGET_SRAM_BLACKBOX")
         _require_define(defines, "TARGET_TECH_CELLS_GENERIC_EXCLUDE_TC_SRAM")
-        _require_sources(sources, (AKV_SRAM_BLACKBOX,))
+        _require_sources(sources, (AKV_Q_SRAM_BLACKBOX if unified_storage else AKV_SRAM_BLACKBOX,))
         generic_sram = (
             "hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv",
             "hardware/deps/tech_cells_generic/src/rtl/tc_sram_impl.sv",
@@ -297,10 +340,12 @@ def audit(options: Options) -> dict[str, int | str]:
                 "macro-SRAM filelist still contains generic SRAM implementations: "
                 + ", ".join(present_generic)
             )
-        if not options.sram_db.is_file():
-            raise PreflightError(f"missing AKV SRAM DB: {options.sram_db}")
-        if str(options.sram_db) not in setup_text:
-            raise PreflightError("DC setup does not include the AKV 96x256 SRAM DB")
+        akv_db = options.akv_q_sram_db if unified_storage else options.sram_db
+        akv_shape = "64x256 Q" if unified_storage else "96x256"
+        if not akv_db.is_file():
+            raise PreflightError(f"missing AKV {akv_shape} SRAM DB: {akv_db}")
+        if str(akv_db) not in setup_text:
+            raise PreflightError(f"DC setup does not include the AKV {akv_shape} SRAM DB")
         if options.require_qbs:
             _require_sources(sources, (QBS_SRAM_BLACKBOX,))
             if not options.qbs_sram_db.is_file():
@@ -308,7 +353,7 @@ def audit(options: Options) -> dict[str, int | str]:
             if str(options.qbs_sram_db) not in setup_text:
                 raise PreflightError("DC setup does not include the QBS 8x256 SRAM DB")
         for key, name in EXTRA_SRAM_NAMES.items():
-            required = options.require_akv_v2 if key == "akv_v2_sram_db" else options.require_qbs
+            required = (options.require_akv_v2 or unified_storage) if key == "akv_v2_sram_db" else options.require_qbs
             if required:
                 _require_sources(sources, (f"backend/blackbox/{name}_tt0p9v25c.v",))
                 path = getattr(options, key)
@@ -321,6 +366,7 @@ def audit(options: Options) -> dict[str, int | str]:
     _check_integrated_flow(options)
     return {
         "filelist": str(options.filelist),
+        "akv_storage_organization": options.akv_storage_organization,
         "defines": len(defines),
         "sources": len(sources),
         "clock_period_ns": 1,
@@ -339,6 +385,10 @@ def parse_args(argv: list[str] | None = None) -> Options:
     parser.add_argument("--dc-script", type=Path, default=DEFAULT_DC_SCRIPT)
     parser.add_argument("--dc-runner", type=Path, default=DEFAULT_DC_RUNNER)
     parser.add_argument("--sram-db", type=Path, default=DEFAULT_AKV_SRAM_DB)
+    parser.add_argument("--akv-q-sram-db", type=Path, default=DEFAULT_AKV_Q_SRAM_DB)
+    parser.add_argument("--akv-storage-organization",
+                        choices=(SPLIT_AKV_ORGANIZATION, UNIFIED_AKV_ORGANIZATION),
+                        default=SPLIT_AKV_ORGANIZATION)
     parser.add_argument("--qbs-sram-db", type=Path, default=DEFAULT_QBS_SRAM_DB)
     for key, path in EXTRA_SRAM_DBS.items():
         parser.add_argument("--" + key.replace("_", "-"), type=Path, default=path)

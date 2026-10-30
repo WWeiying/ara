@@ -1,0 +1,118 @@
+{
+  "accepted_comparisons": 3,
+  "complete_family": false,
+  "cross_elf_cost_subtraction_supported": false,
+  "expected_comparisons": 6,
+  "missing_comparisons": [
+    {
+      "kind": "q4_0",
+      "variant": "BOTH_RVV_DECODE"
+    },
+    {
+      "kind": "q4_0",
+      "variant": "CANDIDATE_RVV_DECODE"
+    },
+    {
+      "kind": "q8_0",
+      "variant": "CANDIDATE_RVV_DECODE"
+    }
+  ],
+  "rows": [
+    {
+      "admission_timed": true,
+      "audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-common-attention-q4-audit-20261024-01",
+      "audit_result_sha256": "22cdedfc973e46e6027630b4a3900e49272aa71d8d9251320d8e4d51cfe5bc91",
+      "audit_source_pins_sha256": "6ce77786e465b3cfc5c754bc3863fec1e4ceeb06976dad03ec9013160194b6f6",
+      "backend_allocation_queries_timed": false,
+      "candidate_cycle_sum": 1387385,
+      "candidate_decoder": "production scalar decoder",
+      "cycle_reduction_percent": 67.34090051484422,
+      "cycles": [
+        2124172,
+        693824,
+        693561,
+        2123909
+      ],
+      "decoder_implementation_matched": true,
+      "gather_timed": false,
+      "hardware_only": false,
+      "kind": "q4_0",
+      "mapping_timed": true,
+      "native_commands": 16,
+      "ordinary_cycle_sum": 4248081,
+      "ordinary_decoder": "production scalar decoder",
+      "original_worker_result_sha256": "34719cafb0fec4401d0b41cc536cc766973f358165b700082a0cbb45a959a005",
+      "paired_csr_exact": true,
+      "paired_outputs_exact": true,
+      "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-common-attention-q4-20261024-01",
+      "speedup": 3.0619337818990404,
+      "variant": "ORIGINAL_DECODERS",
+      "whole_model": false
+    },
+    {
+      "admission_timed": true,
+      "audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-common-attention-q8-audit-20261024-01",
+      "audit_result_sha256": "6dc10b86055af9f8b3af781236e8fc320a4bd96152f95f7ee2e1264bde871fa9",
+      "audit_source_pins_sha256": "1c4ed9120b62597e8e0746f0f31f5a21017da1f0260f4d81c5357cf46ec9b8cd",
+      "backend_allocation_queries_timed": false,
+      "candidate_cycle_sum": 1396517,
+      "candidate_decoder": "production scalar decoder",
+      "cycle_reduction_percent": 66.977997422589,
+      "cycles": [
+        2114544,
+        698825,
+        697692,
+        2114506
+      ],
+      "decoder_implementation_matched": true,
+      "gather_timed": false,
+      "hardware_only": false,
+      "kind": "q8_0",
+      "mapping_timed": true,
+      "native_commands": 16,
+      "ordinary_cycle_sum": 4229050,
+      "ordinary_decoder": "production scalar decoder",
+      "original_worker_result_sha256": "9ea4550ea1265eda8bb7d42935b1f1d6535b1797d481f4dae499b59358aaf5e2",
+      "paired_csr_exact": true,
+      "paired_outputs_exact": true,
+      "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-common-attention-q8-20261024-01",
+      "speedup": 3.0282839378253184,
+      "variant": "ORIGINAL_DECODERS",
+      "whole_model": false
+    },
+    {
+      "admission_timed": true,
+      "audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-rvv-baseline-attention-q8-audit-20261024-01",
+      "audit_result_sha256": "a02a797ced1bb300d1278bfaf425d20e44dbc5db971108adfa5d162638185e93",
+      "audit_source_pins_sha256": "c30d6833ea71d1de205a0045ed0ad2a08c42b7034eb7057ba24d5c5862e717ea",
+      "backend_allocation_queries_timed": false,
+      "candidate_cycle_sum": 1096039,
+      "candidate_decoder": "RVV decoder",
+      "cycle_reduction_percent": 57.48928058209688,
+      "cycles": [
+        1289396,
+        548266,
+        547773,
+        1288869
+      ],
+      "decoder_implementation_matched": true,
+      "gather_timed": false,
+      "hardware_only": false,
+      "kind": "q8_0",
+      "mapping_timed": true,
+      "native_commands": 16,
+      "ordinary_cycle_sum": 2578265,
+      "ordinary_decoder": "RVV decoder",
+      "original_worker_result_sha256": "f57066770f10be4c3e5a4563c2583eec66ee61a5b6d597dd33a7c5152d123274",
+      "paired_csr_exact": true,
+      "paired_outputs_exact": true,
+      "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-quantkv-rvv-baseline-attention-q8-20261024-01",
+      "speedup": 2.352347863534053,
+      "variant": "BOTH_RVV_DECODE",
+      "whole_model": false
+    }
+  ],
+  "scope": "Contiguous captured six-Query-head KV-head-0 group, D128, visible128; not the live strided cache or model latency",
+  "source_pins_sha256": "378749f1a1e408f0a72435d3d06ddb69cb96a4d5647c4d5222e0242206c4cdd1",
+  "state": "COMPLETED_COMMON_ATTENTION_REPLAYED"
+}

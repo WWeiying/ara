@@ -1,0 +1,18 @@
+{
+  "schema": "quant_hsb_phase_worker_review_v1",
+  "program_receipt": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/phase_diagnostic/prepare/out/build-gnu-02/build.json",
+  "program_receipt_sha256": "181db00ddf70d93414e843f64c252d7196d8df69ebb90533ca54b179e97806c2",
+  "helper_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/phase_diagnostic/prepare/build.py": "e4c31cda260359796dd4102aa42b722b0f84943a42e60d3cca50f2cd85e6ec14",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/phase_diagnostic/prepare/elf.py": "c3da77e5b2ddd022a272500007b8066589cc33ac3497eaf23d8c650942554b91",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/phase_diagnostic/prepare/render.py": "a56ae2b90f5da37669dbcb53ef9e774c64840c6b84b3f322e18f99f449c97ddf",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/phase_diagnostic/prepare/test_prepare.py": "de09006e7c433a7d3142f995b50fb064c5daaaec1b2cbf08bcfc72f495e31c57",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/phase_diagnostic/prepare/README.md": "112db5d3db34971a18ff638f6ab2dbba3ef7a6a2fac26b68e2e1eac85f982d61",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/phase_diagnostic/prepare/.gitignore": "744a1502c1d7ad664e0677975e40beb6cf6abfe3f49da5311af22b109a50af68",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/phase_diagnostic/analysis/analyze.py": "976ef4d6ad77c20bff404d915e72b446bb49c056587f15ae97a98ecc5eaae2fc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/phase_diagnostic/analysis/test_analyze.py": "a237c921a8d5436b280ca409321810b4b4dddc17a32e7c3a2673c91f811bed91",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/phase_diagnostic/analysis/README.md": "530f1906f04a16bd9d0c8051a9b17e0c079a2f4407ae2b8e2a75d8760ab4282e"
+  },
+  "phase_map": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/akv/quantized_kv/phase_diagnostic/phase-map.json",
+  "phase_map_sha256": "00b71e50b9aec50d6628b1d3415ca40749ff3b720f1d9e7ed0112b6f2b43054a"
+}

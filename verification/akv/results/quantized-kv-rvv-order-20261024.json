@@ -1,0 +1,44 @@
+{
+  "state": "HOST_RVV_ORDER_ANALYZED_WITH_NATIVE_ANCHORS",
+  "analysis": "verification/out/akv-quantkv-rvv-order-analysis-20261024-03",
+  "result_sha256": "9c26fe28508f3bc894aa78cf5cb94a3d94ea6c9b95ef9082c218e3589a363f2e",
+  "pins_sha256": "c204da3bbe1c9af7f35c812d2ccd14aed0d7d2adabd402b14d640b4072e79b9a",
+  "native_qbs_outputs_reused": 3336,
+  "actual_rvv_anchor_outputs": 16,
+  "modeled_rvv_output_comparisons": 3336,
+  "target_instruction_order_checked": true,
+  "native_anchor_bits_and_flags_exact": true,
+  "profiles": [
+    {
+      "key_format": "q8_0",
+      "outputs": 1668,
+      "block_evaluations": 6672,
+      "max_abs_integer_dot": 73640,
+      "rvv_first_product": "weight_scale_times_query_scale",
+      "rvv_first_product_rounded_blocks": 0,
+      "bits_different": 0,
+      "max_ulp": 0,
+      "max_abs": 0.0,
+      "commands_with_different_aggregate_flags": 0
+    },
+    {
+      "key_format": "q4_0",
+      "outputs": 1668,
+      "block_evaluations": 6672,
+      "max_abs_integer_dot": 6702,
+      "rvv_first_product": "integer_dot_times_weight_scale",
+      "rvv_first_product_rounded_blocks": 0,
+      "bits_different": 0,
+      "max_ulp": 0,
+      "max_abs": 0.0,
+      "commands_with_different_aggregate_flags": 0
+    }
+  ],
+  "observed_hardware_flags_granularity": "Per-command OR",
+  "full_native_rvv_matrix_execution": false,
+  "q4_universal_bit_equivalence_claimed": false,
+  "whole_attention_accepted": false,
+  "tolerance_changed": false,
+  "performance_measured": false,
+  "scope": "Existing actual QBS outputs versus a source/disassembly-anchored host model of original RVV FP order. Not a new RTL or model execution."
+}

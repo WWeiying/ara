@@ -1,0 +1,12 @@
+{
+  "state": "PASS",
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-seed-owner-engine-20261023-03",
+  "result_sha256": "97ed4de27d7bb54c8cf0ef42df36741e6003a54b121a12d79962edd03b1cc154",
+  "functional": 63,
+  "faults": 8,
+  "reset": 1,
+  "router_combinations": 8192,
+  "scope": "Actual QBS controller/compute/mapper with modeled Lane StA delivery; not ISA/SoC or performance acceptance",
+  "performance_accepted": false,
+  "default_enabled": false
+}

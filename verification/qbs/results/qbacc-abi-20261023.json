@@ -1,0 +1,11 @@
+{
+  "state": "PASS",
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbacc-abi-sidecar-20261023-01/check",
+  "result_sha256": "baebc0cf1a113f7fdc6a22781ae31283751d526ffcde51a934f73a30514f8754",
+  "c_variants": 5,
+  "sv_variants": 4,
+  "encodings_per_variant": 262144,
+  "capabilities_per_variant": 2304,
+  "scope": "Generated ABI encodings, reserved fields and old capability compatibility; not CPU instruction execution",
+  "default_enabled": false
+}

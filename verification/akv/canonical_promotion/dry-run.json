@@ -1,0 +1,27 @@
+{
+  "schema": "shared_resource_canonical_patch_dry_run_v1",
+  "state": "ISOLATED_PATCH_APPLICATION_AND_EXACT_AFTER_HASHES_PASS",
+  "files": 11,
+  "replaced_rtl": 3,
+  "added_support": 7,
+  "bender_source_insertions": 4,
+  "patch_sha256": "f0ddeb180b7869d9dd42c38ff858f8bac38718b49ced9107157e9dd4e22a8c13",
+  "plan_sha256": "3d8033452074d6c4ec147e9797d1d324f451b7c1267cf82e58ca52963f0befc1",
+  "checks": [
+    "Snapshot manifest matches the accepted snapshot03 SHA256",
+    "Each changed RTL source and support file matches its snapshot artifact pin",
+    "Existing canonical targets match their original input pins; new targets do not exist",
+    "git apply --check succeeds against the unchanged canonical targets",
+    "git apply succeeds in an isolated temporary tree containing only original target files",
+    "The isolated result contains exactly the eleven planned files",
+    "All eleven isolated output hashes match their expected after hashes",
+    "Canonical target hashes and absent new targets remain unchanged after the check"
+  ],
+  "canonical_untouched": true,
+  "production_promoted": false,
+  "compiler_invoked": false,
+  "functional_acceptance": false,
+  "live_pin_barrier_cleared": false,
+  "standalone_interface_migration_included": false,
+  "synthesis_wrapper_migration_included": false
+}

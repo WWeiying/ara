@@ -1,0 +1,47 @@
+# Classify actual AKV-owned macro instances; Q is never counted as legacy V1.
+# __ENGINE__ excludes unrelated CPU/QBS macros with the same library reference.
+set __P__context_macros [get_cells -quiet -hierarchical -filter \
+    "ref_name =~ TS1N28HPCPUHDSVTB* && full_name =~ __ENGINE__/*"]
+set __P__q_macros [get_cells -quiet -hierarchical -filter \
+    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ __ENGINE__/i_unified_context/i_q_store/*"]
+set __P__kv_macros [get_cells -quiet -hierarchical -filter \
+    "ref_name == TS1N28HPCPUHDSVTB128X256M1SWBSO && full_name =~ __ENGINE__/i_unified_context/i_kv_store/*"]
+set __P__old64_v1 [get_cells -quiet -hierarchical -filter \
+    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ __ENGINE__/i_context/*"]
+set __P__old64_v2 [get_cells -quiet -hierarchical -filter \
+    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ __ENGINE__/i_v2_context/*"]
+set __P__split_v1 [get_cells -quiet -hierarchical -filter \
+    "ref_name == TS1N28HPCPUHDSVTB96X256M1SWBSO && full_name =~ __ENGINE__/i_context/*"]
+set __P__split_v2 [get_cells -quiet -hierarchical -filter \
+    "ref_name == TS1N28HPCPUHDSVTB128X256M1SWBSO && full_name =~ __ENGINE__/i_v2_context/*"]
+set __P__macro_count [sizeof_collection $__P__context_macros]
+set __P__q_macro_count [sizeof_collection $__P__q_macros]
+set __P__kv_count [sizeof_collection $__P__kv_macros]
+set __P__old64_v1_count [sizeof_collection $__P__old64_v1]
+set __P__old64_v2_count [sizeof_collection $__P__old64_v2]
+set __P__split_v1_count [sizeof_collection $__P__split_v1]
+set __P__split_v2_count [sizeof_collection $__P__split_v2]
+set __P__partition [list $__P__macro_count $__P__q_macro_count $__P__kv_count \
+    $__P__old64_v1_count $__P__old64_v2_count $__P__split_v1_count $__P__split_v2_count]
+switch -- $__P__partition {
+  {9 1 8 0 0 0 0} {
+    set __P__organization unified_q64x256_kv128x256
+    set __P__v1_macro_count 0
+    set __P__v2_macro_count 8
+    set __P__capacity_bits [expr {(1 * 64 + 8 * 128) * 256}]
+  }
+  {10 0 0 0 0 2 8} {
+    set __P__organization split_v1_96x256_v2_128x256
+    set __P__v1_macro_count 2
+    set __P__v2_macro_count 8
+    set __P__capacity_bits [expr {(2 * 96 + 8 * 128) * 256}]
+  }
+  {20 0 0 4 16 0 0} {
+    set __P__organization legacy_v1_v2_64x256
+    set __P__v1_macro_count 4
+    set __P__v2_macro_count 16
+    set __P__capacity_bits [expr {(4 + 16) * 64 * 256}]
+  }
+__EMPTY__
+  default {error "unexpected AKV SRAM hierarchy/organization: $__P__partition"}
+}

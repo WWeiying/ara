@@ -1,0 +1,21 @@
+{
+  "state": "PASS",
+  "scope": "Accepted production combined-Zvfh M4 preparation and cross-operation context coexistence",
+  "graphs": {"context": 48, "alias": 32, "expert_barrier": 8, "total": 88},
+  "context_receipt": "verification/qbs/results/q8k-coexist-context-20261026.json",
+  "remaining_output": "verification/out/q8k-coexist-remaining-20261026-01",
+  "remaining_manifest_sha256": "de24a6e420f5106b608e33ef7e9617fde29b6c74758df9e694c66789d19197f5",
+  "alias_log_sha256": "f44ab7fe9df1e613aac68fcef8f9e25817d65198f12cdb034e582852fbacf53d",
+  "barrier_log_sha256": "88a47b26edb7ea313924b1748b41a98e986b6f5793ac049ae41cc7e20f96f92f",
+  "elf_sha256": "6874d83668034f978d841c16be777da89f5429c60a79316ed42cfed911efa8f3",
+  "parent_replayed_original_dispatch_checkers": true,
+  "remaining_source_pins_rechecked": true,
+  "actual_m4_rvv_preparation_calls": 16,
+  "native_qbs_not_software_emulated": true,
+  "synthetic_ggml_graphs": true,
+  "real_model_test": false,
+  "rtl_performance_test": false,
+  "signed_max_candidate_tested": false,
+  "production_default_changed": false,
+  "context_first_worker_failure": "Trace-label checker mismatch, separately corrected and archived; original result retained"
+}

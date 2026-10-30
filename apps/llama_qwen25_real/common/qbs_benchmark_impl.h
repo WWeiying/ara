@@ -71,6 +71,21 @@ void q4km_quantize_row_q8_K(const float *x, block_q8_K *y, int64_t k)
 #ifndef QBS_BENCH_CROSS_OP_REUSE
 #define QBS_BENCH_CROSS_OP_REUSE 0
 #endif
+#ifndef QBS_BENCH_COMPACT_M4
+#define QBS_BENCH_COMPACT_M4 0
+#endif
+#ifndef QBS_BENCH_PREFLIGHT
+#define QBS_BENCH_PREFLIGHT 0
+#endif
+#ifndef QBS_BENCH_INDEPENDENT_ORACLE
+#define QBS_BENCH_INDEPENDENT_ORACLE 0
+#endif
+#if QBS_BENCH_COMPACT_M4 != 0 && QBS_BENCH_COMPACT_M4 != 1
+#error "QBS_BENCH_COMPACT_M4 must be 0 or 1"
+#endif
+#if QBS_BENCH_INDEPENDENT_ORACLE && defined(__FAST_MATH__)
+#error "independent numerical validation requires -fno-fast-math"
+#endif
 
 #if QBS_BENCH_PREBUILT_DESCRIPTOR != 0 && \
     QBS_BENCH_PREBUILT_DESCRIPTOR != 1
@@ -176,8 +191,9 @@ typedef block_q8_K benchmark_activation_block_t;
 #define BENCH_USE_M4_INTERLEAVED 0
 #define BENCH_ACTIVATION_LAYOUT QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED
 #define BENCH_PACKED_ACTIVATION_ROWS QBS_MAX_M
-#elif BENCH_INPUTS == 4 && !BENCH_WEIGHT_Q8_0 && !BENCH_WEIGHT_Q4_0 && \
-      !BENCH_WEIGHT_Q5_0 && !BENCH_WEIGHT_IQ4_NL
+#elif BENCH_INPUTS == 4 && (QBS_BENCH_COMPACT_M4 || \
+      (!BENCH_WEIGHT_Q8_0 && !BENCH_WEIGHT_Q4_0 && \
+       !BENCH_WEIGHT_Q5_0 && !BENCH_WEIGHT_IQ4_NL))
 #define BENCH_TILE_N QBS_MAX_N
 #define BENCH_USE_M8_INTERLEAVED 0
 #define BENCH_USE_M4_INTERLEAVED 1
@@ -190,6 +206,12 @@ typedef block_q8_K benchmark_activation_block_t;
 #define BENCH_ACTIVATION_LAYOUT QBS_ACTIVATION_LAYOUT_ROW_MAJOR
 #endif
 #define BENCH_TILES ((BENCH_ROWS + BENCH_TILE_N - 1) / BENCH_TILE_N)
+#if BENCH_USE_M4_INTERLEAVED || BENCH_USE_M8_INTERLEAVED
+#define BENCH_ACTIVATION_BYTES (BENCH_PACKED_ACTIVATION_ROWS * BENCH_BLOCKS * \
+                              sizeof(benchmark_activation_block_t))
+#else
+#define BENCH_ACTIVATION_BYTES (BENCH_Q8_BLOCKS * sizeof(benchmark_activation_block_t))
+#endif
 
 _Static_assert(BENCH_K > 0 && BENCH_K % BENCH_BLOCK_ELEMENTS == 0,
                "QBS K must align to the selected weight block");
@@ -201,14 +223,20 @@ _Static_assert(BENCH_INPUTS >= 1 && BENCH_INPUTS <= QBS_MAX_M,
 _Static_assert(VLEN >= QBS_MAX_N * 32,
                "this benchmark requires 32 FP32 results per context");
 #if QBS_BENCH_ACTIVATION_CONTEXT
-_Static_assert(BENCH_INPUTS == 1,
-               "activation context supports only M=1");
-_Static_assert(BENCH_ACTIVATION_PROFILE == QBS_ACTIVATION_PROFILE_Q8_K,
-               "activation context supports only Q8_K");
+_Static_assert(BENCH_INPUTS == 1 || BENCH_USE_M4_INTERLEAVED || BENCH_USE_M8_INTERLEAVED,
+               "context requires M1 row-major, M4 interleaved or M5--8 interleaved");
 _Static_assert(BENCH_BLOCKS <= QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS,
-               "activation context K exceeds context capacity");
+               "activation context K exceeds the tag limit");
+_Static_assert(BENCH_ACTIVATION_BYTES <= QBS_ACTIVATION_CONTEXT_CAPACITY_BYTES,
+               "activation context exceeds the packed byte budget");
 _Static_assert(BENCH_TILES >= 2,
                "activation context requires at least two output tiles");
+#endif
+#if QBS_BENCH_INDEPENDENT_ORACLE
+_Static_assert(BENCH_WEIGHT_Q8_0 && BENCH_INPUTS == 4 && BENCH_USE_M4_INTERLEAVED,
+               "independent oracle currently covers compact Q8_0 M4");
+_Static_assert(QBS_BENCH_OPERATIONS == 1 && !QBS_BENCH_PREBUILT_DESCRIPTOR,
+               "full-projection oracle apps measure one production-command operation");
 #endif
 
 enum benchmark_phase {
@@ -223,6 +251,10 @@ extern const uint8_t benchmark_activation_start[];
 extern const uint8_t benchmark_activation_end[];
 extern const uint8_t benchmark_golden_start[];
 extern const uint8_t benchmark_golden_end[];
+#if QBS_BENCH_INDEPENDENT_ORACLE
+extern const uint8_t benchmark_oracle_start[], benchmark_oracle_end[];
+extern const uint8_t benchmark_expected_q8_start[], benchmark_expected_q8_end[];
+#endif
 
 static benchmark_activation_block_t quantized_activation[BENCH_Q8_BLOCKS]
     __attribute__((aligned(64), section(".bss")));
@@ -312,6 +344,88 @@ static inline qbs_descriptor_t benchmark_make_descriptor(unsigned operation,
   };
   return descriptor;
 }
+
+#if QBS_BENCH_PREFLIGHT
+static qbs_status_t benchmark_preflight(void) {
+  qbs_device_t device;
+  qbs_status_t status = qbs_device_query(qbs_native_info, NULL, &device);
+  if (status != QBS_STATUS_OK) return status;
+  const qbs_capabilities_t *caps = &device.capabilities;
+  if (caps->max_m < BENCH_INPUTS || caps->max_n < BENCH_TILE_N ||
+      caps->max_k_blocks < BENCH_BLOCKS ||
+      caps->max_results < BENCH_INPUTS * BENCH_TILE_N ||
+      !(caps->activation_layouts & (UINT16_C(1) << BENCH_ACTIVATION_LAYOUT)))
+    return QBS_STATUS_CAPABILITY;
+  const qbs_problem_t problem = {
+      .weight_profile = BENCH_WEIGHT_PROFILE,
+      .activation_profile = BENCH_ACTIVATION_PROFILE,
+      .weight_layout = QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+      .activation_storage = BENCH_USE_M8_INTERLEAVED ? QBS_ACTIVATION_STORAGE_M8_GROUPED :
+          (BENCH_USE_M4_INTERLEAVED ? QBS_ACTIVATION_STORAGE_M4_GROUPED :
+                                    QBS_ACTIVATION_STORAGE_ROW_MAJOR),
+      .m = BENCH_INPUTS, .n = BENCH_ROWS, .k_elements = BENCH_K,
+  };
+  qbs_plan_t plan;
+  status = qbs_plan_create(&device, &problem, &plan);
+  if (status != QBS_STATUS_OK) return status;
+  if (plan.split_k || plan.needs_activation_gather) return QBS_STATUS_SHAPE;
+#if QBS_BENCH_ACTIVATION_CONTEXT
+  if (!qbs_plan_supports_activation_context(&plan) ||
+      BENCH_ACTIVATION_BYTES > caps->activation_context_capacity_bytes)
+    return QBS_STATUS_CONTEXT_UNSUPPORTED;
+#endif
+  qbs_plan_cursor_t cursor;
+  unsigned access_counts[4] = {0};
+  for (unsigned operation = 0; operation < QBS_BENCH_OPERATIONS; ++operation) {
+    qbs_plan_cursor_reset(&cursor);
+    for (unsigned tile = 0; tile < BENCH_TILES; ++tile) {
+    qbs_command_t command;
+    int has_command;
+    status = qbs_plan_next(&plan, &cursor, &command, &has_command);
+    if (status != QBS_STATUS_OK) return status;
+    const qbs_descriptor_t descriptor = benchmark_make_descriptor(operation, tile);
+    const qbs_descriptor_fields_t fields = qbs_unpack_descriptor_header(descriptor.header);
+    // The runtime cursor supplies geometry, not access modes. Independently
+    // check this app's explicit emitter contract before any QBS command.
+    const unsigned ordinal = operation * BENCH_TILES + tile;
+    const unsigned first = QBS_BENCH_CROSS_OP_REUSE ? ordinal == 0 : tile == 0;
+    const unsigned last = QBS_BENCH_CROSS_OP_REUSE
+        ? ordinal + 1 == QBS_BENCH_OPERATIONS * BENCH_TILES
+        : tile + 1 == BENCH_TILES && !QBS_BENCH_CONTEXT_KEEP_VALID;
+    const unsigned access = !QBS_BENCH_ACTIVATION_CONTEXT ? QBS_ACTIVATION_ACCESS_DIRECT :
+        (first ? QBS_ACTIVATION_ACCESS_FILL :
+         last ? QBS_ACTIVATION_ACCESS_RELEASE : QBS_ACTIVATION_ACCESS_REUSE);
+    const unsigned generation = QBS_BENCH_ACTIVATION_CONTEXT
+        ? QBS_BENCH_CONTEXT_GENERATION + (QBS_BENCH_CROSS_OP_REUSE ? 0 : operation) : 0;
+    if (generation > UINT8_MAX || fields.activation_access != access ||
+        fields.context_id != 0 || fields.context_generation != generation ||
+        fields.descriptor_version != QBS_DESCRIPTOR_VERSION ||
+        fields.weight_profile != BENCH_WEIGHT_PROFILE ||
+        fields.activation_profile != BENCH_ACTIVATION_PROFILE ||
+        fields.weight_layout != QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR)
+      return QBS_STATUS_CONTEXT_TOKEN;
+    ++access_counts[access];
+    if (!has_command || command.input_start != 0 || command.m != BENCH_INPUTS ||
+        command.output_start != tile * BENCH_TILE_N || command.n != fields.n ||
+        command.k_blocks != fields.k_blocks || command.k_block_start != 0 ||
+        command.gather_activation || command.accumulate || command.activation_offset_bytes != 0 ||
+        command.activation_layout != fields.activation_layout ||
+        descriptor.weight_base != (uintptr_t)benchmark_weight_start + command.weight_offset_bytes)
+      return QBS_STATUS_SHAPE;
+    }
+    qbs_command_t command;
+    int has_command;
+    status = qbs_plan_next(&plan, &cursor, &command, &has_command);
+    if (status != QBS_STATUS_OK || has_command) return QBS_STATUS_SHAPE;
+  }
+  BENCH_REPORT("QBS_REAL_PREFLIGHT case=%s PASS layout=%u packed_bytes=%lu context_capacity=%u tiles=%u planned_direct=%u planned_fill=%u planned_reuse=%u planned_release=%u\n",
+      BENCH_CASE_ID, BENCH_ACTIVATION_LAYOUT, (unsigned long)BENCH_ACTIVATION_BYTES,
+      caps->activation_context_capacity_bytes, BENCH_TILES,
+      access_counts[QBS_ACTIVATION_ACCESS_DIRECT], access_counts[QBS_ACTIVATION_ACCESS_FILL],
+      access_counts[QBS_ACTIVATION_ACCESS_REUSE], access_counts[QBS_ACTIVATION_ACCESS_RELEASE]);
+  return QBS_STATUS_OK;
+}
+#endif
 
 #if QBS_BENCH_PREBUILT_DESCRIPTOR
 static void benchmark_setup_descriptors(void) {
@@ -512,7 +626,9 @@ static __attribute__((noinline)) uint64_t benchmark_qbs(unsigned operation) {
       (uint64_t)(benchmark_weight_end - benchmark_weight_start);
 #if BENCH_USE_M4_INTERLEAVED || BENCH_USE_M8_INTERLEAVED
   const uint64_t activation_bytes =
-      (uint64_t)BENCH_TILES * BENCH_PACKED_ACTIVATION_ROWS * BENCH_BLOCKS *
+      (uint64_t)(QBS_BENCH_ACTIVATION_CONTEXT
+                     ? (!QBS_BENCH_CROSS_OP_REUSE || operation == 0)
+                     : BENCH_TILES) * BENCH_PACKED_ACTIVATION_ROWS * BENCH_BLOCKS *
       sizeof(benchmark_activation_block_t);
 #else
   const uint64_t activation_bytes =
@@ -576,6 +692,34 @@ static __attribute__((noinline)) int benchmark_validate(
   return mismatches;
 }
 
+#if QBS_BENCH_INDEPENDENT_ORACLE
+static int benchmark_validate_independent(void) {
+  const float *oracle = (const float *)benchmark_oracle_start;
+  unsigned quant_byte_mismatches = 0, output_mismatches = 0;
+  float max_abs = 0;
+  for (unsigned byte = 0; byte < sizeof(quantized_activation); ++byte)
+    quant_byte_mismatches += ((const uint8_t *)quantized_activation)[byte] !=
+        benchmark_expected_q8_start[byte];
+  for (unsigned i = 0; i < BENCH_OUTPUTS; ++i) {
+    const float actual = benchmark_output[i], expected = oracle[i];
+    if ((benchmark_float_bits(actual) & 0x7f800000u) == 0x7f800000u ||
+        (benchmark_float_bits(expected) & 0x7f800000u) == 0x7f800000u) {
+      ++output_mismatches;
+      continue;
+    }
+    const float delta = actual - expected;
+    const float error = delta < 0 ? -delta : delta;
+    const float magnitude = expected < 0 ? -expected : expected;
+    if (error > max_abs) max_abs = error;
+    if (error > 2.0e-4f + 2.0e-5f * magnitude) ++output_mismatches;
+  }
+  BENCH_REPORT("QBS_REAL_ORACLE case=%s outputs=%u quant_byte_mismatches=%u mismatches=%u max_abs_bits=0x%x kind=scalar_fp64_offline\n",
+      BENCH_CASE_ID, BENCH_OUTPUTS, quant_byte_mismatches, output_mismatches,
+      benchmark_float_bits(max_abs));
+  return quant_byte_mismatches != 0 || output_mismatches != 0;
+}
+#endif
+
 int main(void) {
   const uint64_t expected_weight_bytes =
       (uint64_t)((BENCH_ROWS + 3) & ~3) * BENCH_BLOCKS *
@@ -594,7 +738,26 @@ int main(void) {
     return 1;
   }
 
+#if QBS_BENCH_INDEPENDENT_ORACLE
+  if (benchmark_oracle_end - benchmark_oracle_start != BENCH_OUTPUTS * 4 ||
+      benchmark_expected_q8_end - benchmark_expected_q8_start != sizeof(quantized_activation))
+    return 1;
+  for (unsigned i = 0; i < BENCH_TOTAL_OUTPUTS; ++i) {
+    const uint32_t poison = 0x7fc00001u;
+    memcpy(&benchmark_output[i], &poison, sizeof(poison));
+  }
+#else
   memset(benchmark_output, 0, sizeof(benchmark_output));
+#endif
+#if QBS_BENCH_PREFLIGHT
+  benchmark_execution_status = benchmark_preflight();
+  if (benchmark_execution_status != QBS_STATUS_OK) {
+    BENCH_REPORT("QBS_REAL_BENCH %s FAIL reason=capability qbs_status=%u\n",
+                 BENCH_CASE_ID, (unsigned)benchmark_execution_status);
+    return 1;
+  }
+#endif
+
 #if QBS_BENCH_PREBUILT_DESCRIPTOR
   benchmark_setup_descriptors();
 #endif
@@ -647,8 +810,11 @@ int main(void) {
   float max_rel;
   uint64_t checksum;
   const int mismatches = benchmark_validate(&max_abs, &max_rel, &checksum);
-  const int passed =
+  int passed =
       mismatches == 0 && benchmark_execution_status == QBS_STATUS_OK;
+#if QBS_BENCH_INDEPENDENT_ORACLE
+  if (benchmark_validate_independent()) passed = 0;
+#endif
   benchmark_last_compute_cycles = compute_cycles;
   BENCH_REPORT(
       "QBS_REAL_BENCH case=%s result=%s k=%d rows=%d inputs=%d outputs=%d "

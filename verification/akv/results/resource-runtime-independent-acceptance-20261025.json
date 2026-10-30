@@ -1,0 +1,42 @@
+{
+  "state": "PASS",
+  "scope": "Offline raw evidence recheck of same-ELF resource regressions; no additional simulator execution",
+  "aggregate_receipt": "verification/out/resource-runtime-independent-audit-20261025-01/result.json",
+  "aggregate_sha256": "8d3ca2191eda3c6453344ef95246ae2d04eed6ce29374ea5d75290ded834332e",
+  "parent_checked": "Aggregate, auditor-source and individual report/source-pin receipt hashes; exact corresponding cycle arrays; quant auditor source review and seven host tests",
+  "cases": [
+    {
+      "name": "ordinary_rvv_generic_and_paired_akv",
+      "candidate": "shared_reader_plus_unified_storage",
+      "baseline_and_candidate_cycles": [245497, 81047, 58341, 58310, 80523, 245088],
+      "identical_command_records": 3864,
+      "command_namespace": "AKV_PERF",
+      "report": "verification/out/ordinary-rvv-unified-independent-audit-20261025-01/result.json",
+      "report_sha256": "1bc0efb10071d2dddfe9ed0e74cf03c18aa93b05f738fb2502d1f5dc60d2cb13"
+    },
+    {
+      "name": "quant_q4_0",
+      "candidate": "shared_reader_only",
+      "baseline_and_candidate_cycles": [1306495, 571232, 567209, 1291204],
+      "identical_command_records": 16,
+      "command_namespace": "QBS_PERF",
+      "report": "verification/out/shared-reader-real-quant-q4-independent-audit-20261025-01/result.json",
+      "report_sha256": "917a7bc0de932c44ec073525d98e77d703f2253d37c37751073ef579f4148025"
+    },
+    {
+      "name": "quant_q8_0",
+      "candidate": "shared_reader_only",
+      "baseline_and_candidate_cycles": [1319619, 584225, 583616, 1306552],
+      "identical_command_records": 16,
+      "command_namespace": "QBS_PERF",
+      "report": "verification/out/shared-reader-real-quant-q8-independent-audit-20261025-01/result.json",
+      "report_sha256": "afcc3fe6ac7742abce9305903949be91dd29010cebac344dd4c3749cd3f7c488"
+    }
+  ],
+  "all_corresponding_calls_cycle_identical": true,
+  "quant_algorithm_speedup_attributed_to_reader": false,
+  "whole_model_performance": false,
+  "production_promoted": false,
+  "ppa_measured": false,
+  "pending": ["held-AR error and owner-recovery gate", "live-source-pin barrier", "coherent canonical promotion and actual source-graph validation", "H/S/B quantized KV attribution"]
+}

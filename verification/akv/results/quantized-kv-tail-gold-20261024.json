@@ -1,0 +1,22 @@
+{
+  "state": "INDEPENDENT_HOST_GGML_TAIL_GOLD_ACCEPTED",
+  "scope": "Actual archived host GGML graphs on real captured inputs; not a QBS model or RTL result",
+  "run": "verification/out/akv-quantkv-tail-gold-20261024-01",
+  "result_sha256": "4232e16110b3fd2591af3bc7f11d4c9bb07106dc660449c0bdda6b65864dfdca",
+  "source_pins_sha256": "671e38ff84dfc8f5eddbd23a11a9e5d114392dd43246884cedf02ea6a1d62594",
+  "raw_reference_log_sha256": "122d128010fac04fdbfa1584d9445352d6fff8d42a609e692d60b41f98179846",
+  "shape": {"dim": 128, "query_heads": 12, "kv_heads": 2, "capacity": 256, "outputs": 1536},
+  "graphs": 6,
+  "baseline_visible_128_max_abs_vs_original_capture": {"q8_0": 0, "q4_0": 0},
+  "tail_outputs": {
+    "q8_0-v5.bin": "9a4e80ae966631ea5ac93044031767b3114e5cf76ff58f5545d7a6d9248ef64a",
+    "q8_0-v33.bin": "4f0f15a3cc8470f92a3b667a9c4edcd746448731090ea7e202edbc0022fa960e",
+    "q4_0-v5.bin": "876b7c9a50d330d4d992851d723d7b05fca63b7b7357697b7a4c8060c7bfa02a",
+    "q4_0-v33.bin": "f43df4c7bfb621cb95c4dd4598efe3c59c95f33e9253f7bd7772d43bd265ef6a"
+  },
+  "bytes_per_output_file": 6144,
+  "dtype": "little_endian_float32",
+  "host_tests_passed": 8,
+  "rtl_performance": false,
+  "rtl_functional_acceptance": false
+}

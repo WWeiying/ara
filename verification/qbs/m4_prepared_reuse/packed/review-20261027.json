@@ -1,0 +1,20 @@
+{
+  "state": "FUNCTIONAL_AND_PREPARATION_PERFORMANCE_PASS",
+  "source_result": "verification/out/m4-packed-soc-vcs-20261027-01/result.json",
+  "source_result_sha256": "df9ecbc05c0f7a99834b2fd7f35ebc9e25eb2ad24d11a5e23d13101e3e325641",
+  "log_sha256": "0cc5a15e6ca1e1d77692476ac9ab2fe816f2fef5b5a247616ec058bc4e775b2c",
+  "uvm_sha256": "d59173a9f53903242c32861f0ffd6ee78ab374c37d52fd2413083a5e1323f2ed",
+  "parent_raw_replay_matches": true,
+  "parent_source_pins_match": true,
+  "parent_protocol_replayed": true,
+  "baseline_cycles": 689108,
+  "packed_cycles": 454221,
+  "speedup": 1.517120520627624,
+  "cycle_reduction": 0.34085658561502696,
+  "requests_responses": 81374,
+  "backend_allocations_completions": 78504,
+  "production_integrated": false,
+  "rtl_changed": false,
+  "whole_model_speedup": null,
+  "decision": "Proceed to complete projection combination test; do not extrapolate preparation ratio."
+}

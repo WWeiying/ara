@@ -1,0 +1,28 @@
+{
+  "isa_integrated": false,
+  "manifest_sha256": "a126cd3f6d0857a0096b7e1471e53d7a4875a6b1b8549c1050719cd31b3ee168",
+  "production_selection_enabled": false,
+  "result_sha256": "ef8802da05964dea89cbef6e61e947d660bf31c9093dd538e19bb198b423e516",
+  "runs": [
+    {
+      "cases": 36,
+      "logs_sha256": {
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-compute-continuation-20261023-03/split0/run.log": "9ad21576558608f222a98d78b17a89f6b40c1a7295312894790abb7b00c0cfd3"
+      },
+      "prefixes": 0,
+      "split": 0
+    },
+    {
+      "cases": 36,
+      "logs_sha256": {
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-compute-continuation-20261023-03/split1/run.log": "d64ba5ba82ea83a15757329f40a311971ba6fd4cd4fb5836b4d0984786b0a35a"
+      },
+      "prefixes": 362,
+      "split": 1
+    }
+  ],
+  "scope": "Compute-only: independent command-vector oracle, no ISA/lane/SoC/performance closure",
+  "state": "PASS",
+  "status_sha256": "d73b18c8ed17cb092245f2b726b3c46f49661d1ce0e1581482d4cd0a4c614238",
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/qbs-compute-continuation-20261023-03"
+}

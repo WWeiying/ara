@@ -1,0 +1,34 @@
+--- a/ggml/src/ggml-cpu/arch/riscv/quant-kv.cpp
++++ b/ggml/src/ggml-cpu/arch/riscv/quant-kv.cpp
+@@ -37,11 +37,15 @@
+     akv_quant_ggml_strided_report_t report{};
+     void * workspace;
+     size_t workspace_bytes;
++    bool grouped_pv;
+ };
+ 
+ static int execute(void * opaque, qbs_command_executor_t executor) {
+     auto & call = *static_cast<invocation *>(opaque);
+     call.bindings.execute = executor;
++    if (call.grouped_pv) {
++        return akv_quant_ggml_strided_execute_grouped_pv(call.dst, &call.context, &call.bindings, call.workspace, call.workspace_bytes, &call.report);
++    }
+     return akv_quant_ggml_strided_execute(call.dst, &call.context, &call.bindings, call.workspace, call.workspace_bytes, &call.report);
+ }
+ 
+@@ -87,11 +91,15 @@
+     call.bindings.mad = accumulate_value;
+     call.workspace = workspace.data();
+     call.workspace_bytes = bytes;
++#if defined(GGML_SIMD) && defined(__riscv_v_intrinsic) && defined(__riscv_vector)
++    call.grouped_pv = enabled("GGML_RISCV_AKV_GROUPED_PV");
++#endif
+     const int status = ggml_riscv_qbs_direct_run(execute, &call);
+     if (enabled("GGML_RISCV_AKV_TRACE")) {
+         const auto & native = call.report.execution.native;
+         std::fprintf(stderr, "GGML_RISCV_QUANT_KV status=%d mapping=%u memory=%u runtime_called=%u command_attempts=%u groups=%u value_decodes=%u executor_status=%u\n", status, call.report.mapping_reason, call.report.memory_verified, call.report.runtime_called, native.command_attempts, native.completed_groups, native.value_decodes, static_cast<unsigned>(native.executor_status));
+         std::fprintf(stderr, "GGML_RISCV_QUANT_KV_LAYOUT selection=%u key_panels=%zu key_bytes=%zu workspace=%zu k_token_stride=%zu k_head_stride=%zu\n", native.selection_reason, call.report.execution.key_panels, call.report.execution.key_bytes, bytes, key->nb[1], key->nb[2]);
++        std::fprintf(stderr, "GGML_RISCV_QUANT_KV_PV grouped=%u completed_groups=%u\n", unsigned(call.grouped_pv), native.completed_groups);
+     }
+     if (status == AKV_QUANT_NATIVE_OK) {
+         return ggml_riscv_quant_kv_status::complete;

@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "stage": "opt-in activation storage primitive, not engine/runtime enablement",
+  "baseline_revision": "fc37b1db",
+  "raw_root": "verification/out/qbs-tile-context-20261023-01",
+  "status": "PASS",
+  "source_sha256": {
+    "hardware/src/vlsu/qbs/qbs_activation_context.sv": "95ec9d4ecf6237684fdfc61bdc99c4ad3d8c532af2b81de27276821f3bb4f65a",
+    "hardware/include/qbs_pkg.sv": "f64946527f9f88608a1ab6fdfb19f9854f932ca0a84fa27f4a1aa55cece5234d",
+    "hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv": "e815e5d70aa530f8bcd99dd68c8791c7f8b46295e5fdfd75651eb2807f79abe9",
+    "verification/qbs/qbs_activation_context_tb.sv": "5396d99ec74953053b2f9db87be6130f3461f93eaa8139a5a1082dca959a3d69",
+    "verification/qbs/qbs_activation_tile_context_tb.sv": "8a83db16897e650a54f2b55f0496a4b6f28521acf896cd0f1364eca13120977b",
+    "verification/qbs/qbs_context_sram_macro_model.sv": "02746ec0c2395660d38e07f407bf2fbba80d56a2675f46bf6b1fd71693026e65"
+  },
+  "extended_makefile_sha256": "967f80799a525da4df6bdf68c502e087f79713ea1d0cfd67c884c49f522fab82",
+  "runs": [
+    {
+      "directory": "legacy",
+      "target": "rtl-context-check",
+      "exit_code": 0,
+      "log_sha256": "12661c6f4fccf0dbda9aca9e3560616d41b536889bbdb80abd61e63584d43fc7",
+      "simv_sha256": "f94db7573908d6e471ec76e6b1fe941c2add9da9a256dfafdaaec948174e0685"
+    },
+    {
+      "directory": "legacy_macro",
+      "target": "rtl-context-macro-check",
+      "exit_code": 0,
+      "log_sha256": "2b7e57f5c8bc0848293c42e46655a67bc58d6983b801e12f827b9615cb468906",
+      "simv_sha256": "7dbbc5924d6b760e89656a2482f5ac699c52ad040e7b66d2152e915a65f194e7"
+    },
+    {
+      "directory": "extended",
+      "target": "rtl-tile-context-check",
+      "exit_code": 0,
+      "log_sha256": "2cea82b4fa0690a013ba8e3adb60cf072bb818d5f63bdb9916d2bb9283ebda92",
+      "simv_sha256": "067333bb780302dd0d6f4f76bac9c9aed915c2dad55b72d511524762fcb887db"
+    },
+    {
+      "directory": "extended_macro",
+      "target": "rtl-tile-context-macro-check",
+      "exit_code": 0,
+      "log_sha256": "6edc01b8e3cb67952bcd827b13a082a869dc3d2172bf34c928b83722aa1b75e5",
+      "simv_sha256": "eabbde311f12c96bbc823eb0f6e84e91b48c5ab94350481e931bd09c5d6b11ef"
+    }
+  ],
+  "extended_counters_per_memory_model": {
+    "cases": 198,
+    "replays": 2922,
+    "bytes": 1068672,
+    "full": 50,
+    "maxK": 17,
+    "high_offset": 3528,
+    "stalls": 50369,
+    "last_stalls": 4481
+  },
+  "remaining_gates": [
+    "capability and byte-budget admission in RTL/reference/runtime",
+    "engine multirow fill/reuse/release and per-input-tile identity",
+    "real-model paired execution including preparation and fault regression",
+    "long-K striped residency and partial-output lifecycle"
+  ]
+}

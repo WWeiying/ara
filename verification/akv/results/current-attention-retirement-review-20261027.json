@@ -1,0 +1,45 @@
+{
+  "schema": "current_attention_retirement_parent_review_v1",
+  "state": "FOUR_CALL_RETIREMENT_AND_PROTOCOL_PASS",
+  "source_result": "verification/out/attention-retirement-vcs-20261027-01/result.json",
+  "source_result_sha256": "36dc95bd4e0cdfd6d1a78e1ef845ac630ae661be95974df9b3b20f0a18b6b5b0",
+  "attribution_sha256": "68946e995df410cbb4f71c54409f125cb3c2e35e0a9fbed673c73fe05e6443d7",
+  "commit_trace_sha256": "f9646d50907f87111ce0ebdefbccb5e87ebacf9778f399e3c2690acfc4da8225",
+  "parent_full_retirement_replay_matches": true,
+  "parent_source_pins_match": true,
+  "parent_protocol_replayed": true,
+  "same_elf_as_accepted_untraced_run": true,
+  "observed_cycle_totals_identical_to_untraced": true,
+  "call_cycles": [480814, 485698, 484920, 480503],
+  "per_call_retirement": {
+    "ordinary_shared_v": {
+      "instructions": 197163,
+      "qbs_commands": 8,
+      "rvv_compute": 2506,
+      "rvv_configuration": 1425,
+      "rvv_memory": 3502,
+      "scalar_fp_category": 45446,
+      "scalar_other": 144276
+    },
+    "grouped_pv": {
+      "instructions": 207118,
+      "qbs_commands": 8,
+      "rvv_compute": 2506,
+      "rvv_configuration": 740,
+      "rvv_memory": 2772,
+      "scalar_fp_category": 49414,
+      "scalar_other": 151678
+    }
+  },
+  "scalar_instruction_increment": 11370,
+  "net_instruction_increment": 9955,
+  "default_exponential_instructions": 83184,
+  "default_exponential_instruction_fraction": 0.4219047184309429,
+  "default_exponential_fp_divides": 737,
+  "default_total_fp_divides": 791,
+  "linux_and_bare_metal_expf_implementations_differ": true,
+  "linux_runtime_latency_measured": false,
+  "whole_model_speedup": null,
+  "hardware_utilization_claimed": false,
+  "decision": "Keep grouped-PV OFF. Align math-library profiling with the actual runtime before selecting an exponential optimization or new arithmetic hardware."
+}

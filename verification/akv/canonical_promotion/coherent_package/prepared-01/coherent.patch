@@ -1,0 +1,1960 @@
+--- a/Bender.yml
++++ b/Bender.yml
+@@ -64,6 +64,7 @@
+     - hardware/src/vlsu/qbs/qbs_dot_array.sv
+     - hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv
+     - hardware/src/vlsu/qbs/qbs_read_engine.sv
++    - hardware/src/vlsu/qbs_akv_shared_reader.sv
+     - hardware/src/vlsu/qbs/qbs_activation_context.sv
+     - hardware/src/vlsu/qbs/qbs_payload_sram.sv
+     - hardware/src/vlsu/qbs/qbs_payload_buffer.sv
+@@ -78,6 +79,9 @@
+     - hardware/src/vlsu/qbs/qbs_engine.sv
+     - hardware/src/vlsu/akv/akv_context.sv
+     - hardware/src/vlsu/akv/akv_v2_context.sv
++    - hardware/src/vlsu/akv/akv_legacy_repacker.sv
++    - hardware/src/vlsu/akv/akv_q_store.sv
++    - hardware/src/vlsu/akv/akv_unified_context.sv
+     - hardware/src/vlsu/akv/akv_engine.sv
+     # Level 2
+     - hardware/src/lane/operand_queues_stage.sv
+--- a/backend/syn/ara_soc/v1-dc/global_scripts/dc.tcl
++++ b/backend/syn/ara_soc/v1-dc/global_scripts/dc.tcl
+@@ -247,17 +247,59 @@
+ if { $GUI_DCG_MODE } { set report_area_phy_opt "-physical" }
+ eval report_area $report_area_phy_opt $hierarchy_opt > ../reports/area.rpt
+ 
+-set akv_v1_macro_ref TS1N28HPCPUHDSVTB96X256M1SWBSO
+-set akv_v2_macro_ref TS1N28HPCPUHDSVTB128X256M1SWBSO
++# Classify actual AKV-owned macro instances; Q is never counted as legacy V1.
++# */i_akv_engine excludes unrelated CPU/QBS macros with the same library reference.
+ set akv_context_macros [get_cells -quiet -hierarchical -filter \
+-    "(ref_name == $akv_v1_macro_ref || ref_name == $akv_v2_macro_ref) && full_name =~ */i_akv_engine/*"]
+-set akv_v1_macros [get_cells -quiet -hierarchical -filter \
+-    "ref_name == $akv_v1_macro_ref && full_name =~ */i_akv_engine/i_context/*"]
+-set akv_v2_macros [get_cells -quiet -hierarchical -filter \
+-    "ref_name == $akv_v2_macro_ref && full_name =~ */i_akv_engine/i_v2_context/*"]
++    "ref_name =~ TS1N28HPCPUHDSVTB* && full_name =~ */i_akv_engine/*"]
++set akv_q_macros [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ */i_akv_engine/i_unified_context/i_q_store/*"]
++set akv_kv_macros [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB128X256M1SWBSO && full_name =~ */i_akv_engine/i_unified_context/i_kv_store/*"]
++set akv_old64_v1 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ */i_akv_engine/i_context/*"]
++set akv_old64_v2 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ */i_akv_engine/i_v2_context/*"]
++set akv_split_v1 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB96X256M1SWBSO && full_name =~ */i_akv_engine/i_context/*"]
++set akv_split_v2 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB128X256M1SWBSO && full_name =~ */i_akv_engine/i_v2_context/*"]
+ set akv_macro_count [sizeof_collection $akv_context_macros]
+-set akv_v1_macro_count [sizeof_collection $akv_v1_macros]
+-set akv_v2_macro_count [sizeof_collection $akv_v2_macros]
++set akv_q_macro_count [sizeof_collection $akv_q_macros]
++set akv_kv_count [sizeof_collection $akv_kv_macros]
++set akv_old64_v1_count [sizeof_collection $akv_old64_v1]
++set akv_old64_v2_count [sizeof_collection $akv_old64_v2]
++set akv_split_v1_count [sizeof_collection $akv_split_v1]
++set akv_split_v2_count [sizeof_collection $akv_split_v2]
++set akv_partition [list $akv_macro_count $akv_q_macro_count $akv_kv_count \
++    $akv_old64_v1_count $akv_old64_v2_count $akv_split_v1_count $akv_split_v2_count]
++switch -- $akv_partition {
++  {9 1 8 0 0 0 0} {
++    set akv_organization unified_q64x256_kv128x256
++    set akv_v1_macro_count 0
++    set akv_v2_macro_count 8
++    set akv_capacity_bits [expr {(1 * 64 + 8 * 128) * 256}]
++  }
++  {10 0 0 0 0 2 8} {
++    set akv_organization split_v1_96x256_v2_128x256
++    set akv_v1_macro_count 2
++    set akv_v2_macro_count 8
++    set akv_capacity_bits [expr {(2 * 96 + 8 * 128) * 256}]
++  }
++  {20 0 0 4 16 0 0} {
++    set akv_organization legacy_v1_v2_64x256
++    set akv_v1_macro_count 4
++    set akv_v2_macro_count 16
++    set akv_capacity_bits [expr {(4 + 16) * 64 * 256}]
++  }
++  {0 0 0 0 0 0 0} {
++    set akv_organization not_instantiated
++    set akv_v1_macro_count 0
++    set akv_v2_macro_count 0
++    set akv_capacity_bits 0
++  }
++  default {error "unexpected AKV SRAM hierarchy/organization: $akv_partition"}
++}
++
+ # A design object has no area attribute in this DC version. Use the total
+ # already emitted by report_area, including macro instances exactly once.
+ set area_file [open ../reports/area.rpt r]
+@@ -296,10 +338,12 @@
+ puts $physical_summary "scope=ara_soc_integrated"
+ puts $physical_summary "clock_period_ns=1.0"
+ puts $physical_summary "clock_uncertainty_ns=0.15"
++puts $physical_summary "akv_sram_organization=$akv_organization"
+ puts $physical_summary "akv_sram_macro_count=$akv_macro_count"
++puts $physical_summary "akv_q_sram_macro_count=$akv_q_macro_count"
+ puts $physical_summary "akv_v1_sram_macro_count=$akv_v1_macro_count"
+ puts $physical_summary "akv_v2_sram_macro_count=$akv_v2_macro_count"
+-puts $physical_summary "physical_sram_capacity_bits=[expr {($akv_v1_macro_count * 96 + $akv_v2_macro_count * 128) * 256}]"
++puts $physical_summary "physical_sram_capacity_bits=$akv_capacity_bits"
+ puts $physical_summary "design_total_area_um2=$design_total_area"
+ puts $physical_summary "worst_setup_slack_ns=$worst_setup_slack"
+ puts $physical_summary "worst_reg_to_reg_setup_slack_ns=$worst_reg_slack"
+--- a/hardware/Makefile
++++ b/hardware/Makefile
+@@ -606,6 +606,9 @@
+ 	@cd ../backend/flist && cat packages.temp >> ara_soc_dc.f
+ 	@cd ../backend/flist && cat rtl.temp      >> ara_soc_dc.f
+ 
++# Promoted resource package; override explicitly for a legacy source graph.
++dc_akv_storage_organization ?= $(if $(filter 1,$(akv) $(akv_v2)),unified_q64x256_kv128x256,split_v1_96x256_v2_128x256)
++
+ dc_preflight_locked: dc_flist_locked
+ 	@python3 scripts/akv/check-synthesis-preflight.py \
+ 		--filelist ../backend/flist/ara_soc_dc.f \
+@@ -614,6 +617,7 @@
+ 		$(if $(filter 1,$(qbs)),--require-qbs,) \
+ 		$(if $(filter 1,$(akv) $(akv_v2)),--require-akv,) \
+ 		$(if $(filter 1,$(akv_v2)),--require-akv-v2,) \
++		$(if $(filter 1,$(akv) $(akv_v2)),--akv-storage-organization $(dc_akv_storage_organization),) \
+ 		$(if $(filter 1,$(mc)),--require-macro-sram,) \
+ 		--nr-lanes $(nr_lanes) --vlen $(vlen)
+ 
+--- /dev/null
++++ b/hardware/include/admission_assertions.svh
+@@ -0,0 +1,19 @@
++// Successor-only VLSU assertions. Not included in the live snapshot-01 compile.
++// Include inside vlsu after the engine instances are declared.
++`ifndef SYNTHESIS
++always @(posedge clk_i) begin
++  if (rst_ni) begin
++    assert (!$isunknown({qbs_active_q, akv_active_q,
++                         qbs_command_fire, akv_command_fire}))
++      else $fatal(1, "SHARED_VLSU_UNKNOWN_OWNER_OR_FIRE");
++    if (qbs_command_fire || akv_command_fire) begin
++      // A fault terminal may precede local write-pipeline drain. Admission of
++      // the next command, not the fault terminal, is the required boundary.
++      assert (i_akv_engine.context_write_busy === 1'b0 &&
++              i_akv_engine.v1_context_write_valid === 1'b0 &&
++              i_akv_engine.v2_context_write_valid === 1'b0)
++        else $fatal(1, "SHARED_VLSU_ADMIT_WITH_AKV_WRITE_PENDING");
++    end
++  end
++end
++`endif
+--- /dev/null
++++ b/hardware/include/shared_reader_types.svh
+@@ -0,0 +1,46 @@
++`ifndef QBS_AKV_SHARED_READER_TYPES_SVH
++`define QBS_AKV_SHARED_READER_TYPES_SVH
++
++// Invoke inside the caller's package/module. No dependency on Ara interfaces.
++`define QBS_AKV_SHARED_READER_TYPEDEF_REQ_T(__name, __vaddr_width) \
++  typedef struct packed { \
++    logic range_valid; \
++    logic [(__vaddr_width)-1:0] range_vaddr; \
++    logic [15:0] range_bytes; \
++    logic [15:0] range_tag; \
++    axi_pkg::cache_t range_cache; \
++    axi_pkg::prot_t range_prot; \
++    logic data_ready; \
++    logic completion_ready; \
++    logic fault_ready; \
++  } __name;
++
++`define QBS_AKV_SHARED_READER_TYPEDEF_RSP_T(__name, __data_width, __vaddr_width, __exception_t) \
++  typedef struct packed { \
++    logic range_ready; \
++    logic data_valid; \
++    logic [(__data_width)-1:0] data; \
++    logic [(__data_width)/8-1:0] data_strb; \
++    logic [15:0] data_offset; \
++    logic [15:0] data_tag; \
++    logic completion_valid; \
++    logic [15:0] completion_tag; \
++    logic fault_valid; \
++    qbs_pkg::qbs_read_fault_e fault_kind; \
++    logic [(__vaddr_width)-1:0] fault_vaddr; \
++    logic [15:0] fault_tag; \
++    __exception_t fault_mmu_exception; \
++    logic [31:0] range_count; \
++    logic [31:0] translation_count; \
++    logic [31:0] ar_count; \
++    logic [31:0] r_beat_count; \
++    logic [31:0] payload_byte_count; \
++    logic [31:0] store_wait_cycles; \
++    logic [31:0] r_backpressure_cycles; \
++    logic [31:0] outstanding_occupancy_sum; \
++    logic [1:0] outstanding_max; \
++    logic [31:0] outstanding_full_cycles; \
++    logic busy; \
++  } __name;
++
++`endif
+--- /dev/null
++++ b/hardware/include/vlsu_shared_reader.svh
+@@ -0,0 +1,89 @@
++// Included only by the isolated VLSU overlay, after client declarations.
++`include "shared_reader_types.svh"
++`QBS_AKV_SHARED_READER_TYPEDEF_REQ_T(shared_read_req_t, CVA6Cfg.VLEN)
++`QBS_AKV_SHARED_READER_TYPEDEF_RSP_T(shared_read_rsp_t, AxiDataWidth, CVA6Cfg.VLEN, exception_t)
++shared_read_req_t shared_read_req [2];
++shared_read_rsp_t shared_read_rsp [2];
++logic shared_read_clk, shared_read_clk_en;
++logic shared_mmu_req, shared_mmu_is_store;
++logic [CVA6Cfg.VLEN-1:0] shared_mmu_vaddr;
++logic shared_physical_check_valid, shared_physical_range_allowed;
++logic [AxiAddrWidth-1:0] shared_physical_check_addr;
++logic [12:0] shared_physical_check_bytes;
++axi_ar_t shared_axi_ar;
++axi_r_t shared_axi_r;
++logic shared_axi_ar_valid, shared_axi_ar_ready, shared_axi_r_valid, shared_axi_r_ready;
++
++// OR the original enables BEFORE one clock gate, never OR gated clocks.
++// Includes acceptance with owner=0 and the whole command through terminal.
++assign shared_read_clk_en = qbs_clk_en || akv_clk_en;
++tc_clk_gating #(.IS_FUNCTIONAL(1'b1)) i_shared_read_clk_gate (
++  .clk_i, .en_i(shared_read_clk_en), .test_en_i(1'b0), .clk_o(shared_read_clk)
++);
++qbs_akv_shared_reader #(
++  .AxiDataWidth(AxiDataWidth), .AxiAddrWidth(AxiAddrWidth),
++  .VAddrWidth(CVA6Cfg.VLEN), .PAddrWidth(CVA6Cfg.PLEN),
++  .req_t(shared_read_req_t), .rsp_t(shared_read_rsp_t),
++  .axi_ar_t(axi_ar_t), .axi_r_t(axi_r_t), .exception_t(exception_t)
++) i_shared_reader (
++  .clk_i(shared_read_clk), .rst_ni,
++  .owner_i({akv_active_q, qbs_active_q}),
++  .command_fire_i({akv_command_fire, qbs_command_fire}),
++  .client_req_i(shared_read_req), .client_rsp_o(shared_read_rsp),
++  .core_st_pending_i, .en_ld_st_translation_i,
++  .mmu_req_o(shared_mmu_req), .mmu_vaddr_o(shared_mmu_vaddr),
++  .mmu_is_store_o(shared_mmu_is_store), .mmu_valid_i, .mmu_paddr_i,
++  .mmu_exception_valid_i(mmu_exception_i.valid), .mmu_exception_i,
++  .physical_check_valid_o(shared_physical_check_valid),
++  .physical_check_addr_o(shared_physical_check_addr),
++  .physical_check_bytes_o(shared_physical_check_bytes),
++  .physical_range_allowed_i(shared_physical_range_allowed),
++  .axi_ar_o(shared_axi_ar), .axi_ar_valid_o(shared_axi_ar_valid),
++  .axi_ar_ready_i(shared_axi_ar_ready), .axi_r_i(shared_axi_r),
++  .axi_r_valid_i(shared_axi_r_valid), .axi_r_ready_o(shared_axi_r_ready)
++);
++
++// Keep the existing VLSU AXI/MMU ownership mux and cut unchanged. These aliases
++// also preserve per-owner interface probes; there is no extra arbitration/state.
++assign qbs_axi_ar = qbs_active_q ? shared_axi_ar : axi_ar_t'('0);
++assign akv_axi_ar = akv_active_q ? shared_axi_ar : axi_ar_t'('0);
++assign qbs_axi_ar_valid = qbs_active_q && shared_axi_ar_valid;
++assign akv_axi_ar_valid = akv_active_q && shared_axi_ar_valid;
++assign qbs_axi_r_ready = qbs_active_q && shared_axi_r_ready;
++assign akv_axi_r_ready = akv_active_q && shared_axi_r_ready;
++assign shared_axi_ar_ready = qbs_axi_ar_ready || akv_axi_ar_ready;
++assign shared_axi_r = qbs_active_q ? qbs_axi_r : akv_axi_r;
++assign shared_axi_r_valid = qbs_axi_r_valid || akv_axi_r_valid;
++assign qbs_mmu_req = qbs_active_q && shared_mmu_req;
++assign akv_mmu_req = akv_active_q && shared_mmu_req;
++assign qbs_mmu_vaddr = qbs_active_q ? shared_mmu_vaddr : '0;
++assign akv_mmu_vaddr = akv_active_q ? shared_mmu_vaddr : '0;
++assign qbs_mmu_is_store = qbs_active_q && shared_mmu_is_store;
++assign akv_mmu_is_store = akv_active_q && shared_mmu_is_store;
++assign qbs_physical_check_valid = qbs_active_q && shared_physical_check_valid;
++assign akv_physical_check_valid = akv_active_q && shared_physical_check_valid;
++assign qbs_physical_check_addr = qbs_active_q ? shared_physical_check_addr : '0;
++assign akv_physical_check_addr = akv_active_q ? shared_physical_check_addr : '0;
++assign qbs_physical_check_bytes = qbs_active_q ? shared_physical_check_bytes : '0;
++assign akv_physical_check_bytes = akv_active_q ? shared_physical_check_bytes : '0;
++assign shared_physical_range_allowed = qbs_range_is_cacheable_idempotent(
++    shared_physical_check_addr, shared_physical_check_bytes);
++
++`ifndef SYNTHESIS
++// These are integration invariants, not a new drain/ownership state machine.
++always @(posedge clk_i) begin
++  if (rst_ni) begin
++    assert ($onehot0({akv_active_q, qbs_active_q}) &&
++            $onehot0({akv_command_fire, qbs_command_fire}))
++      else $fatal(1, "SHARED_VLSU_OWNERSHIP");
++    if (qbs_terminal || akv_terminal)
++      assert (!i_shared_reader.reader_rsp.busy && !shared_axi_ar_valid &&
++              !i_shared_reader.i_read_engine.ar_stalled_q &&
++              !i_shared_reader.i_read_engine.response_drain_q)
++        else $fatal(1, "SHARED_VLSU_PREMATURE_RELEASE");
++    if (i_shared_reader.reader_rsp.busy || shared_axi_ar_valid || shared_mmu_req)
++      assert (shared_read_clk_en && (qbs_active_q || akv_active_q))
++        else $fatal(1, "SHARED_VLSU_CLOCK_OR_OWNER_LOST");
++  end
++end
++`endif
+--- a/hardware/scripts/akv/check-synthesis-preflight.py
++++ b/hardware/scripts/akv/check-synthesis-preflight.py
+@@ -84,6 +84,45 @@
+ )
+ 
+ 
++UNIFIED_AKV_ORGANIZATION = "unified_q64x256_kv128x256"
++SPLIT_AKV_ORGANIZATION = "split_v1_96x256_v2_128x256"
++UNIFIED_AKV_SOURCES = (
++    "hardware/src/vlsu/qbs_akv_shared_reader.sv",
++    "hardware/src/vlsu/akv/akv_legacy_repacker.sv",
++    "hardware/src/vlsu/akv/akv_q_store.sv",
++    "hardware/src/vlsu/akv/akv_unified_context.sv",
++)
++AKV_Q_SRAM_BLACKBOX = "backend/blackbox/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.v"
++DEFAULT_AKV_Q_SRAM_DB = Path(
++    "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/"
++    "ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db"
++)
++
++
++def check_storage_selection(options, sources):
++    selected = options.akv_storage_organization
++    if selected not in (SPLIT_AKV_ORGANIZATION, UNIFIED_AKV_ORGANIZATION):
++        raise PreflightError("unknown AKV storage organization")
++    unified = selected == UNIFIED_AKV_ORGANIZATION
++    if not (options.require_akv or options.require_akv_v2) and not unified:
++        # Bender may list unused AKV modules during a QBS-only preflight.
++        return False
++    has_unified = _has_source(sources, UNIFIED_AKV_SOURCES[-1])
++    if unified != has_unified:
++        raise PreflightError("AKV storage organization does not match source graph; select explicitly")
++    if unified:
++        if not (options.require_akv or options.require_akv_v2):
++            raise PreflightError("unified storage requires explicit AKV enablement")
++        # Storage uses v2_context even when only legacy commands are enabled.
++        _require_sources(sources, UNIFIED_AKV_SOURCES + AKV_V2_SOURCES)
++        for before in (*UNIFIED_AKV_SOURCES[1:3], AKV_V2_SOURCES[0]):
++            _check_order(sources, before, UNIFIED_AKV_SOURCES[-1])
++        _check_order(sources, UNIFIED_AKV_SOURCES[-1], "hardware/src/vlsu/akv/akv_engine.sv")
++        _check_order(sources, "hardware/src/vlsu/qbs/qbs_read_engine.sv", UNIFIED_AKV_SOURCES[0])
++        _check_order(sources, UNIFIED_AKV_SOURCES[0], "hardware/src/vlsu/vlsu.sv")
++    return unified
++
++
+ class PreflightError(ValueError):
+     """A synthesis input does not satisfy the requested configuration."""
+ 
+@@ -95,6 +134,8 @@
+     setup: Path
+     sram_db: Path
+     qbs_sram_db: Path = DEFAULT_QBS_SRAM_DB
++    akv_q_sram_db: Path = DEFAULT_AKV_Q_SRAM_DB
++    akv_storage_organization: str = SPLIT_AKV_ORGANIZATION
+     akv_v2_sram_db: Path = EXTRA_SRAM_DBS["akv_v2_sram_db"]
+     qbs_context_sram_db: Path = EXTRA_SRAM_DBS["qbs_context_sram_db"]
+     qbs_weight_sram_db: Path = EXTRA_SRAM_DBS["qbs_weight_sram_db"]
+@@ -246,6 +287,7 @@
+     sdc_text = _read(options.sdc, "SDC")
+     setup_text = _read(options.setup, "DC setup")
+     defines, sources = _filelist_entries(filelist_text)
++    unified_storage = check_storage_selection(options, sources)
+ 
+     _require_define(defines, "SYNTHESIS")
+     _require_define(defines, "TARGET_SYNTHESIS")
+@@ -287,7 +329,7 @@
+         _require_define(defines, "TARGET_SRAM_MC")
+         _require_define(defines, "TARGET_SRAM_BLACKBOX")
+         _require_define(defines, "TARGET_TECH_CELLS_GENERIC_EXCLUDE_TC_SRAM")
+-        _require_sources(sources, (AKV_SRAM_BLACKBOX,))
++        _require_sources(sources, (AKV_Q_SRAM_BLACKBOX if unified_storage else AKV_SRAM_BLACKBOX,))
+         generic_sram = (
+             "hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv",
+             "hardware/deps/tech_cells_generic/src/rtl/tc_sram_impl.sv",
+@@ -298,10 +340,12 @@
+                 "macro-SRAM filelist still contains generic SRAM implementations: "
+                 + ", ".join(present_generic)
+             )
+-        if not options.sram_db.is_file():
+-            raise PreflightError(f"missing AKV SRAM DB: {options.sram_db}")
+-        if str(options.sram_db) not in setup_text:
+-            raise PreflightError("DC setup does not include the AKV 96x256 SRAM DB")
++        akv_db = options.akv_q_sram_db if unified_storage else options.sram_db
++        akv_shape = "64x256 Q" if unified_storage else "96x256"
++        if not akv_db.is_file():
++            raise PreflightError(f"missing AKV {akv_shape} SRAM DB: {akv_db}")
++        if str(akv_db) not in setup_text:
++            raise PreflightError(f"DC setup does not include the AKV {akv_shape} SRAM DB")
+         if options.require_qbs:
+             _require_sources(sources, (QBS_SRAM_BLACKBOX,))
+             if not options.qbs_sram_db.is_file():
+@@ -309,7 +353,7 @@
+             if str(options.qbs_sram_db) not in setup_text:
+                 raise PreflightError("DC setup does not include the QBS 8x256 SRAM DB")
+         for key, name in EXTRA_SRAM_NAMES.items():
+-            required = options.require_akv_v2 if key == "akv_v2_sram_db" else options.require_qbs
++            required = (options.require_akv_v2 or unified_storage) if key == "akv_v2_sram_db" else options.require_qbs
+             if required:
+                 _require_sources(sources, (f"backend/blackbox/{name}_tt0p9v25c.v",))
+                 path = getattr(options, key)
+@@ -322,6 +366,7 @@
+     _check_integrated_flow(options)
+     return {
+         "filelist": str(options.filelist),
++        "akv_storage_organization": options.akv_storage_organization,
+         "defines": len(defines),
+         "sources": len(sources),
+         "clock_period_ns": 1,
+@@ -340,6 +385,10 @@
+     parser.add_argument("--dc-script", type=Path, default=DEFAULT_DC_SCRIPT)
+     parser.add_argument("--dc-runner", type=Path, default=DEFAULT_DC_RUNNER)
+     parser.add_argument("--sram-db", type=Path, default=DEFAULT_AKV_SRAM_DB)
++    parser.add_argument("--akv-q-sram-db", type=Path, default=DEFAULT_AKV_Q_SRAM_DB)
++    parser.add_argument("--akv-storage-organization",
++                        choices=(SPLIT_AKV_ORGANIZATION, UNIFIED_AKV_ORGANIZATION),
++                        default=SPLIT_AKV_ORGANIZATION)
+     parser.add_argument("--qbs-sram-db", type=Path, default=DEFAULT_QBS_SRAM_DB)
+     for key, path in EXTRA_SRAM_DBS.items():
+         parser.add_argument("--" + key.replace("_", "-"), type=Path, default=path)
+--- a/hardware/scripts/akv/collect-synthesis-results.py
++++ b/hardware/scripts/akv/collect-synthesis-results.py
+@@ -21,8 +21,48 @@
+     "clock_period_ns": 1.0,
+     "setup_uncertainty_ns": 0.15,
+ }
+-# Keep historical reports readable without accepting mixed macro organizations.
+-AKV_SRAM_ORGANIZATIONS = {(20, 4, 16): 327680, (10, 2, 8): 311296}
++# Counts are physical instances, not area or measured timing evidence.
++AKV_SRAM_ORGANIZATIONS = {
++    "legacy_v1_v2_64x256": (20, 4, 16, 0, 327680),
++    "split_v1_96x256_v2_128x256": (10, 2, 8, 0, 311296),
++    "unified_q64x256_kv128x256": (9, 0, 8, 1, 278528),
++}
++LEGACY_AKV_SRAM_ORGANIZATIONS = {
++    (20, 4, 16): "legacy_v1_v2_64x256",
++    (10, 2, 8): "split_v1_96x256_v2_128x256",
++}
++
++
++def validate_sram_organization(values, capacity_key):
++    def integer(key):
++        value = values.get(key)
++        if type(value) is int and value >= 0:
++            return value
++        if type(value) is str and re.fullmatch(r"0|[1-9][0-9]*", value):
++            return int(value)
++        raise CollectionError(f"invalid SRAM organization integer: {key}")
++
++    counts = tuple(integer(key) for key in (
++        "akv_sram_macro_count", "akv_v1_sram_macro_count", "akv_v2_sram_macro_count"))
++    capacity = integer(capacity_key)
++    label_present = "akv_sram_organization" in values
++    q_present = "akv_q_sram_macro_count" in values
++    if label_present != q_present:
++        raise CollectionError("SRAM organization and independent Q count must appear together")
++    if label_present:
++        label = values["akv_sram_organization"]
++        if type(label) is not str or label not in AKV_SRAM_ORGANIZATIONS:
++            raise CollectionError("unknown SRAM organization discriminator")
++        q_count = integer("akv_q_sram_macro_count")
++    else:
++        # Only the two exact historical organizations may omit new metadata.
++        label = LEGACY_AKV_SRAM_ORGANIZATIONS.get(counts)
++        if label is None:
++            raise CollectionError("SRAM organization requires explicit discriminator and Q count")
++        q_count = 0
++    if (*counts, q_count, capacity) != AKV_SRAM_ORGANIZATIONS[label]:
++        raise CollectionError("SRAM organization counts/capacity disagree with discriminator")
++    return label, q_count
+ 
+ 
+ class CollectionError(ValueError):
+@@ -156,11 +196,23 @@
+     return digest.hexdigest()
+ 
+ 
+-def library_inputs(source_inputs: tuple[Path, ...]) -> list[Path]:
++def selected_standalone_libraries(text, organization):
++    marker = '# AKV_STANDALONE_STORAGE_SELECTION_V2'
++    block = '# AKV_STANDALONE_STORAGE_SELECTION_V2\nset selected_organization split_v1_96x256_v2_128x256\nif {[info exists ::env(AKV_STORAGE_ORGANIZATION)]} {\n  set selected_organization $::env(AKV_STORAGE_ORGANIZATION)\n}\nswitch -- $selected_organization {\n  split_v1_96x256_v2_128x256 {\nset context_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb96x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb96x256m1swbso_170a_tt0p9v25c.db"\nset kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"\n    set storage_libraries [list $context_sram_library $kv_sram_library]\n  }\n  unified_q64x256_kv128x256 {\nset q_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db"\nset kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"\n    set storage_libraries [list $q_sram_library $kv_sram_library]\n  }\n  default {error "unsupported AKV_STORAGE_ORGANIZATION: $selected_organization"}\n}\n# END_AKV_STANDALONE_STORAGE_SELECTION_V2\n'
++    if marker not in text:
++        return text
++    branches = {'split_v1_96x256_v2_128x256': 'set context_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb96x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb96x256m1swbso_170a_tt0p9v25c.db"\nset kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"\n', 'unified_q64x256_kv128x256': 'set q_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db"\nset kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"\n'}
++    if text.count(marker) != 1 or text.count(block) != 1 or organization not in branches:
++        raise CollectionError("ambiguous standalone SRAM library selection")
++    return text.replace(block, branches[organization], 1)
++
++
++def library_inputs(source_inputs: tuple[Path, ...], organization: str | None = None) -> list[Path]:
+     libraries: set[Path] = set()
+     pattern = re.compile(r"(/[A-Za-z0-9_./+:-]+\.(?:db|sldb))(?=\s|\"|$)")
+     for source in source_inputs:
+         text = source.read_text(encoding="utf-8", errors="replace")
++        text = selected_standalone_libraries(text, organization)
+         active = "\n".join(
+             line for line in text.splitlines() if not line.lstrip().startswith("#")
+         )
+@@ -175,6 +227,10 @@
+     compact = all(any(shape in name for name in names) for shape in ("96x256", "128x256"))
+     if not (legacy or compact):
+         raise CollectionError("AKV SRAM DBs were not identified")
++    if organization == "unified_q64x256_kv128x256" and not all(
++        any(shape in name for name in names) for shape in ("64x256", "128x256")
++    ):
++        raise CollectionError("unified AKV requires independent Q64 and KV128 DBs")
+     return sorted(libraries, key=lambda path: str(path.resolve()))
+ 
+ 
+@@ -195,13 +251,7 @@
+     v1_count = required_int(values, "akv_v1_sram_macro_count")
+     v2_count = required_int(values, "akv_v2_sram_macro_count")
+     capacity = required_int(values, "physical_sram_capacity_bits")
+-    organization = (macro_count, v1_count, v2_count)
+-    if organization not in AKV_SRAM_ORGANIZATIONS:
+-        raise CollectionError(
+-            f"wrong AKV SRAM organization: total={macro_count}, v1={v1_count}, v2={v2_count}"
+-        )
+-    if capacity != AKV_SRAM_ORGANIZATIONS[organization]:
+-        raise CollectionError(f"wrong AKV SRAM physical capacity: {capacity}")
++    organization, q_count = validate_sram_organization(values, "physical_sram_capacity_bits")
+ 
+     report_total, report_macro = parse_area_report(area_rpt)
+     summary_total = required_float(values, "design_total_area_um2")
+@@ -228,6 +278,8 @@
+         "scope": expected_scope,
+         "clock_period_ns": clock,
+         "setup_uncertainty_ns": uncertainty,
++        "akv_sram_organization": organization,
++        "akv_q_sram_macro_count": q_count,
+         "akv_sram_macro_count": macro_count,
+         "akv_v1_sram_macro_count": v1_count,
+         "akv_v2_sram_macro_count": v2_count,
+@@ -311,7 +363,9 @@
+ def collect(spec: CollectionSpec) -> dict[str, object]:
+     if not spec.filelist.is_file():
+         raise CollectionError(f"missing DC filelist: {spec.filelist}")
+-    libraries = library_inputs(spec.source_inputs)
++    values = read_key_values(spec.summary_rpt)
++    organization, _ = validate_sram_organization(values, "physical_sram_capacity_bits")
++    libraries = library_inputs(spec.source_inputs, organization)
+     synthesis_inputs = [
+         spec.filelist,
+         *filelist_inputs(spec.filelist),
+@@ -331,7 +385,6 @@
+             + ", ".join(str(path) for path in stale)
+         )
+ 
+-    values = read_key_values(spec.summary_rpt)
+     metrics = validate_metrics(spec.mode, values, spec.area_rpt)
+     summary = {
+         "schema_version": 1,
+@@ -381,7 +434,9 @@
+             raise CollectionError(f"synthesis artifact changed: {item.get('path')}")
+ 
+     source_inputs = tuple(resolve_recorded(raw, root) for raw in summary.get("source_inputs", []))
+-    observed_libraries = library_inputs(source_inputs)
++    metrics = summary.get("metrics", {})
++    organization, _ = validate_sram_organization(metrics, "akv_sram_capacity_bits")
++    observed_libraries = library_inputs(source_inputs, organization)
+     recorded_libraries = {
+         resolve_recorded(str(item.get("path", "")), root).resolve()
+         for item in summary.get("library_artifacts", [])
+@@ -392,14 +447,8 @@
+     if observed_digest != summary.get("source_digest"):
+         raise CollectionError("current RTL or synthesis inputs differ from synthesized sources")
+ 
+-    metrics = summary.get("metrics", {})
+-    organization = (metrics.get("akv_sram_macro_count"),
+-                    metrics.get("akv_v1_sram_macro_count"),
+-                    metrics.get("akv_v2_sram_macro_count"))
+     if (
+-        organization not in AKV_SRAM_ORGANIZATIONS
+-        or metrics.get("akv_sram_capacity_bits") != AKV_SRAM_ORGANIZATIONS.get(organization)
+-        or float(metrics.get("design_total_area_um2", 0)) <= 0
++        float(metrics.get("design_total_area_um2", 0)) <= 0
+         or float(metrics.get("design_logic_area_um2", 0)) <= 0
+     ):
+         raise CollectionError("synthesis summary metrics violate the AKV physical contract")
+--- a/hardware/src/vlsu/akv/akv_engine.sv
++++ b/hardware/src/vlsu/akv/akv_engine.sv
+@@ -18,6 +18,8 @@
+     parameter type         vaddr_t = logic,
+     parameter type         axi_ar_t = logic,
+     parameter type         axi_r_t = logic,
++    parameter type         reader_req_t = logic,
++    parameter type         reader_rsp_t = logic,
+     parameter type         exception_t = logic
+   ) (
+     input  logic                         clk_i,
+@@ -49,27 +51,8 @@
+     output exception_t                   fault_mmu_exception_o,
+     output logic                         context_ready_o,
+ 
+-    input  logic                         core_st_pending_i,
+-    input  logic                         en_ld_st_translation_i,
+-    output logic                         mmu_req_o,
+-    output logic [VAddrWidth-1:0]        mmu_vaddr_o,
+-    output logic                         mmu_is_store_o,
+-    input  logic                         mmu_valid_i,
+-    input  logic [PAddrWidth-1:0]        mmu_paddr_i,
+-    input  logic                         mmu_exception_valid_i,
+-    input  exception_t                   mmu_exception_i,
+-
+-    output logic                         physical_check_valid_o,
+-    output logic [AxiAddrWidth-1:0]      physical_check_addr_o,
+-    output logic [12:0]                  physical_check_bytes_o,
+-    input  logic                         physical_range_allowed_i,
+-
+-    output axi_ar_t                      axi_ar_o,
+-    output logic                         axi_ar_valid_o,
+-    input  logic                         axi_ar_ready_i,
+-    input  axi_r_t                       axi_r_i,
+-    input  logic                         axi_r_valid_i,
+-    output logic                         axi_r_ready_o,
++    output reader_req_t reader_req_o,
++    input reader_rsp_t reader_rsp_i,
+ 
+     output logic [NrLanes-1:0]          ldu_result_req_o,
+     output vid_t [NrLanes-1:0]          ldu_result_id_o,
+@@ -529,74 +512,46 @@
+       (range_completion_count_q + read_completion_fire ==
+        payload_range_count) && !context_write_busy;
+ 
+-  qbs_read_engine #(
+-    .AxiDataWidth    (AxiDataWidth),
+-    .AxiAddrWidth    (AxiAddrWidth),
+-    .VAddrWidth      (VAddrWidth),
+-    .PAddrWidth      (PAddrWidth),
+-    .RangeBytesWidth (RangeBytesWidth),
+-    .ReadOutstanding (2),
+-    .axi_ar_t        (axi_ar_t),
+-    .axi_r_t         (axi_r_t),
+-    .exception_t     (exception_t),
+-    .tag_t           (akv_range_tag_t)
+-  ) i_read_engine (
+-    .clk_i,
+-    .rst_ni,
+-    .range_valid_i                  (read_range_valid),
+-    .range_ready_o                  (read_range_ready),
+-    .range_vaddr_i                  (read_range_vaddr),
+-    .range_bytes_i                  (read_range_bytes),
+-    .range_tag_i                    (read_range_tag),
+-    .range_cache_i                  (cache_q),
+-    .range_prot_i                   (prot_q),
+-    .data_valid_o                   (read_data_valid),
+-    .data_ready_i                   (read_data_ready),
+-    .data_o                         (read_data),
+-    .data_strb_o                    (read_data_strb),
+-    .data_offset_o                  (read_data_offset),
+-    .data_tag_o                     (read_data_tag),
+-    .completion_valid_o             (read_completion_valid),
+-    .completion_ready_i             (read_completion_ready),
+-    .completion_tag_o               (read_completion_tag),
+-    .fault_valid_o                  (read_fault_valid),
+-    .fault_ready_i                  (read_fault_ready),
+-    .fault_kind_o                   (read_fault_kind),
+-    .fault_vaddr_o                  (read_fault_vaddr),
+-    .fault_tag_o                    (read_fault_tag),
+-    .fault_mmu_exception_o          (read_fault_mmu_exception),
+-    .core_st_pending_i,
+-    .en_ld_st_translation_i,
+-    .mmu_req_o,
+-    .mmu_vaddr_o,
+-    .mmu_is_store_o,
+-    .mmu_valid_i,
+-    .mmu_paddr_i,
+-    .mmu_exception_valid_i,
+-    .mmu_exception_i,
+-    .physical_check_valid_o,
+-    .physical_check_addr_o,
+-    .physical_check_bytes_o,
+-    .physical_range_allowed_i,
+-    .axi_ar_o,
+-    .axi_ar_valid_o,
+-    .axi_ar_ready_i,
+-    .axi_r_i,
+-    .axi_r_valid_i,
+-    .axi_r_ready_o,
+-    .counters_clear_i              (command_fire),
+-    .range_count_o                 (read_range_count_o),
+-    .translation_count_o           (read_translation_count_o),
+-    .ar_count_o                    (read_ar_count_o),
+-    .r_beat_count_o                (read_beat_count_o),
+-    .payload_byte_count_o          (read_payload_bytes_o),
+-    .store_wait_cycles_o           (read_store_wait_cycles_o),
+-    .r_backpressure_cycles_o       (read_backpressure_cycles_o),
+-    .outstanding_occupancy_sum_o   (read_outstanding_occupancy_sum_o),
+-    .outstanding_max_o             (read_outstanding_max_o),
+-    .outstanding_full_cycles_o     (read_outstanding_full_cycles_o),
+-    .busy_o                        (read_busy)
+-  );
++  // Reader state now lives once in VLSU; client scheduling is unchanged.
++  assign reader_req_o = '{
++    range_valid: read_range_valid,
++    range_vaddr: read_range_vaddr,
++    range_bytes: read_range_bytes,
++    range_tag: {8'b0, read_range_tag},
++    range_cache: cache_q,
++    range_prot: prot_q,
++    data_ready: read_data_ready,
++    completion_ready: read_completion_ready,
++    fault_ready: read_fault_ready
++  };
++  assign read_range_ready = reader_rsp_i.range_ready;
++  assign read_data_valid = reader_rsp_i.data_valid;
++  assign read_data = reader_rsp_i.data;
++  assign read_data_strb = reader_rsp_i.data_strb;
++  assign read_data_offset = reader_rsp_i.data_offset;
++  assign read_data_tag = akv_range_tag_t'(reader_rsp_i.data_tag[7:0]);
++  assign read_completion_valid = reader_rsp_i.completion_valid;
++  assign read_completion_tag = akv_range_tag_t'(reader_rsp_i.completion_tag[7:0]);
++  assign read_fault_valid = reader_rsp_i.fault_valid;
++  assign read_fault_kind = reader_rsp_i.fault_kind;
++  assign read_fault_vaddr = reader_rsp_i.fault_vaddr;
++  assign read_fault_tag = akv_range_tag_t'(reader_rsp_i.fault_tag[7:0]);
++  assign read_fault_mmu_exception = reader_rsp_i.fault_mmu_exception;
++  assign read_range_count_o = reader_rsp_i.range_count;
++  assign read_translation_count_o = reader_rsp_i.translation_count;
++  assign read_ar_count_o = reader_rsp_i.ar_count;
++  assign read_beat_count_o = reader_rsp_i.r_beat_count;
++  assign read_payload_bytes_o = reader_rsp_i.payload_byte_count;
++  assign read_store_wait_cycles_o = reader_rsp_i.store_wait_cycles;
++  assign read_backpressure_cycles_o = reader_rsp_i.r_backpressure_cycles;
++  assign read_outstanding_occupancy_sum_o = reader_rsp_i.outstanding_occupancy_sum;
++  assign read_outstanding_max_o = reader_rsp_i.outstanding_max;
++  assign read_outstanding_full_cycles_o = reader_rsp_i.outstanding_full_cycles;
++  assign read_busy = reader_rsp_i.busy;
++`ifndef SYNTHESIS
++  initial assert ($bits(akv_range_tag_t) == 8)
++    else $fatal(1, "SHARED_CLIENT_TAG_WIDTH");
++`endif
+ 
+   always_comb begin
+     unique case (read_data_tag.role)
+@@ -618,52 +573,48 @@
+       read_data_tag.role inside {AKV_RANGE_K, AKV_RANGE_V};
+   assign v2_context_write_stream = read_data_tag.role == AKV_RANGE_K
+       ? AKV_STREAM_K : AKV_STREAM_V;
+-  assign context_write_busy =
+-      v1_context_write_busy || v2_context_write_busy;
+-
+-  akv_context i_context (
++  // Unified payload only; command, metadata, replay and fault FSM are unchanged.
++  akv_unified_context i_unified_context (
+     .clk_i,
+     .rst_ni,
+-    .write_valid_i  (v1_context_write_valid),
+-    .write_slot_i   (context_write_slot),
+-    .write_offset_i (read_data_offset[7:0]),
+-    .write_data_i   (read_data),
+-    .write_strb_i   (read_data_strb),
+-    .write_busy_o   (v1_context_write_busy),
+-    .replay_read_i  (state_q == AKV_ENGINE_REPLAY_READ &&
++    .abort_i(read_fault_valid && read_fault_ready),
++    .legacy_row_bytes_i(9'(payload_row_bytes)),
++    .write_busy_o(context_write_busy),
++    .legacy_write_valid_i(v1_context_write_valid),
++    .legacy_write_slot_i(context_write_slot),
++    .legacy_write_offset_i(read_data_offset[7:0]),
++    .legacy_write_data_i(read_data),
++    .legacy_write_strb_i(read_data_strb),
++    .legacy_write_busy_o(v1_context_write_busy),
++    .legacy_replay_read_i(state_q == AKV_ENGINE_REPLAY_READ &&
+                      !replay_use_v2_q && !replay_column_q),
+-    .replay_slot_i  (replay_slot_q),
+-    .replay_word_i  (replay_word_q),
+-    .replay_data_o  (v1_replay_data)
+-  );
+-
+-  akv_v2_context i_v2_context (
+-    .clk_i,
+-    .rst_ni,
+-    .write_valid_i       (v2_context_write_valid),
+-    .write_stream_i      (v2_context_write_stream),
+-    .write_token_i       (read_data_tag.index),
+-    .write_offset_i      (read_data_offset[7:0]),
+-    .write_data_i        (read_data),
+-    .write_strb_i        (read_data_strb),
+-    .write_busy_o        (v2_context_write_busy),
+-    .row_read_i          (state_q == AKV_ENGINE_REPLAY_READ &&
++    .legacy_replay_slot_i(replay_slot_q),
++    .legacy_replay_word_i(replay_word_q),
++    .legacy_replay_data_o(v1_replay_data),
++    .v2_write_valid_i(v2_context_write_valid),
++    .v2_write_stream_i(v2_context_write_stream),
++    .v2_write_token_i(read_data_tag.index),
++    .v2_write_offset_i(read_data_offset[7:0]),
++    .v2_write_data_i(read_data),
++    .v2_write_strb_i(read_data_strb),
++    .v2_write_busy_o(v2_context_write_busy),
++    .v2_row_read_i(state_q == AKV_ENGINE_REPLAY_READ &&
+                           replay_use_v2_q && !replay_column_q),
+-    .row_stream_i        (replay_stream_q),
+-    .row_token_i         (replay_token_q),
+-    .row_word_i          (replay_word_q),
+-    .row_data_o          (v2_row_data),
+-    .column_start_i      (v2_column_start),
+-    .column_stream_i     (command_selector_i[AkvV2ColumnSegmentBit]
++    .v2_row_stream_i(replay_stream_q),
++    .v2_row_token_i(replay_token_q),
++    .v2_row_word_i(replay_word_q),
++    .v2_row_data_o(v2_row_data),
++    .column_start_i(v2_column_start),
++    .column_stream_i(command_selector_i[AkvV2ColumnSegmentBit]
+                               ? AKV_STREAM_V : AKV_STREAM_K),
+-    .column_dimension_i  (command_selector_i[6:0]),
+-    .column_count_i      (command_column_count_i),
++    .column_dimension_i(command_selector_i[6:0]),
++    .column_count_i(command_column_count_i),
+     .column_token_count_i(context_tile_count_q),
+-    .column_busy_o       (v2_column_busy),
+-    .column_valid_o      (v2_column_valid),
+-    .column_data_o       (v2_column_data),
+-    .column_bank_cycle_o (v2_column_bank_cycle),
+-    .conflict_o          (v2_context_conflict)
++    .column_busy_o(v2_column_busy),
++    .column_valid_o(v2_column_valid),
++    .column_data_o(v2_column_data),
++    .column_bank_cycle_o(v2_column_bank_cycle),
++    .conflict_o(v2_context_conflict)
+   );
+ 
+   always_comb begin
+--- /dev/null
++++ b/hardware/src/vlsu/akv/akv_legacy_repacker.sv
+@@ -0,0 +1,109 @@
++// Experimental legacy-F16 write adapter; not connected to production SRAM.
++module akv_legacy_repacker (
++  input logic clk_i, rst_ni, abort_i,
++  input logic fragment_valid_i,
++  input logic [15:0] fragment_tag_i,
++  input logic [8:0] fragment_offset_i, row_bytes_i,
++  input logic [127:0] fragment_data_i,
++  input logic [15:0] fragment_strb_i,
++  output logic write_valid_o,
++  output logic [15:0] write_tag_o,
++  output logic [8:0] write_offset_o,
++  output logic [127:0] write_data_o,
++  output logic write_last_o,
++  output logic busy_o
++);
++  logic stage_valid_q, emit_valid_q, active_q;
++  logic [15:0] stage_tag_q, stage_strb_q, tag_q;
++  logic [8:0] stage_offset_q, stage_row_bytes_q, next_offset_q, row_bytes_q;
++  logic [127:0] stage_data_q, pending_q;
++  logic [3:0] pending_count_q;
++  logic [255:0] joined;
++  logic [127:0] compact_data;
++  logic [5:0] fragment_count, combined_count;
++
++  always_comb begin
++    fragment_count = '0;
++    compact_data = '0;
++    for (int i = 0; i < 16; i++) begin
++      fragment_count += 6'(stage_strb_q[i]);
++      if (stage_strb_q[i]) compact_data[i*8 +: 8] = stage_data_q[i*8 +: 8];
++    end
++    combined_count = {2'b0, pending_count_q} + fragment_count;
++    joined = {128'b0, pending_q} |
++             ({128'b0, compact_data} << (8 * unsigned'(pending_count_q)));
++  end
++
++  // Abort suppresses an unconsumed registered write at this same SRAM edge.
++  assign write_valid_o = emit_valid_q && !abort_i;
++  assign busy_o = fragment_valid_i || stage_valid_q || active_q || emit_valid_q;
++
++  always_ff @(posedge clk_i or negedge rst_ni) begin
++    if (!rst_ni) begin
++      stage_valid_q <= 1'b0;
++      emit_valid_q <= 1'b0;
++      active_q <= 1'b0;
++      pending_count_q <= '0;
++      pending_q <= '0;
++      next_offset_q <= '0;
++      tag_q <= '0;
++      row_bytes_q <= '0;
++      write_tag_o <= '0;
++      write_offset_o <= '0;
++      write_data_o <= '0;
++      write_last_o <= 1'b0;
++    end else if (abort_i) begin
++      stage_valid_q <= 1'b0;
++      emit_valid_q <= 1'b0;
++      active_q <= 1'b0;
++      pending_count_q <= '0;
++      pending_q <= '0;
++      next_offset_q <= '0;
++    end else begin
++      stage_valid_q <= fragment_valid_i;
++      if (fragment_valid_i) begin
++        stage_tag_q <= fragment_tag_i;
++        stage_offset_q <= fragment_offset_i;
++        stage_row_bytes_q <= row_bytes_i;
++        stage_data_q <= fragment_data_i;
++        stage_strb_q <= fragment_strb_i;
++      end
++      emit_valid_q <= 1'b0;
++      if (stage_valid_q) begin
++        tag_q <= stage_tag_q;
++        row_bytes_q <= stage_row_bytes_q;
++        next_offset_q <= stage_offset_q + 9'(fragment_count);
++        active_q <= stage_offset_q + 9'(fragment_count) != stage_row_bytes_q;
++        if (combined_count >= 16) begin
++          emit_valid_q <= 1'b1;
++          write_tag_o <= stage_tag_q;
++          write_offset_o <= stage_offset_q - 9'(pending_count_q);
++          write_data_o <= joined[127:0];
++          write_last_o <= stage_offset_q + 9'(fragment_count) == stage_row_bytes_q;
++          pending_q <= joined[255:128];
++          pending_count_q <= 4'(combined_count - 16);
++        end else begin
++          pending_q <= joined[127:0];
++          pending_count_q <= 4'(combined_count);
++        end
++      end
++    end
++  end
++
++`ifndef SYNTHESIS
++  always @(posedge clk_i) if (rst_ni && !abort_i && stage_valid_q) begin
++    assert (fragment_count >= 2 && fragment_count <= 16 && !fragment_count[0] &&
++            stage_strb_q == 16'((32'd1 << fragment_count) - 1) &&
++            !stage_offset_q[0] &&
++            (stage_row_bytes_q == 128 || stage_row_bytes_q == 192 || stage_row_bytes_q == 256) &&
++            stage_offset_q + 9'(fragment_count) <= stage_row_bytes_q)
++      else $fatal(1, "REPACK_FRAGMENT_CONTRACT");
++    assert ((!active_q && stage_offset_q == 0 && pending_count_q == 0) ||
++            (active_q && stage_tag_q == tag_q && stage_row_bytes_q == row_bytes_q &&
++             stage_offset_q == next_offset_q))
++      else $fatal(1, "REPACK_STREAM_CONTINUITY");
++    assert (stage_offset_q + 9'(fragment_count) != stage_row_bytes_q || combined_count == 16)
++      else $fatal(1, "REPACK_FINAL_PARTIAL");
++  end
++`endif
++endmodule
+--- /dev/null
++++ b/hardware/src/vlsu/akv/akv_q_store.sv
+@@ -0,0 +1,64 @@
++// Isolated 2-KiB Q store. Aligned half-row writes come from the unchanged repacker.
++module akv_q_store (
++  input logic clk_i, rst_ni,
++  input logic write_valid_i,
++  input logic [2:0] write_slot_i,
++  input logic [7:0] write_offset_i,
++  input logic [127:0] write_data_i,
++  input logic read_i,
++  input logic [2:0] read_slot_i,
++  input logic [3:0] read_word_i,
++  output logic [255:0] read_data_o
++);
++  localparam int NumWords = 64;
++  logic req, we;
++  logic [5:0] addr;
++  logic [255:0] wdata;
++  logic [31:0] be;
++
++  always_comb begin
++    req = write_valid_i || read_i;
++    we = write_valid_i;
++    addr = {read_slot_i, read_word_i[2:0]};
++    wdata = '0;
++    be = '0;
++    if (write_valid_i) begin
++      addr = {write_slot_i, write_offset_i[7:5]};
++      if (write_offset_i[4]) begin
++        wdata[255:128] = write_data_i;
++        be[31:16] = '1;
++      end else begin
++        wdata[127:0] = write_data_i;
++        be[15:0] = '1;
++      end
++    end
++  end
++
++`ifndef TARGET_SRAM_MC
++  tc_sram #(.NumWords(NumWords), .DataWidth(256), .NumPorts(1), .Latency(1)) i_q_sram (
++    .clk_i, .rst_ni, .req_i(req), .we_i(we), .addr_i(addr),
++    .wdata_i(wdata), .be_i(be), .rdata_o(read_data_o)
++  );
++`else
++  wire [255:0] bweb;
++  for (genvar byte_lane = 0; byte_lane < 32; byte_lane++) begin : gen_byte
++    assign bweb[byte_lane*8 +: 8] = {8{!(we && be[byte_lane])}};
++  end
++  TS1N28HPCPUHDSVTB64X256M1SWBSO i_q_sram (
++    .SLP(1'b0), .SD(1'b0), .CLK(clk_i), .CEB(!req), .WEB(!we),
++    .CEBM(1'b1), .WEBM(1'b1), .A(addr), .D(wdata), .BWEB(bweb),
++    .AM('0), .DM('0), .BWEBM('1), .BIST(1'b0), .RTSEL(2'b01),
++    .WTSEL(2'b00), .Q(read_data_o)
++  );
++`endif
++
++`ifndef SYNTHESIS
++  always @(posedge clk_i) if (rst_ni) begin
++    assert (!(write_valid_i && read_i)) else $fatal(1, "Q_STORE_CONFLICT");
++    if (write_valid_i)
++      assert (write_offset_i[3:0] == 0) else $fatal(1, "Q_STORE_ALIGNMENT");
++    if (read_i)
++      assert (read_word_i < 8) else $fatal(1, "Q_STORE_WORD");
++  end
++`endif
++endmodule
+--- /dev/null
++++ b/hardware/src/vlsu/akv/akv_unified_context.sv
+@@ -0,0 +1,158 @@
++// Isolated composition candidate: 2 KiB Q plus ONE unchanged 32 KiB v2 K/V store.
++module akv_unified_context
++  import akv_pkg::*;
++(
++  input logic clk_i, rst_ni,
++  input logic abort_i,
++  // Accepted compact payload fragments; includes v2 Q, excludes descriptors.
++  input logic legacy_write_valid_i,
++  input logic [4:0] legacy_write_slot_i,
++  input logic [7:0] legacy_write_offset_i,
++  input logic [8:0] legacy_row_bytes_i,
++  input logic [127:0] legacy_write_data_i,
++  input logic [15:0] legacy_write_strb_i,
++  output logic legacy_write_busy_o,
++  // Existing aligned v2 K/V path, no adapter or added write register.
++  input logic v2_write_valid_i,
++  input akv_stream_e v2_write_stream_i,
++  input logic [5:0] v2_write_token_i,
++  input logic [7:0] v2_write_offset_i,
++  input logic [127:0] v2_write_data_i,
++  input logic [15:0] v2_write_strb_i,
++  output logic v2_write_busy_o,
++  output logic write_busy_o,
++
++  input logic legacy_replay_read_i,
++  input logic [4:0] legacy_replay_slot_i,
++  input logic [3:0] legacy_replay_word_i,
++  output logic [255:0] legacy_replay_data_o,
++  input logic v2_row_read_i,
++  input akv_stream_e v2_row_stream_i,
++  input logic [5:0] v2_row_token_i,
++  input logic [3:0] v2_row_word_i,
++  output logic [255:0] v2_row_data_o,
++
++  input logic column_start_i,
++  input akv_stream_e column_stream_i,
++  input logic [6:0] column_dimension_i,
++  input logic [2:0] column_count_i,
++  input logic [6:0] column_token_count_i,
++  output logic column_busy_o, column_valid_o,
++  output logic [3:0][1023:0] column_data_o,
++  output logic column_bank_cycle_o,
++  output logic conflict_o
++);
++  localparam int QBytes = 8 * 256;
++  localparam int KVBytes = 2 * 64 * 256;
++  logic packed_valid, packed_last;
++  logic [15:0] packed_tag;
++  logic [8:0] packed_offset;
++  logic [127:0] packed_data;
++  logic q_write, kv_write, kv_write_busy, kv_conflict;
++  logic [4:0] packed_slot;
++  logic q_read, kv_row_read, legacy_q_q;
++  logic [255:0] q_data, kv_data;
++  akv_stream_e kv_write_stream, kv_row_stream;
++  logic [5:0] kv_write_token, kv_row_token;
++  logic [7:0] kv_write_offset;
++  logic [127:0] kv_write_data;
++  logic [15:0] kv_write_strb;
++  logic [3:0] kv_row_word;
++
++  akv_legacy_repacker i_legacy_repacker (
++    .clk_i, .rst_ni, .abort_i,
++    .fragment_valid_i(legacy_write_valid_i && !abort_i),
++    .fragment_tag_i({11'b0, legacy_write_slot_i}),
++    .fragment_offset_i({1'b0, legacy_write_offset_i}), .row_bytes_i(legacy_row_bytes_i),
++    .fragment_data_i(legacy_write_data_i), .fragment_strb_i(legacy_write_strb_i),
++    .write_valid_o(packed_valid), .write_tag_o(packed_tag), .write_offset_o(packed_offset),
++    .write_data_o(packed_data), .write_last_o(packed_last), .busy_o(legacy_write_busy_o)
++  );
++  assign packed_slot = packed_tag[4:0];
++  assign q_write = packed_valid && packed_slot < 8;
++  assign kv_write = !abort_i && (v2_write_valid_i || (packed_valid && packed_slot >= 8));
++  assign v2_write_busy_o = v2_write_valid_i && !abort_i;
++  assign write_busy_o = legacy_write_busy_o || v2_write_busy_o || kv_write_busy;
++
++  // Decode only emission-registered metadata, never the younger input fragment.
++  always_comb begin
++    kv_write_stream = packed_slot < 16 ? AKV_STREAM_K : AKV_STREAM_V;
++    kv_write_token = packed_slot < 16 ? 6'(packed_slot - 8) : 6'(packed_slot - 16);
++    kv_write_offset = packed_offset[7:0];
++    kv_write_data = packed_data;
++    kv_write_strb = '1;
++    if (v2_write_valid_i) begin
++      kv_write_stream = v2_write_stream_i;
++      kv_write_token = v2_write_token_i;
++      kv_write_offset = v2_write_offset_i;
++      kv_write_data = v2_write_data_i;
++      kv_write_strb = v2_write_strb_i;
++    end
++  end
++
++  assign q_read = legacy_replay_read_i && legacy_replay_slot_i < 8;
++  assign kv_row_read = v2_row_read_i || (legacy_replay_read_i && legacy_replay_slot_i >= 8);
++  always_comb begin
++    kv_row_stream = legacy_replay_slot_i < 16 ? AKV_STREAM_K : AKV_STREAM_V;
++    kv_row_token = legacy_replay_slot_i < 16 ? 6'(legacy_replay_slot_i - 8) :
++                                            6'(legacy_replay_slot_i - 16);
++    kv_row_word = legacy_replay_word_i;
++    if (v2_row_read_i) begin
++      kv_row_stream = v2_row_stream_i;
++      kv_row_token = v2_row_token_i;
++      kv_row_word = v2_row_word_i;
++    end
++  end
++  always_ff @(posedge clk_i or negedge rst_ni) begin
++    if (!rst_ni) legacy_q_q <= 1'b0;
++    else if (legacy_replay_read_i) legacy_q_q <= legacy_replay_slot_i < 8;
++  end
++  assign legacy_replay_data_o = legacy_q_q ? q_data : kv_data;
++  assign v2_row_data_o = kv_data;
++
++  akv_q_store i_q_store (
++    .clk_i, .rst_ni, .write_valid_i(q_write), .write_slot_i(packed_slot[2:0]),
++    .write_offset_i(packed_offset[7:0]), .write_data_i(packed_data),
++    .read_i(q_read), .read_slot_i(legacy_replay_slot_i[2:0]),
++    .read_word_i(legacy_replay_word_i), .read_data_o(q_data)
++  );
++  akv_v2_context i_kv_store (
++    .clk_i, .rst_ni, .write_valid_i(kv_write), .write_stream_i(kv_write_stream),
++    .write_token_i(kv_write_token), .write_offset_i(kv_write_offset),
++    .write_data_i(kv_write_data), .write_strb_i(kv_write_strb), .write_busy_o(kv_write_busy),
++    .row_read_i(kv_row_read), .row_stream_i(kv_row_stream), .row_token_i(kv_row_token),
++    .row_word_i(kv_row_word), .row_data_o(kv_data),
++    .column_start_i, .column_stream_i, .column_dimension_i, .column_count_i, .column_token_count_i,
++    .column_busy_o, .column_valid_o, .column_data_o, .column_bank_cycle_o, .conflict_o(kv_conflict)
++  );
++  assign conflict_o = kv_conflict ||
++      // V2 K/V can follow the last Q fragment immediately: Q drains separately.
++      (v2_write_valid_i && (legacy_write_valid_i || (packed_valid && packed_slot >= 8))) ||
++      ((legacy_replay_read_i || v2_row_read_i || column_start_i || column_busy_o) && write_busy_o) ||
++      (legacy_replay_read_i && (v2_row_read_i || column_start_i || column_busy_o));
++
++`ifndef SYNTHESIS
++  initial begin
++    assert (AkvMaxQRows == 8 && AkvTileTokens == 8 && AkvMaxHeadDim == 128 &&
++            AkvV2TileTokens == 64 && QBytes == 2048 && KVBytes == 32768)
++      else $fatal(1, "UNIFIED_CAPACITY_CONTRACT");
++  end
++  always @(posedge clk_i) if (rst_ni) begin
++    assert (!$isunknown({abort_i, legacy_write_valid_i, v2_write_valid_i,
++                         legacy_replay_read_i, v2_row_read_i, column_start_i}))
++      else $fatal(1, "UNIFIED_UNKNOWN_CONTROL");
++    assert (!conflict_o) else $fatal(1, "UNIFIED_STORAGE_CONFLICT");
++    if (legacy_write_valid_i && !abort_i)
++      assert (legacy_write_slot_i < 24) else $fatal(1, "UNIFIED_LEGACY_SLOT");
++    if (legacy_replay_read_i)
++      assert (!abort_i && legacy_replay_slot_i < 24 && legacy_replay_word_i < 8)
++        else $fatal(1, "UNIFIED_LEGACY_REPLAY");
++    if (packed_valid)
++      assert (packed_tag < 24 && packed_offset < 256 && packed_offset[3:0] == 0)
++        else $fatal(1, "UNIFIED_EMISSION_IDENTITY");
++    if (abort_i)
++      assert (!q_write && !kv_write && !v2_row_read_i && !column_start_i && !column_busy_o)
++        else $fatal(1, "UNIFIED_ABORT_WRITE_OR_REPLAY");
++  end
++`endif
++endmodule
+--- a/hardware/src/vlsu/qbs/qbs_engine.sv
++++ b/hardware/src/vlsu/qbs/qbs_engine.sv
+@@ -22,6 +22,8 @@
+     parameter type         vaddr_t = logic,
+     parameter type         axi_ar_t = logic,
+     parameter type         axi_r_t = logic,
++    parameter type         reader_req_t = logic,
++    parameter type         reader_rsp_t = logic,
+     parameter type         exception_t = logic
+   ) (
+     input  logic                         clk_i,
+@@ -51,27 +53,17 @@
+     output logic [VAddrWidth-1:0]        fault_vaddr_o,
+     output exception_t                   fault_mmu_exception_o,
+ 
+-    input  logic                         core_st_pending_i,
+-    input  logic                         en_ld_st_translation_i,
+-    output logic                         mmu_req_o,
+-    output logic [VAddrWidth-1:0]        mmu_vaddr_o,
+-    output logic                         mmu_is_store_o,
+-    input  logic                         mmu_valid_i,
+-    input  logic [PAddrWidth-1:0]        mmu_paddr_i,
+-    input  logic                         mmu_exception_valid_i,
+-    input  exception_t                   mmu_exception_i,
+-
+-    output logic                         physical_check_valid_o,
+-    output logic [AxiAddrWidth-1:0]      physical_check_addr_o,
+-    output logic [12:0]                  physical_check_bytes_o,
+-    input  logic                         physical_range_allowed_i,
+-
+-    output axi_ar_t                      axi_ar_o,
+-    output logic                         axi_ar_valid_o,
+-    input  logic                         axi_ar_ready_i,
+-    input  axi_r_t                       axi_r_i,
+-    input  logic                         axi_r_valid_i,
+-    output logic                         axi_r_ready_o,
++    output reader_req_t reader_req_o,
++    input reader_rsp_t reader_rsp_i,
++`ifndef SYNTHESIS
++    input logic [1:0] reader_probe_plan_state_i,
++    input logic [1:0] reader_probe_range_count_i,
++    input logic [1:0] reader_probe_burst_count_i,
++    input logic reader_probe_ar_valid_i,
++    input logic reader_probe_ar_ready_i,
++    input logic reader_probe_r_valid_i,
++    input logic reader_probe_r_ready_i,
++`endif
+ 
+     output logic [NrLanes-1:0]          ldu_result_req_o,
+     output vid_t [NrLanes-1:0]          ldu_result_id_o,
+@@ -507,13 +499,13 @@
+       probe_weight_wait_r_transfer_cycles_q <= '0;
+       probe_weight_wait_r_blocked_cycles_q <= '0;
+     end else if (i_compute_engine.probe_weight_wait_active) begin
+-      if (i_read_engine.burst_fifo_count_q == 0) begin
++      if (reader_probe_burst_count_i == 0) begin
+         probe_weight_wait_no_outstanding_cycles_q <=
+             probe_weight_wait_no_outstanding_cycles_q + 1'b1;
+-      end else if (!axi_r_valid_i) begin
++      end else if (!reader_probe_r_valid_i) begin
+         probe_weight_wait_response_idle_cycles_q <=
+             probe_weight_wait_response_idle_cycles_q + 1'b1;
+-      end else if (axi_r_ready_o) begin
++      end else if (reader_probe_r_ready_i) begin
+         probe_weight_wait_r_transfer_cycles_q <=
+             probe_weight_wait_r_transfer_cycles_q + 1'b1;
+       end else begin
+@@ -556,13 +548,13 @@
+                  read_range_tag.role,
+                  read_range_tag.weight_bank,
+                  read_range_tag.weight_row_count,
+-                 i_read_engine.plan_state_q,
+-                 i_read_engine.range_fifo_count_q,
+-                 i_read_engine.burst_fifo_count_q,
+-                 axi_ar_valid_o,
+-                 axi_ar_ready_i,
+-                 axi_r_valid_i,
+-                 axi_r_ready_o,
++                 reader_probe_plan_state_i,
++                 reader_probe_range_count_i,
++                 reader_probe_burst_count_i,
++                 reader_probe_ar_valid_i,
++                 reader_probe_ar_ready_i,
++                 reader_probe_r_valid_i,
++                 reader_probe_r_ready_i,
+                  read_data_valid,
+                  read_data_ready,
+                  read_data_offset,
+@@ -867,73 +859,46 @@
+   assign read_fault_ready = state_q inside {
+       QBS_ENGINE_DESCRIPTOR_WAIT, QBS_ENGINE_RUN};
+ 
+-  qbs_read_engine #(
+-    .AxiDataWidth    (AxiDataWidth),
+-    .AxiAddrWidth    (AxiAddrWidth),
+-    .VAddrWidth      (VAddrWidth),
+-    .PAddrWidth      (PAddrWidth),
+-    .RangeBytesWidth (RangeBytesWidth),
+-    .axi_ar_t        (axi_ar_t),
+-    .axi_r_t         (axi_r_t),
+-    .exception_t     (exception_t),
+-    .tag_t           (qbs_range_tag_t)
+-  ) i_read_engine (
+-    .clk_i,
+-    .rst_ni,
+-    .range_valid_i                  (read_range_valid),
+-    .range_ready_o                  (read_range_ready),
+-    .range_vaddr_i                  (read_range_vaddr),
+-    .range_bytes_i                  (read_range_bytes),
+-    .range_tag_i                    (read_range_tag),
+-    .range_cache_i                  (cache_q),
+-    .range_prot_i                   (prot_q),
+-    .data_valid_o                   (read_data_valid),
+-    .data_ready_i                   (read_data_ready),
+-    .data_o                         (read_data),
+-    .data_strb_o                    (read_data_strb),
+-    .data_offset_o                  (read_data_offset),
+-    .data_tag_o                     (read_data_tag),
+-    .completion_valid_o             (read_completion_valid),
+-    .completion_ready_i             (read_completion_ready),
+-    .completion_tag_o               (read_completion_tag),
+-    .fault_valid_o                  (read_fault_valid),
+-    .fault_ready_i                  (read_fault_ready),
+-    .fault_kind_o                   (read_fault_kind),
+-    .fault_vaddr_o                  (read_fault_vaddr),
+-    .fault_tag_o                    (read_fault_tag),
+-    .fault_mmu_exception_o          (read_fault_mmu_exception),
+-    .core_st_pending_i,
+-    .en_ld_st_translation_i,
+-    .mmu_req_o,
+-    .mmu_vaddr_o,
+-    .mmu_is_store_o,
+-    .mmu_valid_i,
+-    .mmu_paddr_i,
+-    .mmu_exception_valid_i,
+-    .mmu_exception_i,
+-    .physical_check_valid_o,
+-    .physical_check_addr_o,
+-    .physical_check_bytes_o,
+-    .physical_range_allowed_i,
+-    .axi_ar_o,
+-    .axi_ar_valid_o,
+-    .axi_ar_ready_i,
+-    .axi_r_i,
+-    .axi_r_valid_i,
+-    .axi_r_ready_o,
+-    .counters_clear_i               (command_fire),
+-    .range_count_o                  (read_range_count_o),
+-    .translation_count_o            (read_translation_count_o),
+-    .ar_count_o                     (read_ar_count_o),
+-    .r_beat_count_o                 (read_beat_count_o),
+-    .payload_byte_count_o           (read_payload_bytes_o),
+-    .store_wait_cycles_o            (read_store_wait_cycles_o),
+-    .r_backpressure_cycles_o        (read_backpressure_cycles_o),
+-    .outstanding_occupancy_sum_o    (read_outstanding_occupancy_sum_o),
+-    .outstanding_max_o              (read_outstanding_max_o),
+-    .outstanding_full_cycles_o      (read_outstanding_full_cycles_o),
+-    .busy_o                         (read_busy)
+-  );
++  // Reader state now lives once in VLSU; client scheduling is unchanged.
++  assign reader_req_o = '{
++    range_valid: read_range_valid,
++    range_vaddr: read_range_vaddr,
++    range_bytes: read_range_bytes,
++    range_tag: 16'(read_range_tag),
++    range_cache: cache_q,
++    range_prot: prot_q,
++    data_ready: read_data_ready,
++    completion_ready: read_completion_ready,
++    fault_ready: read_fault_ready
++  };
++  assign read_range_ready = reader_rsp_i.range_ready;
++  assign read_data_valid = reader_rsp_i.data_valid;
++  assign read_data = reader_rsp_i.data;
++  assign read_data_strb = reader_rsp_i.data_strb;
++  assign read_data_offset = reader_rsp_i.data_offset;
++  assign read_data_tag = qbs_range_tag_t'(reader_rsp_i.data_tag);
++  assign read_completion_valid = reader_rsp_i.completion_valid;
++  assign read_completion_tag = qbs_range_tag_t'(reader_rsp_i.completion_tag);
++  assign read_fault_valid = reader_rsp_i.fault_valid;
++  assign read_fault_kind = reader_rsp_i.fault_kind;
++  assign read_fault_vaddr = reader_rsp_i.fault_vaddr;
++  assign read_fault_tag = qbs_range_tag_t'(reader_rsp_i.fault_tag);
++  assign read_fault_mmu_exception = reader_rsp_i.fault_mmu_exception;
++  assign read_range_count_o = reader_rsp_i.range_count;
++  assign read_translation_count_o = reader_rsp_i.translation_count;
++  assign read_ar_count_o = reader_rsp_i.ar_count;
++  assign read_beat_count_o = reader_rsp_i.r_beat_count;
++  assign read_payload_bytes_o = reader_rsp_i.payload_byte_count;
++  assign read_store_wait_cycles_o = reader_rsp_i.store_wait_cycles;
++  assign read_backpressure_cycles_o = reader_rsp_i.r_backpressure_cycles;
++  assign read_outstanding_occupancy_sum_o = reader_rsp_i.outstanding_occupancy_sum;
++  assign read_outstanding_max_o = reader_rsp_i.outstanding_max;
++  assign read_outstanding_full_cycles_o = reader_rsp_i.outstanding_full_cycles;
++  assign read_busy = reader_rsp_i.busy;
++`ifndef SYNTHESIS
++  initial assert ($bits(qbs_range_tag_t) == 16)
++    else $fatal(1, "SHARED_CLIENT_TAG_WIDTH");
++`endif
+ 
+   assign context_lookup_valid = state_q == QBS_ENGINE_VALIDATE &&
+       descriptor_valid && descriptor_activation_access inside {
+--- /dev/null
++++ b/hardware/src/vlsu/qbs_akv_shared_reader.sv
+@@ -0,0 +1,150 @@
++// Experimental extraction only; current production RTL is unchanged.
++module qbs_akv_shared_reader #(
++  parameter int unsigned AxiDataWidth = 128,
++  parameter int unsigned AxiAddrWidth = 64,
++  parameter int unsigned VAddrWidth = 64,
++  parameter int unsigned PAddrWidth = 56,
++  parameter type req_t = logic,
++  parameter type rsp_t = logic,
++  parameter type axi_ar_t = logic,
++  parameter type axi_r_t = logic,
++  parameter type exception_t = logic
++) (
++  input logic clk_i,
++  input logic rst_ni,
++  input logic [1:0] owner_i,
++  input logic [1:0] command_fire_i,
++  input req_t client_req_i [2],
++  output rsp_t client_rsp_o [2],
++
++  input logic core_st_pending_i,
++  input logic en_ld_st_translation_i,
++  output logic mmu_req_o,
++  output logic [VAddrWidth-1:0] mmu_vaddr_o,
++  output logic mmu_is_store_o,
++  input logic mmu_valid_i,
++  input logic [PAddrWidth-1:0] mmu_paddr_i,
++  input logic mmu_exception_valid_i,
++  input exception_t mmu_exception_i,
++  output logic physical_check_valid_o,
++  output logic [AxiAddrWidth-1:0] physical_check_addr_o,
++  output logic [12:0] physical_check_bytes_o,
++  input logic physical_range_allowed_i,
++  output axi_ar_t axi_ar_o,
++  output logic axi_ar_valid_o,
++  input logic axi_ar_ready_i,
++  input axi_r_t axi_r_i,
++  input logic axi_r_valid_i,
++  output logic axi_r_ready_o
++);
++  typedef logic [15:0] tag_t;
++  req_t selected_req;
++  rsp_t reader_rsp;
++
++  // Ownership is supplied by the existing command controller, not arbitrated.
++  // Invalid ownership is rejected by assertions and selects neither endpoint.
++  always_comb begin
++    selected_req = '0;
++    client_rsp_o[0] = '0;
++    client_rsp_o[1] = '0;
++    case (owner_i)
++      2'b01: begin
++        selected_req = client_req_i[0];
++        client_rsp_o[0] = reader_rsp;
++      end
++      2'b10: begin
++        selected_req = client_req_i[1];
++        client_rsp_o[1] = reader_rsp;
++      end
++      default: ;
++    endcase
++  end
++
++  qbs_read_engine #(
++    .AxiDataWidth(AxiDataWidth), .AxiAddrWidth(AxiAddrWidth),
++    .VAddrWidth(VAddrWidth), .PAddrWidth(PAddrWidth),
++    .RangeBytesWidth(16), .ReadOutstanding(2),
++    .axi_ar_t(axi_ar_t), .axi_r_t(axi_r_t),
++    .exception_t(exception_t), .tag_t(tag_t)
++  ) i_read_engine (
++    .clk_i, .rst_ni,
++    .range_valid_i(selected_req.range_valid),
++    .range_ready_o(reader_rsp.range_ready),
++    .range_vaddr_i(selected_req.range_vaddr),
++    .range_bytes_i(selected_req.range_bytes),
++    .range_tag_i(selected_req.range_tag),
++    .range_cache_i(selected_req.range_cache),
++    .range_prot_i(selected_req.range_prot),
++    .data_valid_o(reader_rsp.data_valid), .data_ready_i(selected_req.data_ready),
++    .data_o(reader_rsp.data), .data_strb_o(reader_rsp.data_strb),
++    .data_offset_o(reader_rsp.data_offset), .data_tag_o(reader_rsp.data_tag),
++    .completion_valid_o(reader_rsp.completion_valid),
++    .completion_ready_i(selected_req.completion_ready),
++    .completion_tag_o(reader_rsp.completion_tag),
++    .fault_valid_o(reader_rsp.fault_valid), .fault_ready_i(selected_req.fault_ready),
++    .fault_kind_o(reader_rsp.fault_kind), .fault_vaddr_o(reader_rsp.fault_vaddr),
++    .fault_tag_o(reader_rsp.fault_tag), .fault_mmu_exception_o(reader_rsp.fault_mmu_exception),
++    .core_st_pending_i, .en_ld_st_translation_i,
++    .mmu_req_o, .mmu_vaddr_o, .mmu_is_store_o, .mmu_valid_i, .mmu_paddr_i,
++    .mmu_exception_valid_i, .mmu_exception_i,
++    .physical_check_valid_o, .physical_check_addr_o, .physical_check_bytes_o,
++    .physical_range_allowed_i,
++    .axi_ar_o, .axi_ar_valid_o, .axi_ar_ready_i, .axi_r_i, .axi_r_valid_i, .axi_r_ready_o,
++    // Acceptance can precede the owner register becoming nonzero.
++    .counters_clear_i(|command_fire_i),
++    .range_count_o(reader_rsp.range_count),
++    .translation_count_o(reader_rsp.translation_count),
++    .ar_count_o(reader_rsp.ar_count), .r_beat_count_o(reader_rsp.r_beat_count),
++    .payload_byte_count_o(reader_rsp.payload_byte_count),
++    .store_wait_cycles_o(reader_rsp.store_wait_cycles),
++    .r_backpressure_cycles_o(reader_rsp.r_backpressure_cycles),
++    .outstanding_occupancy_sum_o(reader_rsp.outstanding_occupancy_sum),
++    .outstanding_max_o(reader_rsp.outstanding_max),
++    .outstanding_full_cycles_o(reader_rsp.outstanding_full_cycles),
++    .busy_o(reader_rsp.busy)
++  );
++
++`ifndef SYNTHESIS
++  logic [1:0] previous_owner_q, admitted_owner_q;
++  initial begin
++    assert ($bits(selected_req.range_vaddr) == VAddrWidth &&
++            $bits(selected_req.range_bytes) == 16 && $bits(selected_req.range_tag) == 16 &&
++            $bits(reader_rsp.data) == AxiDataWidth &&
++            $bits(reader_rsp.data_strb) == AxiDataWidth/8 &&
++            $bits(reader_rsp.data_offset) == 16 && $bits(reader_rsp.data_tag) == 16 &&
++            $bits(reader_rsp.completion_tag) == 16 && $bits(reader_rsp.fault_tag) == 16 &&
++            $bits(reader_rsp.fault_vaddr) == VAddrWidth &&
++            $bits(reader_rsp.fault_mmu_exception) == $bits(exception_t))
++      else $fatal(1, "SHARED_READER_TYPE_WIDTH");
++  end
++  always_ff @(posedge clk_i or negedge rst_ni) begin
++    if (!rst_ni) begin
++      previous_owner_q <= '0;
++      admitted_owner_q <= '0;
++    end else begin
++      assert (!$isunknown({owner_i, command_fire_i}) &&
++              $onehot0(owner_i) && $onehot0(command_fire_i))
++        else $fatal(1, "SHARED_READER_ONEHOT");
++      if (reader_rsp.busy || i_read_engine.ar_stalled_q ||
++          i_read_engine.response_drain_q || reader_rsp.fault_valid) begin
++        assert ($onehot(owner_i) && owner_i == previous_owner_q)
++          else $fatal(1, "SHARED_READER_OWNER_CHANGED_LIVE");
++      end
++      if (|command_fire_i) begin
++        assert (!reader_rsp.busy && !axi_ar_valid_o &&
++                !i_read_engine.ar_stalled_q && !i_read_engine.response_drain_q &&
++                (owner_i == '0 || owner_i == command_fire_i) && !selected_req.range_valid)
++          else $fatal(1, "SHARED_READER_BAD_COMMAND_FIRE");
++        admitted_owner_q <= command_fire_i;
++      end else if (previous_owner_q != '0 && owner_i == '0) begin
++        admitted_owner_q <= '0;
++      end
++      if (|owner_i) begin
++        assert (owner_i == admitted_owner_q || owner_i == command_fire_i)
++          else $fatal(1, "SHARED_READER_OWNER_NOT_ADMITTED");
++      end
++      previous_owner_q <= owner_i;
++    end
++  end
++`endif
++endmodule
+--- a/hardware/src/vlsu/vlsu.sv
++++ b/hardware/src/vlsu/vlsu.sv
+@@ -530,6 +530,8 @@
+   logic [1:0] akv_read_outstanding_max;
+   logic [31:0] akv_read_outstanding_full_cycles;
+ 
++  `include "vlsu_shared_reader.svh"
++
+   logic normal_vlsu_idle;
+ 
+   function automatic logic qbs_range_is_cacheable_idempotent(
+@@ -902,10 +904,8 @@
+     end
+   end
+ 
+-  assign qbs_physical_range_allowed = qbs_range_is_cacheable_idempotent(
+-      qbs_physical_check_addr, qbs_physical_check_bytes);
+-  assign akv_physical_range_allowed = qbs_range_is_cacheable_idempotent(
+-      akv_physical_check_addr, akv_physical_check_bytes);
++  assign qbs_physical_range_allowed = shared_physical_range_allowed;
++  assign akv_physical_range_allowed = shared_physical_range_allowed;
+ 
+   // QBS and VLDu share the lane result ports. Grant and final-grant feedback
+   // returns only to the current owner.
+@@ -1030,6 +1030,7 @@
+   assign qbs_fflags_o = qbs_result_fflags;
+ 
+   qbs_engine #(
++    .reader_req_t(shared_read_req_t), .reader_rsp_t(shared_read_rsp_t),
+     .SeedRestoreEnable(QbsVrfContinuationEnable && NrLanes == 4 && VLEN == 1024),
+     .AxiDataWidth(AxiDataWidth),
+     .AxiAddrWidth(AxiAddrWidth),
+@@ -1067,25 +1068,17 @@
+     .read_fault_kind_o(qbs_read_fault_kind),
+     .fault_vaddr_o(qbs_fault_vaddr),
+     .fault_mmu_exception_o(qbs_fault_mmu_exception),
+-    .core_st_pending_i,
+-    .en_ld_st_translation_i,
+-    .mmu_req_o(qbs_mmu_req),
+-    .mmu_vaddr_o(qbs_mmu_vaddr),
+-    .mmu_is_store_o(qbs_mmu_is_store),
+-    .mmu_valid_i,
+-    .mmu_paddr_i,
+-    .mmu_exception_valid_i(mmu_exception_i.valid),
+-    .mmu_exception_i,
+-    .physical_check_valid_o(qbs_physical_check_valid),
+-    .physical_check_addr_o(qbs_physical_check_addr),
+-    .physical_check_bytes_o(qbs_physical_check_bytes),
+-    .physical_range_allowed_i(qbs_physical_range_allowed),
+-    .axi_ar_o(qbs_axi_ar),
+-    .axi_ar_valid_o(qbs_axi_ar_valid),
+-    .axi_ar_ready_i(qbs_axi_ar_ready),
+-    .axi_r_i(qbs_axi_r),
+-    .axi_r_valid_i(qbs_axi_r_valid),
+-    .axi_r_ready_o(qbs_axi_r_ready),
++    .reader_req_o(shared_read_req[0]),
++    .reader_rsp_i(shared_read_rsp[0]),
++`ifndef SYNTHESIS
++    .reader_probe_plan_state_i(i_shared_reader.i_read_engine.plan_state_q),
++    .reader_probe_range_count_i(i_shared_reader.i_read_engine.range_fifo_count_q),
++    .reader_probe_burst_count_i(i_shared_reader.i_read_engine.burst_fifo_count_q),
++    .reader_probe_ar_valid_i(qbs_axi_ar_valid),
++    .reader_probe_ar_ready_i(qbs_axi_ar_ready),
++    .reader_probe_r_valid_i(qbs_axi_r_valid),
++    .reader_probe_r_ready_i(qbs_axi_r_ready),
++`endif
+     .ldu_result_req_o(qbs_ldu_result_req),
+     .ldu_result_id_o(qbs_ldu_result_id),
+     .ldu_result_addr_o(qbs_ldu_result_addr),
+@@ -1142,6 +1135,7 @@
+   );
+ 
+   akv_engine #(
++    .reader_req_t(shared_read_req_t), .reader_rsp_t(shared_read_rsp_t),
+     .AxiDataWidth (AxiDataWidth),
+     .AxiAddrWidth (AxiAddrWidth),
+     .VAddrWidth   (CVA6Cfg.VLEN),
+@@ -1178,25 +1172,8 @@
+     .fault_vaddr_o                 (akv_fault_vaddr),
+     .fault_mmu_exception_o         (akv_fault_mmu_exception),
+     .context_ready_o               (akv_context_ready),
+-    .core_st_pending_i,
+-    .en_ld_st_translation_i,
+-    .mmu_req_o                     (akv_mmu_req),
+-    .mmu_vaddr_o                   (akv_mmu_vaddr),
+-    .mmu_is_store_o                (akv_mmu_is_store),
+-    .mmu_valid_i,
+-    .mmu_paddr_i,
+-    .mmu_exception_valid_i         (mmu_exception_i.valid),
+-    .mmu_exception_i,
+-    .physical_check_valid_o        (akv_physical_check_valid),
+-    .physical_check_addr_o         (akv_physical_check_addr),
+-    .physical_check_bytes_o        (akv_physical_check_bytes),
+-    .physical_range_allowed_i      (akv_physical_range_allowed),
+-    .axi_ar_o                      (akv_axi_ar),
+-    .axi_ar_valid_o                (akv_axi_ar_valid),
+-    .axi_ar_ready_i                (akv_axi_ar_ready),
+-    .axi_r_i                       (akv_axi_r),
+-    .axi_r_valid_i                 (akv_axi_r_valid),
+-    .axi_r_ready_o                 (akv_axi_r_ready),
++    .reader_req_o(shared_read_req[1]),
++    .reader_rsp_i(shared_read_rsp[1]),
+     .ldu_result_req_o              (akv_ldu_result_req),
+     .ldu_result_id_o               (akv_ldu_result_id),
+     .ldu_result_addr_o             (akv_ldu_result_addr),
+@@ -1382,18 +1359,18 @@
+                          probe_profile_correction_pending_cycles_q,
+                      i_qbs_engine.i_compute_engine.
+                          probe_profile_result_pending_cycles_q,
+-                     i_qbs_engine.i_read_engine.probe_range_blocked_cycles_q,
+-                     i_qbs_engine.i_read_engine.
++                     i_shared_reader.i_read_engine.probe_range_blocked_cycles_q,
++                     i_shared_reader.i_read_engine.
+                          probe_range_fifo_blocked_cycles_q,
+-                     i_qbs_engine.i_read_engine.probe_ar_slot_blocked_cycles_q,
+-                     i_qbs_engine.i_read_engine.
++                     i_shared_reader.i_read_engine.probe_ar_slot_blocked_cycles_q,
++                     i_shared_reader.i_read_engine.
+                          probe_ar_ready_blocked_cycles_q,
+-                     i_qbs_engine.i_read_engine.probe_response_idle_cycles_q,
+-                     i_qbs_engine.i_read_engine.
++                     i_shared_reader.i_read_engine.probe_response_idle_cycles_q,
++                     i_shared_reader.i_read_engine.
+                          probe_data_sink_blocked_cycles_q,
+-                     i_qbs_engine.i_read_engine.
++                     i_shared_reader.i_read_engine.
+                          probe_completion_blocked_cycles_q,
+-                     i_qbs_engine.i_read_engine.
++                     i_shared_reader.i_read_engine.
+                          probe_translation_wait_cycles_q,
+                      i_qbs_engine.probe_weight_wait_no_outstanding_cycles_q,
+                      i_qbs_engine.probe_weight_wait_response_idle_cycles_q,
+@@ -1713,4 +1690,5 @@
+   if (NrLanes == 0)
+     $error("[vlsu] Ara needs to have at least one lane.");
+ 
++  `include "admission_assertions.svh"
+ endmodule : vlsu
+--- a/verification/akv/Makefile
++++ b/verification/akv/Makefile
+@@ -6,6 +6,9 @@
+ FILELIST := $(abspath $(BUILD)/bender.f)
+ MACRO_FILELIST := $(abspath $(MACRO_BUILD)/bender.f)
+ TB := $(abspath akv_engine_tb.sv)
++RTL_STANDALONE_GENERATOR := $(ROOT)/verification/akv/canonical_promotion/generate_standalone.py
++COMPOSED_TB := $(abspath $(BUILD)/standalone/composed_engine.sv) $(abspath $(BUILD)/standalone/original_suite.sv)
++MACRO_COMPOSED_TB := $(abspath $(MACRO_BUILD)/standalone/composed_engine.sv) $(abspath $(MACRO_BUILD)/standalone/original_suite.sv)
+ MACRO_MODEL := $(abspath ../qbs/qbs_context_sram_macro_model.sv)
+ SYNTH_WRAPPER := $(abspath synthesis/akv_engine_synth_wrapper.sv)
+ SYNTH_SDC := $(abspath synthesis/akv_engine.sdc)
+@@ -51,22 +54,26 @@
+ 	cd $(ROOT) && $(BENDER) script verilator $(BENDER_TARGETS) \
+ 		$(BENDER_DEFINES) > $(MACRO_FILELIST)
+ 
+-rtl-compile: $(FILELIST) $(TB) $(RTL_EXTRA_SOURCES)
++rtl-compile: $(FILELIST) $(TB) $(RTL_EXTRA_SOURCES) $(RTL_STANDALONE_GENERATOR)
++	python3 -B $(RTL_STANDALONE_GENERATOR) --source-root $(ROOT) --kind akv \
++		--tb $(TB) --output $(abspath $(BUILD)/standalone)
+ 	cd $(BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
+ 		+define+ARA_AKV_ENABLE=1 +define+ARA_AKV_V2_ENABLE=1 \
+ 		+lint=TFIPC-L -l compile.log \
+-		$(RTL_EXTRA_DEFINES) -f $(FILELIST) $(TB) $(RTL_EXTRA_SOURCES) -top akv_engine_tb -o simv
++		$(RTL_EXTRA_DEFINES) -f $(FILELIST) $(COMPOSED_TB) $(RTL_EXTRA_SOURCES) -top akv_engine_tb -o simv
+ 
+ rtl-check: rtl-compile
+ 	cd $(BUILD) && timeout --foreground $(RTL_RUN_TIMEOUT) ./simv -l run.log
+ 	grep -q "AKV engine PASS" $(BUILD)/run.log
+ 	! grep -Eq "Fatal:|Error:" $(BUILD)/run.log
+ 
+-rtl-macro-compile: $(MACRO_FILELIST) $(TB) $(MACRO_MODEL)
++rtl-macro-compile: $(MACRO_FILELIST) $(TB) $(MACRO_MODEL) $(RTL_EXTRA_SOURCES) $(RTL_STANDALONE_GENERATOR)
++	python3 -B $(RTL_STANDALONE_GENERATOR) --source-root $(ROOT) --kind akv \
++		--tb $(TB) --output $(abspath $(MACRO_BUILD)/standalone)
+ 	cd $(MACRO_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
+ 		+define+ARA_AKV_ENABLE=1 +define+ARA_AKV_V2_ENABLE=1 \
+ 		+define+TARGET_SRAM_MC $(RTL_MACRO_VCS_FLAGS) +lint=TFIPC-L \
+-		-l compile.log -f $(MACRO_FILELIST) $(MACRO_MODEL) $(TB) \
++		-l compile.log $(RTL_EXTRA_DEFINES) -f $(MACRO_FILELIST) $(MACRO_MODEL) $(MACRO_COMPOSED_TB) $(RTL_EXTRA_SOURCES) \
+ 		-top akv_engine_tb -o simv
+ 
+ rtl-macro-check: rtl-macro-compile
+@@ -74,19 +81,22 @@
+ 	grep -q "AKV engine PASS" $(MACRO_BUILD)/run.log
+ 	! grep -Eq "Fatal:|Error:" $(MACRO_BUILD)/run.log
+ 
+-synth-wrapper-compile: $(MACRO_FILELIST) $(MACRO_MODEL) $(SYNTH_WRAPPER)
++synth-wrapper-compile: $(MACRO_FILELIST) $(MACRO_MODEL) $(SYNTH_WRAPPER) $(RTL_EXTRA_SOURCES)
+ 	mkdir -p $(SYNTH_WRAPPER_BUILD)
+ 	cd $(SYNTH_WRAPPER_BUILD) && vcs -full64 -sverilog \
+ 		+define+ARA_AKV_ENABLE=1 +define+ARA_AKV_V2_ENABLE=1 \
+-		+define+TARGET_SRAM_MC +lint=TFIPC-L -l compile.log \
+-		-f $(MACRO_FILELIST) $(MACRO_MODEL) $(SYNTH_WRAPPER) \
++		+define+TARGET_SRAM_MC $(RTL_MACRO_VCS_FLAGS) +lint=TFIPC-L -l compile.log \
++		$(RTL_EXTRA_DEFINES) -f $(MACRO_FILELIST) $(MACRO_MODEL) $(SYNTH_WRAPPER) $(RTL_EXTRA_SOURCES) \
+ 		-top akv_engine_synth_wrapper -o simv
+ 
++dc_akv_storage_organization ?= unified_q64x256_kv128x256
++
+ synth-preflight: synth-wrapper-compile
+-	$(MAKE) -C $(ROOT)/hardware dc_preflight mc=1 qbs=1 akv_v2=1
++	$(MAKE) -C $(ROOT)/hardware dc_preflight mc=1 qbs=1 akv_v2=1 dc_akv_storage_organization=$(dc_akv_storage_organization)
+ 	python3 $(SYNTH_CHECKER) --filelist $(DC_FILELIST) --sdc $(SYNTH_SDC) \
+ 		--setup $(DC_SETUP) --require-qbs --require-akv --require-akv-v2 \
+-		--require-macro-sram --nr-lanes 4 --vlen 1024
++		--require-macro-sram --nr-lanes 4 --vlen 1024 \
++		--akv-storage-organization $(dc_akv_storage_organization)
+ 
+ context-synth:
+ 	./synthesis/run_context_dc.sh
+--- a/verification/akv/synthesis/akv_engine_dc.tcl
++++ b/verification/akv/synthesis/akv_engine_dc.tcl
+@@ -13,12 +13,28 @@
+ define_design_lib WORK -path [file join $output_dir work]
+ 
+ set std_library "/home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140_180a_nldm/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp12t40p140_180a/tcbn28hpcplusbwp12t40p140tt0p9v25c.db"
++# AKV_STANDALONE_STORAGE_SELECTION_V2
++set selected_organization split_v1_96x256_v2_128x256
++if {[info exists ::env(AKV_STORAGE_ORGANIZATION)]} {
++  set selected_organization $::env(AKV_STORAGE_ORGANIZATION)
++}
++switch -- $selected_organization {
++  split_v1_96x256_v2_128x256 {
+ set context_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb96x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb96x256m1swbso_170a_tt0p9v25c.db"
+ set kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"
++    set storage_libraries [list $context_sram_library $kv_sram_library]
++  }
++  unified_q64x256_kv128x256 {
++set q_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db"
++set kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"
++    set storage_libraries [list $q_sram_library $kv_sram_library]
++  }
++  default {error "unsupported AKV_STORAGE_ORGANIZATION: $selected_organization"}
++}
++# END_AKV_STANDALONE_STORAGE_SELECTION_V2
+ set synthetic_library "/home/wangwy/software/synopsys/install/syn/syn/T-2022.03-SP2/libraries/syn/dw_foundation.sldb"
+ 
+-foreach required_file [list $dc_filelist $wrapper $project_sdc $std_library \
+-                            $context_sram_library $kv_sram_library $synthetic_library] {
++foreach required_file [concat [list $dc_filelist $wrapper $project_sdc $std_library $synthetic_library] $storage_libraries] {
+   if {![file isfile $required_file]} {
+     error "missing standalone synthesis input: $required_file"
+   }
+@@ -26,7 +42,7 @@
+ 
+ set_app_var target_library $std_library
+ set_app_var synthetic_library $synthetic_library
+-set_app_var link_library "* $std_library $context_sram_library $kv_sram_library $synthetic_library"
++set_app_var link_library [concat [list * $std_library] $storage_libraries [list $synthetic_library]]
+ set_host_options -max_cores 8
+ set hdlin_check_no_latch true
+ set compile_seqmap_propagate_constants false
+@@ -62,18 +78,56 @@
+ redirect [file join $output_dir references.rpt] {report_reference -hierarchy}
+ redirect [file join $output_dir resources.rpt] {report_resources}
+ 
+-set v1_macro_ref TS1N28HPCPUHDSVTB96X256M1SWBSO
+-set v2_macro_ref TS1N28HPCPUHDSVTB128X256M1SWBSO
+-set context_macros [get_cells -hierarchical -filter "ref_name == $v1_macro_ref || ref_name == $v2_macro_ref"]
+-set v1_macros [get_cells -hierarchical -filter \
+-    "ref_name == $v1_macro_ref && full_name =~ i_akv_engine/i_context/*"]
+-set v2_macros [get_cells -hierarchical -filter \
+-    "ref_name == $v2_macro_ref && full_name =~ i_akv_engine/i_v2_context/*"]
++# Classify actual AKV-owned macro instances; Q is never counted as legacy V1.
++# i_akv_engine excludes unrelated CPU/QBS macros with the same library reference.
++set context_macros [get_cells -quiet -hierarchical -filter \
++    "ref_name =~ TS1N28HPCPUHDSVTB* && full_name =~ i_akv_engine/*"]
++set q_macros [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ i_akv_engine/i_unified_context/i_q_store/*"]
++set kv_macros [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB128X256M1SWBSO && full_name =~ i_akv_engine/i_unified_context/i_kv_store/*"]
++set old64_v1 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ i_akv_engine/i_context/*"]
++set old64_v2 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO && full_name =~ i_akv_engine/i_v2_context/*"]
++set split_v1 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB96X256M1SWBSO && full_name =~ i_akv_engine/i_context/*"]
++set split_v2 [get_cells -quiet -hierarchical -filter \
++    "ref_name == TS1N28HPCPUHDSVTB128X256M1SWBSO && full_name =~ i_akv_engine/i_v2_context/*"]
+ set macro_count [sizeof_collection $context_macros]
+-set v1_macro_count [sizeof_collection $v1_macros]
+-set v2_macro_count [sizeof_collection $v2_macros]
+-if {$macro_count != 10 || $v1_macro_count != 2 || $v2_macro_count != 8} {
+-  error "unexpected AKV SRAM organization: total=$macro_count v1=$v1_macro_count v2=$v2_macro_count"
++set q_macro_count [sizeof_collection $q_macros]
++set kv_count [sizeof_collection $kv_macros]
++set old64_v1_count [sizeof_collection $old64_v1]
++set old64_v2_count [sizeof_collection $old64_v2]
++set split_v1_count [sizeof_collection $split_v1]
++set split_v2_count [sizeof_collection $split_v2]
++set partition [list $macro_count $q_macro_count $kv_count \
++    $old64_v1_count $old64_v2_count $split_v1_count $split_v2_count]
++switch -- $partition {
++  {9 1 8 0 0 0 0} {
++    set organization unified_q64x256_kv128x256
++    set v1_macro_count 0
++    set v2_macro_count 8
++    set capacity_bits [expr {(1 * 64 + 8 * 128) * 256}]
++  }
++  {10 0 0 0 0 2 8} {
++    set organization split_v1_96x256_v2_128x256
++    set v1_macro_count 2
++    set v2_macro_count 8
++    set capacity_bits [expr {(2 * 96 + 8 * 128) * 256}]
++  }
++  {20 0 0 4 16 0 0} {
++    set organization legacy_v1_v2_64x256
++    set v1_macro_count 4
++    set v2_macro_count 16
++    set capacity_bits [expr {(4 + 16) * 64 * 256}]
++  }
++
++  default {error "unexpected AKV SRAM hierarchy/organization: $partition"}
++}
++
++if {$organization ne $selected_organization} {
++  error "AKV SRAM selection/hierarchy mismatch: selected=$selected_organization actual=$organization"
+ }
+ 
+ set macro_area 0.0
+@@ -92,10 +146,12 @@
+ puts $report_file "clock_period_ns=1.0"
+ puts $report_file "clock_uncertainty_ns=0.15"
+ puts $report_file "scope=akv_engine_standalone"
++puts $report_file "akv_sram_organization=$organization"
+ puts $report_file "akv_sram_macro_count=$macro_count"
++puts $report_file "akv_q_sram_macro_count=$q_macro_count"
+ puts $report_file "akv_v1_sram_macro_count=$v1_macro_count"
+ puts $report_file "akv_v2_sram_macro_count=$v2_macro_count"
+-puts $report_file "physical_sram_capacity_bits=[expr {($v1_macro_count * 96 + $v2_macro_count * 128) * 256}]"
++puts $report_file "physical_sram_capacity_bits=$capacity_bits"
+ puts $report_file "design_total_area_um2=$total_area"
+ puts $report_file "design_macro_area_um2=$macro_area"
+ puts $report_file "design_logic_area_um2=$logic_area"
+--- a/verification/akv/synthesis/akv_engine_synth_wrapper.sv
++++ b/verification/akv/synthesis/akv_engine_synth_wrapper.sv
+@@ -3,6 +3,7 @@
+ 
+ `include "axi/typedef.svh"
+ `include "ara/intf_typedef.svh"
++`include "shared_reader_types.svh"
+ 
+ package akv_engine_synth_types_pkg;
+   localparam int unsigned AxiDataWidth = 128;
+@@ -27,6 +28,8 @@
+   localparam config_pkg::cva6_cfg_t CVA6Cfg =
+       build_config_pkg::build_config(cva6_config_pkg::cva6_cfg);
+   `CVA6_TYPEDEF_EXCEPTION(exception_t, CVA6Cfg)
++  `QBS_AKV_SHARED_READER_TYPEDEF_REQ_T(shared_read_req_t, VAddrWidth)
++  `QBS_AKV_SHARED_READER_TYPEDEF_RSP_T(shared_read_rsp_t, AxiDataWidth, VAddrWidth, exception_t)
+ endpackage
+ 
+ // Measurement-only wrapper. Every functional input and output remains visible
+@@ -120,7 +123,42 @@
+     output logic [31:0]                  read_outstanding_full_cycles_o
+   );
+ 
++  shared_read_req_t shared_req [2];
++  shared_read_rsp_t shared_rsp [2];
++  logic owner_q, command_fire;
++
++  assign shared_req[0] = '0;
++  assign command_fire = command_valid_i && command_ready_o;
++  always_ff @(posedge clk_i or negedge rst_ni) begin
++    if (!rst_ni) owner_q <= 1'b0;
++    else begin
++      if ((success_valid_o || fault_valid_o) && terminal_ready_i) owner_q <= 1'b0;
++      if (command_fire) owner_q <= 1'b1;
++    end
++  end
++
++  // Measurement wrapper only; the complete VLSU supplies the production owner.
++  // Reader counters are qualified by owner, unlike a persistent retired snapshot.
++  qbs_akv_shared_reader #(
++    .AxiDataWidth(AxiDataWidth), .AxiAddrWidth(AxiAddrWidth),
++    .VAddrWidth(VAddrWidth), .PAddrWidth(PAddrWidth),
++    .req_t(shared_read_req_t), .rsp_t(shared_read_rsp_t),
++    .axi_ar_t(axi_ar_t), .axi_r_t(axi_r_t), .exception_t(exception_t)
++  ) i_shared_reader (
++    .clk_i, .rst_ni,
++    .owner_i({owner_q, 1'b0}), .command_fire_i({command_fire, 1'b0}),
++    .client_req_i(shared_req), .client_rsp_o(shared_rsp),
++    .core_st_pending_i, .en_ld_st_translation_i,
++    .mmu_req_o, .mmu_vaddr_o, .mmu_is_store_o, .mmu_valid_i, .mmu_paddr_i,
++    .mmu_exception_valid_i, .mmu_exception_i,
++    .physical_check_valid_o, .physical_check_addr_o, .physical_check_bytes_o,
++    .physical_range_allowed_i,
++    .axi_ar_o, .axi_ar_valid_o, .axi_ar_ready_i,
++    .axi_r_i, .axi_r_valid_i, .axi_r_ready_o
++  );
++
+   akv_engine #(
++    .reader_req_t(shared_read_req_t), .reader_rsp_t(shared_read_rsp_t),
+     .AxiDataWidth (AxiDataWidth),
+     .AxiAddrWidth (AxiAddrWidth),
+     .VAddrWidth   (VAddrWidth),
+@@ -132,5 +170,7 @@
+     .axi_ar_t     (axi_ar_t),
+     .axi_r_t      (axi_r_t),
+     .exception_t  (exception_t)
+-  ) i_akv_engine (.*);
++  ) i_akv_engine (
++    .reader_req_o(shared_req[1]), .reader_rsp_i(shared_rsp[1]), .*
++  );
+ endmodule
+--- a/verification/qbs/Makefile
++++ b/verification/qbs/Makefile
+@@ -22,13 +22,15 @@
+ RTL_RUN_TIMEOUT ?= 10800
+ RTL_EXTRA_SOURCES ?=
+ RTL_ENGINE_DEFINES ?=
++RTL_STANDALONE_GENERATOR := $(ROOT)/verification/akv/canonical_promotion/generate_standalone.py
+ RTL_MACRO_VCS_FLAGS ?=
+ RTL_FP_BUILD ?= rtl_fp_build
+ RTL_HALF_BUILD ?= rtl_half_build
+ RTL_BLOCK_ADAPTER_SOURCE ?= $(ROOT)/hardware/src/vlsu/qbs/qbs_block_adapter.sv
+ RTL_VECTOR_FILE := $(abspath qbs_rtl_vectors.txt)
+ RTL_COMMAND_VECTOR_FILE := $(abspath qbs_command_vectors.txt)
+-RTL_INCLUDES := +incdir+$(ROOT)/hardware/deps/common_cells/include \
++RTL_INCLUDES := +incdir+$(ROOT)/hardware/include \
++	+incdir+$(ROOT)/hardware/deps/common_cells/include \
+ 	+incdir+$(ROOT)/hardware/deps/axi/include
+ RTL_SOURCES := \
+ 	$(ROOT)/hardware/deps/common_cells/src/cf_math_pkg.sv \
+@@ -50,6 +52,7 @@
+ 	$(ROOT)/hardware/src/vlsu/qbs/qbs_dot_array.sv \
+ 	$(ROOT)/hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv \
+ 	$(ROOT)/hardware/src/vlsu/qbs/qbs_read_engine.sv \
++	$(ROOT)/hardware/src/vlsu/qbs_akv_shared_reader.sv \
+ 	$(ROOT)/hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv \
+ 	$(ROOT)/hardware/src/vlsu/qbs/qbs_activation_context.sv \
+ 	$(ROOT)/hardware/src/vlsu/qbs/qbs_payload_sram.sv \
+@@ -69,7 +72,9 @@
+ RTL_DESCRIPTOR_SOURCES := $(RTL_SOURCES) $(abspath qbs_descriptor_decoder_tb.sv)
+ RTL_READ_SOURCES := $(RTL_SOURCES) $(abspath qbs_read_engine_tb.sv)
+ RTL_COMMIT_SOURCES := $(RTL_SOURCES) $(abspath qbs_commit_tb.sv)
+-RTL_ENGINE_SOURCES := $(RTL_SOURCES) $(abspath qbs_engine_tb.sv)
++RTL_ENGINE_SOURCES := $(RTL_SOURCES) \
++	$(abspath $(RTL_ENGINE_BUILD)/standalone/composed_engine.sv) \
++	$(abspath $(RTL_ENGINE_BUILD)/standalone/original_suite.sv)
+ RTL_CONTEXT_SOURCES := \
+ 	$(ROOT)/hardware/include/qbs_pkg.sv \
+ 	$(ROOT)/hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv \
+@@ -202,8 +207,10 @@
+ 	grep -q "QBS commit PASS" $(RTL_COMMIT_BUILD)/run.log
+ 	! grep -Eq "Fatal:|Error:" $(RTL_COMMIT_BUILD)/run.log
+ 
+-rtl-engine-compile: qbs_command_vectors.txt $(RTL_ENGINE_SOURCES)
++rtl-engine-compile: qbs_command_vectors.txt $(RTL_SOURCES) $(abspath qbs_engine_tb.sv) $(RTL_STANDALONE_GENERATOR)
+ 	mkdir -p $(RTL_ENGINE_BUILD)
++	python3 -B $(RTL_STANDALONE_GENERATOR) --source-root $(ROOT) --kind qbs \
++		--tb $(abspath qbs_engine_tb.sv) --output $(abspath $(RTL_ENGINE_BUILD)/standalone)
+ 	cd $(RTL_ENGINE_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
+ 		+lint=TFIPC-L $(RTL_ENGINE_DEFINES) -l compile.log $(RTL_INCLUDES) $(RTL_ENGINE_SOURCES) \
+ 		-top qbs_engine_tb -o simv

@@ -1,0 +1,47 @@
+{
+  "state": "NATIVE_QUANTIZED_ATTENTION_MODEL_ACCEPTED",
+  "scope": "Short independent greedy generation through all model layers under native-QBS QEMU, not RTL timing or a model-quality benchmark",
+  "run": "verification/out/akv-quantkv-model-strided-20261024-01-control",
+  "result_sha256": "d844f94e9170418cf7a5852fcb3892c9240a812728d13f6a972f77877bc0dacc",
+  "status_sha256": "f66c943f57e086127a0f6011eec527ca0ed1f6844964a0c2d253d41bf166ed8d",
+  "source_pins_sha256": "2c42869d130c6ae6e8c61587526616a25a987e2797aa304af600278813d2768e",
+  "log_sha256": "874720c9297b93c51dd55179c248248897f9ffb83b41c81ec6dbf0450bb92175",
+  "model": "Qwen2.5-1.5B-Instruct Q4_K_M",
+  "model_sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+  "layers": 28,
+  "prompt": "The quick brown fox",
+  "prompt_tokens": 4,
+  "generated_tokens_per_context": 3,
+  "independent_contexts": 4,
+  "requested_context": 128,
+  "effective_context": 256,
+  "key_formats": ["Q8_0", "Q4_0"],
+  "value_format": "Q8_0",
+  "candidate_decode": {
+    "calls": 112,
+    "native_commands": 448,
+    "gathered_key_panels": 224,
+    "copied_key_payload_bytes": 128128,
+    "unexpected_fallbacks": 0,
+    "prefill_fallback_reports": 56
+  },
+  "result_in_each_context": {
+    "tokens": [34208, 916, 279],
+    "text": " jumps over the"
+  },
+  "paired_logits": {
+    "comparisons": 6,
+    "all_max_abs": 0,
+    "all_rmse": 0,
+    "all_kl": 0,
+    "common_input_history_checked": true
+  },
+  "native_projection_commands_across_all_four_contexts": {
+    "Q4_K": 232512,
+    "Q6_K": 66384,
+    "emulated_commands": 0
+  },
+  "rtl_changed": false,
+  "rtl_performance": false,
+  "note": "Both modes use QBS projections; only candidate Attention is enabled. Three-token equality does not establish long-context model quality or end-to-end speedup."
+}

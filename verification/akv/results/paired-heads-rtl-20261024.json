@@ -1,0 +1,26 @@
+{
+  "state": "PASS",
+  "worker": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv-paired-heads-rtl-run-20261023-01",
+  "result_sha256": "be115e445be2735aaea50bec476933f6fc4823421dd242661dacaba70a770a4e",
+  "elf_sha256": "60e430beaf54c3d1bf816ed1a87d3101f589550b75aa6cf0050392d447d9388c",
+  "shapes": [
+    {"head_dim": 64, "tokens": 1, "query_stride_bytes": 320, "kv_head": 0},
+    {"head_dim": 96, "tokens": 63, "query_stride_bytes": 256, "kv_head": 1},
+    {"head_dim": 128, "tokens": 64, "query_stride_bytes": 320, "kv_head": 1}
+  ],
+  "runs": 6,
+  "qk_compared_outputs_across_both_modes": 512,
+  "pv_compared_outputs_across_both_modes": 1152,
+  "successful_commands": 1044,
+  "fault_commands": 0,
+  "qk_reference": "Independent host scalar fmaf, finite real-capture-derived inputs",
+  "pv_reference": "Canonical generic F16 assembly regression; not an independent FP16 oracle",
+  "independent_uvm": "PASS, original backend and AXI-write checks required",
+  "worker_relative_evidence_sha256": {
+    "source-pins.json": "8ee16fbdcbf9650f914b852566bfe63aaec04e7eef98d32c95d164dda175da80",
+    "work/run.vcs.log": "262aa38ec16bb16a81bd7db99c2f702ef2c27998637d93fe8c68d6566ebc5b66",
+    "work/uvm_result.json": "22d37e2790d9c658183b15a3a54d91ec9220601a00c9099dd5160320eadd0274",
+    "work/vector_trace.csv": "6d94e2b141f6bca5845ed55adf54220d7e6655195013b6dfa3621ebee8908234"
+  },
+  "scope": "Focused helper correctness, status and memory/protocol safety; derived Qwen2.5 subsets, not new model captures or performance/deployment acceptance"
+}

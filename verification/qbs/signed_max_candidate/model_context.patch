@@ -1,0 +1,12 @@
+--- a/test.cpp
++++ b/test.cpp
+@@ -21,7 +21,8 @@
+     env("GGML_RISCV_QBS_TRACE", "1"); env("GGML_RISCV_QBS_TRACE_CALLS", "1");
+     env("GGML_RISCV_QBS_M4_PREPARE", mode ? "1" : "0");
+     env("GGML_RISCV_QBS_TRACE_M4_PREPARE", "1");
+-    env("GGML_RISCV_QBS_WIDE_M", "0"); env("GGML_RISCV_QBS_CROSS_OP_CONTEXT", "0");
++    env("GGML_RISCV_QBS_WIDE_M", "0"); env("GGML_RISCV_QBS_CROSS_OP_CONTEXT", "1");
++    env("GGML_RISCV_QBS_TRACE_LIFETIME", "1");
+     env("GGML_RISCV_QBS_ACTIVATION_CONTEXT", "1");
+     env("GGML_RISCV_AKV", "0"); env("GGML_RISCV_AKV_EMULATE", "0");
+     env("GGML_RISCV_AKV_QUANT_KV", "1"); env("GGML_RISCV_AKV_QUANT_KV_NORMAL_MEMORY", "1");

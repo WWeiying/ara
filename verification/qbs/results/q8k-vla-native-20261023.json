@@ -1,0 +1,24 @@
+{
+  "state": "PASS",
+  "scope": "Full Q8_K quantizer with integer VLA preflight versus production generic; functional, not RTL performance",
+  "run": "verification/out/qbs-q8k-vla-native-20261023-01",
+  "build": "verification/out/qbs-q8k-vla-native-build-20261023-01",
+  "checks": 12000,
+  "candidate_checks": 1872,
+  "fallback_checks": 10128,
+  "vlens": [128, 1024],
+  "datasets_per_vlen": 50,
+  "real_datasets_per_vlen": 6,
+  "manifest_unchanged": true,
+  "cross_vlen_digests_equal": true,
+  "original_candidate_output_digests_equal": true,
+  "independent_raw_log_recheck": "PASS",
+  "status_sha256": "fadbec6830017bbe1986e684a0a595edbccc1e90dd083a28872049694c653e72",
+  "manifest_sha256": "6709c9f913c09099007b231c78dba0ca0e72a36e966bf0056adc1eb4b1a653f2",
+  "binary_sha256": "6c8474a4c1a9d88b261fb0d2ad2854b6f5fac17643cf98630a6dc43840474832",
+  "logs": {
+    "qemu-128.log": "a99e0338ef34a8fc965446f2b5671fbb477ab10c76abcb65fc3f7eba98a1c808",
+    "qemu-1024.log": "3e32ca25369630ea941daa489ac1a6fb634d970a269a18020d84fd42fae2d328"
+  },
+  "remaining": ["Same-image VCS preparation/full-projection performance", "Production GGML selection and actual-TU gate"]
+}

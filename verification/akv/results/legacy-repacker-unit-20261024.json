@@ -1,0 +1,21 @@
+{
+  "state": "BOUNDED_VCS_UNIT_PASS",
+  "run": "verification/out/akv-legacy-repacker-unit-20261024-03",
+  "result_sha256": "6b1dcc14b2484cef808f8006a1270ad495dfd5cded940dbed6367efd5df650ac",
+  "source_pins_sha256": "a97fec34d64123ed3e1fb9aaac99e3ad3b50f6a6bae42f9d26080b9ecb102689",
+  "rows": 34,
+  "aborts": 8,
+  "writes": 424,
+  "checked_bytes": 6784,
+  "final_write_latency_checks": 34,
+  "final_write_latency_edges": 2,
+  "production_integrated": false,
+  "full_engine_equivalence": false,
+  "ppa_measured": false,
+  "scope": "Compact even F16 fragments, all even 16-byte beat alignments, row lengths128/192/256, gaps, no-idle identity transition, pending/registered-output abort and readmission. No MMU simulation or shared SRAM implementation.",
+  "sources": {
+    "verification/akv/storage_adapter/akv_legacy_repacker.sv": "78ce01557cfdc226b1d6102f88e47afbfef45f54b7735206b88f73e3f45f0a3b",
+    "verification/akv/storage_adapter/repacker_tb.sv": "a515891f1bb6e9573df6bf095cd6478a392b3459d581d2eb34001220ac30f5c8",
+    "verification/akv/storage_adapter/run_unit.py": "264099a7005050c37f2b18dcb2e7bd933a9b29f2328a2082a4fe6345366661d4"
+  }
+}

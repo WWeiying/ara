@@ -1,0 +1,44 @@
+{
+  "state": "INDEPENDENT_VALUE_DECODE_ACCEPTED",
+  "run": "verification/out/akv-quantkv-value-decode-fast-20261024-01",
+  "build": "verification/out/akv-quantkv-value-decode-fast-build-20261024-01",
+  "audit": "verification/out/akv-quantkv-value-decode-fast-audit-20261024-01",
+  "run_result_sha256": "d2643ca9dfbf964ad0f42b4da864e6ae93b27518669ddaca36a68fb500134aed",
+  "run_source_pins_sha256": "3d0ab1c2b45fadfc37a3a227e085c21e0834bbd6e98ca8ba20b0559454a36cef",
+  "audit_result_sha256": "41e7b457c2dd3c89d2c5cc27904953aa72189b18da254014646b6dd3214a1694",
+  "audit_source_pins_sha256": "8a4abcda90efbd95d322a445b5511c282dd5b4dc49f357ac725d49220d30a215",
+  "elf_sha256": "3f66dca8e2bca772e67911118652ccd087baf58c901e5d43a8ac0378b3a6bbff",
+  "simulator_exit_code": 0,
+  "trials": 8,
+  "real_output_words": 262144,
+  "directed_boundary_words": 3584,
+  "exact_comparison": true,
+  "fcsr": 0,
+  "vcsr": 5,
+  "independent_protocol_checked": true,
+  "post_pins_match": true,
+  "value_encoding": "Q8_0",
+  "hash_algorithm": "word_fnv64",
+  "performance": [
+    {
+      "capture_key_encoding": "Q8_0",
+      "original_two_trial_cycles": 832097,
+      "rvv_two_trial_cycles": 222381,
+      "speedup": 3.74176301032912,
+      "cycle_reduction_percent": 73.27463024142618,
+      "reference_hash": "45e3fad1de9a62e5"
+    },
+    {
+      "capture_key_encoding": "Q4_0",
+      "original_two_trial_cycles": 832057,
+      "rvv_two_trial_cycles": 222333,
+      "speedup": 3.7423909181273136,
+      "cycle_reduction_percent": 73.27911429144878,
+      "reference_hash": "f6df292f1e8773e5"
+    }
+  ],
+  "rtl_changed": false,
+  "whole_attention_accepted": false,
+  "deployment_approved": false,
+  "scope": "Finite Q8_0 V decoder only; no whole Attention or model speedup claim"
+}

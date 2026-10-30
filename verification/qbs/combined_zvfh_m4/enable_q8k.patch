@@ -1,0 +1,21 @@
+diff --git a/ggml/src/ggml-cpu/repack.cpp b/ggml/src/ggml-cpu/repack.cpp
+--- a/ggml/src/ggml-cpu/repack.cpp
++++ b/ggml/src/ggml-cpu/repack.cpp
+@@ -347,7 +347,7 @@
+-#if defined(GGML_USE_RISCV_QBS) && !defined(__riscv_zvfh)
++#if defined(GGML_USE_RISCV_QBS)
+ static bool qbs_m4_prepare_enabled() {
+     static const bool enabled = [] {
+         const char * value = std::getenv("GGML_RISCV_QBS_M4_PREPARE");
+         return value && std::strcmp(value, "1") == 0;
+     }();
+     return enabled;
+@@ -387,7 +387,7 @@
+ template <> void ggml_quantize_mat_t<1, GGML_TYPE_Q8_K>(const float * GGML_RESTRICT x, void * GGML_RESTRICT vy, int64_t nrow, int64_t n_per_row) {
+     assert(nrow == 4);
+     UNUSED(nrow);
+-#if defined(GGML_USE_RISCV_QBS) && !defined(__riscv_zvfh)
++#if defined(GGML_USE_RISCV_QBS)
+     const bool enabled = qbs_m4_prepare_enabled();
+     bool vector_used = false;
+     if (enabled) {

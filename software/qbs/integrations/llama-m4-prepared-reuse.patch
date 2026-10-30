@@ -1,0 +1,493 @@
+--- a/ggml/src/ggml-cpu/repack.cpp
++++ b/ggml/src/ggml-cpu/repack.cpp
+@@ -15,6 +15,7 @@
+ #include "arch/riscv/qbs.h"
+ #include "arch/riscv/q8_0-m4.h"
+ #include "arch/riscv/q8_K-m4.h"
++#include "arch/riscv/q8_K-prepared-reuse.h"
+ #endif
+ 
+ #include <cmath>
+@@ -4852,11 +4853,27 @@
+             }
+         } else if (!reuse_qbs_activation) {
+ #endif
++#if defined(GGML_USE_RISCV_QBS)
++        ggml_riscv_q8_K_prepared::state *m4_cache=nullptr;
++        ggml_riscv_m4_reuse::policy m4_policy{};
++        if constexpr (is_qbs_block_type<BLOC_TYPE>::value && INTER_SIZE==1 && PARAM_TYPE==GGML_TYPE_Q8_K) {
++            if(qbs_m4_prepare_enabled() && ggml_riscv_q8_K_prepared::enabled()) {
++                m4_cache=&ggml_riscv_q8_K_prepared::worker_state();
++                m4_policy=m4_cache->begin(params,op);
++            }
++        }
++#endif
+         for (int64_t i12 = 0; i12 < ne12; i12++) {
+             char * data_ptr  = (char *) src1->data + i12 * nb12;
+             char * wdata_ptr = wdata + i12 * nbw2;
+ 
+             for (int64_t i11 = ith * 4; i11 < ne11 - ne11 % 4; i11 += nth * 4) {
++#if defined(GGML_USE_RISCV_QBS)
++                if(m4_cache && m4_cache->prepare(m4_policy,(float *)(data_ptr+i11*nb11),
++                        wdata_ptr+i11*nbw1,ne10,i11/4,qbs_m4_prepare_trace_enabled())) {
++                    continue;
++                }
++#endif
+                 ggml_quantize_mat_t<INTER_SIZE, PARAM_TYPE>((float *) (data_ptr + i11 * nb11),
+                                                             (void *) (wdata_ptr + i11 * nbw1), 4, ne10);
+             }
+@@ -4867,6 +4884,7 @@
+             }
+         }
+ #if defined(GGML_USE_RISCV_QBS)
++        if(m4_cache) m4_cache->finish(m4_policy);
+         }
+ #endif
+ 
+@@ -4926,7 +4944,7 @@
+                     op, op->name, src0, src0->name, src0->type, src1, src1->name, src1->data,
+                     wdata, qbs_quantized_bytes, PARAM_TYPE, ne11 * ne12, ne10,
+                     ne01, params->graph_epoch,
+-                    quantize_time_valid, quantize_time_us);
++                    quantize_time_valid, quantize_time_us, ggml_riscv_q8_K_prepared::enabled());
+             }
+         }
+ #endif
+--- a/ggml/src/ggml-cpu/arch/riscv/qbs.cpp
++++ b/ggml/src/ggml-cpu/arch/riscv/qbs.cpp
+@@ -110,6 +110,7 @@
+     std::deque<qbs_activation_trace_record> records;
+     uint64_t                                sequence               = 0;
+     uint64_t                                quantizations           = 0;
++    bool                                    prepared_cache_active   = false;
+     uint64_t                                exact_reuse_candidates  = 0;
+     uint64_t                                quantized_bytes          = 0;
+     uint64_t                                reusable_quantized_bytes = 0;
+@@ -157,19 +158,27 @@
+     auto & state = activation_trace_state();
+     std::lock_guard<std::mutex> lock(state.mutex);
+     std::fprintf(stderr,
+-                 "GGML_RISCV_QBS_LIFETIME_SUMMARY quantizations=%llu "
+-                 "exact_reuse_candidates=%llu quantized_bytes=%llu "
+-                 "reusable_quantized_bytes=%llu quantizations_with_time=%llu "
+-                 "quantize_time_us=%llu reusable_quantize_time_us=%llu "
++                 "%s %s=%llu "
++                 "%s=%llu %s=%llu "
++                 "%s=%llu %s=%llu "
++                 "%s=%llu %s=%llu "
+                  "graph_epochs=%zu cross_op_fill=%llu cross_op_reuse=%llu "
+                  "cross_op_release=%llu cross_op_quantization_skips=%llu "
+                  "cross_op_activation_bytes_saved=%llu\n",
++                 state.prepared_cache_active ? "GGML_RISCV_QBS_LIFETIME_SUMMARY_V2" : "GGML_RISCV_QBS_LIFETIME_SUMMARY",
++                 state.prepared_cache_active ? "prepared_buffer_invocations" : "quantizations",
+                  static_cast<unsigned long long>(state.quantizations),
++                 state.prepared_cache_active ? "exact_duplicate_prepared_buffers" : "exact_reuse_candidates",
+                  static_cast<unsigned long long>(state.exact_reuse_candidates),
++                 state.prepared_cache_active ? "prepared_bytes" : "quantized_bytes",
+                  static_cast<unsigned long long>(state.quantized_bytes),
++                 state.prepared_cache_active ? "duplicate_prepared_bytes" : "reusable_quantized_bytes",
+                  static_cast<unsigned long long>(state.reusable_quantized_bytes),
++                 state.prepared_cache_active ? "prepared_invocations_with_time" : "quantizations_with_time",
+                  static_cast<unsigned long long>(state.quantizations_with_time),
++                 state.prepared_cache_active ? "preparation_time_us" : "quantize_time_us",
+                  static_cast<unsigned long long>(state.quantize_time_us),
++                 state.prepared_cache_active ? "duplicate_preparation_time_us" : "reusable_quantize_time_us",
+                  static_cast<unsigned long long>(state.reusable_quantize_time_us),
+                  state.graph_epochs.size(),
+                  static_cast<unsigned long long>(cross_op_fill_calls.load(std::memory_order_relaxed)),
+@@ -1519,7 +1528,8 @@
+                                               int64_t      output_rows,
+                                               uint64_t     graph_epoch,
+                                               bool         quantize_time_valid,
+-                                              uint64_t     quantize_time_us) {
++                                              uint64_t     quantize_time_us,
++                                              bool         prepared_cache_active) {
+     if (!ggml_riscv_qbs_trace_activation_lifetime_enabled() || quantized_data == nullptr || quantized_bytes == 0) {
+         return;
+     }
+@@ -1533,6 +1543,7 @@
+     ensure_activation_trace_registered();
+     std::lock_guard<std::mutex> lock(state.mutex);
+ 
++    state.prepared_cache_active |= prepared_cache_active;
+     const uint64_t sequence = ++state.sequence;
+     state.graph_epochs.insert(graph_epoch);
+     ++state.quantizations;
+@@ -1587,8 +1598,8 @@
+                  "weight_type=%s weight_profile=%u source=%s activation_type=%s activation_profile=%u "
+                  "m=%lld n=%lld k=%lld "
+                  "bytes=%zu digest=%016llx match_seq=%llu match_weight=%s "
+-                 "same_tensor=%d same_data=%d reusable=%d quantize_time_valid=%d "
+-                 "quantize_time_us=%llu op_id=%p weight_id=%p source_id=%p source_data=%p quantized_data=%p\n",
++                 "same_tensor=%d same_data=%d reusable=%d %s=%d "
++                 "%s=%llu op_id=%p weight_id=%p source_id=%p source_data=%p quantized_data=%p\n",
+                  static_cast<unsigned long long>(sequence), static_cast<unsigned long long>(graph_epoch),
+                  trace_name(op_name).c_str(), trace_name(weight_name).c_str(), ggml_type_name(weight_type),
+                  profile_for_type(weight_type).weight, trace_name(source_name).c_str(), ggml_type_name(activation_type),
+@@ -1598,7 +1609,9 @@
+                  static_cast<unsigned long long>(exact_match ? exact_match->sequence : 0),
+                  exact_match ? exact_match->weight_name.c_str() : "-",
+                  exact_match && exact_match->source_tensor_identity == source_tensor_identity,
+-                 exact_match && exact_match->source_data == source_data, reusable, quantize_time_valid,
++                 exact_match && exact_match->source_data == source_data, reusable,
++                 prepared_cache_active ? "preparation_time_valid" : "quantize_time_valid", quantize_time_valid,
++                 prepared_cache_active ? "preparation_time_us" : "quantize_time_us",
+                  static_cast<unsigned long long>(quantize_time_us), op_identity, weight_identity,
+                  source_tensor_identity, source_data, quantized_data);
+ 
+--- a/ggml/src/ggml-cpu/arch/riscv/qbs.h
++++ b/ggml/src/ggml-cpu/arch/riscv/qbs.h
+@@ -106,7 +106,8 @@
+                                               int64_t      output_rows,
+                                               uint64_t     graph_epoch,
+                                               bool         quantize_time_valid,
+-                                              uint64_t     quantize_time_us);
++                                              uint64_t     quantize_time_us,
++                                              bool         prepared_cache_active = false);
+ 
+ int ggml_riscv_qbs_repack_r4(ggml_type    type,
+                              void *       dst,
+--- /dev/null
++++ b/ggml/src/ggml-cpu/arch/riscv/q8_K-prepared-cache.h
+@@ -0,0 +1,140 @@
++#pragma once
++
++#include "qbs/qbs_abi.h"
++#include "rvv-byte-ops.h"
++#include <array>
++#include <cstddef>
++#include <cstdint>
++#include <cstring>
++#include <limits>
++#include <memory>
++#include <new>
++#include <utility>
++
++namespace ggml_riscv_q8_K_cache {
++
++struct key {
++    uint32_t k=0,producer_tag=0;
++    uint8_t rows=4,profile=QBS_ACTIVATION_PROFILE_Q8_K;
++    uint8_t layout=QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED,frm=0,vstart=0;
++};
++inline bool same(const key &a,const key &b) {
++    return a.k==b.k && a.producer_tag==b.producer_tag && a.rows==b.rows &&
++        a.profile==b.profile && a.layout==b.layout && a.frm==b.frm && a.vstart==b.vstart;
++}
++struct counters {
++    uint64_t queries=0,hits=0,misses=0,stores=0,evictions=0;
++    uint64_t rejected=0,allocation_failures=0,conflicts=0;
++    // Requested comparison lengths, not measured memory traffic: memcmp may stop early.
++    uint64_t comparison_bytes_requested=0,copied_payload_bytes=0;
++};
++
++// Independent owned snapshots. Not thread-safe: use one instance per worker.
++// Retained payload <= Budget; replacement's temporary allocation <= MaxEntry.
++// Caller must supply actual controls and independently captured raised FFLAGS.
++template<size_t Slots=8,size_t Budget=1024*1024,size_t MaxEntry=128*1024>
++class value_cache {
++    static_assert(Slots>0 && Budget>0 && MaxEntry>0,"invalid cache bounds");
++    struct entry {
++        std::unique_ptr<uint8_t[]> data;
++        key identity{};
++        size_t input_bytes=0,output_bytes=0;
++        unsigned flags=0;
++        uint64_t age=0;
++        bool valid=false;
++    };
++    std::array<entry,Slots> entries_{};
++    size_t retained_=0;
++    uint64_t clock_=0;
++    counters stats_{};
++    static uint8_t *allocate_default(size_t n) {return new(std::nothrow) uint8_t[n];}
++public:
++    using allocator=uint8_t *(*)(size_t);
++private:
++    allocator allocate_;
++    static bool overlap(const void *a,size_t na,const void *b,size_t nb) {
++        const uintptr_t x=reinterpret_cast<uintptr_t>(a),y=reinterpret_cast<uintptr_t>(b);
++        return x>=y ? x-y<nb:y-x<na;
++    }
++    static bool valid(const key &k,size_t in,size_t out) {
++        if(!k.k || k.k%QBS_Q8_K_BLOCK_ELEMENTS || !k.producer_tag || k.rows!=4 ||
++           k.profile!=QBS_ACTIVATION_PROFILE_Q8_K || k.layout!=QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED ||
++           k.frm || k.vstart || k.k>std::numeric_limits<size_t>::max()/16) return false;
++        size_t blocks=k.k/QBS_Q8_K_BLOCK_ELEMENTS;
++        if(blocks>std::numeric_limits<size_t>::max()/(4*QBS_Q8_K_BLOCK_BYTES)) return false;
++        return in==size_t(k.k)*16 && out==blocks*4*QBS_Q8_K_BLOCK_BYTES &&
++            in<=Budget && out<=Budget-in && in<=MaxEntry && out<=MaxEntry-in;
++    }
++    void erase(size_t i) {
++        if(entries_[i].valid) retained_-=entries_[i].input_bytes+entries_[i].output_bytes;
++        entries_[i].valid=false;entries_[i].data.reset();
++    }
++    uint64_t tick() {
++        if(clock_==std::numeric_limits<uint64_t>::max()) clear();
++        return ++clock_;
++    }
++    size_t find(const key &k,const void *input,size_t in,size_t out) {
++        for(size_t i=0;i<Slots;++i) {
++            const auto &e=entries_[i];
++            if(!e.valid || !same(e.identity,k) || e.input_bytes!=in || e.output_bytes!=out) continue;
++            stats_.comparison_bytes_requested+=in;
++            if(ggml_riscv_byte_ops::equal(e.data.get(),input,in)) return i;
++        }
++        return Slots;
++    }
++public:
++    explicit value_cache(allocator allocate=&allocate_default):allocate_(allocate) {}
++    value_cache(const value_cache &)=delete;
++    value_cache &operator=(const value_cache &)=delete;
++    const counters &statistics() const {return stats_;}
++    size_t retained_bytes() const {return retained_;}
++    size_t size() const {
++        size_t n=0;for(const auto &e:entries_) n+=e.valid;return n;
++    }
++    void clear() {
++        for(size_t i=0;i<Slots;++i) erase(i);
++        clock_=0;
++    }
++    bool get(const key &k,const void *input,size_t in,void *output,size_t out,unsigned &flags) {
++        ++stats_.queries;
++        if(!input || !output || !valid(k,in,out) || overlap(input,in,output,out)) {
++            ++stats_.rejected;++stats_.misses;return false;
++        }
++        const uint64_t age=tick();
++        size_t i=find(k,input,in,out);
++        if(i==Slots) {++stats_.misses;return false;}
++        auto &e=entries_[i];
++        ggml_riscv_byte_ops::copy(output,e.data.get()+in,out);flags=e.flags;e.age=age;
++        ++stats_.hits;stats_.copied_payload_bytes+=out;return true;
++    }
++    bool put(const key &k,const void *input,size_t in,const void *output,size_t out,unsigned flags) {
++        if(!input || !output || flags>31 || !valid(k,in,out) || overlap(input,in,output,out)) {
++            ++stats_.rejected;return false;
++        }
++        const uint64_t age=tick();
++        size_t duplicate=find(k,input,in,out);
++        if(duplicate!=Slots) {
++            auto &e=entries_[duplicate];
++            if(e.flags!=flags || !ggml_riscv_byte_ops::equal(e.data.get()+in,output,out)) {
++                ++stats_.conflicts;erase(duplicate);return false;
++            }
++            e.age=age;return true;
++        }
++        const size_t total=in+out;
++        std::unique_ptr<uint8_t[]> fresh(allocate_ ? allocate_(total):nullptr);
++        if(!fresh) {++stats_.allocation_failures;return false;}
++        // Populate before eviction: allocation failure never destroys a useful entry.
++        ggml_riscv_byte_ops::copy(fresh.get(),input,in);ggml_riscv_byte_ops::copy(fresh.get()+in,output,out);
++        while(retained_>Budget-total || size()==Slots) {
++            size_t victim=Slots;
++            for(size_t i=0;i<Slots;++i)
++                if(entries_[i].valid && (victim==Slots || entries_[i].age<entries_[victim].age)) victim=i;
++            erase(victim);++stats_.evictions;
++        }
++        size_t slot=0;while(entries_[slot].valid) ++slot;
++        auto &e=entries_[slot];e.data=std::move(fresh);e.identity=k;
++        e.input_bytes=in;e.output_bytes=out;e.flags=flags;e.age=age;e.valid=true;
++        retained_+=total;++stats_.stores;stats_.copied_payload_bytes+=total;return true;
++    }
++};
++} // namespace ggml_riscv_q8_K_cache
+--- /dev/null
++++ b/ggml/src/ggml-cpu/arch/riscv/q8_K-prepared-reuse.h
+@@ -0,0 +1,79 @@
++#pragma once
++
++#include "q8_K-prepared-cache.h"
++#include "m4-reuse-policy.h"
++#include "ggml-cpu-impl.h"
++#include "arch/riscv/qbs.h"
++#include "q8_K-m4.h"
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++
++namespace ggml_riscv_q8_K_prepared {
++
++inline bool enabled() {
++    static const bool value=[] {
++        const char *s=std::getenv("GGML_RISCV_QBS_M4_CACHE");
++        return s && std::strcmp(s,"1")==0;
++    }();
++    return value;
++}
++inline bool supported(const ggml_tensor *node) {
++    if(!node || !node->src[0] || !node->src[1] || !node->src[0]->extra) return false;
++    const auto *w=node->src[0];const auto *x=node->src[1];
++    switch(w->type) {
++        case GGML_TYPE_Q2_K:case GGML_TYPE_Q3_K:case GGML_TYPE_Q4_K:
++        case GGML_TYPE_Q5_K:case GGML_TYPE_Q6_K:break;
++        default:return false;
++    }
++    ggml_riscv_qbs_activation_plan plan{};
++    return ggml_riscv_qbs_supports_tensor(w->type,x->ne[0],w->ne[1]) &&
++        ggml_riscv_qbs_plan_activations(w->type,x->ne[1],w->ne[1],x->ne[0],&plan) && !plan.wide_m;
++}
++struct state {
++    ggml_riscv_q8_K_cache::value_cache<> bytes;
++    uint64_t epoch=0,computations=0,generic_computations=0;
++    const ggml_cgraph *graph=nullptr;
++    const ggml_tensor *source=nullptr;
++    ggml_riscv_m4_reuse::policy begin(const ggml_compute_params *params,const ggml_tensor *op) {
++        ggml_riscv_m4_reuse::policy policy{};
++        if(params && params->nth==1 && params->graph_epoch && params->cgraph && op)
++            policy=ggml_riscv_m4_reuse::select(params->cgraph,params->node_index,op,supported);
++        const auto *input=op ? op->src[1]:nullptr;
++        if(!params || graph!=params->cgraph || epoch!=params->graph_epoch || source!=input || !policy.lookup)
++            bytes.clear();
++        graph=params ? params->cgraph:nullptr;epoch=params ? params->graph_epoch:0;source=input;
++        return policy;
++    }
++    // True means the output was produced, including a generic producer fallback.
++    // Allocation failure must never cause a second quantization of that output.
++    bool prepare(ggml_riscv_m4_reuse::policy policy,const float *input,void *output,
++                 int64_t k,int64_t group,bool trace) {
++        if(!policy.lookup || group<0 || group>=8 || k<=0 || k%256 || k>6144) return false;
++        unsigned before,start;
++        asm volatile("frcsr %0;csrr %1,vstart":"=r"(before),"=r"(start)::"memory");
++        if((before>>5)!=0 || start) return false;
++        ggml_riscv_q8_K_cache::key identity;identity.k=uint32_t(k);identity.producer_tag=1;
++        const size_t in=size_t(k)*16,out=size_t(k/256)*4*QBS_Q8_K_BLOCK_BYTES;
++        unsigned raised=0;const char *event="hit";
++        if(!bytes.get(identity,input,in,output,out,raised)) {
++            asm volatile("fsflags zero":::"memory");
++            const bool vector=ggml_riscv_q8_K_m4::quantize<16>(input,output,k);
++            asm volatile("frflags %0":"=r"(raised)::"memory");
++            const unsigned restored=(before&31)|raised;
++            asm volatile("fsflags %0"::"r"(restored):"memory");
++            ++computations;generic_computations+=!vector;
++            if(vector && policy.fill) (void)bytes.put(identity,input,in,output,out,raised);
++            event=vector ? "compute_rvv":"compute_generic";
++        }
++        const unsigned restored=(before&31)|raised;
++        asm volatile("fsflags %0"::"r"(restored):"memory");
++        if(trace) std::fprintf(stderr,"GGML_RISCV_QBS_M4_CACHE epoch=%llu group=%lld event=%s fill=%d\n",
++            (unsigned long long)epoch,(long long)group,event,int(policy.fill));
++        return true;
++    }
++    void finish(ggml_riscv_m4_reuse::policy policy) {if(!policy.fill) bytes.clear();}
++};
++inline state &worker_state() {static thread_local state value;return value;}
++
++} // namespace ggml_riscv_q8_K_prepared
+--- /dev/null
++++ b/ggml/src/ggml-cpu/arch/riscv/m4-reuse-policy.h
+@@ -0,0 +1,68 @@
++#pragma once
++
++#include "ggml.h"
++#include <cstdint>
++
++namespace ggml_riscv_m4_reuse {
++
++struct policy {
++    bool lookup=false;
++    bool fill=false;
++};
++using consumer_supported=bool (*)(const ggml_tensor *);
++
++// A profitability hint only. A hit still requires owned, exact input bytes and
++// matching numerical controls; graph identity never establishes cache validity.
++inline bool eligible(const ggml_tensor *node,consumer_supported supported) {
++    if(!node || !supported || node->op!=GGML_OP_MUL_MAT || !node->src[0] || !node->src[1]) return false;
++    const auto *x=node->src[1];
++    return x->type==GGML_TYPE_F32 && x->data && x->ne[0]>0 && x->ne[0]%256==0 &&
++        x->ne[1]>=4 && x->ne[2]==1 && x->ne[3]==1 && ggml_is_contiguous(x) && supported(node);
++}
++
++inline bool may_write(const ggml_tensor *node,const ggml_tensor *input) {
++    if(!node || !input) return true;
++    switch(node->op) {
++        case GGML_OP_NONE:case GGML_OP_VIEW:case GGML_OP_RESHAPE:
++        case GGML_OP_PERMUTE:case GGML_OP_TRANSPOSE:return false;
++        case GGML_OP_MAP_CUSTOM1:case GGML_OP_MAP_CUSTOM2:case GGML_OP_MAP_CUSTOM3:
++        case GGML_OP_CUSTOM:case GGML_OP_OPT_STEP_ADAMW:case GGML_OP_OPT_STEP_SGD:return true;
++        default:break;
++    }
++    if(!node->data || !input->data) return true;
++    const size_t write_bytes=ggml_nbytes(node),input_bytes=ggml_nbytes(input);
++    if(!write_bytes || !input_bytes) return false;
++    const uintptr_t a=reinterpret_cast<uintptr_t>(node->data),b=reinterpret_cast<uintptr_t>(input->data);
++    return a>=b ? a-b<input_bytes:b-a<write_bytes;
++}
++
++inline bool neighbor(ggml_cgraph *graph,int index,int direction,
++                     const ggml_tensor *input,consumer_supported supported) {
++    const int count=ggml_graph_n_nodes(graph);
++    // Bound planning overhead; stopping early only disables this optimization.
++    for(int i=index+direction,visited=0;i>=0 && i<count && visited<128;i+=direction,++visited) {
++        const auto *next=ggml_graph_node(graph,i);
++        if(!next || may_write(next,input) || next->op==GGML_OP_MUL_MAT_ID) return false;
++        if(next->op!=GGML_OP_MUL_MAT) continue;
++        if(eligible(next,supported)) return next->src[1]==input;
++        // Non-QBS float matrix work cannot consume this packed representation.
++        if(next->src[0] && next->src[1] && next->src[1]->type==GGML_TYPE_F32 &&
++           (next->src[0]->type==GGML_TYPE_F32 || next->src[0]->type==GGML_TYPE_F16)) continue;
++        return false;
++    }
++    return false;
++}
++
++inline policy select(ggml_cgraph *graph,int index,const ggml_tensor *node,
++                     consumer_supported supported) {
++    if(!graph || index<0 || index>=ggml_graph_n_nodes(graph) ||
++       ggml_graph_node(graph,index)!=node || !eligible(node,supported)) return {};
++    const auto *input=node->src[1];
++    // Include the current consumer: its result must not overwrite this input.
++    if(may_write(node,input)) return {};
++    const bool previous=neighbor(graph,index,-1,input,supported);
++    const bool next=neighbor(graph,index,1,input,supported);
++    return {previous || next,next};
++}
++
++} // namespace ggml_riscv_m4_reuse
+--- /dev/null
++++ b/ggml/src/ggml-cpu/arch/riscv/rvv-byte-ops.h
+@@ -0,0 +1,45 @@
++#pragma once
++
++#include <cstddef>
++#include <cstring>
++#if defined(__riscv_vector)
++#include <riscv_vector.h>
++#endif
++
++namespace ggml_riscv_byte_ops {
++
++// Normal RVV C ABI: vstart must be zero. VL/VTYPE/vector registers are clobbered;
++// integer nonsaturating operations leave FCSR and VCSR unchanged.
++inline bool equal(const void *left,const void *right,size_t bytes) {
++#if defined(__riscv_vector)
++    const auto *a=static_cast<const unsigned char *>(left);
++    const auto *b=static_cast<const unsigned char *>(right);
++    for(size_t i=0;i<bytes;) {
++        const size_t vl=__riscv_vsetvl_e8m8(bytes-i);
++        const auto x=__riscv_vle8_v_u8m8(a+i,vl),y=__riscv_vle8_v_u8m8(b+i,vl);
++        const auto mismatch=__riscv_vmsne_vv_u8m8_b1(x,y,vl);
++        if(__riscv_vfirst_m_b1(mismatch,vl)>=0) return false;
++        i+=vl;
++    }
++    return true;
++#else
++    return bytes==0 || std::memcmp(left,right,bytes)==0;
++#endif
++}
++
++// memcpy semantics: input and output ranges must not overlap.
++inline void copy(void *destination,const void *source,size_t bytes) {
++#if defined(__riscv_vector)
++    auto *d=static_cast<unsigned char *>(destination);
++    const auto *s=static_cast<const unsigned char *>(source);
++    for(size_t i=0;i<bytes;) {
++        const size_t vl=__riscv_vsetvl_e8m8(bytes-i);
++        const auto value=__riscv_vle8_v_u8m8(s+i,vl);
++        __riscv_vse8_v_u8m8(d+i,value,vl);i+=vl;
++    }
++#else
++    if(bytes) std::memcpy(destination,source,bytes);
++#endif
++}
++
++} // namespace ggml_riscv_byte_ops
