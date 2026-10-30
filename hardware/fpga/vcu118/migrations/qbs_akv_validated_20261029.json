@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "state": "source_candidate_and_runtime_library_prepared_not_hardware_validated",
+  "delivery_tag": "qbs-akv-validated-20261029",
+  "ara": {
+    "base_commit": "1e48e205df5cec34183222c36d22eb4858466810",
+    "worktree": "/home/wangwy/openproject/ara_dsa",
+    "branch": "ara_dsa",
+    "committed_main_rtl_and_sdk_modified": false,
+    "uncommitted_sdk_changes_present_and_excluded": true,
+    "original_worktree_changes_imported": false
+  },
+  "llama_cpp": {
+    "base_commit": "da56aa750559c180d631b466de983ff2bb5d54d9",
+    "repository": "/home/wangwy/llama/llama.cpp",
+    "delivery_branch": "ara-qbs-akv-validated-20261029",
+    "historical_library_build_source": "/home/wangwy/llama/llama.cpp-fpga-validated-20261029",
+    "delivery_source_modified": false,
+    "build_input_policy": "Extract the pinned llama.cpp commit and Ara delivery SDK using git archive into build inputs; do not consume the original dirty working files or create another development worktree",
+    "build": "/home/wangwy/fpga_runs/qbs_akv_validated_20261029/llama-libraries",
+    "built_target": "ggml-cpu",
+    "library_sha256": "bad3383fd9715de666eb1b9e25813d7a02bca74b09de91519b715aaa6890778e",
+    "toolchain_file": "/home/wangwy/llama/toolchains/riscv64-cva6-rvv.cmake",
+    "compiler": "GNU RISC-V 14.3.0, CVA6 Buildroot, lp64d",
+    "isa": "rv64gcv_zfh_zvfh",
+    "disabled_extensions": ["ZICBOP", "ZIHINTPAUSE", "ZVFBFWMA"],
+    "cmake_enabled": ["GGML_RISCV_QBS", "GGML_RISCV_AKV", "GGML_RISCV_AKV_QUANT_KV", "GGML_RISCV_AKV_REGISTER_PV", "GGML_RISCV_AKV_QUANT_PREFILL"],
+    "cli_built": false,
+    "new_model_or_board_validation": false
+  },
+  "fpga": {
+    "package": "hardware/fpga/ara_dsa_vcu118",
+    "planned_profile": "dual_ddr_ethernet",
+    "soc_clock_mhz": 50,
+    "vlen_bits": 1024,
+    "lanes": 4,
+    "bender_version": "0.27.3",
+    "package_manifest_sha256": "9baa6e315fe3b7ef6ab5e070cd6953d0d2aea5115b5218479c3f6df87717625d",
+    "package_checksum_inventory_sha256": "c59fd36d8618d76eb24613bc7fd28d463e8ccfcd9ae7cb600c8e1957eb950868",
+    "dependency_policy": "Independent locked Git checkouts plus only registered hash-pinned patches; no source worktree copies or writable RTL symlinks",
+    "migration_fixes": [
+      "Register the exact validated dispatcher SHA after checking unchanged integrated layout helpers and request isolation; unknown revisions still rejected",
+      "Emit implicit TARGET_* macros explicitly because Bender 0.27 sources JSON omits them",
+      "Regenerate the complete FPGA source package and filelist, including all shared QBS/AKV dependencies"
+    ],
+    "new_synthesis_started": false,
+    "new_bitstream_generated": false,
+    "board_modified": false,
+    "old_bitstreams_are_delivery_evidence": false
+  },
+  "checks": {
+    "validated_handoff": "6/6 PASS; all 68 Ara source records, required new modules, exact adaptations, delivery-tag provenance replay, target defines and strict dispatcher rejection",
+    "signoff_export": "3/3 PASS in the isolated pinned-dependency preparation; after transfer to ara_dsa, 2/3 PASS and the dependency comparison rejects the original local fpu_div_sqrt_mvp delta. The delivered FPGA package is unchanged; do not relabel the main-worktree dependency check as passing",
+    "sync_tool": "26/26 PASS",
+    "package": "12/12 PASS; includes mocked protocol, not board execution",
+    "tcl": "PASS mock syntax/source-list checks, not Vivado execution",
+    "static_dual_ddr_ethernet": "PASS with exact existing vendor-IP exclusions; no non-vendor elaboration errors",
+    "legacy_export_suite": "31/33 passed after first sync; two historical assumptions remain invalid: fixed count 57 instead of 68 and db90e341 provenance preimage. Original failures retained; current-delivery checks are separate, not relabeled legacy passes"
+  },
+  "evidence_directory": "/home/wangwy/fpga_runs/qbs_akv_validated_20261029",
+  "mainline_integration": {
+    "active_branch": "ara_dsa",
+    "pre_integration_tag": "fpga-pre-qbs-akv-integration-20261030",
+    "candidate_tag": "fpga-qbs-akv-source-20261030",
+    "backup_directory": "/home/wangwy/fpga_runs/mainline_fpga_integration_20261030T062537Z",
+    "preexisting_tracked_changes": 9,
+    "preexisting_changes_committed": false,
+    "original_dependency_warning": "hardware/deps/fpu_div_sqrt_mvp differs from its locked clean revision. Preserve it; do not use it to regenerate the delivered FPGA package. Future regeneration must first materialize and validate locked dependency build inputs plus registered patches",
+    "existing_extra_worktrees": "Retained as historical evidence; not active migration workspaces",
+    "new_worktrees_allowed": false
+  },
+  "runtime_policy": {
+    "workers": 1,
+    "qbs_native": true,
+    "qbs_emulation": false,
+    "m4_prepare_packed_parallel_sums_cache": true,
+    "register_pv": true,
+    "grouped_prefill": true,
+    "grouped_pv_decode_experiment": false,
+    "normal_memory_promise": "Not enabled: first verify Linux mapping, permissions, hardware reachability and cache coherence",
+    "register_pv_requirements": ["VLEN1024", "RNE", "vstart=0", "supported types, shape and layout"],
+    "fallback": "Retain ordinary RVV; fallback only before native execution, propagate failures after execution starts",
+    "excluded_experiments": ["cache hint", "query guard", "copied V cache", "direct V cache"]
+  },
+  "next_gates": [
+    "Recreate the Vivado project from the committed ara_dsa candidate manifest and source list; do not reuse an old project or bitstream as evidence",
+    "Verify actual synthesized capability/configuration, SRAM mapping, reset, clocks and interfaces; rerun implementation timing, DRC and CDC before bitgen",
+    "Build and validate a target-Linux CLI or test executable separately from the library-only build",
+    "Boot the new bitstream; establish ordinary RVV before native QBS/AKV directed tests and matched-scale slices",
+    "Verify memory promise and fast-path calls, then run actual llama.cpp end-to-end; record bitstream/software/model hashes and prompt/decode time"
+  ]
+}

@@ -1,5 +1,28 @@
 # Project Working Rules
 
+## FPGA validated migration (2026-10-30)
+
+- Continue FPGA migration in `/home/wangwy/openproject/ara_dsa` on `ara_dsa`.
+  Do not create more development worktrees for this migration. Existing staging
+  worktrees are historical inputs, not the active integration location.
+- Use `hardware/docs/FPGA_OPTIMIZATION_HANDOFF_20261029.md` and
+  `hardware/fpga/vcu118/migrations/qbs_akv_validated_20261029.json` as the
+  hardware/software version contract. Ara delivery is `1e48e205df5cec34183222c36d22eb4858466810`;
+  llama.cpp delivery is `da56aa750559c180d631b466de983ff2bb5d54d9`.
+  Both repositories have the `qbs-akv-validated-20261029` delivery tag.
+- Preserve unrelated uncommitted files. In particular, do not include the
+  uncommitted AKV assembly in the validated SDK. Extract pinned SDK/runtime
+  sources with `git archive` into build inputs when local files differ; those
+  inputs are build artifacts, not additional development worktrees.
+- The original `hardware/deps/fpu_div_sqrt_mvp` contains a non-delivery delta.
+  Do not regenerate the candidate from unchecked local dependencies. Preserve
+  those files and reconstruct locked dependencies plus registered patches in
+  build inputs when regeneration is needed.
+- The FPGA source candidate is not a new hardware acceptance. Rebuild and
+  validate the bitstream before claiming these optimizations work on the board.
+  Retain the single-worker and runtime admission/fallback requirements; do not
+  assert NORMAL_MEMORY eligibility without checking board memory conditions.
+
 ## Current verification tool policy (2026-09-27)
 
 - The user stopped use of Verilator. Do not restart Verilator builds, coverage

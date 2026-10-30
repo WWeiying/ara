@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import sys
 
-from prepare import HERE, ROOT, CACHE, CHESHIRE, BOARD_PORT, BOARD_TREE
+from prepare import HERE, ROOT, CACHE, CHESHIRE, BOARD_PORT, BOARD_TREE, FPGA_TARGETS
 from dispatcher_fpga import patch_dispatcher_layout
 from dispatcher_control_fpga import patch_dispatcher_control, patch_segment_geometry
 from jtag_fpga import patch_jtag, patch_tap, patch_reset_sync, patch_ready
@@ -326,6 +326,8 @@ def export(dst, gcc, objdump, smoke_from=None):
     for path in sorted((HERE / "rtl").glob("*.sv")):
         shutil.copyfile(path, dst / "rtl/board" / path.name)
         files.append("rtl/board/" + path.name)
+    # Bender 0.27 sources JSON omits the implicit TARGET_* script defines.
+    defines.update({"TARGET_" + target.upper(): None for target in FPGA_TARGETS})
     defines.update({"ARA": None, "NR_LANES": 4, "VLEN": 1024,
                     "ARA_QBS_ENABLE": 1, "ARA_AKV_ENABLE": 1, "ARA_AKV_V2_ENABLE": 1})
     forbidden = {"TARGET_SRAM_MC", "IDEAL_DISPATCHER", "FOR_VERIFY"}

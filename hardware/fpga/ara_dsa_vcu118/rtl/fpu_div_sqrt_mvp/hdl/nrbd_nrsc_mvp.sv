@@ -61,7 +61,6 @@ module nrbd_nrsc_mvp
    output logic                                FP16ALT_SO,
    output logic                                Ready_SO,
    output logic                                Done_SO,
-   output logic                                Remainder_nonzero_SO,
    output logic  [C_MANT_FP64+4:0]             Mant_z_DO,
    output logic [C_EXP_FP64+1:0]               Exp_z_DO
     );
@@ -96,7 +95,6 @@ control_mvp         control_U0
    .FP16ALT_SO                               (FP16ALT_SO                      ),
    .Ready_SO                                 (Ready_SO                        ),
    .Done_SO                                  (Done_SO                         ),
-   .Remainder_nonzero_SO                     (Remainder_nonzero_SO            ),
    .Mant_result_prenorm_DO                   (Mant_z_DO                       ),
    .Exp_result_prenorm_DO                    (Exp_z_DO                        )
 );

@@ -393,6 +393,7 @@ set rtl_files [list {rtl/tech_cells_generic/src/fpga/pad_functional_xilinx.sv} \
     {rtl/ara/hardware/src/ctrl_registers.sv} \
     {rtl/ara/hardware/src/cva6_accel_first_pass_decoder.sv} \
     {rtl/ara/hardware/src/ara_dispatcher.sv} \
+    {rtl/ara/hardware/src/vlsu/akv/akv_refill_order_guard.sv} \
     {rtl/ara/hardware/src/ara_sequencer.sv} \
     {rtl/ara/hardware/src/axi_inval_filter.sv} \
     {rtl/ara/hardware/src/lane/lane_sequencer.sv} \
@@ -414,17 +415,24 @@ set rtl_files [list {rtl/tech_cells_generic/src/fpga/pad_functional_xilinx.sv} \
     {rtl/ara/hardware/src/vlsu/qbs/qbs_dot_array.sv} \
     {rtl/ara/hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv} \
     {rtl/ara/hardware/src/vlsu/qbs/qbs_read_engine.sv} \
+    {rtl/ara/hardware/src/vlsu/qbs_akv_shared_reader.sv} \
     {rtl/ara/hardware/src/vlsu/qbs/qbs_activation_context.sv} \
     {rtl/ara/hardware/src/vlsu/qbs/qbs_payload_sram.sv} \
     {rtl/ara/hardware/src/vlsu/qbs/qbs_payload_buffer.sv} \
     {rtl/ara/hardware/src/vlsu/qbs/qbs_block_adapter.sv} \
     {rtl/ara/hardware/src/vlsu/qbs/qbs_profile_engine_int.sv} \
+    {rtl/ara/hardware/src/vlsu/qbs/qbs_half_scale.sv} \
     {rtl/ara/hardware/src/vlsu/qbs/qbs_fp_accumulator.sv} \
     {rtl/ara/hardware/src/vlsu/qbs/qbs_compute_engine.sv} \
     {rtl/ara/hardware/src/vlsu/qbs/qbs_commit.sv} \
+    {rtl/ara/hardware/src/vlsu/qbs/qbs_vrf_seed_mapper.sv} \
+    {rtl/ara/hardware/src/vlsu/qbs/qbs_seed_stream_router.sv} \
     {rtl/ara/hardware/src/vlsu/qbs/qbs_engine.sv} \
     {rtl/ara/hardware/src/vlsu/akv/akv_context.sv} \
     {rtl/ara/hardware/src/vlsu/akv/akv_v2_context.sv} \
+    {rtl/ara/hardware/src/vlsu/akv/akv_legacy_repacker.sv} \
+    {rtl/ara/hardware/src/vlsu/akv/akv_q_store.sv} \
+    {rtl/ara/hardware/src/vlsu/akv/akv_unified_context.sv} \
     {rtl/ara/hardware/src/vlsu/akv/akv_engine.sv} \
     {rtl/ara/hardware/src/lane/operand_queues_stage.sv} \
     {rtl/ara/hardware/src/lane/valu.sv} \
@@ -638,14 +646,14 @@ set rtl_include_dirs [list {rtl/common_cells/include} \
     {rtl/serial_link/src/axis/include} \
     {rtl/cheshire/hw/include} \
     {rtl/board}]
-set rtl_defines [list {TARGET_CV64A6_IMAFDCV_SV39} \
-    {TARGET_EXCLUDE_FIRST_PASS_DECODER} \
+set rtl_defines [list {TARGET_RTL} \
     {TARGET_FPGA} \
-    {TARGET_RTL} \
-    {TARGET_SYNTHESIS} \
-    {TARGET_VCU118} \
-    {TARGET_VIVADO} \
     {TARGET_XILINX} \
+    {TARGET_VCU118} \
+    {TARGET_SYNTHESIS} \
+    {TARGET_VIVADO} \
+    {TARGET_CV64A6_IMAFDCV_SV39} \
+    {TARGET_EXCLUDE_FIRST_PASS_DECODER} \
     {ARA} \
     {NR_LANES=4} \
     {VLEN=1024} \

@@ -59,7 +59,6 @@ module norm_div_sqrt_mvp
    input logic                                  SNaN_SI,
    input logic [C_RM-1:0]                       RM_SI,
    input logic                                  Full_precision_SI,
-   input logic                                  Remainder_nonzero_SI,
    input logic                                  FP32_SI,
    input logic                                  FP64_SI,
    input logic                                  FP16_SI,
@@ -109,19 +108,7 @@ module norm_div_sqrt_mvp
    //normalization
    logic [1:0]                                  Mant_lower_D;
    logic                                        Mant_sticky_bit_D;
-  logic [C_MANT_FP64+4:0]                      Mant_forround_D;
-
-  logic                                        Overflow_to_inf_S;
-  always_comb begin
-    unique case (RM_SI)
-      C_RM_NEAREST,
-      C_RM_NEAREST_MAXMAG: Overflow_to_inf_S = 1'b1;
-      C_RM_TRUNC:          Overflow_to_inf_S = 1'b0;
-      C_RM_PLUSINF:        Overflow_to_inf_S = ~Sign_in_DI;
-      C_RM_MINUSINF:       Overflow_to_inf_S = Sign_in_DI;
-      default:             Overflow_to_inf_S = 1'b1;
-    endcase
-  end
+   logic [C_MANT_FP64+4:0]                      Mant_forround_D;
 
    always_comb
      begin
@@ -301,8 +288,8 @@ module norm_div_sqrt_mvp
           Div_Zero_S=1'b0;
           Exp_OF_S=1'b1;
           Exp_UF_S=1'b0;
-          Mant_res_norm_D=Overflow_to_inf_S ? '0 : '1;
-          Exp_res_norm_D=Overflow_to_inf_S ? '1 : ({C_EXP_FP64{1'b1}} - 1'b1);
+          Mant_res_norm_D='0;
+          Exp_res_norm_D='1;
           Mant_forround_D='0;
           Sign_res_D=Sign_in_DI;
           NV_OP_S = 1'b0;
@@ -326,8 +313,8 @@ module norm_div_sqrt_mvp
               Div_Zero_S=1'b0;
               Exp_OF_S=1'b1;
               Exp_UF_S=1'b0;
-              Mant_res_norm_D=Overflow_to_inf_S ? '0 : '1;
-              Exp_res_norm_D=Overflow_to_inf_S ? '1 : ({C_EXP_FP64{1'b1}} - 1'b1);
+              Mant_res_norm_D= '0;
+              Exp_res_norm_D='1;
               Mant_forround_D='0;
               Sign_res_D=Sign_in_DI;
               NV_OP_S = 1'b0;
@@ -337,8 +324,8 @@ module norm_div_sqrt_mvp
               Div_Zero_S=1'b0;
               Exp_OF_S=1'b1;
               Exp_UF_S=1'b0;
-              Mant_res_norm_D=Overflow_to_inf_S ? '0 : '1;
-              Exp_res_norm_D=Overflow_to_inf_S ? '1 : ({C_EXP_FP64{1'b1}} - 1'b1);
+              Mant_res_norm_D= '0;
+              Exp_res_norm_D='1;
               Mant_forround_D='0;
               Sign_res_D=Sign_in_DI;
               NV_OP_S = 1'b0;
@@ -386,15 +373,13 @@ module norm_div_sqrt_mvp
         begin
           Mant_upper_D = {Mant_res_norm_D[C_MANT_FP64:C_MANT_FP64-C_MANT_FP32], {(C_MANT_FP64-C_MANT_FP32){1'b0}} };
           Mant_lower_D = Mant_res_norm_D[C_MANT_FP64-C_MANT_FP32-1:C_MANT_FP64-C_MANT_FP32-2];
-          Mant_sticky_bit_D = (|Mant_res_norm_D[C_MANT_FP64-C_MANT_FP32-3:0]) |
-                              Remainder_nonzero_SI;
+          Mant_sticky_bit_D = | Mant_res_norm_D[C_MANT_FP64-C_MANT_FP32-3:0];
         end
       else if(FP64_SI)
         begin
           Mant_upper_D = Mant_res_norm_D[C_MANT_FP64:0];
           Mant_lower_D = Mant_forround_D[C_MANT_FP64+4:C_MANT_FP64+3];
-          Mant_sticky_bit_D = (|Mant_forround_D[C_MANT_FP64+3:0]) |
-                              Remainder_nonzero_SI;
+          Mant_sticky_bit_D = | Mant_forround_D[C_MANT_FP64+3:0];
         end
       else if(FP16_SI)
         begin
@@ -421,8 +406,6 @@ module norm_div_sqrt_mvp
         case (RM_SI)
           C_RM_NEAREST :
             Mant_roundUp_S = Mant_lower_D[1] && ((Mant_lower_D[0] | Mant_sticky_bit_D )| ( (FP32_SI&&Mant_upper_D[C_MANT_FP64-C_MANT_FP32]) | (FP64_SI&&Mant_upper_D[0]) | (FP16_SI&&Mant_upper_D[C_MANT_FP64-C_MANT_FP16]) | (FP16ALT_SI&&Mant_upper_D[C_MANT_FP64-C_MANT_FP16ALT]) ) );
-          C_RM_NEAREST_MAXMAG:
-            Mant_roundUp_S = Mant_lower_D[1];
           C_RM_TRUNC   :
             Mant_roundUp_S = 0;
           C_RM_PLUSINF :
@@ -432,8 +415,6 @@ module norm_div_sqrt_mvp
           default          :
             Mant_roundUp_S = 0;
         endcase // case (RM_DI)
-        // Overflow selection already applied RM; rounding it again can make NaN.
-        if (Exp_OF_S) Mant_roundUp_S = 1'b0;
      end // always_comb begin
 
   logic                                 Mant_renorm_S;
@@ -483,9 +464,7 @@ module norm_div_sqrt_mvp
           end
     end
 
-assign In_Exact_S = (~Full_precision_SI) | Mant_rounded_S |
-                    (Exp_OF_S && !Inf_a_SI && !Inf_b_SI &&
-                     !NaN_a_SI && !NaN_b_SI && !Zero_b_SI);
+assign In_Exact_S = (~Full_precision_SI) | Mant_rounded_S;
 assign Fflags_SO = {NV_OP_S,Div_Zero_S,Exp_OF_S,Exp_UF_S,In_Exact_S}; //{NV,DZ,OF,UF,NX}
 
 endmodule // norm_div_sqrt_mvp

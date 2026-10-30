@@ -45,6 +45,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     input  ara_resp_t                            ara_resp_i,
     input  logic                                 ara_resp_valid_i,
     input  logic                                 ara_idle_i,
+    input  logic                                 akv_refill_overlap_safe_i = 1'b0,
     input  logic                                 sldu_idle_i,
     output logic                                 sldu_drain_o,
     // Interface with the lanes
@@ -4896,6 +4897,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
           //////////////////////////////////////
           QbsOpcodeCustom2: begin : custom2
             automatic logic is_qbexec;
+            automatic logic qbs_accumulate;
             automatic logic is_qbinfo;
             automatic logic is_akvfill;
             automatic logic is_akvload;
@@ -4926,6 +4928,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
             is_akv2fill = instr.rtype.funct3 == AkvV2FillFunct3;
             is_akv2column = instr.rtype.funct3 == AkvV2ColumnLoadFunct3;
             qbs_funct7 = 7'(instr.rtype.funct7);
+            qbs_accumulate = qbs_funct7[QbsQbaccFunct7Bit];
             akv_funct7 = 7'(instr.rtype.funct7);
             qbs_m = unsigned'(qbs_funct7[2:0]) + 1;
             qbs_destination_regs = qbs_m == 1 ? 1 :
@@ -4994,9 +4997,21 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                 default: ara_req.emul = LMUL_8;
               endcase
 
+              // QBACC explicitly reads the previous architectural destination.
+              // Its source geometry is fixed by M/EW32, not the caller's vset.
+              if (QbsVrfContinuationEnable && qbs_accumulate) begin
+                ara_req.use_vs1 = 1'b1;
+                ara_req.vs1 = instr.rtype.rd;
+                ara_req.eew_vs1 = EW32;
+                ara_req.old_eew_vs1 = EW32;
+                ara_req.vtype.vlmul = ara_req.emul;
+                lmul_vs1 = ara_req.emul;
+              end
+
               // These checks are intentionally in front of descriptor fetch:
               // destination reservation cannot depend on unread memory.
-              if (qbs_funct7[6:3] != '0 ||
+              if (qbs_funct7[6:4] != '0 ||
+                  (qbs_accumulate && (!QbsVrfContinuationEnable || NrLanes != 4 || VLEN != 1024)) ||
                   (unsigned'(instr.rtype.rd) & (qbs_destination_regs - 1)) != 0 ||
                   unsigned'(instr.rtype.rd) + qbs_destination_regs > 32 ||
                   csr_vstart_q != '0 || !acc_req_i.acc_cons_en ||
@@ -5150,7 +5165,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                   csr_vstart_q != '0 || !acc_req_i.acc_cons_en)
                 illegal_insn = 1'b1;
 
-              if (!ara_idle_i) begin
+              // Only REFILL may start alongside older independent arithmetic.
+              // The sequencer still delays its terminal response until that
+              // older work retires. Unknown/unconnected safety is conservative.
+              if (!ara_idle_i &&
+                  !(akv_fill_is_refill && (akv_refill_overlap_safe_i === 1'b1))) begin
                 ara_req_valid = 1'b0;
                 acc_resp_o.req_ready = 1'b0;
                 state_d = WAIT_IDLE;
@@ -5355,6 +5374,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         in_lane_op = ara_req.op inside {[VADD:VMERGE]} || ara_req.op inside {[VREDSUM:VMSBC]} ||
                      ara_req.op inside {[VMANDNOT:VMXNOR]} || ara_req.op inside {[VMVXS:VSLIDEDOWN]} ||
                      ara_req.op inside {VRGATHER, VRGATHEREI16};
+        indexed_load_groups_overlap = ara_req.op == VLXE &&
+            ara_req.use_vd && ara_req.use_vs2 &&
+            register_groups_overlap(ara_req.vd, ara_req.emul,
+                                    ara_req.vs2, lmul_vs2);
         // Annotate which registers need a reshuffle -> |vs1|vs2|vd|
         // Optimization: reshuffle vs1 and vs2 only if the operation is strictly in-lane
         // Optimization: reshuffle vd only if we are not overwriting the whole vector register!
@@ -5371,7 +5394,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                 : active_group_needs_reshuffle(
                     ara_req.vs1, is_vstore ? ara_req.emul : lmul_vs1,
                     ara_req.eew_vs1, ara_req.vstart, ara_req.vl)) &&
-            (in_lane_op ||
+            (in_lane_op || (ara_req.op == VQBEXEC && ara_req.use_vs1) ||
              (is_vstore && (is_segment_mem_op ||
                             (csr_vstart_q != '0) || !is_same_eew))),
           ara_req.use_vs2 &&
@@ -5382,7 +5405,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                        ara_req.vs2, lmul_vs2, vs2_reshuffle_eew,
                        vs2_reshuffle_vstart, vs2_reshuffle_vl)) &&
             (in_lane_op || ara_req.op == VCOMPRESS ||
-             indexed_mixed_vs2_layout),
+             indexed_mixed_vs2_layout || indexed_load_groups_overlap),
           ara_req.use_vd && ara_req.op != VQBEXEC &&
             (is_segment_mem_op && is_vload
                 ? register_span_needs_reshuffle(
@@ -5394,9 +5417,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                     single_register_result(ara_req.op) ? LMUL_1 : ara_req.emul,
                     ara_req.vtype.vsew, ara_req.vstart, ara_req.vl)) &&
             // A full active destination can skip preservation only for a pure
-            // overwrite. Accumulate and other read-modify-write operations
-            // must first expose every old-vd register in the requested layout.
-            !(!ara_req.use_vd_op && !reduction_result(ara_req.op) &&
+            // overwrite. A faulting indexed load must leave overlapping indices
+            // restartable even before its first write. Preserve vd's bytes in
+            // its new layout after capturing the index source, including VLmax.
+            !(!indexed_load_groups_overlap && !ara_req.use_vd_op && !reduction_result(ara_req.op) &&
               ara_req.op != VCOMPRESS && ara_req.op != VSLIDEUP && ara_req.vm &&
               ara_req.vstart == 0 &&
               (ara_req.vl == ((VLENB << ara_req.emul[1:0]) >> ara_req.vtype.vsew)))};
@@ -5405,13 +5429,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         // complete index group.  If those groups overlap, retain the index
         // source after any required layout normalization and replay it for the
         // whole address-generation phase.
-        indexed_load_groups_overlap = ara_req.op == VLXE &&
-            ara_req.use_vd && ara_req.use_vs2 &&
-            register_groups_overlap(ara_req.vd, ara_req.emul,
-                                    ara_req.vs2, lmul_vs2);
         // Normalize the overlapping index source before touching vd.  The
         // generic vd-first reshuffle order would otherwise destroy the source
-        // view before it can be retained.
+        // view before it can be retained. The raw-word snapshot is tagged with
+        // the requested index EEW, so even a uniformly different source layout
+        // (for example after an e8 context restore) must first be normalized.
         if (indexed_load_groups_overlap && !source_snapshot_valid_q &&
             reshuffle_req_d[1])
           reshuffle_req_d[0] = 1'b0;
@@ -5647,14 +5669,19 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
         // Indexed-load offsets can share vd's base but not its EEW. Keep
         // their normalization before the source snapshot and vd conversion.
+        // A comparison's packed-mask destination retains its old layout, not
+        // the source SEW. An aliased source still needs its own conversion;
+        // after it completes, re-decode also picks up the new old-vd layout.
         // Mask out duplicate requests for the same architectural operand.
         reshuffle_req_d &= {
           (!ara_req.use_vs2 ||
            (ara_req.vs1 != ara_req.vs2) ||
            ara_req.source_snapshot_replay_vs2) &&
               (!ara_req.use_vd ||
-              (ara_req.vs1 != ara_req.vd)),
+              (ara_req.vs1 != ara_req.vd) ||
+              (ara_req.op inside {[VMFEQ:VMSBC]})),
           !ara_req.use_vd || (ara_req.vs2 != ara_req.vd) ||
+              (ara_req.op inside {[VMFEQ:VMSBC]}) ||
               ara_req.op == VSLIDEDOWN || narrow_low_overlap_alias ||
               reduction_source_overlap_reshuffle || indexed_load_groups_overlap,
           1'b1};

@@ -14,6 +14,8 @@ CACHE = HERE / ".cache"
 CHESHIRE = "cd73fd892a09da8aa9ae03171c0338bd3873007c"
 BOARD_PORT = "a315a828abb61cf3cb9f4419b910ebe6739b90bf"
 BOARD_TREE = "e50dc11804226e0c5c37826bd52a77675d9471b1"
+FPGA_TARGETS = ("rtl", "fpga", "xilinx", "vcu118", "synthesis", "vivado",
+                "cv64a6_imafdcv_sv39", "exclude_first_pass_decoder")
 
 
 def run(*args, **kwargs):
@@ -55,8 +57,7 @@ def prepare(download_board=True):
         "overrides": {n: {"path": str(p)} for n, p in roots.items()}
     }))
     cmd = [str(ROOT / "hardware/bender"), "-d", str(soc), "sources", "-f"]
-    for target in ["rtl", "fpga", "xilinx", "vcu118", "synthesis", "vivado",
-                   "cv64a6_imafdcv_sv39", "exclude_first_pass_decoder"]:
+    for target in FPGA_TARGETS:
         cmd += ["-t", target]
     result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, text=True)
     groups = json.loads(result.stdout)

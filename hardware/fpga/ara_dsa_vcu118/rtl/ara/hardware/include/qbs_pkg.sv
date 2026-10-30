@@ -7,6 +7,12 @@ package qbs_pkg;
   localparam bit QbsEnable = 1'b0;
 `endif
 
+`ifdef ARA_QBS_VRF_CONTINUATION
+  localparam bit QbsVrfContinuationEnable = QbsEnable;
+`else
+  localparam bit QbsVrfContinuationEnable = 1'b0;
+`endif
+
   localparam int unsigned QbsArchitectureVersion = 3;
   localparam int unsigned QbsNumericalContractVersion = 1;
   localparam logic [2:0] QbsRoundingModeRne = 3'd0;
@@ -22,6 +28,10 @@ package qbs_pkg;
   localparam logic [2:0] QbsQbexecFunct3 = 3'd0;
   localparam logic [2:0] QbsQbinfoFunct3 = 3'd1;
   localparam int unsigned QbsMMinusOneBits = 3;
+  localparam int unsigned QbsQbaccFunct7Bit = 3;
+  localparam int unsigned QbsVrfContinuationCapabilityIndex = 4;
+  localparam int unsigned QbsVrfContinuationCapabilityBit = 0;
+  localparam int unsigned QbsVrfContinuationVlenBits = 1024;
 
   localparam int unsigned QbsMaxM = 8;
   localparam int unsigned QbsMaxN = 32;
@@ -36,8 +46,10 @@ package qbs_pkg;
   localparam int unsigned QbsWeightBaseAlignmentLog2 = 1;
   localparam int unsigned QbsActivationBaseAlignmentLog2 = 2;
   localparam int unsigned QbsActivationContextCount = 1;
-  localparam int unsigned QbsActivationContextMaxM = 1;
-  localparam int unsigned QbsActivationContextMaxKBlocks = 16;
+  localparam int unsigned QbsActivationContextMaxM = 8;
+  localparam int unsigned QbsActivationContextMaxKBlocks = 32;
+  localparam int unsigned QbsActivationContextCapacityBytes = 4672;
+  localparam int unsigned QbsActivationContextStorageVersion = 1;
   localparam int unsigned QbsActivationContextGenerationBits = 8;
 
   typedef enum logic [1:0] {
@@ -525,9 +537,20 @@ package qbs_pkg;
         result[6:4] = 3'(QbsActivationContextMaxM - 1);
         result[11:7] = 5'(QbsActivationContextMaxKBlocks - 1);
         result[12 + QBS_ACTIVATION_PROFILE_Q8_K] = 1'b1;
+        result[12 + QBS_ACTIVATION_PROFILE_Q8_0] = 1'b1;
         result[31:28] = 4'b1111;
         result[39:32] = 8'(QbsActivationContextGenerationBits);
         result[40 + QBS_ACTIVATION_LAYOUT_ROW_MAJOR] = 1'b1;
+        result[40 + QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED] = 1'b1;
+        result[40 + QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED] = 1'b1;
+      end
+      64'h03: begin
+        result[31:0] = 32'(QbsActivationContextCapacityBytes);
+        result[39:32] = 8'(QbsActivationContextStorageVersion);
+      end
+      64'(QbsVrfContinuationCapabilityIndex): begin
+        if (QbsVrfContinuationEnable && vlen_bits == QbsVrfContinuationVlenBits)
+          result[QbsVrfContinuationCapabilityBit] = 1'b1;
       end
       64'h11: begin
         result[QBS_ACTIVATION_PROFILE_Q8_K] = 1'b1;

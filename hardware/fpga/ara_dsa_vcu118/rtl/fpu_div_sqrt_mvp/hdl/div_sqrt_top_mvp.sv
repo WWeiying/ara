@@ -92,7 +92,6 @@ module div_sqrt_top_mvp
    logic FP64_S;
    logic FP16_S;
    logic FP16ALT_S;
-   logic Remainder_nonzero_S;
 
 
  preprocess_mvp  preprocess_U0
@@ -149,7 +148,6 @@ module div_sqrt_top_mvp
    .FP16ALT_SO            (FP16ALT_S          ),
    .Ready_SO              (Ready_SO           ),
    .Done_SO               (Done_SO            ),
-   .Remainder_nonzero_SO  (Remainder_nonzero_S),
    .Exp_z_DO              (Exp_z_D            ),
    .Mant_z_DO             (Mant_z_D           )
     );
@@ -171,7 +169,6 @@ module div_sqrt_top_mvp
    .SNaN_SI               (SNaN_S             ),
    .RM_SI                 (RM_dly_S           ),
    .Full_precision_SI     (Full_precision_S   ),
-   .Remainder_nonzero_SI  (Remainder_nonzero_S),
    .FP32_SI               (FP32_S             ),
    .FP64_SI               (FP64_S             ),
    .FP16_SI               (FP16_S             ),

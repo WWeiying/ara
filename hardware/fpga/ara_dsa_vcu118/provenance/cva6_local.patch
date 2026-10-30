@@ -1,5 +1,5 @@
 diff --git a/common/local/util/instr_tracer.sv b/common/local/util/instr_tracer.sv
-index 5376d5c10..926b82ad3 100644
+index 5376d5c1..926b82ad 100644
 --- a/common/local/util/instr_tracer.sv
 +++ b/common/local/util/instr_tracer.sv
 @@ -256,8 +256,10 @@ module instr_tracer #(
@@ -16,7 +16,7 @@ index 5376d5c10..926b82ad3 100644
  
    final begin
 diff --git a/common/local/util/sram_cache.sv b/common/local/util/sram_cache.sv
-index cf2937861..c5bac8e03 100644
+index cf293786..c5bac8e0 100644
 --- a/common/local/util/sram_cache.sv
 +++ b/common/local/util/sram_cache.sv
 @@ -110,6 +110,9 @@ module sram_cache #(
@@ -30,7 +30,7 @@ index cf2937861..c5bac8e03 100644
            .we_i   (we_i),
            .addr_i (addr_i),
 diff --git a/core/acc_dispatcher.sv b/core/acc_dispatcher.sv
-index aa526951e..54ab062fc 100644
+index aa526951..54ab062f 100644
 --- a/core/acc_dispatcher.sv
 +++ b/core/acc_dispatcher.sv
 @@ -113,6 +113,20 @@ module acc_dispatcher
@@ -274,7 +274,7 @@ index aa526951e..54ab062fc 100644
     *  Accelerator barriers  *
     **************************/
 diff --git a/core/cache_subsystem/wt_axi_adapter.sv b/core/cache_subsystem/wt_axi_adapter.sv
-index 22cc5c075..5f259d75a 100644
+index 22cc5c07..5f259d75 100644
 --- a/core/cache_subsystem/wt_axi_adapter.sv
 +++ b/core/cache_subsystem/wt_axi_adapter.sv
 @@ -527,9 +527,10 @@ module wt_axi_adapter
@@ -302,7 +302,7 @@ index 22cc5c075..5f259d75a 100644
      if (inval_valid_i) begin
        inval_ready_o         = 1'b1;
 diff --git a/core/csr_regfile.sv b/core/csr_regfile.sv
-index 180cba4fa..660d93f90 100644
+index 180cba4f..660d93f9 100644
 --- a/core/csr_regfile.sv
 +++ b/core/csr_regfile.sv
 @@ -497,7 +497,8 @@ module csr_regfile
@@ -387,7 +387,7 @@ index 180cba4fa..660d93f90 100644
        // restore sintstatus
        if (CVA6Cfg.RVSCLIC && clic_mode_o && scause_q[CVA6Cfg.XLEN-1])
 diff --git a/core/cva6.sv b/core/cva6.sv
-index 1bf0de585..3ba3fa414 100644
+index 1bf0de58..3ba3fa41 100644
 --- a/core/cva6.sv
 +++ b/core/cva6.sv
 @@ -496,6 +496,9 @@ module cva6
@@ -431,7 +431,7 @@ index 1bf0de585..3ba3fa414 100644
      assign acc_resp_fflags            = '0;
      assign acc_resp_fflags_valid      = '0;
 diff --git a/core/cva6_mmu/cva6_mmu.sv b/core/cva6_mmu/cva6_mmu.sv
-index 08a776112..a12a3b995 100644
+index 08a77611..a12a3b99 100644
 --- a/core/cva6_mmu/cva6_mmu.sv
 +++ b/core/cva6_mmu/cva6_mmu.sv
 @@ -521,8 +521,8 @@ module cva6_mmu
@@ -472,7 +472,7 @@ index 08a776112..a12a3b995 100644
  
        // ---------
 diff --git a/core/cva6_mmu/cva6_ptw.sv b/core/cva6_mmu/cva6_ptw.sv
-index 4bd6f4dd5..5f7fea1e0 100644
+index 4bd6f4dd..5f7fea1e 100644
 --- a/core/cva6_mmu/cva6_ptw.sv
 +++ b/core/cva6_mmu/cva6_ptw.sv
 @@ -543,9 +543,9 @@ module cva6_ptw
@@ -488,7 +488,7 @@ index 4bd6f4dd5..5f7fea1e0 100644
  
                end
 diff --git a/core/decoder.sv b/core/decoder.sv
-index d907b2094..f4686a47f 100644
+index d907b209..f4686a47 100644
 --- a/core/decoder.sv
 +++ b/core/decoder.sv
 @@ -1809,6 +1809,8 @@ module decoder
@@ -521,7 +521,7 @@ index d907b2094..f4686a47f 100644
  
      // a debug request has precendece over everything else
 diff --git a/core/fpu_wrap.sv b/core/fpu_wrap.sv
-index 5b5fefc23..05177856f 100644
+index 5b5fefc2..05177856 100644
 --- a/core/fpu_wrap.sv
 +++ b/core/fpu_wrap.sv
 @@ -522,12 +522,53 @@ module fpu_wrap
@@ -593,7 +593,7 @@ index 5b5fefc23..05177856f 100644
      ) i_fpnew_bulk (
          .clk_i,
 diff --git a/core/include/ariane_pkg.sv b/core/include/ariane_pkg.sv
-index 5765233d8..e5a19f3ef 100644
+index 5765233d..e5a19f3e 100644
 --- a/core/include/ariane_pkg.sv
 +++ b/core/include/ariane_pkg.sv
 @@ -116,6 +116,7 @@ package ariane_pkg;
@@ -605,7 +605,7 @@ index 5765233d8..e5a19f3ef 100644
      | riscv::SSTATUS_XS
      | riscv::SSTATUS_SUM
 diff --git a/core/include/riscv_pkg.sv b/core/include/riscv_pkg.sv
-index 83c9e69a8..7646cdb5e 100644
+index 83c9e69a..7646cdb5 100644
 --- a/core/include/riscv_pkg.sv
 +++ b/core/include/riscv_pkg.sv
 @@ -741,6 +741,7 @@ package riscv;
@@ -617,7 +617,7 @@ index 83c9e69a8..7646cdb5e 100644
    localparam logic [63:0] SSTATUS_XS = 'h00018000;
    localparam logic [63:0] SSTATUS_SUM = 'h00040000;
 diff --git a/core/issue_read_operands.sv b/core/issue_read_operands.sv
-index 60772fad5..892108c81 100644
+index 60772fad..892108c8 100644
 --- a/core/issue_read_operands.sv
 +++ b/core/issue_read_operands.sv
 @@ -583,7 +583,10 @@ module issue_read_operands
@@ -633,7 +633,7 @@ index 60772fad5..892108c81 100644
  
      if (CVA6Cfg.SuperscalarEn) begin
 diff --git a/core/issue_stage.sv b/core/issue_stage.sv
-index f0b0817ea..fde047837 100644
+index f0b0817e..fde04783 100644
 --- a/core/issue_stage.sv
 +++ b/core/issue_stage.sv
 @@ -140,6 +140,9 @@ module issue_stage
@@ -657,7 +657,7 @@ index f0b0817ea..fde047837 100644
        .x_rd_i,
        .rvfi_issue_pointer_o,
 diff --git a/core/load_unit.sv b/core/load_unit.sv
-index bea5efa6d..5611825c7 100644
+index bea5efa6..5611825c 100644
 --- a/core/load_unit.sv
 +++ b/core/load_unit.sv
 @@ -153,10 +153,6 @@ module load_unit
@@ -769,7 +769,7 @@ index bea5efa6d..5611825c7 100644
        valid_o = 1'b1;
        ex_o.valid = 1'b1;
 diff --git a/core/scoreboard.sv b/core/scoreboard.sv
-index 6a1b3d094..60d4b4986 100644
+index 6a1b3d09..60d4b498 100644
 --- a/core/scoreboard.sv
 +++ b/core/scoreboard.sv
 @@ -79,6 +79,10 @@ module scoreboard #(

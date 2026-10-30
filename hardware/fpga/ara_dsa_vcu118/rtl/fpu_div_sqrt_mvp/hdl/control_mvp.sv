@@ -74,7 +74,6 @@ module control_mvp
 
    output logic                                       Ready_SO,
    output logic                                       Done_SO,
-   output logic                                       Remainder_nonzero_SO,
 
    output logic [C_MANT_FP64+4:0]                     Mant_result_prenorm_DO,
  //  output logic [3:0]                                 Round_bit_DO,
@@ -83,15 +82,6 @@ module control_mvp
 
    logic  [C_MANT_FP64+1+4:0]                         Partial_remainder_DN,Partial_remainder_DP; //58bits,r=q+2
    logic  [C_MANT_FP64+4:0]                           Quotient_DP; //57bits
-
-   // Keep the exactness information that lies below the generated quotient
-   // bits. Directed rounding needs it when all explicit rounding bits are zero.
-   // Non-restoring division represents an exact remainder as either 0 or -D.
-   // Use equality rather than a final restoring adder on the result path.
-   logic [C_MANT_FP64+5:0] Negative_divisor_D;
-   assign Remainder_nonzero_SO = Special_case_dly_SBI && Div_enable_SO &&
-                                (|Partial_remainder_DP) &&
-                                (Partial_remainder_DP != Negative_divisor_D);
    /////////////////////////////////////////////////////////////////////////////
    // Assign Inputs                                                          //
    /////////////////////////////////////////////////////////////////////////////
@@ -102,7 +92,6 @@ module control_mvp
    assign  Numerator_se_D={1'b0,Numerator_DI};
 
    assign  Denominator_se_D={1'b0,Denominator_DI};
-   assign Negative_divisor_D = ~{Denominator_se_D, 4'b0} + 1'b1;
 
   always_comb
    begin

@@ -231,6 +231,7 @@ module ara import ara_pkg::*; #(
   ara_resp_t                    ara_resp;
   logic                         ara_resp_valid;
   logic                         ara_idle;
+  logic                         akv_refill_overlap_safe;
   logic                         sldu_idle;
   logic                         sldu_drain;
   // Interface with the VSTU
@@ -289,6 +290,7 @@ module ara import ara_pkg::*; #(
     .ara_resp_i        (ara_resp        ),
     .ara_resp_valid_i  (ara_resp_valid  ),
     .ara_idle_i        (ara_idle        ),
+    .akv_refill_overlap_safe_i(akv_refill_overlap_safe),
     .sldu_idle_i       (sldu_idle       ),
     .sldu_drain_o      (sldu_drain      ),
     // Interface with the lanes
@@ -382,6 +384,7 @@ module ara import ara_pkg::*; #(
     .ara_resp_o            (ara_resp                 ),
     .ara_resp_valid_o      (ara_resp_valid           ),
     .ara_idle_o            (ara_idle                 ),
+    .akv_refill_overlap_safe_o(akv_refill_overlap_safe),
     // Interface with the PEs
     .pe_req_o              (pe_req                   ),
     .pe_req_valid_o        (pe_req_valid             ),

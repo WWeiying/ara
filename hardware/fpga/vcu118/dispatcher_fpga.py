@@ -14,6 +14,9 @@ REVIEWED_DISPATCHER_SHA256 = {
     # Signoff 5ee02215: restart/overlap/FOF legality and QBS commit fixes.
     # Existing layout arithmetic and request-isolation implementation are retained.
     "c179ddd08b2bdb8648246f187aa892be5853fda38aeca850402d5e5b9b17ef7d",
+    # Validated 20261029 handoff: QBACC/refill and indexed/mask repairs retain
+    # the integrated layout helpers and request-isolation implementation.
+    "7bd7b46c87e2821e349d7c8938870ac79b2a77bf31eb3525fa07b904fc4eadf8",
 }
 
 

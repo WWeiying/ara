@@ -32,6 +32,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     output ara_resp_t                       ara_resp_o,
     output logic                            ara_resp_valid_o,
     output logic                            ara_idle_o,
+    output logic                            akv_refill_overlap_safe_o,
     // Interface with the processing elements
     output pe_req_t                         pe_req_o,
     output logic                            pe_req_valid_o,
@@ -113,6 +114,33 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   end
 
   assign pe_vinsn_running_o = vinsn_running_q;
+
+  logic refill_alloc_valid;
+  logic refill_wait;
+  logic refill_older_drained;
+
+  function automatic logic refill_safe_arithmetic(input ara_req_t req);
+    return req.vm && req.use_vd && req.cvt_resize == CVT_SAME &&
+        !req.wide_fp_imm && !req.overlap_capture && !req.overlap_use_snapshot &&
+        !req.source_snapshot_capture && !req.source_snapshot_replay_vs1 &&
+        !req.source_snapshot_replay_vs2 &&
+        req.op inside {VFMACC, VFNMACC, VFMSAC, VFNMSAC,
+                       VFMADD, VFNMADD, VFMSUB, VFNMSUB};
+  endfunction
+
+  akv_refill_order_guard #(.NrSlots(NrVInsn), .IdWidth($bits(vid_t))) i_refill_order_guard (
+    .clk_i, .rst_ni,
+    .live_i(vinsn_running_q),
+    .alloc_valid_i(refill_alloc_valid),
+    .alloc_id_i(vinsn_id_n),
+    .alloc_eligible_i(refill_safe_arithmetic(ara_req_i)),
+    .pending_valid_i(ara_req_valid_i),
+    .pending_eligible_i(refill_safe_arithmetic(ara_req_i)),
+    .refill_wait_i(refill_wait),
+    .refill_id_i(pe_req_o.id),
+    .admission_safe_o(akv_refill_overlap_safe_o),
+    .older_drained_o(refill_older_drained)
+  );
 
   `ifdef FOR_VERIFY
   // Report completion of the old vid independently of same-cycle vid reuse.
@@ -254,6 +282,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
   // If the instruction requires an answer to Ariane, the sequencer needs to wait.
   enum logic { IDLE, WAIT } state_d, state_q;
+
+  assign refill_wait = state_q == WAIT && pe_req_o.op == VAKVFILL &&
+      pe_req_o.akv_v2 && pe_req_o.akv_refill;
 `ifdef ARA_STORE_B_AB_BASELINE
   localparam bit WaitForStoreB = 1'b0;
 `else
@@ -350,8 +381,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   // Determine if the request does not need source operands from the VRF
   function automatic logic no_src_vrf(pe_req_t pe_req);
     no_src_vrf = (((pe_req.op == VLE || pe_req.op == VLSE) && pe_req.vm) ||
+                  (pe_req.op == VQBEXEC && (!qbs_pkg::QbsVrfContinuationEnable || !pe_req.use_vs1)) ||
                   pe_req.op inside {
-                    VQBEXEC, VAKVFILL, VAKVLOAD, VAKVRELEASE
+                    VAKVFILL, VAKVLOAD, VAKVRELEASE
                   });
   endfunction
 
@@ -531,6 +563,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     ara_resp_o       = '0;
     ara_resp_valid_o = 1'b0;
     ara_store_accepted_o = 1'b0;
+    refill_alloc_valid = 1'b0;
 
     // Always ready to receive a new request
     ara_req_ready_o = 1'b1;
@@ -834,6 +867,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               ara_req_ready_o = 1'b1;
 
               // Remember that the vector instruction is running
+              refill_alloc_valid = (vfu(ara_req_i.op) != VFU_None) || !ara_req_i.vm;
               unique case (vfu(ara_req_i.op))
                 VFU_LoadUnit : pe_vinsn_running_d[NrLanes + OffsetLoad][vinsn_id_n]  = 1'b1;
                 VFU_StoreUnit: pe_vinsn_running_d[NrLanes + OffsetStore][vinsn_id_n] = 1'b1;
@@ -1026,6 +1060,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             (addrgen_acked_q || addrgen_ack_i) &&
             (&memory_lane_accepted_d) && memory_mask_accepted_d &&
             (!is_load(pe_req_o.op) || !addrgen_exception_d.valid || memory_load_completed_d) &&
+            (!refill_wait || refill_older_drained) &&
             (!WaitForStoreB || !is_store(pe_req_o.op) || memory_store_completed_d)) begin
           // The address generator acknowledges indexed operations only after
           // consuming their lane operands.  Withdraw the broadcast request in

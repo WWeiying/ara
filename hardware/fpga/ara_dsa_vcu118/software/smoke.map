@@ -1,10 +1,10 @@
 
 Discarded input sections
 
- .comment       0x0000000000000000       0x21 /tmp/ccB2KTwZ.o
+ .comment       0x0000000000000000       0x21 /tmp/cckZs8TH.o
  .note.GNU-stack
-                0x0000000000000000        0x0 /tmp/ccB2KTwZ.o
- .eh_frame      0x0000000000000000       0x98 /tmp/ccB2KTwZ.o
+                0x0000000000000000        0x0 /tmp/cckZs8TH.o
+ .eh_frame      0x0000000000000000       0x98 /tmp/cckZs8TH.o
 
 Memory Configuration
 
@@ -14,39 +14,39 @@ ram              0x0000000080000000 0x0000000000020000 xrw
 
 Linker script and memory map
 
-LOAD /tmp/cc46GzmN.o
-LOAD /tmp/ccB2KTwZ.o
+LOAD /tmp/ccvNDh77.o
+LOAD /tmp/cckZs8TH.o
 
 .text           0x0000000080000000      0x708
  *(.text.start)
- .text.start    0x0000000080000000       0x7a /tmp/cc46GzmN.o
+ .text.start    0x0000000080000000       0x7a /tmp/ccvNDh77.o
                 0x0000000080000000                _start
  *(.text .text.*)
- .text          0x000000008000007a        0x0 /tmp/cc46GzmN.o
- .text          0x000000008000007a      0x280 /tmp/ccB2KTwZ.o
+ .text          0x000000008000007a        0x0 /tmp/ccvNDh77.o
+ .text          0x000000008000007a      0x280 /tmp/cckZs8TH.o
                 0x000000008000012c                report_trap
- .text.startup  0x00000000800002fa      0x28c /tmp/ccB2KTwZ.o
+ .text.startup  0x00000000800002fa      0x28c /tmp/cckZs8TH.o
                 0x00000000800002fa                main
  *(.rodata .rodata.*)
  *fill*         0x0000000080000586        0x2 
  .rodata.str1.8
-                0x0000000080000588      0x180 /tmp/ccB2KTwZ.o
+                0x0000000080000588      0x180 /tmp/cckZs8TH.o
 
 .rela.dyn       0x0000000080000708        0x0
  .rela.text.start
-                0x0000000080000708        0x0 /tmp/cc46GzmN.o
+                0x0000000080000708        0x0 /tmp/ccvNDh77.o
 
 .data           0x0000000080000710        0x0
                 0x0000000080000f10                __global_pointer$ = (. + 0x800)
  *(.sdata .sdata.* .data .data.*)
- .data          0x0000000080000710        0x0 /tmp/cc46GzmN.o
- .data          0x0000000080000710        0x0 /tmp/ccB2KTwZ.o
+ .data          0x0000000080000710        0x0 /tmp/ccvNDh77.o
+ .data          0x0000000080000710        0x0 /tmp/cckZs8TH.o
 
 .bss            0x0000000080000780     0x4480
                 0x0000000080000780                __bss_start = .
  *(.bss .bss.* .sbss .sbss.* COMMON)
- .bss           0x0000000080000780        0x0 /tmp/cc46GzmN.o
- .bss           0x0000000080000780     0x4480 /tmp/ccB2KTwZ.o
+ .bss           0x0000000080000780        0x0 /tmp/ccvNDh77.o
+ .bss           0x0000000080000780     0x4480 /tmp/cckZs8TH.o
                 0x0000000080004c00                . = ALIGN (0x8)
                 0x0000000080004c00                __bss_end = .
                 0x0000000080020000                __stack_top = (ORIGIN (ram) + LENGTH (ram))
@@ -54,11 +54,11 @@ LOAD /tmp/ccB2KTwZ.o
 
 /DISCARD/
  *(.comment .eh_frame .note*)
-OUTPUT(/home/wangwy/openproject/ara_dsa/hardware/fpga/vcu118/.cache/sync-48n_gw2x/package/software/smoke.elf elf64-littleriscv)
+OUTPUT(/home/wangwy/openproject/ara_dsa_fpga_validated_20261029/hardware/fpga/vcu118/.cache/sync-s0v5iojm/package/software/smoke.elf elf64-littleriscv)
 
 .riscv.attributes
                 0x0000000000000000       0xe4
  .riscv.attributes
-                0x0000000000000000       0xe2 /tmp/cc46GzmN.o
+                0x0000000000000000       0xe2 /tmp/ccvNDh77.o
  .riscv.attributes
-                0x00000000000000e2       0xe4 /tmp/ccB2KTwZ.o
+                0x00000000000000e2       0xe4 /tmp/cckZs8TH.o
