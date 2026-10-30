@@ -66,3 +66,29 @@ the exact Register-PV entry before closing the remaining current-RTL gate.
 3. Audit E1–E8 and close only when the remaining evidence is sufficient.
 
 No new optimization or PPA work is part of these remaining gates.
+
+## Closing execution update
+
+The current-RTL Register-PV replay is now owned directly by service
+`ara-register-retirement-final-20261029-01`, output
+`verification/out/register-retirement-final-20261029-01`. It reuses the exact
+accepted guarded ELF and numerical checker. The preflight verifies the entire
+historical pin inventory, with only the explicitly reviewed integer-engine
+revision represented by a verified archived file; the new image and current
+RTL have their own complete pins. No arbitrary drift is ignored.
+
+The first preflight found a Python path-type error before simulation; its FAIL
+record remains in `register-retirement-preflight-20261029-01`. The corrected
+preflight `-02` completed `PREFLIGHT_NOT_RUN`. Actual VCS execution was then
+confirmed; it is not yet acceptance and must finish with independent checks.
+
+The external runtime source archive is
+`verification/out/optimization-runtime-snapshot-20261029-02`. It preserves 814
+consumed source/configuration files with hashes matching the accepted model
+library campaign, base commit `8ed9403e37f1ceb43c6279cdefef01354eac6fd3`, tracked
+worktree status and a binary-capable working-tree patch. The patch includes
+preexisting work and is not a claim that every hunk belongs to this goal.
+Ignored/untracked consumed headers are retained as source copies. No external
+files were edited, committed, reset or deleted. This improves reproducibility;
+it is not a fresh build or new model validation. The earlier `-01` archive is
+retained; `-02` additionally enforces the source-inventory receipt hash.
