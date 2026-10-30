@@ -68,7 +68,8 @@
     "preexisting_tracked_changes": 9,
     "preexisting_changes_committed": false,
     "original_dependency_warning": "hardware/deps/fpu_div_sqrt_mvp differs from its locked clean revision. Preserve it; do not use it to regenerate the delivered FPGA package. Future regeneration must first materialize and validate locked dependency build inputs plus registered patches",
-    "existing_extra_worktrees": "Retained as historical evidence; not active migration workspaces",
+    "existing_extra_worktrees": "Both temporary migration worktrees archived and removed at user request; unrelated existing worktrees untouched",
+    "removed_worktrees_archive": "/home/wangwy/fpga_runs/mainline_fpga_integration_20261030T062537Z/removed-preparation-worktrees.tar.gz",
     "new_worktrees_allowed": false
   },
   "runtime_policy": {

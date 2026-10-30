@@ -3,8 +3,8 @@
 ## FPGA validated migration (2026-10-30)
 
 - Continue FPGA migration in `/home/wangwy/openproject/ara_dsa` on `ara_dsa`.
-  Do not create more development worktrees for this migration. Existing staging
-  worktrees are historical inputs, not the active integration location.
+  Do not create more development worktrees for this migration. The temporary
+  staging worktrees were archived and removed at the user's request.
 - Use `hardware/docs/FPGA_OPTIMIZATION_HANDOFF_20261029.md` and
   `hardware/fpga/vcu118/migrations/qbs_akv_validated_20261029.json` as the
   hardware/software version contract. Ara delivery is `1e48e205df5cec34183222c36d22eb4858466810`;
