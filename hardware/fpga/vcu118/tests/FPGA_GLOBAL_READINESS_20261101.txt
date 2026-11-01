@@ -1,0 +1,59 @@
+Decision: ready to prepare a fresh frozen full-build candidate
+============================================================
+
+Per user request, stop adding isolated Vivado diagnostics and pause the goal
+at this decision boundary. This is NOT synthesis, timing or board signoff.
+The queued Ara control trace 20261101 task was cancelled while still waiting,
+before it launched Vivado, and disabled. The existing read-only scoped
+diagnosis is allowed to finish; its results are supplementary, not a new
+prerequisite. Do not start synthesis automatically on diagnostic completion.
+
+Accepted source changes:
+  d95b629f8: FPGA-only registered accelerator request boundary. Focused XSim
+  component, dispatcher ownership and sideband checks passed. First empty
+  request adds one cycle; sustained ready-consumer throughput remains 1/cycle.
+  End-to-end performance neutrality has not been measured.
+  7097c5fd3: restore six reviewed Pblocks, ten SLR guidelines and MDM clock
+  region before incremental matching. Their absence in the current placed
+  DCP is confirmed; this is not proof they explain every routing conflict.
+  9c9c14602: canonical release entry explicitly requires the v3 flow.
+  15906e6d0: preserve the request overlay in future exports with strict hashes.
+  434829118: audit the selected delivery, not unrelated later main changes.
+
+Final source checks:
+  test_release_flow.py: 7 passing tests.
+  test_selected_delivery.py: 68 Ara inputs and eight pinned MVP files checked.
+  verify_package.py: all 810 listed exported files match their hashes.
+  Scoped-flow/floorplan/locality mocked checks passed, including fail-closed
+  missing hierarchy/clock, conflict, bad route and stage-order cases.
+  Historical/live-main export checks have recorded baseline-mismatch failures;
+  do not represent the entire test suite as passing. See FPGA_REQUEST_TIMING
+  and FPGA_PHYSICAL_FLOW records for scope, evidence and limitations.
+
+Next full-build preparation MUST:
+  - Export only committed inputs; preserve unrelated dirty worktree files.
+  - Keep Ara delivery 1e48e205df5cec34183222c36d22eb4858466810 and llama.cpp
+    delivery da56aa750559c180d631b466de983ff2bb5d54d9 identified separately
+    from the FPGA overlay commit. Do not import later main SIMD changes.
+  - Copy current canonical ethernet/release_build.tcl and rebuild_mainrtl_v3.tcl
+    into the new package; merely archiving the older exported ethernet folder
+    is insufficient. Include linux/diagnostics/dual_floorplan.tcl and
+    dual_slr_locality.tcl, and seal every consumed file in the new inventory.
+  - Preserve hash-verified Ethernet firmware; never reuse an unrecorded ELF.
+  - Require fresh synthesis for changed RTL. No AcceptedSynthesis shortcut or
+    reuse of the old functional netlist. The old routed DCP is physical reuse
+    input only. Keep 50 MHz, four lanes, VLEN 1024 and dual-DDR Ethernet profile.
+  - Reuse the proven single-thread synthesis setting for this Windows host;
+    keep implementation settings explicit rather than inheriting tool defaults.
+  - Run under one scheduled-task owner with a frozen-input manifest and logs.
+  - Keep strict synthesis setup, reviewed physical hold/skew, optimized-netlist
+    constraints, route integrity, final timing, DRC/CDC and bitgen gates.
+    Save failed-route checkpoints before rejecting. No blind automatic retry.
+  - No automatic board programming. Preserve current board image.
+
+Residual risks to measure in the full run:
+  Local QBS routing pressure, high-fanout controls, inherited DDR zero-margin
+  paths and hold correction. Restored floorplan may alter reuse; inspect its
+  actual result rather than assuming success. Report per-domain setup/hold
+  and illegal routes separately. Do not disable QBS/AKV features, lower clocks,
+  or relax exceptions to turn these risks into apparent passes.
