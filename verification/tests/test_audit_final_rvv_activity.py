@@ -1,9 +1,9 @@
-import sys
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "coverage"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'coverage'))
 
 from audit_final_rvv_activity import union_axis, verify_case_hashes
 from run_verilator_coverage import sha256

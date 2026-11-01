@@ -1,5 +1,9 @@
 # Ara Verification Environment
 
+The 2026-09-26 integration into `ara_dsa`, its preserved local changes and
+fresh-image checks are recorded in
+[`MAIN_INTEGRATION_20260926.md`](MAIN_INTEGRATION_20260926.md).
+
 The sole active verification branch is `ara_dsa_signoff_integration`.
 See [consolidation and branch ownership](CONSOLIDATION.md) for imported tests,
 local environment inputs, historical evidence, and the stop-on-failure policy.
@@ -162,6 +166,26 @@ make -C verification unit
 The target uses pytest with the required `PYTHONPATH`, collecting both unittest
 classes and pytest functions. `unittest discover` alone omits function-style
 tests and is not the complete preflight gate.
+
+To inspect raw VCS VDB test records without URG, pass the compile VDB and a
+test VDB to the read-only extractor:
+
+```bash
+PYTHONPATH=verification python3 -m ara_verify.vdb_raw \
+  --compile-vdb /path/to/simv.vdb --test-vdb /path/to/code.vdb \
+  --instance-prefix ara_tb.dut --summary-only
+PYTHONPATH=verification python3 -m ara_verify.vdb_raw \
+  --compile-vdb /path/to/simv.vdb --test-vdb /path/to/code.vdb \
+  --instance-prefix ara_tb.dut > /tmp/ara-vdb-raw.jsonl
+```
+
+The JSONL export preserves each `instance_data` bitmap and
+`instance_intervaldata` value; the last line summarizes record counts and raw
+bitmap characters. The extractor checks the declared VCS release, but does not
+apply shape definitions, exclusions, or URG aggregation rules. Its raw counts
+are not coverage percentages or signoff evidence. Matching versions do not
+prove that the two VDBs came from the same build. If extraction fails, discard
+the partial JSONL; a complete export ends with a `summary` record.
 
 `deps` reads exact Git revisions from `Bender.lock` and
 `toolchain.lock.json`. The riscv-dv checkout is fixed to the RVV 1.0 update at

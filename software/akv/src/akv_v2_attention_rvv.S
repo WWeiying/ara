@@ -542,6 +542,38 @@ akv_v2_compute_scores_f16_generic:
     mv              t3, a3
     mv              t4, a4
     mv              t5, a5
+    // Share K delivery, retaining each head's original dimension order.
+.Lakv_v2_generic_score_pair:
+    li              a0, 2
+    bltu            t4, a0, .Lakv_v2_generic_score_head
+    vsetvli         zero, t2, e32, m2, ta, ma
+    vmv.v.i         v0, 0
+    vmv.v.i         v2, 0
+    mv              a6, t0
+    add             t6, t0, t3
+    li              a7, 0
+.Lakv_v2_generic_score_pair_dimension:
+    vsetvli         zero, t2, e16, m1, ta, ma
+    mv              a0, a7
+    .word           0x0005745b  // vakv2kcol v8
+    flh             ft0, 0(a6)
+    flh             ft1, 0(t6)
+    vfwmacc.vf      v0, ft0, v8
+    vfwmacc.vf      v2, ft1, v8
+    addi            a6, a6, 2
+    addi            t6, t6, 2
+    addi            a7, a7, 1
+    bltu            a7, t5, .Lakv_v2_generic_score_pair_dimension
+    vsetvli         zero, t2, e32, m2, ta, ma
+    vse32.v         v0, (t1)
+    addi            t1, t1, 256
+    vse32.v         v2, (t1)
+    addi            t1, t1, 256
+    add             t0, t0, t3
+    add             t0, t0, t3
+    addi            t4, t4, -2
+    bnez            t4, .Lakv_v2_generic_score_pair
+    ret
 .Lakv_v2_generic_score_head:
     vsetvli         zero, t2, e32, m2, ta, ma
     vmv.v.i         v0, 0
@@ -579,6 +611,40 @@ akv_v2_compute_scores_f32_generic:
     mv              t3, a3
     mv              t4, a4
     mv              t5, a5
+    // Share K delivery, retaining each head's original dimension order.
+.Lakv_v2_generic_f32_score_pair:
+    li              a0, 2
+    bltu            t4, a0, .Lakv_v2_generic_f32_score_head
+    vsetvli         zero, t2, e32, m2, ta, ma
+    vmv.v.i         v0, 0
+    vmv.v.i         v2, 0
+    mv              a6, t0
+    add             t6, t0, t3
+    li              a7, 0
+.Lakv_v2_generic_f32_score_pair_dimension:
+    vsetvli         zero, t2, e16, m1, ta, ma
+    mv              a0, a7
+    .word           0x0005745b  // vakv2kcol v8
+    vfwcvt.f.f.v    v10, v8
+    flw             ft0, 0(a6)
+    flw             ft1, 0(t6)
+    vsetvli         zero, t2, e32, m2, ta, ma
+    vfmacc.vf       v0, ft0, v10
+    vfmacc.vf       v2, ft1, v10
+    addi            a6, a6, 4
+    addi            t6, t6, 4
+    addi            a7, a7, 1
+    bltu            a7, t5, .Lakv_v2_generic_f32_score_pair_dimension
+    vsetvli         zero, t2, e32, m2, ta, ma
+    vse32.v         v0, (t1)
+    addi            t1, t1, 256
+    vse32.v         v2, (t1)
+    addi            t1, t1, 256
+    add             t0, t0, t3
+    add             t0, t0, t3
+    addi            t4, t4, -2
+    bnez            t4, .Lakv_v2_generic_f32_score_pair
+    ret
 .Lakv_v2_generic_f32_score_head:
     vsetvli         zero, t2, e32, m2, ta, ma
     vmv.v.i         v0, 0
@@ -676,6 +742,54 @@ akv_v2_update_outputs_f16_generic:
     mv              t3, a3
     mv              t4, a4
     mv              t5, a5
+    // Share V delivery without changing token order or rounding per head.
+.Lakv_v2_generic_output_pair:
+    li              a0, 2
+    bltu            t4, a0, .Lakv_v2_generic_output_head
+    vsetvli         zero, t5, e16, m2, ta, ma
+    vle16.v         v0, (t1)
+    addi            t6, t1, 512
+    vle16.v         v2, (t6)
+    flw             ft0, 0(t2)
+    flw             ft1, 4(t2)
+    fcvt.h.s        ft0, ft0
+    fcvt.h.s        ft1, ft1
+    vfmul.vf        v0, v0, ft0
+    vfmul.vf        v2, v2, ft1
+    mv              a7, t0
+    li              a6, 0
+.Lakv_v2_generic_output_pair_token:
+    flw             ft0, 0(a7)
+    flw             ft1, 256(a7)
+    fcvt.h.s        ft0, ft0
+    fcvt.h.s        ft1, ft1
+    slli            a0, a6, 2
+    ori             a0, a0, 2
+    li              a1, 64
+    beq             t5, a1, .Lakv_v2_generic_output_pair_d64
+    li              a1, 96
+    beq             t5, a1, .Lakv_v2_generic_output_pair_d96
+    .word           0x0205345b  // vakvload.d128 v8:v9
+    j               .Lakv_v2_generic_output_pair_loaded
+.Lakv_v2_generic_output_pair_d96:
+    .word           0x0405345b  // vakvload.d96 v8:v9
+    j               .Lakv_v2_generic_output_pair_loaded
+.Lakv_v2_generic_output_pair_d64:
+    .word           0x0005345b  // vakvload.d64 v8
+.Lakv_v2_generic_output_pair_loaded:
+    vfmacc.vf       v0, ft0, v8
+    vfmacc.vf       v2, ft1, v8
+    addi            a7, a7, 4
+    addi            a6, a6, 1
+    bltu            a6, t3, .Lakv_v2_generic_output_pair_token
+    vse16.v         v0, (t1)
+    vse16.v         v2, (t6)
+    addi            t1, t6, 512
+    addi            t0, t0, 512
+    addi            t2, t2, 8
+    addi            t4, t4, -2
+    bnez            t4, .Lakv_v2_generic_output_pair
+    ret
 .Lakv_v2_generic_output_head:
     vsetvli         zero, t5, e16, m2, ta, ma
     vle16.v         v0, (t1)
@@ -815,6 +929,55 @@ akv_v2_update_outputs_f32_generic:
     mv              t3, a3
     mv              t4, a4
     mv              t5, a5
+    // Share V delivery without changing token order or rounding per head.
+.Lakv_v2_generic_f32_output_pair:
+    li              a0, 2
+    bltu            t4, a0, .Lakv_v2_generic_f32_output_head
+    vsetvli         zero, t5, e32, m4, ta, ma
+    vle32.v         v0, (t1)
+    slli            a0, t5, 2
+    add             t6, t1, a0
+    vle32.v         v4, (t6)
+    flw             ft0, 0(t2)
+    flw             ft1, 4(t2)
+    vfmul.vf        v0, v0, ft0
+    vfmul.vf        v4, v4, ft1
+    mv              a7, t0
+    li              a6, 0
+.Lakv_v2_generic_f32_output_pair_token:
+    flw             ft0, 0(a7)
+    flw             ft1, 256(a7)
+    vsetvli         zero, t5, e16, m2, ta, ma
+    slli            a0, a6, 2
+    ori             a0, a0, 2
+    li              a1, 64
+    beq             t5, a1, .Lakv_v2_generic_f32_output_pair_d64
+    li              a1, 96
+    beq             t5, a1, .Lakv_v2_generic_f32_output_pair_d96
+    .word           0x0205345b  // vakvload.d128 v8:v9
+    j               .Lakv_v2_generic_f32_output_pair_loaded
+.Lakv_v2_generic_f32_output_pair_d96:
+    .word           0x0405345b  // vakvload.d96 v8:v9
+    j               .Lakv_v2_generic_f32_output_pair_loaded
+.Lakv_v2_generic_f32_output_pair_d64:
+    .word           0x0005345b  // vakvload.d64 v8
+.Lakv_v2_generic_f32_output_pair_loaded:
+    vfwcvt.f.f.v    v12, v8
+    vsetvli         zero, t5, e32, m4, ta, ma
+    vfmacc.vf       v0, ft0, v12
+    vfmacc.vf       v4, ft1, v12
+    addi            a7, a7, 4
+    addi            a6, a6, 1
+    bltu            a6, t3, .Lakv_v2_generic_f32_output_pair_token
+    vse32.v         v0, (t1)
+    vse32.v         v4, (t6)
+    slli            a0, t5, 2
+    add             t1, t6, a0
+    addi            t0, t0, 512
+    addi            t2, t2, 8
+    addi            t4, t4, -2
+    bnez            t4, .Lakv_v2_generic_f32_output_pair
+    ret
 .Lakv_v2_generic_f32_output_head:
     vsetvli         zero, t5, e32, m4, ta, ma
     vle32.v         v0, (t1)

@@ -1022,7 +1022,14 @@ module ara_tb;
   end
 
   for (genvar i = 0; i < NrLanes; i++) begin
+`ifdef TARGET_GATESIM
+    // The mapped netlist uniquifies/generates lane instances and does not
+    // preserve the RTL-only VFU hierarchy used by this diagnostic probe.
+    // Gate-level SAIF capture does not consume this RTL utilization counter.
+    assign lane_compute[i] = 1'b0;
+`else
     assign lane_compute[i] = (|(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[i].i_lane.i_vfus.mfpu_operand_valid_i[2:0] & ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[i].i_lane.i_vfus.mfpu_operand_ready_o[2:0])) || (|(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[i].i_lane.i_vfus.alu_operand_valid_i[1:0] & ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[i].i_lane.i_vfus.alu_operand_ready_o[1:0]));
+`endif
 
     always_ff @(posedge clk, negedge rst_n) begin
       lane_compute_history[i][wall_cycle] <= lane_compute[i];
@@ -1354,6 +1361,31 @@ module ara_tb;
 
         $display("Initializing bank %0d with file %s", i, temp_file);
         case (i)
+`ifdef TARGET_GATESIM
+`ifdef RVV_GATESIM
+          // The no-QBS mapped netlist flattens the generated DRAM hierarchy.
+          0: dut.i_ara_soc.gen_dram_0__i_dram.preloadData(temp_file);
+          1: dut.i_ara_soc.gen_dram_1__i_dram.preloadData(temp_file);
+          2: dut.i_ara_soc.gen_dram_2__i_dram.preloadData(temp_file);
+          3: dut.i_ara_soc.gen_dram_3__i_dram.preloadData(temp_file);
+          4: dut.i_ara_soc.gen_dram_4__i_dram.preloadData(temp_file);
+          5: dut.i_ara_soc.gen_dram_5__i_dram.preloadData(temp_file);
+          6: dut.i_ara_soc.gen_dram_6__i_dram.preloadData(temp_file);
+          7: dut.i_ara_soc.gen_dram_7__i_dram.preloadData(temp_file);
+`else
+          // DC exports each generated DRAM macro as one escaped instance
+          // name (for example ``\gen_dram[0].i_dram``), rather than as the
+          // RTL generate-array hierarchy.  Keep this spelling gate-only.
+          0: dut.i_ara_soc.\gen_dram[0].i_dram .preloadData(temp_file);
+          1: dut.i_ara_soc.\gen_dram[1].i_dram .preloadData(temp_file);
+          2: dut.i_ara_soc.\gen_dram[2].i_dram .preloadData(temp_file);
+          3: dut.i_ara_soc.\gen_dram[3].i_dram .preloadData(temp_file);
+          4: dut.i_ara_soc.\gen_dram[4].i_dram .preloadData(temp_file);
+          5: dut.i_ara_soc.\gen_dram[5].i_dram .preloadData(temp_file);
+          6: dut.i_ara_soc.\gen_dram[6].i_dram .preloadData(temp_file);
+          7: dut.i_ara_soc.\gen_dram[7].i_dram .preloadData(temp_file);
+`endif
+`else
           0:  dut.i_ara_soc.gen_dram[0 ].i_dram.preloadData(temp_file);
           1:  dut.i_ara_soc.gen_dram[1 ].i_dram.preloadData(temp_file);
           2:  dut.i_ara_soc.gen_dram[2 ].i_dram.preloadData(temp_file);
@@ -1370,6 +1402,7 @@ module ara_tb;
           //13: dut.i_ara_soc.gen_dram[13].i_dram.preloadData(temp_file);
           //14: dut.i_ara_soc.gen_dram[14].i_dram.preloadData(temp_file);
           //15: dut.i_ara_soc.gen_dram[15].i_dram.preloadData(temp_file);
+`endif
           default: $display("Invalid bank index: %0d", bank_index);
         endcase
         //$system($sformatf("rm -f %s", temp_file));

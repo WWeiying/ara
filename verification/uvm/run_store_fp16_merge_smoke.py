@@ -16,6 +16,8 @@ def main():
     parser.add_argument('image', type=Path)
     parser.add_argument('source_worktree', type=Path)
     parser.add_argument('output', type=Path)
+    parser.add_argument('--frozen-inputs', type=Path,
+                        help='Reuse CASE/input.elf from a previous frozen smoke run')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     image, source, out = (p.resolve() for p in
@@ -34,6 +36,13 @@ def main():
         'mask_illegal': root / 'apps/bin/rv64uv-ara-vmask_dest_overlap_illegal',
         'group_illegal': root / 'apps/bin/rv64uv-ara-vregister_group_illegal',
     }
+    if args.frozen_inputs:
+        frozen_root = args.frozen_inputs.resolve()
+        expected_hashes = json.loads((frozen_root / 'input_sha256.json').read_text())
+        cases = {name: frozen_root / name / 'input.elf' for name in cases}
+        for name, elf in cases.items():
+            if hashlib.sha256(elf.read_bytes()).hexdigest() != expected_hashes[name]:
+                raise ValueError(f'Frozen input digest mismatch: {name}')
     frozen = {}
     for name, elf in cases.items():
         case = out / name

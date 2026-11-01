@@ -1,10 +1,10 @@
 import json
-import sys
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "coverage"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'coverage'))
 
 from audit_final_random_stimulus import audit_profile
 from ara_verify.stimulus_coverage import collect_stimulus_coverage

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
-verify_root=$(cd -- "${root}/../ara_dsa_signoff_integration" && pwd)
+verify_root=$root
 simv=$(realpath -- "${1:?usage: run_store_b_focused_case.sh SIMV ELF NEW_OUTPUT_DIR}")
 elf=$(realpath -- "${2:?missing ELF}")
 out=$(realpath -m -- "${3:?missing new output directory}")
