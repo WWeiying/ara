@@ -31,7 +31,9 @@ class ReleaseFlowTests(unittest.TestCase):
         self.assertIn('Synthesis setup failed; no implementation launched', text)
         self.assertIn('fpga_run::require_timing [file join $out routed_gate]', text)
         self.assertIn('read_checkpoint -incremental $reference', text)
-        self.assertIn('STEPS.OPT_DESIGN.TCL.PRE $::rebuild_opt_preflight', text)
+        self.assertIn('STEPS.OPT_DESIGN.TCL.PRE $hook', text)
+        self.assertIn('puts $f {set_param synth.maxThreads 1}', text)
+        self.assertIn('puts $f [list source $::rebuild_opt_preflight]', text)
 
     def test_release_pins_reviewed_physical_successor(self):
         text = (ROOT / 'release_build.tcl').read_text()

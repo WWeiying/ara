@@ -154,7 +154,15 @@ proc rebuild_run {mode package out token parent reference {optimized -}} {
         }
         if {[info exists ::rebuild_opt_preflight]} {
             fpga_run::nonempty $::rebuild_opt_preflight
-            set_property STEPS.OPT_DESIGN.TCL.PRE $::rebuild_opt_preflight $run
+            # MIG may launch synthesis from opt_design in a new process.
+            # The top-level synthesis hook does not configure that process.
+            set hook [file join $out opt_synth_single_pre.tcl]
+            set f [open $hook {WRONLY CREAT EXCL}]
+            puts $f {set_param general.maxThreads 1}
+            puts $f {set_param synth.maxThreads 1}
+            puts $f [list source $::rebuild_opt_preflight]
+            close $f
+            set_property STEPS.OPT_DESIGN.TCL.PRE $hook $run
         }
         current_run -implementation $run
         rebuild_stage $out optimize_current_netlist
