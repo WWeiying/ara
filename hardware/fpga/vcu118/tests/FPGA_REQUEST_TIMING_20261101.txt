@@ -1,0 +1,83 @@
+FPGA-only request timing boundary
+================================
+
+Scope
+  Only hardware/fpga/ara_dsa_vcu118/rtl/cva6/core/acc_dispatcher.sv changes.
+  Main RTL, clock frequency, QBS/AKV arithmetic, and Windows frozen build
+  packages are unchanged. Old bitstreams do not contain this modification.
+  Retain this FPGA overlay on future mainline imports; do not describe the
+  resulting FPGA copy as byte-identical to mainline. The manifest's upstream
+  source_sha256 records are provenance, not hashes of this new overlay.
+
+Evidence / hypothesis
+  qakv_diagnosis_20261031/timing_summary.rpt:2786 reports a 64-level path from
+  CVA6 CSR state through flush, the accelerator request bypass, Ara decode /
+  reshuffle, response, operand forwarding and scoreboard. Placed slack is
+  +0.134 ns (19.889 ns data delay), NOT final routed signoff.
+  Registering forward request data/valid must remove this specific unbroken
+  path. Other paths through live sidebands may remain and require measurement.
+
+Implementation
+  Replace the two-entry fall-through FIFO instance with the existing
+  common_cells spill_register, explicitly Bypass=0. It retains two entries,
+  breaks forward data/valid and reverse ready combinational propagation, and
+  does not flush accepted requests. Authorization and instruction-queue pop
+  logic remain unchanged. Both dependency sources already occur in sources.tcl.
+
+Performance contract
+  Empty-queue input-to-output latency increases by one clock (20 ns at 50 MHz).
+  Sustained throughput remains one request per cycle with a ready consumer.
+  Full-to-drain recovery can still have a ready bubble; no zero-bubble promise
+  is made for a previously full queue. A serial request/response workload can
+  lose performance; throughput alone cannot establish end-to-end neutrality.
+  Do not add further pipeline stages or change QBS banking without evidence.
+
+Focused check
+  python hardware/fpga/vcu118/tests/check_acc_request_pipeline.py OUTPUT \
+    --vivado-bin /home/zongky/tools/Xilinx/Vivado/2024.2/bin
+  OUTPUT must be new. The runner checks the actual FPGA instance's wiring,
+  hashes inputs, and runs the existing spill RTL in XSim. It checks ordering,
+  two-slot capacity, stalls, upstream withdrawal after acceptance, reset,
+  no combinational bypass, 1024 consecutive transfers and 10000 mixed cycles.
+  This is a component check, not a full dispatcher/CPU/Ara protocol regression.
+
+Measured dispatcher check (2026-11-01)
+  check_fpga_acc_contract.py freezes the actual FPGA acc_dispatcher and its
+  dependencies and runs the historical directed contract with XSim.
+  The first run is retained at fpga_acc_contract_20261101_01: the old checker
+  incorrectly expected full admission at queue occupancy two. Current RTL has
+  four queue entries and reserves one for the issue register.
+  A successor run adapts that single expectation to occupancy three and adds
+  an extra canceled transaction to exercise this admission boundary. Original
+  verification files are unchanged. The adapter and resulting checker hash
+  are recorded in result.json; no failure or coverage condition is removed.
+  fpga_acc_contract_20261101_02: PASS, 134 cycles, 12 accepted, 9 delivered and
+  responded, 3 canceled, maximum queue occupancy 3, maximum spill occupancy 2,
+  50 fence combinations and 20 scalar combinations. All end-state work drained.
+  Both run directories are under /home/wangwy/fpga_runs.
+  FpgaEn=0 is intentional in the actual cheshire_pkg.gen_cva6_cfg: the imported
+  FPGA-specific CVA6 RAMs are stubs. It is not evidence of an incorrect test.
+  This test uses the base CVA6 configuration for a directed dispatcher test,
+  not the complete Cheshire memory map, MMU/PMP behavior, or full-system build.
+  Dedicated sideband check: check_fpga_acc_contract.py --sidebands uses the
+  same real dispatcher fixture with acc_dispatcher_sideband_body.svh.
+  fpga_acc_sideband_20261101_02: PASS, 24 assertions covering CSR/FRM/FFLAGS
+  stalls at issue/queue/spill/backend/flags stages, exclusion of unrelated or
+  excepting CSR requests, preview cancellation, load-hint flush propagation,
+  retention of owned requests across flush, and store lifecycle drain.
+  The preceding _01 attempt is retained: it incorrectly expected preview valid
+  without a pending store. The source's explicit !acc_no_st_pending gate
+  requires the pending-store stimulus used in _02. No RTL changed for this.
+  Actual speculative load accesses, translation/PMP, and final FCSR arithmetic
+  still require broader integration tests; these directed checks do not prove
+  those behaviors or real-program performance.
+
+Required before deployment acceptance
+  - Focused integrated checks of commit/flush, CSR ordering, transaction-ID
+    reuse, preview/load hints and response backpressure/ownership.
+  - Representative short dependent instructions and long QBS/AKV workloads
+    against the same software/model baseline; report throughput AND latency.
+  - Actual FPGA synthesis and per-clock timing reports showing the named chain
+    no longer crosses the request boundary, followed by legal routed timing.
+  - Independent QBS congestion analysis; this edit does not fix or prove that.
+  No global Windows implementation restart is part of this focused change.

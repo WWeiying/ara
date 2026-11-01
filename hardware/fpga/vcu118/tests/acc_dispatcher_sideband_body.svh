@@ -1,0 +1,106 @@
+  int checks = 0;
+  task automatic check_bit(input logic actual, input bit wanted, input string name);
+    if (actual !== wanted) $fatal(1, "SIDEBAND_FAIL %s got=%b wanted=%b", name, actual, wanted);
+    checks++;
+  endtask
+  task automatic tick;
+    @(posedge clk);
+    #1;
+    @(negedge clk);
+  endtask
+  task automatic csr(input logic [11:0] addr);
+    issue = '0;
+    issue.fu = CSR;
+    issue.op = CSR_READ;
+    issue.result = addr;
+    #1;
+  endtask
+  initial begin
+    #10000;
+    $fatal(1, "SIDEBAND_FAIL watchdog");
+  end
+  initial begin
+    issue = '0; commits = '0; execute_data = '0; pipeline_data = '0;
+    resp = '0; issue_hs = 0; cons = 1; flush = 0; ack = '0;
+    repeat (2) tick();
+    rst_n = 1;
+    csr(riscv::CSR_FCSR);
+    check_bit(stall, 0, "idle CSR");
+    resp.acc_resp.fp_csr_busy = 1;
+    #1;
+    check_bit(stall, 1, "backend busy CSR");
+    csr(riscv::CSR_FRM);
+    check_bit(stall, 1, "backend busy FRM");
+    csr(riscv::CSR_FFLAGS);
+    check_bit(stall, 1, "backend busy FFLAGS");
+    csr(12'h300);
+    check_bit(stall, 0, "unrelated CSR");
+    csr(riscv::CSR_FCSR);
+    issue.ex.valid = 1;
+    #1;
+    check_bit(stall, 0, "exception CSR excluded");
+    issue.ex.valid = 0;
+    resp.acc_resp.fp_csr_busy = 0;
+    resp.acc_resp.fflags_valid = 1;
+    #1;
+    check_bit(stall, 1, "final flags update");
+    resp = '0;
+    issue = '0;
+    issue.fu = ACCEL;
+    issue.op = ACCEL_OP_STORE;
+    issue.trans_id = 0;
+    issue_hs = 1;
+    execute_data = '0;
+    execute_data.fu = ACCEL;
+    execute_data.operation = ACCEL_OP_STORE;
+    execute_data.imm = 32'h02006027;
+    execute_data.operand_a = 64'h1234;
+    execute_data.operand_b = 64'h5678;
+    tick();
+    issue_hs = 0;
+    csr(riscv::CSR_FCSR);
+    check_bit(dut.acc_valid_q, 1, "issue stage occupied");
+    check_bit(stall, 1, "issue stage blocks CSR");
+    check_bit(req.vset_preview_req.req_valid, 1, "preview before flush");
+    flush = 1;
+    #1;
+    check_bit(req.vset_preview_req.req_valid, 0, "flush cancels preview");
+    check_bit(req.load_prepare_flush, 1, "flush cancels load hint");
+    flush = 0;
+    tick();
+    check_bit(dut.acc_insn_queue_empty, 0, "queued request");
+    check_bit(stall, 1, "queue blocks CSR");
+    check_bit(req.acc_req.req_valid, 0, "unauthorized request withheld");
+    commits[0].fu = ACCEL;
+    commits[0].trans_id = 0;
+    tick();
+    commits = '0;
+    #1;
+    check_bit(req.acc_req.req_valid, 1, "authorized request registered");
+    check_bit(stall, 1, "spill blocks CSR");
+    if (req.acc_req.rs1 !== 64'h1234 || req.acc_req.rs2 !== 64'h5678)
+      $fatal(1, "SIDEBAND_FAIL payload");
+    flush = 1;
+    tick();
+    check_bit(req.acc_req.req_valid, 1, "flush preserves owned request");
+    check_bit(stall, 1, "owned request still blocks CSR");
+    flush = 0;
+    resp.acc_resp.req_ready = 1;
+    resp.acc_resp.fp_csr_busy = 1;
+    tick();
+    check_bit(req.acc_req.req_valid, 0, "request drained");
+    check_bit(stall, 1, "backend retains CSR ownership");
+    resp.acc_resp.fp_csr_busy = 0;
+    resp.acc_resp.fflags_valid = 1;
+    #1;
+    check_bit(stall, 1, "flags after drain block CSR");
+    resp.acc_resp.fflags_valid = 0;
+    #1;
+    check_bit(stall, 0, "CSR released when all stages idle");
+    resp.acc_resp.store_complete = 1;
+    tick();
+    check_bit(dut.acc_no_st_pending, 1, "store lifecycle drained");
+    $display("PASS FPGA_CSR_SIDEBAND checks=%0d", checks);
+    $finish;
+  end
+endmodule

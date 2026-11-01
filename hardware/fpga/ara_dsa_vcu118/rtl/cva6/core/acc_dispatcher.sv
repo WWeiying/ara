@@ -274,16 +274,15 @@ module acc_dispatcher
   logic             acc_req_ready;
 
   accelerator_req_t acc_req_int;
-  // Keep both non-flushable slots, but avoid a bubble when the channel is empty.
-  // Authorization remains at acc_req_valid, before this ownership boundary.
-  fall_through_register_v1 #(
+  // FPGA timing boundary: retain two non-flushable slots and one request/cycle,
+  // but register forward data/valid to break the CSR-to-Ara-to-scoreboard path.
+  // Authorization remains at acc_req_valid; accepted requests survive flushes.
+  spill_register #(
       .T(accelerator_req_t),
-      .DEPTH(2)
+      .Bypass(1'b0)
   ) i_accelerator_req_register (
       .clk_i  (clk_i),
       .rst_ni (rst_ni),
-      .clr_i  (1'b0),
-      .testmode_i(1'b0),
       .data_i (acc_req),
       .valid_i(acc_req_valid),
       .ready_o(acc_req_ready),
