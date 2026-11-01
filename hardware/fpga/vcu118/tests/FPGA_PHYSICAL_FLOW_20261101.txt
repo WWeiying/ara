@@ -1,0 +1,87 @@
+Physical successor preparation (not an implementation result)
+============================================================
+
+New flow: ../ethernet/rebuild_mainrtl_v3.tcl
+Old v2 and all frozen Windows packages remain unchanged.
+
+Reason for the changes:
+  Global top-100 setup reports from the current placed/reused checkpoint are
+  entirely occupied by the DDR1 300 MHz domain. They hide the 50 MHz Ara
+  control path. Report max/min paths for the three main clock domains at
+  placement, after pre-route optimization, and at each routing boundary.
+  Cross-clock and other-clock checks remain in the existing global summary
+  and final timing gate; these scoped reports do not replace signoff.
+
+  The old closed physical reference invoked pre-route AggressiveFanoutOpt,
+  but place/vivado.log:496 explicitly reports that all its optimizations were
+  skipped because setup WNS was nonnegative. It is NOT evidence of benefit
+  from this directive. The
+  stopped new implementation replayed some reference optimization, which is
+  not proof that newly changed high-fanout logic received equivalent treatment.
+  Explicitly run AggressiveFanoutOpt on the current placed netlist, save its
+  checkpoint and fanout/domain reports, then route. This is a candidate
+  physical optimization, not a proven cure for the observed route conflicts.
+  No clocks, timing exceptions, RTL functionality or numerical behavior change.
+
+  Baseline place/vivado.log:411 shows that the placer itself inserted a BUFG
+  on accumulator entry_aux_value_q[14][31]_i_1_n_0 for 2608 loads. Current
+  fanout reports instead list entry_dot_value_q (2577 loads, LUT2 driver).
+  These are not yet proven equivalent control nets: inspect driver functions
+  and load pins before attributing regression to lost global buffering or
+  forcing a buffer. Evidence is archived as baseline_place.log alongside the
+  hierarchy reports below. Do not spend another full run merely assuming
+  AggressiveFanoutOpt will reproduce the old buffering.
+
+Preserved gates:
+  Synthesis setup, optimized-netlist constraints, multiple drivers, loops,
+  route completeness/errors, final timing and downstream audit are unchanged.
+  Checkpoint and reports are saved BEFORE rejection of an illegal route.
+  A failed route does not silently enter another expensive physical pass.
+
+Tests:
+  tclsh hardware/fpga/vcu118/tests/test_rebuild_scoped_flow.tcl NEW_OUTPUT
+  PASS at /home/wangwy/fpga_runs/rebuild_scoped_test_20261101_01.
+  Mock tests check report ordering, three-domain max/min coverage, missing Ara
+  clock rejection, and rejection of incomplete, erroneous or invalid route
+  state. They do not prove Vivado timing convergence or optimization benefit.
+
+Resource observations (different physical stages, not isolated RTL A/B):
+  Reference: ara_signoff_dual_eth_20261016_01 routed checkpoint.
+  Current: ara_qbs_akv_release_20261030_02 placed/reused checkpoint.
+  Module                         reference LUTs    current LUTs
+  QBS engine                           99200          106228
+  QBS compute                          94424          101730
+  QBS FP accumulator                   10192           13911
+  QBS block adapter bank0              32453           34427
+  QBS block adapter bank1              33288           34798
+  AKV engine                           16150           15148
+  Ara dispatcher                        7715            7146
+  Evidence: /home/wangwy/fpga_runs/qakv_diagnosis_20261031/
+            baseline_hierarchy.rpt and utilization.rpt.
+  Physical optimization and reuse differ between stages; do not attribute
+  every LUT difference directly to source changes. Scoped path/fanout reports
+  are still being collected by Windows task Ara scoped diagnosis 20261101.
+
+Not yet done:
+  Wire this successor into a NEW immutable release package only after source
+  review and focused checks. Do not mutate or resume the stopped package.
+  Confirm high-fanout/path evidence before adding QBS RTL pipeline stages.
+  Measure pre/post optimization timing, then legal routed timing and bitgen.
+
+Control-net investigation preparation:
+  trace_fpga_control_net.tcl is a read-only library for an opened checkpoint.
+  Source it, then call fpga_control_trace::write EXACT_NET NEW_OUTPUT_FILE.
+  It reports leaf driver INIT and input nets, every load pin, and a histogram
+  of primitive/pin types. Exact-name comparison preserves RTL array brackets.
+  It neither changes the netlist nor requests a timing update. Existing output
+  files and absent/ambiguous nets are rejected. The scheduled scoped-report
+  worker remains sealed; this helper is not injected into its running script.
+  Mock test PASS: /home/wangwy/fpga_runs/control_trace_mock_20261101_02.
+  Vivado execution remains pending; mocks do not validate physical net content.
+
+  RTL inspection: entry_dot_value_q and entry_aux_value_q are not reset as
+  data arrays. Writes are nested under rst_ni && !clear_i, with request writes
+  followed by cast completion and FP completion writes. A synthesized name
+  resembling a data array can therefore identify shared write control; it is
+  not enough to conclude that 2577 loads form a data-distribution network.
+  Preserve write priority and clear/reset hold semantics in any future rewrite.
