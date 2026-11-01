@@ -4,6 +4,29 @@ Physical successor preparation (not an implementation result)
 New flow: ../ethernet/rebuild_mainrtl_v3.tcl
 Old v2 and all frozen Windows packages remain unchanged.
 
+Confirmed missing physical constraints:
+  Read-only ZIP inspection of all .xdc/.tcl members of the baseline routed DCP
+  and current placed DCP shows: baseline late.xdc contains six ara_* Pblocks,
+  ten explicit USER_SLR_ASSIGNMENT guidelines, and MDM CLOCK_REGION X4Y6.
+  Current late.xdc has none of these. Both early.xdc files retain the vendor
+  generic SLR1 assignment; it is not a substitute for the ten user guidelines.
+  Therefore incremental reuse did not preserve the complete baseline policy.
+  This is a confirmed flow omission, not proof of the sole route-failure cause.
+
+  The v3 flow now explicitly applies the baseline floorplan BEFORE incremental
+  matching and saves floorplanned_opt.dcp. It uses package/linux/diagnostics/
+  dual_floorplan.tcl and dual_slr_locality.tcl, which exactly match the Windows
+  archived successful scripts (SHA256 respectively):
+  fb8a0be9e0daa44af2a9b882a62aef51616f8aec146bb1913abfc8ec8df54fc8
+  b513b5b7de5f054d1269901f6a2295776b2bc4f596b060cd677736990d7e5239
+  New release packaging must include and seal these two files. Missing or
+  conflicting hierarchies/regions must fail before placement. No arithmetic,
+  clock period, timing exception, or pipeline latency changes in this fix.
+  Tests passed: test_dual_floorplan.tcl (healthy/missing/fixed/overlap),
+  test_dual_slr_locality.tcl (healthy/missing/ambiguous/reopened_checkpoint),
+  test_rebuild_scoped_flow.tcl (ten guidelines and pre-match ordering).
+  New hardware placement and timing validation are still pending.
+
 Reason for the changes:
   Global top-100 setup reports from the current placed/reused checkpoint are
   entirely occupied by the DDR1 300 MHz domain. They hide the 50 MHz Ara

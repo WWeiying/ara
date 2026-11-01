@@ -37,6 +37,9 @@ if {![catch {rebuild_domain_timing [file join $root missing]}]} {error "Missing 
 set body [info body rebuild_run]
 set previous -1
 foreach marker {
+    {rebuild_dual_floorplan $package [file join $out floorplan]}
+    {write_checkpoint [file join $out floorplanned_opt.dcp]}
+    {read_checkpoint -incremental $reference}
     {write_checkpoint [file join $out placed.dcp]}
     {rebuild_domain_timing [file join $out placed_domains]}
     {phys_opt_design -directive AggressiveFanoutOpt}
@@ -49,4 +52,28 @@ foreach marker {
     if {$position <= $previous} {error "Incorrect/missing flow ordering: $marker"}
     set previous $position
 }
+namespace eval fpga_run {}
+namespace eval dual_locality {}
+namespace eval dual_floor {}
+proc fpga_run::nonempty {path} {lappend ::checked $path}
+proc dual_locality::apply_plan {plan out} {set ::soft $plan}
+proc dual_floor::apply {out} {set ::regions $out}
+rename source original_source
+proc source {path} {lappend ::sourced $path}
+set checked {}; set sourced {}; set soft {}; set regions {}
+rebuild_dual_floorplan frozen_package [file join $root floorplan]
+rename source {}
+rename original_source source
+if {$checked ne $sourced || [llength $checked] != 2} {error "Unvalidated layout inputs"}
+if {[llength $soft] != 10 || $regions ne [file join $root floorplan regions]} {
+    error "Incomplete baseline floorplan"
+}
+foreach item $soft {
+    lassign $item path slr
+    if {[string match gen_ddr2.* $path]} {set expected SLR0} \
+    elseif {[string match *pcs_pma_block_i $path]} {set expected SLR1} \
+    else {set expected SLR2}
+    if {$slr ne $expected} {error "Wrong baseline SLR: $item"}
+}
 puts "PASS: scoped evidence precedes strict route gates; pre-route fanout optimization is checkpointed"
+puts "PASS: reviewed dual floorplan and ten SLR guidelines precede incremental matching"

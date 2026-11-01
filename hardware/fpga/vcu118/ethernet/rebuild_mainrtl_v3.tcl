@@ -1,5 +1,26 @@
 # Successor flow: explicit pre-route fanout optimization and scoped diagnostics.
 # Current RTL is authoritative. A reference DCP supplies physical reuse only.
+proc rebuild_dual_floorplan {package out} {
+    # Reuse the exact reviewed baseline scripts, not constraints implicitly
+    # assumed to arrive with read_checkpoint -incremental.
+    foreach script {dual_slr_locality.tcl dual_floorplan.tcl} {
+        set path [file join $package linux diagnostics $script]
+        fpga_run::nonempty $path
+        source $path
+    }
+    file mkdir $out
+    set soft {}
+    set phy i_dram_wrapper/gen_ethernet.i_eth_loader/i_loader/loader_bd_i/mac/inst/pcs_pma/inst/pcs_pma_block_i
+    lappend soft [list $phy SLR1]
+    foreach wrapper {i_dram_wrapper gen_ddr2.i_dram_wrapper_c2} slr {SLR2 SLR0} {
+        foreach block {gen_cdc.i_axi_cdc_mig i_ddr_r_cut i_ui_rstgen i_ui_por} {
+            lappend soft [list $wrapper/$block $slr]
+        }
+    }
+    lappend soft [list i_dram_wrapper/gen_ethernet.i_eth_shared_ddr SLR2]
+    dual_locality::apply_plan $soft [file join $out soft_slr.tsv]
+    dual_floor::apply [file join $out regions]
+}
 proc rebuild_domain_timing {out} {
     file mkdir $out
     set clocks [get_clocks -quiet {clk_50_clkwiz mmcm_clkout0 mmcm_clkout0_1}]
@@ -148,6 +169,11 @@ proc rebuild_run {mode package out token parent reference {optimized -}} {
         open_checkpoint $optimized
         require_no_multiple_drivers [file join $out preflight_opt]
         require_no_combinational_loops [file join $out preflight_opt]
+        if {$fpga_profile eq "dual_ddr_ethernet"} {
+            rebuild_stage $out restore_reviewed_dual_floorplan
+            rebuild_dual_floorplan $package [file join $out floorplan]
+            write_checkpoint [file join $out floorplanned_opt.dcp]
+        }
         rebuild_stage $out incremental_matching
         read_checkpoint -incremental $reference
         report_incremental_reuse -file [file join $out reuse_before.rpt]
