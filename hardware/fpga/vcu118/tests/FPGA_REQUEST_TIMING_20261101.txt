@@ -12,6 +12,23 @@ Scope
   source_sha256 is deliberately unchanged. Package verification checks file
   integrity only, not functional or timing acceptance. Future upstream sync
   must retain this explicitly documented overlay rather than discard it.
+  acc_request_fpga.py now implements that export transformation, pinned to
+  reviewed upstream and overlaid SHA256 values. Unknown revisions fail closed;
+  repeated application to the tested overlay is a no-op. export.py invokes it
+  without changing mainline. IntegrationPatchTests passed 8/8.
+
+  Expanded checks exposed pre-existing baseline-selection differences:
+  test_export.py ran 34 cases with one failure and one error in MainlineSyncTests
+  (live-main simd_mul hash and historical db90e341 provenance replay).
+  The FPGA simd_mul matches the requested qbs-akv-validated-20261029 tag exactly
+  (6f2796c849dbfdcac556791d6b31be11ef2769441453c5bfcfc1db296dbf8471);
+  current main has a later optional ExternalProduct interface. Do not import
+  it just to satisfy a test comparing the wrong baseline.
+  test_signoff_export.py passes 2/3 but dependency comparison fails on
+  fpu_div_sqrt_mvp/hdl/defs_div_sqrt_mvp.sv: the frozen package uses upstream
+  rounding codes unlike the locally modified dependency. Actual unit selection
+  and pinned dependency provenance need review before deciding whether this is
+  an active functional issue. These failures are not waived or called passes.
 
 Evidence / hypothesis
   qakv_diagnosis_20261031/timing_summary.rpt:2786 reports a 64-level path from

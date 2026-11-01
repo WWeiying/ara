@@ -11,6 +11,7 @@ PACKAGE = HERE.parent / "ara_dsa_vcu118"
 sys.path.insert(0, str(HERE))
 from axi_remap_fpga import patch_axi_remap
 from export import patch_sram_cache
+from acc_request_fpga import patch_acc_request
 
 
 class SignoffExportTests(unittest.TestCase):
@@ -28,6 +29,7 @@ class SignoffExportTests(unittest.TestCase):
         transforms = {
             "rtl/axi/src/axi_id_remap.sv": patch_axi_remap,
             "rtl/cva6/common/local/util/sram_cache.sv": patch_sram_cache,
+            "rtl/cva6/core/acc_dispatcher.sv": patch_acc_request,
         }
         checked = {name: 0 for name in ("axi", "cva6", "fpnew", "fpu_div_sqrt_mvp")}
         for record in manifest["source_hashes_before_integration"]:

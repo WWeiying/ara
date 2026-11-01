@@ -21,6 +21,7 @@ from ddr2_fpga import patch_ddr2
 from ddr_cut_fpga import patch_ddr_read_cut
 from ethernet_fpga import patch_ethernet
 from axi_remap_fpga import patch_axi_remap
+from acc_request_fpga import patch_acc_request
 
 
 def replace_once(text, old, new):
@@ -288,7 +289,8 @@ def export(dst, gcc, objdump, smoke_from=None):
                 if name not in files:
                     files.append(name)
 
-    for rel, transform in [("rtl/cheshire/hw/cheshire_pkg.sv", patch_soc_pkg),
+    for rel, transform in [("rtl/cva6/core/acc_dispatcher.sv", patch_acc_request),
+                           ("rtl/cheshire/hw/cheshire_pkg.sv", patch_soc_pkg),
                            ("rtl/axi/src/axi_id_remap.sv", patch_axi_remap),
                            ("rtl/cheshire/hw/cheshire_soc.sv", patch_soc),
                            ("rtl/cheshire/hw/cheshire_soc.sv", patch_soc_debug),

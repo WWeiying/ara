@@ -20,6 +20,7 @@ from cdc_fpga import patch_reset_muxes
 from ddr2_fpga import patch_ddr2
 from ethernet_fpga import patch_ethernet
 from ddr_cut_fpga import patch_ddr_read_cut
+from acc_request_fpga import patch_acc_request
 
 
 def frozen_file(path, revision="dec4174a"):
@@ -29,6 +30,15 @@ def frozen_file(path, revision="dec4174a"):
 class IntegrationPatchTests(unittest.TestCase):
     legacy = "if (read_completion_valid && !&descriptor_byte_valid_q) begin\n"
     current = "if (read_completion_valid && !(&descriptor_byte_valid_q)) begin\n"
+
+    def test_fpga_request_overlay_matches_measured_source(self):
+        upstream = (ROOT / "hardware/deps/cva6/core/acc_dispatcher.sv").read_text()
+        fpga = (ROOT / "hardware/fpga/ara_dsa_vcu118/rtl/cva6/core/acc_dispatcher.sv").read_text()
+        self.assertEqual(patch_acc_request(upstream), fpga)
+        self.assertEqual(patch_acc_request(fpga), fpga)
+        for invalid in ("", upstream + "\n", upstream * 2, fpga + "\n"):
+            with self.assertRaises(RuntimeError):
+                patch_acc_request(invalid)
 
     def test_reviewed_main_rtl_passes_through(self):
         dispatcher = (ROOT / "hardware/src/ara_dispatcher.sv").read_text()
