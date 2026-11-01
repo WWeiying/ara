@@ -8,6 +8,10 @@ Scope
   Retain this FPGA overlay on future mainline imports; do not describe the
   resulting FPGA copy as byte-identical to mainline. The manifest's upstream
   source_sha256 records are provenance, not hashes of this new overlay.
+  SHA256SUMS now records the actual overlaid dispatcher bytes. Its upstream
+  source_sha256 is deliberately unchanged. Package verification checks file
+  integrity only, not functional or timing acceptance. Future upstream sync
+  must retain this explicitly documented overlay rather than discard it.
 
 Evidence / hypothesis
   qakv_diagnosis_20261031/timing_summary.rpt:2786 reports a 64-level path from
