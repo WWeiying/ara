@@ -85,3 +85,17 @@ Control-net investigation preparation:
   resembling a data array can therefore identify shared write control; it is
   not enough to conclude that 2577 loads form a data-distribution network.
   Preserve write priority and clear/reset hold semantics in any future rewrite.
+
+Baseline scoped timing received (2026-11-01):
+  baseline_ara_max.rpt: worst 50 MHz routed path is sequencer hazard table to
+  dispatcher load_complete_q, slack +0.221 ns, data 19.444 ns, 23 logic levels.
+  Routing contributes 17.181 ns (88.361%); the data path crosses SLRs.
+  baseline_dispatcher.rpt: a CSR-address -> accelerator request -> scoreboard
+  path already exists in the OLD routed design: +0.490 ns, data 19.531 ns,
+  66 levels, logic 5.884 ns, routing 13.647 ns. Thus the current 64-level path
+  is not evidence of a newly introduced feedback chain or deeper logic.
+  The request-register change improves an inherited structural weakness; it
+  does not by itself explain the newer implementation's route conflicts.
+  These files are archived under qakv_diagnosis_20261031. Comparing old routed
+  with current placed/reused paths is diagnostic, not a controlled A/B result.
+  QBS/AKV-specific reports and actual control-net trace remain pending.
