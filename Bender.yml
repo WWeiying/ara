@@ -51,6 +51,9 @@ sources:
     - hardware/src/lane/simd_alu.sv
     - hardware/src/lane/simd_div.sv
     - hardware/src/lane/simd_mul.sv
+    - hardware/src/lane/simd_mul_shared_product.sv
+    - hardware/src/lane/simd_mul_partition_add.sv
+    - hardware/src/lane/simd_mul_shared.sv
     - hardware/src/lane/vector_regfile.sv
     - hardware/src/lane/power_gating_generic.sv
     - hardware/src/masku/masku_operands.sv

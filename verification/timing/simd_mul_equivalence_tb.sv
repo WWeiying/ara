@@ -25,8 +25,27 @@ module simd_mul_equivalence_case import ara_pkg::*; import rvv_pkg::*; #(
     logic [7:0] mask;
   } transaction_t;
   transaction_t pending[$];
+  logic [127:0] product_i;
+`ifdef TEST_SHARED_SIMD_MUL
+  localparam bit SharedProduct = 1'b1;
+  simd_mul_shared_product shared_product (
+    .a_i(operand_a_i), .b_i(operand_b_i), .sew_i(2'(Sew)),
+    .signed_a_i(op_i inside {VMULH, VSMUL}),
+    .signed_b_i(op_i inside {VMULH, VMULHSU, VSMUL}),
+    .product_o(product_i)
+  );
+`else
+  localparam bit SharedProduct = 1'b0;
+  assign product_i = '0;
+`endif
+`ifdef TEST_FULL_SHARED_SIMD_MUL
+  simd_mul_shared #(.NumPipeRegs(Pipes), .Bypass8(0),
+    .FixPtSupport(fixpt_support_e'(Fixed))) dut (.sew_i(2'(Sew)), .sew_o(), .*);
+`else
   simd_mul #(.ElementWidth(vew_e'(Sew)), .NumPipeRegs(Pipes),
+             .ExternalProduct(SharedProduct),
              .FixPtSupport(fixpt_support_e'(Fixed))) dut (.*);
+`endif
   simd_mul_reference #(.ElementWidth(vew_e'(Sew)), .NumPipeRegs(Pipes),
              .FixPtSupport(fixpt_support_e'(Fixed))) reference (
     .result_o(ref_result), .mask_o(ref_mask), .vxsat_o(ref_sat),
@@ -120,8 +139,8 @@ module simd_mul_equivalence_case import ara_pkg::*; import rvv_pkg::*; #(
     end
     #1;
     if (rst_ni) begin
-      assert ({valid_o, ready_o, mask_o, vxsat_o, result_o} ===
-              {ref_valid, ref_ready, ref_mask, ref_sat, ref_result})
+      assert ({valid_o, ready_o} === {ref_valid, ref_ready} &&
+              (!valid_o || {mask_o, vxsat_o, result_o} === {ref_mask, ref_sat, ref_result}))
         else $fatal(1, "MUL cycle equivalence sew=%0d pipes=%0d fixed=%0d check=%0d",
                     Sew, Pipes, Fixed, checks);
       checks++;

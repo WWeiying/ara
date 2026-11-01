@@ -4,6 +4,12 @@ override BUILD := $(abspath $(BUILD))
 REFERENCE ?= 1b0aec5f
 VCS ?= vcs
 RUN_TIMEOUT ?= 300
+MUL_DEFINES ?=
+MUL_EXTRA_SOURCES ?=
+MUL_BANK_TOP ?= shared_mul_bank_tb
+SHARED_MUL_SOURCES = $(ROOT)/hardware/src/lane/simd_mul_shared_product.sv \
+	$(ROOT)/hardware/src/lane/simd_mul_partition_add.sv \
+	$(ROOT)/hardware/src/lane/simd_mul_shared.sv
 SIM_ARGS ?=
 ADAPTER_REFERENCE ?= 7b7c3de0
 SRAM_REFERENCE ?= be1487b5
@@ -184,14 +190,39 @@ mul-check:
 	git -C $(ROOT) show $(REFERENCE):hardware/src/lane/simd_mul.sv > $(BUILD)/mul/original.sv
 	sed 's/\bsimd_mul\b/simd_mul_reference/g' $(BUILD)/mul/original.sv > $(BUILD)/mul/reference.sv
 	cd $(BUILD)/mul && $(VCS) -full64 -sverilog -timescale=1ns/1ps \
+		$(MUL_DEFINES) \
 		+incdir+$(ROOT)/hardware/deps/common_cells/include +lint=TFIPC-L -l compile.log \
 		$(PACKAGES) $(ROOT)/hardware/src/lane/simd_mul.sv \
+		$(SHARED_MUL_SOURCES) \
 		reference.sv $(CURDIR)/simd_mul_equivalence_tb.sv -top simd_mul_equivalence_tb -o simv
 	cd $(BUILD)/mul && timeout --foreground $(RUN_TIMEOUT) ./simv -l run.log
 	grep -q 'SIMD MUL equivalence PASS' $(BUILD)/mul/run.log
 	! grep -Eq 'Fatal:|Error:' $(BUILD)/mul/run.log
 
 .PHONY: descriptor-alignment-check
+.PHONY: shared-mul-bank-check
+.PHONY: shared-mul-vmfpu-analyze
+shared-mul-vmfpu-analyze:
+	mkdir -p $(BUILD)/vmfpu
+	cd $(BUILD)/vmfpu && vlogan -full64 -sverilog +define+ARA_SHARED_SIMD_MUL \
+		+incdir+$(ROOT)/hardware/deps/common_cells/include+$(ROOT)/hardware/include \
+		-l analyze.log $(PACKAGES) $(ROOT)/hardware/src/lane/simd_mul.sv \
+		$(SHARED_MUL_SOURCES) $(ROOT)/hardware/src/lane/vmfpu.sv
+
+shared-mul-bank-check:
+	mkdir -p $(BUILD)/bank
+	git -C $(ROOT) show $(REFERENCE):hardware/src/lane/simd_mul.sv > $(BUILD)/bank/original.sv
+	sed 's/\bsimd_mul\b/simd_mul_reference/g' $(BUILD)/bank/original.sv > $(BUILD)/bank/reference.sv
+	cd $(BUILD)/bank && $(VCS) -full64 -sverilog -timescale=1ns/1ps \
+		$(MUL_DEFINES) \
+		+incdir+$(ROOT)/hardware/deps/common_cells/include -l compile.log \
+		$(PACKAGES) $(ROOT)/hardware/src/lane/simd_mul.sv \
+		$(SHARED_MUL_SOURCES) reference.sv $(MUL_EXTRA_SOURCES) \
+		$(CURDIR)/$(MUL_BANK_TOP).sv -top $(MUL_BANK_TOP) -o simv
+	cd $(BUILD)/bank && timeout --foreground $(RUN_TIMEOUT) ./simv -l run.log
+	grep -Eq 'Shared MUL (bank|stream) PASS' $(BUILD)/bank/run.log
+	! grep -Eq 'Fatal:|Error:' $(BUILD)/bank/run.log
+
 descriptor-alignment-check:
 	mkdir -p $(BUILD)/descriptor
 	python3 extract_descriptor_alignment.py $(BUILD)/descriptor/alignment_dut.sv

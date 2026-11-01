@@ -486,11 +486,52 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     );
   end
 
+  // The ingress valid tag travels with the operand registers. Do not use
+  // vinsn_issue_q here: it may already refer to a following instruction.
+`ifdef ARA_SHARED_SIMD_MUL
+  logic [1:0] shared_mul_sew;
+  logic [1:0] shared_mul_out_sew;
+  logic shared_mul_ready, shared_mul_valid;
+  elen_t shared_mul_result;
+  strb_t shared_mul_mask;
+  vxsat_t shared_mul_sat;
+  always_comb begin
+    shared_mul_sew = 2'b00;
+    for (int s = 0; s < 4; s++)
+      if (vmul_simd_in_valid_q[s]) shared_mul_sew = 2'(s);
+  end
+  simd_mul_shared #(.FixPtSupport(FixPtSupport)) i_shared_mul (
+    .clk_i(clk_i_gated), .rst_ni,
+    .operand_a_i(vmul_simd_op_a_q), .operand_b_i(vmul_simd_op_b_q),
+    .operand_c_i(vmul_simd_op_c_q), .mask_i(vmul_simd_mask_q),
+    .op_i(vmul_simd_op_q), .vxrm_i(mfpu_vxrm_i),
+    .sew_i(shared_mul_sew),
+    .valid_i(|vmul_simd_in_valid_q), .ready_o(shared_mul_ready),
+    .ready_i(vmul_simd_out_ready[shared_mul_out_sew]),
+    .valid_o(shared_mul_valid), .result_o(shared_mul_result),
+    .mask_o(shared_mul_mask), .vxsat_o(shared_mul_sat), .sew_o(shared_mul_out_sew)
+  );
+  always_comb begin
+    vmul_simd_in_ready = {4{shared_mul_ready}};
+    vmul_simd_out_valid = '0;
+    vmul_simd_out_valid[shared_mul_out_sew] = shared_mul_valid;
+    for (int s=0; s<4; s++) begin
+      vmul_simd_result[s] = shared_mul_result;
+      vmul_simd_mask[s] = shared_mul_mask;
+      mfpu_vxsat[s] = shared_mul_sat;
+    end
+  end
+`else
+  localparam bit SharedMul = 1'b0;
+  wire [127:0] shared_mul_product = '0;
+
   simd_mul #(
+    .ExternalProduct(SharedMul),
     .FixPtSupport(FixPtSupport     ),
     .NumPipeRegs (LatMultiplierEW64),
     .ElementWidth(EW64             )
   ) i_simd_mul_ew64 (
+    .product_i  (shared_mul_product),
     .clk_i      (clk_i_gated                   ),
     .rst_ni     (rst_ni                        ),
     .operand_a_i(vmul_simd_op_a_q_gated[EW64]  ),
@@ -509,10 +550,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   );
 
   simd_mul #(
+    .ExternalProduct(SharedMul),
     .FixPtSupport(FixPtSupport     ),
     .NumPipeRegs (LatMultiplierEW32),
     .ElementWidth(EW32             )
   ) i_simd_mul_ew32 (
+    .product_i  (shared_mul_product),
     .clk_i      (clk_i_gated                   ),
     .rst_ni     (rst_ni                        ),
     .operand_a_i(vmul_simd_op_a_q_gated[EW32]  ),
@@ -531,10 +574,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   );
 
   simd_mul #(
+    .ExternalProduct(SharedMul),
     .FixPtSupport(FixPtSupport     ),
     .NumPipeRegs (LatMultiplierEW16),
     .ElementWidth(EW16             )
   ) i_simd_mul_ew16 (
+    .product_i  (shared_mul_product),
     .clk_i      (clk_i_gated                   ),
     .rst_ni     (rst_ni                        ),
     .operand_a_i(vmul_simd_op_a_q_gated[EW16]  ),
@@ -553,10 +598,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   );
 
   simd_mul #(
+    .ExternalProduct(SharedMul),
     .FixPtSupport(FixPtSupport     ),
     .NumPipeRegs (LatMultiplierEW8),
     .ElementWidth(EW8             )
   ) i_simd_mul_ew8 (
+    .product_i  (shared_mul_product),
     .clk_i      (clk_i_gated                   ),
     .rst_ni     (rst_ni                        ),
     .operand_a_i(vmul_simd_op_a_q_gated[EW8]   ),
@@ -574,6 +621,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     .valid_o    (vmul_simd_out_valid[EW8]      )
   );
 
+`endif
   // The outputs of the SIMD multipliers are read in order
   elen_t vmul_result;
   logic  vmul_in_valid;
