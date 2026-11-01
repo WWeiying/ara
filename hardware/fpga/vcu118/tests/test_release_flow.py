@@ -43,6 +43,11 @@ class ReleaseFlowTests(unittest.TestCase):
                         flow.index('read_checkpoint -incremental $reference'))
         for name in ('dual_floorplan.tcl', 'dual_slr_locality.tcl'):
             self.assertIn(name, flow)
+        self.assertIn('ethernet synth_single_pre.tcl', flow)
+        hook = (ROOT / 'synth_single_pre.tcl').read_text()
+        self.assertIn('scripts synth_pre.tcl', hook)
+        self.assertIn('set_param general.maxThreads 1', hook)
+        self.assertIn('set_param synth.maxThreads 1', hook)
 
     def test_prepared_resume_rechecks_actual_ip_results(self):
         text = (ROOT / 'release_build.tcl').read_text()

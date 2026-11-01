@@ -109,7 +109,9 @@ proc rebuild_run {mode package out token parent reference {optimized -}} {
     if {$mode eq "synth"} {
         set name synth_$token
         set run [fpga_run::clone_run synth_1 $name -]
-        set_property STEPS.SYNTH_DESIGN.TCL.PRE [file join $package scripts synth_pre.tcl] $run
+        set hook [file join $package ethernet synth_single_pre.tcl]
+        fpga_run::nonempty $hook
+        set_property STEPS.SYNTH_DESIGN.TCL.PRE $hook $run
         current_run -synthesis $run
         rebuild_stage $out synthesis
         launch_runs $name -jobs 1 -dir $out
