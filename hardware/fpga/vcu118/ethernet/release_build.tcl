@@ -4,8 +4,10 @@ if {[catch {
     lassign $argv mode package out token reference tools
     set ::env(ARA_FPGA_PROFILE) dual_ddr_ethernet
     set ::rebuild_test_mode true
-    set library [file join [file dirname [info script]] rebuild_mainrtl.tcl]
-    if {![file isfile $library]} {set library [file join $package ethernet rebuild_mainrtl.tcl]}
+    set library [file join [file dirname [info script]] rebuild_mainrtl_v3.tcl]
+    if {![file isfile $library] || [file size $library] == 0} {
+        error "Missing pinned v3 implementation flow: $library"
+    }
     source $library
     set ::rebuild_opt_preflight [file join $tools dual_cdc_preflight.tcl]
     if {$mode in {impl impl_existing} &&

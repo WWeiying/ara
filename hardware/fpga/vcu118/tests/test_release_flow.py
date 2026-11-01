@@ -27,11 +27,22 @@ class ReleaseFlowTests(unittest.TestCase):
         self.assertNotIn('Stop-Process', text)
 
     def test_real_timing_checks_are_retained(self):
-        text = (ROOT / 'rebuild_mainrtl.tcl').read_text()
+        text = (ROOT / 'rebuild_mainrtl_v3.tcl').read_text()
         self.assertIn('Synthesis setup failed; no implementation launched', text)
         self.assertIn('fpga_run::require_timing [file join $out routed_gate]', text)
         self.assertIn('read_checkpoint -incremental $reference', text)
         self.assertIn('STEPS.OPT_DESIGN.TCL.PRE $::rebuild_opt_preflight', text)
+
+    def test_release_pins_reviewed_physical_successor(self):
+        text = (ROOT / 'release_build.tcl').read_text()
+        self.assertIn('rebuild_mainrtl_v3.tcl', text)
+        self.assertIn('Missing pinned v3 implementation flow', text)
+        self.assertNotIn('rebuild_mainrtl.tcl', text)
+        flow = (ROOT / 'rebuild_mainrtl_v3.tcl').read_text()
+        self.assertLess(flow.index('rebuild_dual_floorplan $package'),
+                        flow.index('read_checkpoint -incremental $reference'))
+        for name in ('dual_floorplan.tcl', 'dual_slr_locality.tcl'):
+            self.assertIn(name, flow)
 
     def test_prepared_resume_rechecks_actual_ip_results(self):
         text = (ROOT / 'release_build.tcl').read_text()
