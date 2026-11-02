@@ -4,6 +4,49 @@ namespace eval selective_reuse {}
 proc selective_reuse::roots {} {
     return {i_dram_wrapper gen_ddr2.i_dram_wrapper_c2}
 }
+proc selective_reuse::capture_ddr_clocks {} {
+    set plan {}
+    set used {}
+    foreach root [roots] channel {c1 c2} {
+        set name $root/gen_channel_${channel}.i_dram/inst/u_ddr4_infrastructure/u_bufg_inst
+        set cell [get_cells -quiet $name]
+        if {[llength $cell] != 1} {error "Missing reference DDR clock: $name"}
+        set type [get_property REF_NAME $cell]
+        set loc [get_property LOC $cell]
+        set bel [get_property BEL $cell]
+        if {![string match BUFG* $type] || $loc eq "" || $bel eq "" || $loc in $used} {
+            error "Invalid reference DDR clock placement: $name $type $loc $bel"
+        }
+        lappend used $loc
+        lappend plan [list $name $type $loc $bel]
+    }
+    return $plan
+}
+proc selective_reuse::restore_ddr_clocks {plan out} {
+    set f [open [file join $out ddr_clock_anchors.tsv] w]
+    try {
+        puts $f "cell\tprimitive\tlocation\tbel"
+        foreach row $plan {
+            lassign $row name type loc bel
+            set cell [get_cells -quiet $name]
+            if {[llength $cell] != 1 || [get_property REF_NAME $cell] ne $type} {
+                error "Current DDR clock differs from reviewed reference: $name"
+            }
+            set current [get_property LOC $cell]
+            if {[get_property IS_LOC_FIXED $cell] && $current ne $loc} {
+                error "Conflicting fixed DDR clock location: $name $current versus $loc"
+            }
+            set_property LOC $loc $cell
+            set_property BEL $bel $cell
+            set_property IS_LOC_FIXED true $cell
+            if {[get_property LOC $cell] ne $loc || [get_property BEL $cell] ne $bel} {
+                error "DDR clock anchor did not apply: $name"
+            }
+            puts $f [join $row "\t"]
+            puts "DDR_CLOCK_ANCHORED [join $row { }]"
+        }
+    } finally {close $f}
+}
 proc selective_reuse::check_route {out label} {
     set full [report_route_status -boolean_check ROUTED_FULLY]
     set errors [report_route_status -boolean_check ERRORS_IN_ROUTES]
@@ -34,6 +77,11 @@ proc selective_reuse::run {mode package out token reference tools} {
     fpga_run::nonempty $optimized
     fpga_run::nonempty $reference
     set_param general.maxThreads $max_threads
+    set_param board.repoPaths [linsert [get_param board.repoPaths] 0 [file join $package board_files]]
+    rebuild_stage $out capture_reviewed_ddr_clock_locations
+    open_checkpoint $reference
+    set clock_plan [capture_ddr_clocks]
+    close_design
     # The optimized checkpoint already contains both successfully synthesized
     # DDR PHYs and the reviewed floorplan, but no incremental reference data.
     rebuild_stage $out open_accepted_floorplanned_opt
@@ -59,6 +107,8 @@ proc selective_reuse::run {mode package out token reference tools} {
     # QBS and VLSU. Do not force old placement or old routes in the hot regions.
     rebuild_stage $out infrastructure_only_reference_reuse
     read_checkpoint -incremental $reference -reuse_objects $objects
+    rebuild_stage $out restore_ddr_clock_anchors
+    restore_ddr_clocks $clock_plan $out
     report_incremental_reuse -file [file join $out reuse_before.rpt]
     rebuild_stage $out compute_replacement
     place_design

@@ -41,8 +41,17 @@ proc open_checkpoint {path} {lappend ::flow open_current}
 proc current_design {} {return design}
 proc get_property {property object} {
     if {$property eq "PART"} {return $::test_part}
+    if {$property eq "REF_NAME"} {return BUFGCE}
+    if {$property eq "IS_LOC_FIXED"} {return false}
+    if {$property in {LOC BEL}} {
+        if {[info exists ::props($object,$property)]} {return $::props($object,$property)}
+        if {$property eq "BEL"} {return BUFCE}
+        if {[string match gen_ddr2* $object]} {return BUFGCE_X0Y12}
+        return BUFGCE_X0Y120
+    }
     return design_container_not_rtl_top
 }
+proc set_property {property value object} {set ::props($object,$property) $value}
 proc get_cells {args} {return [lindex $args end]}
 proc read_checkpoint {args} {
     check {$args eq {-incremental reference.dcp -reuse_objects {i_dram_wrapper gen_ddr2.i_dram_wrapper_c2}}} "Unexpected reuse scope"
@@ -64,6 +73,7 @@ try {
         check {$failed == $bad} "Incorrect full-driver outcome"
         check {[lsearch -exact $::flow open_current] < [lsearch -exact $::flow selective_reference]} "Must open current netlist before reference"
         check {[lsearch -exact $::flow route] >= 0} "Route not executed"
+        check {[lsearch -exact $::flow restore_ddr_clock_anchors] < [lsearch -exact $::flow place]} "DDR clock anchors must precede placement"
         if {$bad} {
             check {[lsearch -exact $::flow timing_gate] < 0} "Illegal route escaped gate"
             check {[lsearch -exact $::flow post_route_physical_optimization] < 0} "Illegal route caused another pass"
