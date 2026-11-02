@@ -35,7 +35,7 @@ proc selective_reuse::capture_ddr_clocks {} {
 }
 proc selective_reuse::restore_ddr_clocks {plan out} {
     set f [open [file join $out ddr_clock_anchors.tsv] w]
-    try {
+    set code [catch {
         puts $f "cell\tprimitive\tlocation\tbel"
         foreach row $plan {
             lassign $row name type loc bel
@@ -56,7 +56,9 @@ proc selective_reuse::restore_ddr_clocks {plan out} {
             puts $f [join $row "\t"]
             puts "DDR_CLOCK_ANCHORED [join $row { }]"
         }
-    } finally {close $f}
+    } result options]
+    close $f
+    if {$code} {return -options $options $result}
 }
 proc selective_reuse::check_route {out label} {
     set full [report_route_status -boolean_check ROUTED_FULLY]
@@ -114,6 +116,10 @@ proc selective_reuse::run {mode package out token reference tools} {
         if {[llength $object] != 1} {error "Missing infrastructure root: $name"}
         lappend objects $object
     }
+    # Exercise the real property APIs before the expensive incremental match;
+    # reapply afterwards because reference import may update placement data.
+    rebuild_stage $out prevalidate_ddr_clock_anchors
+    restore_ddr_clocks $clock_plan $out
     # Deliberately exclude the entire changed compute/SoC hierarchy, including
     # QBS and VLSU. Do not force old placement or old routes in the hot regions.
     rebuild_stage $out infrastructure_only_reference_reuse

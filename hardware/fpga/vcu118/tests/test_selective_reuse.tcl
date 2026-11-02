@@ -68,7 +68,7 @@ proc close_design {} {lappend ::flow closed}
 set ::design_top ara_dsa_vcu118
 set ::max_threads 8
 set ::test_part xcvu9p-flga2104-2L-e
-try {
+set code [catch {
     foreach bad {0 1} {
         set ::flow {}
         set ::route [dict create ROUTED_FULLY [expr {!$bad}] ERRORS_IN_ROUTES $bad]
@@ -89,7 +89,7 @@ try {
     set ::flow {}
     check {[catch {selective_reuse::run impl_existing package $temp a101ed39f750 reference.dcp $temp}]} "Wrong device accepted"
     check {[lsearch -exact $::flow selective_reference] < 0} "Wrong device reached reference reuse"
-} finally {
-    file delete -force $temp
-}
+} result options]
+file delete -force $temp
+if {$code} {return -options $options $result}
 puts "PASS: infrastructure selection, six route gates, and two full-driver cases (mock Vivado)"
