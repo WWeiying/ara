@@ -39,7 +39,10 @@ proc set_param {args} {}
 proc get_param {args} {return {}}
 proc open_checkpoint {path} {lappend ::flow open_current}
 proc current_design {} {return design}
-proc get_property {args} {return ara_dsa_vcu118}
+proc get_property {property object} {
+    if {$property eq "PART"} {return $::test_part}
+    return design_container_not_rtl_top
+}
 proc get_cells {args} {return [lindex $args end]}
 proc read_checkpoint {args} {
     check {$args eq {-incremental reference.dcp -reuse_objects {i_dram_wrapper gen_ddr2.i_dram_wrapper_c2}}} "Unexpected reuse scope"
@@ -52,6 +55,7 @@ proc route_design {} {lappend ::flow route}
 proc close_design {} {lappend ::flow closed}
 set ::design_top ara_dsa_vcu118
 set ::max_threads 8
+set ::test_part xcvu9p-flga2104-2L-e
 try {
     foreach bad {0 1} {
         set ::flow {}
@@ -68,6 +72,10 @@ try {
             check {[lsearch -exact $::flow timing_gate] > [lsearch -exact $::flow route]} "Timing gate must follow route"
         }
     }
+    set ::test_part wrong_device
+    set ::flow {}
+    check {[catch {selective_reuse::run impl_existing package $temp a101ed39f750 reference.dcp $temp}]} "Wrong device accepted"
+    check {[lsearch -exact $::flow selective_reference] < 0} "Wrong device reached reference reuse"
 } finally {
     file delete -force $temp
 }

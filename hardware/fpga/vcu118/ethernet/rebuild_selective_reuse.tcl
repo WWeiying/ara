@@ -39,8 +39,15 @@ proc selective_reuse::run {mode package out token reference tools} {
     rebuild_stage $out open_accepted_floorplanned_opt
     set_param board.repoPaths [linsert [get_param board.repoPaths] 0 [file join $package board_files]]
     open_checkpoint $optimized
-    if {[get_property NAME [current_design]] ne $design_top} {
-        error "Unexpected optimized design"
+    # NAME identifies Vivado's design container, not the checkpoint's RTL top.
+    # The launcher verifies dcp.xml Top and the pinned checkpoint hash. Retain
+    # independent device and structural checks after opening the netlist.
+    puts "OPENED_DESIGN_CONTAINER [get_property NAME [current_design]]"
+    if {[get_property PART [current_design]] ne "xcvu9p-flga2104-2L-e"} {
+        error "Unexpected optimized device"
+    }
+    if {[llength [get_cells -quiet i_cheshire_soc]] != 1} {
+        error "Missing current compute hierarchy"
     }
     set objects {}
     foreach name [roots] {
