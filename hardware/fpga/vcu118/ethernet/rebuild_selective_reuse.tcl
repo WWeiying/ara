@@ -11,6 +11,12 @@ proc selective_reuse::capture_ddr_clocks {} {
         set name $root/gen_channel_${channel}.i_dram/inst/u_ddr4_infrastructure/u_bufg_inst
         set cell [get_cells -quiet -hier -filter [list NAME == $name]]
         if {[llength $cell] != 1} {
+            # The routed reference eliminated C1's redundant ui-clock buffer;
+            # it still has C2's source named in the current placer failure.
+            if {$channel eq "c1" && [llength $cell] == 0} {
+                puts "REFERENCE_C1_UI_BUFFER_ABSENT no C1 anchor imported"
+                continue
+            }
             set candidates [get_cells -quiet -hier -filter {REF_NAME =~ BUFG* && NAME =~ *u_ddr4_infrastructure*}]
             puts "REFERENCE_DDR_CLOCK_CANDIDATES $candidates"
             error "Missing reference DDR clock: $name"
@@ -23,6 +29,7 @@ proc selective_reuse::capture_ddr_clocks {} {
         }
         lappend used $loc
         lappend plan [list $name $type $loc $bel]
+        puts "REFERENCE_DDR_CLOCK [join [lindex $plan end] { }]"
     }
     return $plan
 }
