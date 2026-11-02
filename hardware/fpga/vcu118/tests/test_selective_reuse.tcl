@@ -28,6 +28,21 @@ file mkdir $temp
 set f [open [file join $temp accepted_opt.txt] w]
 puts $f accepted_current_opt.dcp
 close $f
+# Reject malformed/incomplete or colliding physical plans before opening a DCP.
+set f [open [file join $temp clock_plan.list] w]
+puts $f [list gen_ddr2.i_dram_wrapper_c2/gen_channel_c2.i_dram/inst/u_ddr4_infrastructure/u_bufg_inst BUFGCE BUFGCE_X0Y12 BUFCE]
+puts $f [list i_dram_wrapper/gen_ethernet.i_eth_loader/i_loader/loader_bd_i/mdm_1/U0/Use_E2.BSCAN_I/Ext_JTAG_UPDATE_BUFG_inst BUFGCE BUFGCE_X1Y196 BUFCE]
+close $f
+set plan_path [file join $temp clock_plan.list]
+set good_plan [selective_reuse::load_clock_plan $plan_path]
+set f [open [file join $temp bad_clock_plan.list] w]
+puts $f [lindex $good_plan 0]
+puts $f [lindex $good_plan 0]
+close $f
+check {[catch {selective_reuse::load_clock_plan [file join $temp bad_clock_plan.list]}]} "Duplicate clock site accepted"
+set f [open [file join $temp bad_clock_plan.list] w]
+close $f
+check {[catch {selective_reuse::load_clock_plan [file join $temp bad_clock_plan.list]}]} "Incomplete clock plan accepted"
 rename source saved_source
 proc source {args} {}
 namespace eval fpga_run {}

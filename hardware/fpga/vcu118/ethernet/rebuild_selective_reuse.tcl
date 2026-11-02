@@ -4,6 +4,31 @@ namespace eval selective_reuse {}
 proc selective_reuse::roots {} {
     return {i_dram_wrapper gen_ddr2.i_dram_wrapper_c2}
 }
+proc selective_reuse::load_clock_plan {path} {
+    set f [open $path r]
+    set data [read $f]
+    close $f
+    set plan {}
+    set names {}
+    set sites {}
+    foreach line [split $data "\n"] {
+        if {[string trim $line] eq ""} {continue}
+        if {[llength $line] != 4} {error "Invalid clock-plan row"}
+        lassign $line name type loc bel
+        if {![string match BUFG* $type] || $loc eq "" || $bel eq "" ||
+            $name in $names || $loc in $sites} {error "Invalid/duplicate clock anchor: $line"}
+        lappend names $name
+        lappend sites $loc
+        lappend plan $line
+    }
+    foreach required {
+        gen_ddr2.i_dram_wrapper_c2/gen_channel_c2.i_dram/inst/u_ddr4_infrastructure/u_bufg_inst
+        i_dram_wrapper/gen_ethernet.i_eth_loader/i_loader/loader_bd_i/mdm_1/U0/Use_E2.BSCAN_I/Ext_JTAG_UPDATE_BUFG_inst
+    } {
+        if {$required ni $names} {error "Incomplete reviewed clock plan: $required"}
+    }
+    return $plan
+}
 proc selective_reuse::capture_ddr_clocks {} {
     set plan {}
     set used {}
@@ -91,10 +116,10 @@ proc selective_reuse::run {mode package out token reference tools} {
     fpga_run::nonempty $reference
     set_param general.maxThreads $max_threads
     set_param board.repoPaths [linsert [get_param board.repoPaths] 0 [file join $package board_files]]
-    rebuild_stage $out capture_reviewed_ddr_clock_locations
-    open_checkpoint $reference
-    set clock_plan [capture_ddr_clocks]
-    close_design
+    # The launcher pins this data file and its complete reference/current
+    # census. Do not reopen a routed DCP just to rediscover the same positions.
+    rebuild_stage $out load_reviewed_global_clock_plan
+    set clock_plan [load_clock_plan [file join $tools clock_plan.list]]
     # The optimized checkpoint already contains both successfully synthesized
     # DDR PHYs and the reviewed floorplan, but no incremental reference data.
     rebuild_stage $out open_accepted_floorplanned_opt
@@ -127,6 +152,7 @@ proc selective_reuse::run {mode package out token reference tools} {
     rebuild_stage $out restore_ddr_clock_anchors
     restore_ddr_clocks $clock_plan $out
     report_incremental_reuse -file [file join $out reuse_before.rpt]
+    write_checkpoint [file join $out clock_ready.dcp]
     rebuild_stage $out compute_replacement
     place_design
     write_checkpoint [file join $out placed.dcp]
