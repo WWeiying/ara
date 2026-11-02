@@ -52,7 +52,10 @@ proc get_property {property object} {
     return design_container_not_rtl_top
 }
 proc set_property {property value object} {set ::props($object,$property) $value}
-proc get_cells {args} {return [lindex $args end]}
+proc get_cells {args} {
+    if {[lsearch -exact $args -filter] >= 0} {return [lindex [lindex $args end] 2]}
+    return [lindex $args end]
+}
 proc read_checkpoint {args} {
     check {$args eq {-incremental reference.dcp -reuse_objects {i_dram_wrapper gen_ddr2.i_dram_wrapper_c2}}} "Unexpected reuse scope"
     lappend ::flow selective_reference

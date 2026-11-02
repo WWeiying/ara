@@ -9,8 +9,12 @@ proc selective_reuse::capture_ddr_clocks {} {
     set used {}
     foreach root [roots] channel {c1 c2} {
         set name $root/gen_channel_${channel}.i_dram/inst/u_ddr4_infrastructure/u_bufg_inst
-        set cell [get_cells -quiet $name]
-        if {[llength $cell] != 1} {error "Missing reference DDR clock: $name"}
+        set cell [get_cells -quiet -hier -filter [list NAME == $name]]
+        if {[llength $cell] != 1} {
+            set candidates [get_cells -quiet -hier -filter {REF_NAME =~ BUFG* && NAME =~ *u_ddr4_infrastructure*}]
+            puts "REFERENCE_DDR_CLOCK_CANDIDATES $candidates"
+            error "Missing reference DDR clock: $name"
+        }
         set type [get_property REF_NAME $cell]
         set loc [get_property LOC $cell]
         set bel [get_property BEL $cell]
@@ -28,7 +32,7 @@ proc selective_reuse::restore_ddr_clocks {plan out} {
         puts $f "cell\tprimitive\tlocation\tbel"
         foreach row $plan {
             lassign $row name type loc bel
-            set cell [get_cells -quiet $name]
+            set cell [get_cells -quiet -hier -filter [list NAME == $name]]
             if {[llength $cell] != 1 || [get_property REF_NAME $cell] ne $type} {
                 error "Current DDR clock differs from reviewed reference: $name"
             }
