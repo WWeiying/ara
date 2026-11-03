@@ -1,0 +1,28 @@
+{
+  "selection": "booth_dadda_balanced_20261103",
+  "branch": "ara_dsa",
+  "enable_define": "ARA_SHARED_SIMD_MUL",
+  "enabled_by_default": false,
+  "fpga_updated": false,
+  "scope": "local_integer_multiplier_bank_not_soc",
+  "functional_evidence": "../ara_dsa_signoff_integration/verification/out/shared_mul_booth_20261102_01",
+  "ppa_evidence": "../ara_dsa_signoff_integration/verification/out/shared_mul_ppa_booth_20261102_01",
+  "area_um2": 20838.383837,
+  "baseline_area_um2": 32416.271510,
+  "period_ns": 1.0,
+  "setup_uncertainty_ns": 0.15,
+  "timing_signoff_complete": false,
+  "soc_integration_status": "PASS",
+  "application_performance_status": "PASS_NO_OBSERVED_EXTRA_CYCLES_OR_BLOCKING",
+  "soc_acceptance_evidence": "../ara_dsa_signoff_integration/verification/out/shared_mul_soc_fast_20261103_02/report.json",
+  "raw_log_audit_evidence": "../ara_dsa_signoff_integration/verification/out/shared_mul_soc_final_audit_20261103_02/audit.json",
+  "acceptance_scope": "16 ISA ELF pairs, 96 mixed-SEW phases, 9 integer-dot regions, integer matrix sweep n4..128, six real-data llama.cpp microkernel regions; not arbitrary programs or FPGA signoff",
+  "source_sha256": {
+    "hardware/src/lane/simd_mul_shared_product.sv": "381882bbea7f456c7a79d0c297624cf5622837e6e31875cfadb5f4446b47a59a",
+    "hardware/src/lane/simd_mul_shared.sv": "86bad5eec754e06a0788954360530313fb4954296801407ea0b4d4005f55ee60",
+    "hardware/src/lane/simd_mul_partition_add.sv": "7e24a092ba550bb4e68ad15fd1a597857a9442d89bb9c855039335c3c358d945",
+    "hardware/src/lane/simd_mul.sv": "554fc29be093e991728884c8c9d18dafa6b8b854975b562a4eaf0094c9df9f60"
+  },
+  "integration_check": "Extracted current VMFPU integer bank is byte-identical to ppa_evidence/shared/src/bank.sv",
+  "reason": "Retain balanced measured Booth implementation; later variants do not offer a compelling area/timing improvement. All historical evidence preserved."
+}

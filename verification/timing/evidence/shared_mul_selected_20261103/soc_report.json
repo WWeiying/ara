@@ -1,0 +1,390 @@
+{
+  "functional_status": "PASS",
+  "performance_status": "PASS",
+  "compiler_change": "debug visibility disabled identically; control target timing identical",
+  "simulation_cpu_speedup": [
+    3.371155160628845,
+    3.4651315789473687
+  ],
+  "apps": [
+    {
+      "app": "dotproduct",
+      "region": "e64_avl8",
+      "baseline_cycles": 167,
+      "shared_cycles": 167,
+      "delta_cycles": 0
+    },
+    {
+      "app": "dotproduct",
+      "region": "e64_avl64",
+      "baseline_cycles": 156,
+      "shared_cycles": 156,
+      "delta_cycles": 0
+    },
+    {
+      "app": "dotproduct",
+      "region": "e32_avl8",
+      "baseline_cycles": 216,
+      "shared_cycles": 216,
+      "delta_cycles": 0
+    },
+    {
+      "app": "dotproduct",
+      "region": "e32_avl64",
+      "baseline_cycles": 226,
+      "shared_cycles": 226,
+      "delta_cycles": 0
+    },
+    {
+      "app": "dotproduct",
+      "region": "e16_avl8",
+      "baseline_cycles": 208,
+      "shared_cycles": 208,
+      "delta_cycles": 0
+    },
+    {
+      "app": "dotproduct",
+      "region": "e16_avl64",
+      "baseline_cycles": 107,
+      "shared_cycles": 107,
+      "delta_cycles": 0
+    },
+    {
+      "app": "dotproduct",
+      "region": "e8_avl8",
+      "baseline_cycles": 204,
+      "shared_cycles": 204,
+      "delta_cycles": 0
+    },
+    {
+      "app": "dotproduct",
+      "region": "e8_avl64",
+      "baseline_cycles": 99,
+      "shared_cycles": 99,
+      "delta_cycles": 0
+    },
+    {
+      "app": "dotproduct",
+      "region": "e8_avl512",
+      "baseline_cycles": 353,
+      "shared_cycles": 353,
+      "delta_cycles": 0
+    },
+    {
+      "app": "imatmul",
+      "region": "n4",
+      "baseline_cycles": 825,
+      "shared_cycles": 825,
+      "delta_cycles": 0
+    },
+    {
+      "app": "imatmul",
+      "region": "n8",
+      "baseline_cycles": 1030,
+      "shared_cycles": 1030,
+      "delta_cycles": 0
+    },
+    {
+      "app": "imatmul",
+      "region": "n16",
+      "baseline_cycles": 2797,
+      "shared_cycles": 2797,
+      "delta_cycles": 0
+    },
+    {
+      "app": "imatmul",
+      "region": "n32",
+      "baseline_cycles": 11993,
+      "shared_cycles": 11993,
+      "delta_cycles": 0
+    },
+    {
+      "app": "imatmul",
+      "region": "n64",
+      "baseline_cycles": 87468,
+      "shared_cycles": 87468,
+      "delta_cycles": 0
+    },
+    {
+      "app": "imatmul",
+      "region": "n128",
+      "baseline_cycles": 712456,
+      "shared_cycles": 712456,
+      "delta_cycles": 0
+    }
+  ],
+  "matrix_activity": [
+    {
+      "variant": "baseline",
+      "activity": [
+        [
+          "0",
+          "0",
+          "0",
+          "599184",
+          "0",
+          "0",
+          "0",
+          "599184",
+          "8"
+        ],
+        [
+          "0",
+          "0",
+          "0",
+          "599184",
+          "0",
+          "0",
+          "0",
+          "599184",
+          "8"
+        ],
+        [
+          "0",
+          "0",
+          "0",
+          "599184",
+          "0",
+          "0",
+          "0",
+          "599184",
+          "8"
+        ],
+        [
+          "0",
+          "0",
+          "0",
+          "599184",
+          "0",
+          "0",
+          "0",
+          "599184",
+          "8"
+        ]
+      ],
+      "cpu_seconds": 1155.09,
+      "wall_seconds": 1174.0205015577376,
+      "finish_time": "12019315000"
+    },
+    {
+      "variant": "shared",
+      "activity": [
+        [
+          "0",
+          "0",
+          "0",
+          "599184",
+          "0",
+          "0",
+          "0",
+          "599184",
+          "8"
+        ],
+        [
+          "0",
+          "0",
+          "0",
+          "599184",
+          "0",
+          "0",
+          "0",
+          "599184",
+          "8"
+        ],
+        [
+          "0",
+          "0",
+          "0",
+          "599184",
+          "0",
+          "0",
+          "0",
+          "599184",
+          "8"
+        ],
+        [
+          "0",
+          "0",
+          "0",
+          "599184",
+          "0",
+          "0",
+          "0",
+          "599184",
+          "8"
+        ]
+      ],
+      "cpu_seconds": 5603.53,
+      "wall_seconds": 5661.717001450248,
+      "finish_time": "12019315000"
+    }
+  ],
+  "matrix_blocked": [
+    32,
+    32
+  ],
+  "original_evidence": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_mul_soc_20261103_01",
+  "mixed": [
+    {
+      "variant": "baseline",
+      "status": "PASS",
+      "activity": [
+        [
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "0"
+        ],
+        [
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "0"
+        ],
+        [
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "0"
+        ],
+        [
+          "672",
+          "672",
+          "672",
+          "600",
+          "672",
+          "672",
+          "672",
+          "600",
+          "26"
+        ]
+      ],
+      "hw_cycles": [
+        "19256"
+      ],
+      "returncode": 0
+    },
+    {
+      "variant": "shared",
+      "status": "PASS",
+      "activity": [
+        [
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "0"
+        ],
+        [
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "0"
+        ],
+        [
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "672",
+          "0"
+        ],
+        [
+          "672",
+          "672",
+          "672",
+          "600",
+          "672",
+          "672",
+          "672",
+          "600",
+          "26"
+        ]
+      ],
+      "hw_cycles": [
+        "19256"
+      ],
+      "returncode": 0
+    }
+  ],
+  "llama": {
+    "functional_status": "PASS",
+    "regions": [
+      {
+        "region": "q4_k_x_q8_k_dot_n1536_nrc1",
+        "baseline_cycles": 5738,
+        "shared_cycles": 5738,
+        "delta_cycles": 0,
+        "detail": "actual=0x3dc987a1 golden=0x3dc987a5"
+      },
+      {
+        "region": "q4_k_x_q8_k_dot_n8960_nrc1",
+        "baseline_cycles": 31769,
+        "shared_cycles": 31769,
+        "delta_cycles": 0,
+        "detail": "actual=0xc1644cf4 golden=0xc1644cf7"
+      },
+      {
+        "region": "q6_k_x_q8_k_dot_n1536_nrc1",
+        "baseline_cycles": 4838,
+        "shared_cycles": 4838,
+        "delta_cycles": 0,
+        "detail": "actual=0xbebb0709 golden=0xbebb0709"
+      },
+      {
+        "region": "q6_k_x_q8_k_dot_n8960_nrc1",
+        "baseline_cycles": 27392,
+        "shared_cycles": 27392,
+        "delta_cycles": 0,
+        "detail": "actual=0x3d210a8f golden=0x3d210a92"
+      },
+      {
+        "region": "quantize_f32_to_q8_k_k1536",
+        "baseline_cycles": 13098,
+        "shared_cycles": 13098,
+        "delta_cycles": 0,
+        "detail": "bytes=1752"
+      },
+      {
+        "region": "quantize_f32_to_q8_k_k8960",
+        "baseline_cycles": 73659,
+        "shared_cycles": 73659,
+        "delta_cycles": 0,
+        "detail": "bytes=10220"
+      }
+    ],
+    "blocked": [
+      0,
+      0
+    ],
+    "performance_status": "PASS"
+  },
+  "scope": "Complete SoC integer multiplier acceptance; not physical/FPGA signoff"
+}

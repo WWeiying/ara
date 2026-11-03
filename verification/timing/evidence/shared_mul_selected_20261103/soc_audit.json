@@ -1,0 +1,128 @@
+{
+  "status": "PASS",
+  "selected": "booth_dadda_balanced_20261103",
+  "isa_test_pairs": 16,
+  "mixed_sew_phases": 96,
+  "mixed_cycles": 19256,
+  "applications": [
+    {
+      "app": "dotproduct",
+      "region": "e64_avl8",
+      "baseline_cycles": 167,
+      "shared_cycles": 167
+    },
+    {
+      "app": "dotproduct",
+      "region": "e64_avl64",
+      "baseline_cycles": 156,
+      "shared_cycles": 156
+    },
+    {
+      "app": "dotproduct",
+      "region": "e32_avl8",
+      "baseline_cycles": 216,
+      "shared_cycles": 216
+    },
+    {
+      "app": "dotproduct",
+      "region": "e32_avl64",
+      "baseline_cycles": 226,
+      "shared_cycles": 226
+    },
+    {
+      "app": "dotproduct",
+      "region": "e16_avl8",
+      "baseline_cycles": 208,
+      "shared_cycles": 208
+    },
+    {
+      "app": "dotproduct",
+      "region": "e16_avl64",
+      "baseline_cycles": 107,
+      "shared_cycles": 107
+    },
+    {
+      "app": "dotproduct",
+      "region": "e8_avl8",
+      "baseline_cycles": 204,
+      "shared_cycles": 204
+    },
+    {
+      "app": "dotproduct",
+      "region": "e8_avl64",
+      "baseline_cycles": 99,
+      "shared_cycles": 99
+    },
+    {
+      "app": "dotproduct",
+      "region": "e8_avl512",
+      "baseline_cycles": 353,
+      "shared_cycles": 353
+    },
+    {
+      "app": "imatmul",
+      "region": "n4",
+      "baseline_cycles": 825,
+      "shared_cycles": 825
+    },
+    {
+      "app": "imatmul",
+      "region": "n8",
+      "baseline_cycles": 1030,
+      "shared_cycles": 1030
+    },
+    {
+      "app": "imatmul",
+      "region": "n16",
+      "baseline_cycles": 2797,
+      "shared_cycles": 2797
+    },
+    {
+      "app": "imatmul",
+      "region": "n32",
+      "baseline_cycles": 11993,
+      "shared_cycles": 11993
+    },
+    {
+      "app": "imatmul",
+      "region": "n64",
+      "baseline_cycles": 87468,
+      "shared_cycles": 87468
+    },
+    {
+      "app": "imatmul",
+      "region": "n128",
+      "baseline_cycles": 712456,
+      "shared_cycles": 712456
+    }
+  ],
+  "llama": {
+    "quantize_f32_to_q8_k_k1536": {
+      "cycles": 13098,
+      "detail": "bytes=1752"
+    },
+    "quantize_f32_to_q8_k_k8960": {
+      "cycles": 73659,
+      "detail": "bytes=10220"
+    },
+    "q4_k_x_q8_k_dot_n1536_nrc1": {
+      "cycles": 5738,
+      "detail": "actual=0x3dc987a1 golden=0x3dc987a5"
+    },
+    "q4_k_x_q8_k_dot_n8960_nrc1": {
+      "cycles": 31769,
+      "detail": "actual=0xc1644cf4 golden=0xc1644cf7"
+    },
+    "q6_k_x_q8_k_dot_n1536_nrc1": {
+      "cycles": 4838,
+      "detail": "actual=0xbebb0709 golden=0xbebb0709"
+    },
+    "q6_k_x_q8_k_dot_n8960_nrc1": {
+      "cycles": 27392,
+      "detail": "actual=0x3d210a8f golden=0x3d210a92"
+    }
+  },
+  "raw_logs_checked": true,
+  "inputs_and_images_checked": true,
+  "scope": "Selected shared multiplier full SoC functional/performance regression, not physical/FPGA signoff"
+}

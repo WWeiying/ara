@@ -185,6 +185,16 @@ check: bounds-check helpers-check descriptor-alignment-check qbs-check alu-check
 
 .PHONY: helpers-check
 .PHONY: mul-check
+.PHONY: shared-mul-signed-product-check
+shared-mul-signed-product-check:
+	mkdir -p $(BUILD)/product
+	cd $(BUILD)/product && $(VCS) -full64 -sverilog -timescale=1ns/1ps -l compile.log \
+		$(ROOT)/hardware/src/lane/simd_mul_shared_product.sv \
+		$(CURDIR)/shared_mul_signed_product_tb.sv -top shared_mul_signed_product_tb -o simv
+	cd $(BUILD)/product && timeout --foreground $(RUN_TIMEOUT) ./simv -l run.log
+	grep -q 'Shared signed product PASS' $(BUILD)/product/run.log
+	! grep -Eq 'Fatal:|Error:' $(BUILD)/product/run.log
+
 mul-check:
 	mkdir -p $(BUILD)/mul
 	git -C $(ROOT) show $(REFERENCE):hardware/src/lane/simd_mul.sv > $(BUILD)/mul/original.sv

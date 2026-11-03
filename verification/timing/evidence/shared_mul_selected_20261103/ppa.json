@@ -1,0 +1,21 @@
+{
+  "scope": "local_integer_bank_not_soc",
+  "period_ns": 1,
+  "setup_uncertainty_ns": 0.15,
+  "results": {
+    "baseline": {
+      "area_um2": 32416.27151,
+      "clk_i_slack_ns": 0.0,
+      "clk_i_arrival_ns": 0.855815
+    },
+    "shared": {
+      "area_um2": 20838.383837,
+      "clk_i_slack_ns": 3.43323e-05,
+      "clk_i_arrival_ns": 0.857304
+    }
+  },
+  "area_reduction_percent": 35.71628424147536,
+  "clk_i_slack_delta_ns": 3.43323e-05,
+  "power_measured": false,
+  "application_cycles_measured": false
+}
