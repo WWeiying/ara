@@ -34,8 +34,8 @@ proc get_property {property objects} {
 }
 proc get_pins {args} {
     if {[lsearch -exact $args -of_objects] >= 0} {return driver_pin}
-    if {[lindex $args end] ne {i_dram_wrapper/gen_cdc.i_axi_cdc_mig/word_q_reg\[31\]/CE}} {error "Unescaped indexed endpoint"}
-    return endpoint_pin
+    if {[lindex $args end] ne {i_dram_wrapper/gen_cdc.i_axi_cdc_mig/word_q_reg[31]/CE}} {error "Indexed endpoint must use the literal SDC name"}
+    return [lindex $args end]
 }
 proc get_nets {args} {return measured_net}
 proc get_cells {args} {return i_dram_wrapper/gen_cdc.i_axi_cdc_mig/local_decode}

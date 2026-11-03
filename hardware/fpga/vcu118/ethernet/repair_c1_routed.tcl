@@ -1,5 +1,13 @@
 # One guarded, physical-only repair of the measured C1 FIFO CE paths.
 namespace eval c1_repair {}
+proc c1_repair::endpoint_pin {endpoint} {
+    # Vivado's default SDC matcher treats indexed names literally; adding
+    # backslashes (as for Tcl glob matching) prevents lookup in Vivado 2020.1.
+    set pin [get_pins -quiet $endpoint]
+    if {[llength $pin] != 1} {error "Missing/ambiguous endpoint pin: $endpoint"}
+    if {[get_property NAME $pin] ne $endpoint} {error "Endpoint name mismatch: $endpoint"}
+    return $pin
+}
 proc c1_repair::safe_driver {name type async protected} {
     return [expr {[string match {i_dram_wrapper/gen_cdc.i_axi_cdc_mig/*} $name] &&
         [regexp {^(LUT[1-6]|MUXF[7-9])$} $type] &&
@@ -25,9 +33,7 @@ proc c1_repair::targets {out} {
             if {![string match {i_dram_wrapper/gen_cdc.i_axi_cdc_mig/*/CE} $endpoint]} {
                 error "Unreviewed failure outside C1 FIFO CE logic: $endpoint"
             }
-            set pattern [string map [list {[} {\[} {]} {\]}] $endpoint]
-            set pin [get_pins -quiet $pattern]
-            if {[llength $pin] != 1} {error "Missing/ambiguous endpoint pin: $endpoint"}
+            set pin [endpoint_pin $endpoint]
             set net [get_nets -quiet -of_objects $pin]
             if {[llength $net] != 1 || [get_property DONT_TOUCH $net] in {1 true TRUE}} {
                 error "Missing/protected endpoint net: $endpoint"
