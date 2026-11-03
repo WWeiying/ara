@@ -8,17 +8,26 @@ proc c1_repair::safe_driver {name type async protected} {
 proc c1_repair::targets {out} {
     set paths [get_timing_paths -quiet -delay_type max -slack_lesser_than 0 -max_paths 4096 -nworst 1]
     if {[llength $paths] != 205} {error "Expected the measured 205 failing endpoints, got [llength $paths]"}
+    set clock [get_clocks -quiet mmcm_clkout0_1]
+    if {[llength $clock] != 1} {error "Missing C1 clock"}
+    # Vivado 2020.1 timing_path has no PATH_GROUP property. Prove scope using
+    # the same supported -from/-to clock selection as the domain reports.
+    set scoped [get_timing_paths -quiet -from $clock -to $clock -delay_type max -slack_lesser_than 0 -max_paths 4096 -nworst 1]
+    if {[lsort [get_property ENDPOINT_PIN $paths]] ne [lsort [get_property ENDPOINT_PIN $scoped]]} {
+        error "Failing endpoints are not exclusively C1 intra-clock paths"
+    }
     set f [open [file join $out targets.tsv] w]
     puts $f "startpoint\tendpoint\tslack\tdriver\ttype\tnet\tloads"
     set code [catch {
         set nets {}
         foreach path $paths {
             set endpoint [get_property ENDPOINT_PIN $path]
-            if {[get_property PATH_GROUP $path] ne "mmcm_clkout0_1" ||
-                ![string match {i_dram_wrapper/gen_cdc.i_axi_cdc_mig/*/CE} $endpoint]} {
+            if {![string match {i_dram_wrapper/gen_cdc.i_axi_cdc_mig/*/CE} $endpoint]} {
                 error "Unreviewed failure outside C1 FIFO CE logic: $endpoint"
             }
-            set pin [get_pins -quiet $endpoint]
+            set pattern [string map [list {[} {\[} {]} {\]}] $endpoint]
+            set pin [get_pins -quiet $pattern]
+            if {[llength $pin] != 1} {error "Missing/ambiguous endpoint pin: $endpoint"}
             set net [get_nets -quiet -of_objects $pin]
             if {[llength $net] != 1 || [get_property DONT_TOUCH $net] in {1 true TRUE}} {
                 error "Missing/protected endpoint net: $endpoint"
