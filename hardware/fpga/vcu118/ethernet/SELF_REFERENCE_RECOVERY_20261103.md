@@ -39,10 +39,21 @@ This is not evidence for blaming increased RTL logic depth or a changed clock.
 The relative contributions of pin mapping, slew, and load require more than
 this timing report; do not label all 205 paths with that one example's cause.
 
-The independent read-only comparison is stored in
-`D:/fpga_runs/ara_c1_root_compare_20261103_01`. It compares all 205 endpoints
-against the old routed baseline and exports path/cell/net records. Missing
-endpoint matches must remain explicit, not be treated as passing paths.
+The independent read-only worker is stored in
+`D:/fpga_runs/ara_c1_root_compare_20261103_01`. Its old-baseline timing report
+completed, but optional metadata export failed because 2020.1 does not expose
+`timing_path.POINTS`. Keep this original worker marked FAILED.
+
+A separate report-only audit compares that completed report with the already
+preserved candidate report; it does not claim metadata collection passed.
+All 205 endpoint names match, and all have positive baseline slack
+(+0.009 through +1.307 ns). Of 47 pairs also sharing the same startpoint,
+45 have increased route delay. The current worst path had +0.184 ns slack
+in the baseline, not zero: its route delay grew by 0.274 ns, cell delay by
+0.015 ns, and skew improved by 0.049 ns, explaining the 0.240 ns slack loss.
+The report-only audit, input hashes and all pairs are preserved locally at
+`/home/wangwy/fpga_runs/ara_c1_root_compare_20261103_01/timing_report_audit.json`.
+Neither this comparison nor the metadata failure is a new timing acceptance.
 
 ## Corrected continuation
 
