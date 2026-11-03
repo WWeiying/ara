@@ -1,0 +1,54 @@
+{
+  "profile": "dual_ddr_ethernet",
+  "state": "experimental_bitstream_generated_not_board_validated",
+  "completed_at": "2026-11-04T05:49:12.7266558+08:00",
+  "delivery_tag": "qbs-akv-validated-20261029",
+  "ara_delivery_commit": "1e48e205df5cec34183222c36d22eb4858466810",
+  "llama_cpp_delivery_commit": "da56aa750559c180d631b466de983ff2bb5d54d9",
+  "fpga_source_commit": "ed39f750589ea5c04d38b35c186316b97ced613b",
+  "finalize_flow_commit": "4f4fcb6e69118e1b3bf747cd6984a3410181eeae",
+  "build_inputs": "D:/fpga_runs/ara_qbs_akv_release_20261101_01/package",
+  "run_root": "D:/fpga_runs/ara_finalize_release_20261103_01",
+  "local_evidence": "/home/wangwy/fpga_runs/ara_finalize_release_20261103_01/observed",
+  "checkpoint": {
+    "path": "impl/ara_dsa_vcu118_routed.dcp",
+    "sha256": "f47707a0ce34ccdf33788b076bf2aded47930f8b79462d855badff4db4e4ec6c"
+  },
+  "bitstream": {
+    "path": "bitstream/ara_dsa_vcu118.bit",
+    "bytes": 80159227,
+    "sha256": "86930e50ae590d3b1441a537a7258aab53bbb4e1fd0ea537b74c0b6244554c88"
+  },
+  "probes": {
+    "path": "bitstream/ara_dsa_vcu118.ltx",
+    "bytes": 116090,
+    "sha256": "fb6e99ba9940923d5843110f38a19722fba355ad6e042a14e08e0b8ec3dae396"
+  },
+  "audit_manifest": "audit/ara_audit_20261104_035759_aa07c42922e1/completed_audit.json",
+  "timing_ns": {
+    "setup": 0.003,
+    "hold": 0.010,
+    "pulse_width": 0.005,
+    "tns": 0,
+    "ths": 0,
+    "total_pulse_width_violation": 0
+  },
+  "constraint_coverage": {
+    "gray_first_stage_paths": 120,
+    "fifo_data_crossings": 10,
+    "gray_bus_skew_groups": 20,
+    "pad_exceptions": 8,
+    "failures": 0
+  },
+  "finalize_pslt_violations_before": 38,
+  "finalize_pslt_violations_after": 0,
+  "automated_release_gate_passed": true,
+  "cdc_no_new_or_changed_detail_rows": true,
+  "remaining_known_cdc_findings": 4707,
+  "cdc_signoff": false,
+  "hardware_validated": false,
+  "board_modified": false,
+  "flash_modified": false,
+  "normal_memory_eligibility": "not_established",
+  "runtime_requirements": "Retain single-worker admission checks and standard RVV fallback. Board memory conditions and performance remain to be tested."
+}
