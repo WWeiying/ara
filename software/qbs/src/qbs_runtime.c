@@ -1041,6 +1041,11 @@ qbs_status_t qbs_plan_next(const qbs_plan_t *plan,
   return QBS_STATUS_OK;
 }
 
+/* Keep command metadata local to this loop even when the iterator gains
+   additional planner callers. This changes code generation, not the ABI. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((flatten))
+#endif
 qbs_status_t qbs_execute_with_options(
     const qbs_plan_t *plan, const void *weights, size_t weights_bytes,
     const void *activations, size_t activations_bytes, float *output,
