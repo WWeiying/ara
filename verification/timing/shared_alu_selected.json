@@ -1,0 +1,25 @@
+{
+  "selection": "byte_partitioned_shared_integer_alu_20261103",
+  "branch": "ara_dsa",
+  "baseline_commit": "b69df88f0",
+  "source_sha256": {
+    "hardware/src/lane/simd_alu.sv": "d8e07ad7b101d1182d47d4a898df06cc647737d7aa7d2b20c6dfa1f4ab6b82c6"
+  },
+  "component_evidence": "../ara_dsa_signoff_integration/verification/out/shared_alu_20261103_02",
+  "soc_acceptance_evidence": "../ara_dsa_signoff_integration/verification/out/shared_alu_soc_final_audit_20261103_01/report.json",
+  "component_area_um2": {
+    "baseline_alu": 8510.8799,
+    "shared_alu": 6087.6479,
+    "baseline_registered_wrapper": 10190.039891,
+    "shared_registered_wrapper": 7808.135922
+  },
+  "soc_functional_status": "PASS",
+  "soc_performance_status": "PASS_EXACT_PAIRED_CYCLE_AND_ACTIVITY_EQUIVALENCE",
+  "paired_cases": 61,
+  "alu_active_pairs": 59,
+  "collateral_non_alu_pairs": 2,
+  "scope": "Four-lane VLEN1024 SoC; 128 mixed phases, ISA/edge programs, checked 1024-element vector add, nine DOTP regions and six real-data llama microkernel regions. Inactive original vvaddint32 ELF replaced explicitly.",
+  "timing_signoff_complete": false,
+  "whole_soc_synthesis_with_this_alu_complete": false,
+  "fpga_updated": false
+}

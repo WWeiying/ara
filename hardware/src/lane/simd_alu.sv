@@ -45,83 +45,127 @@ module simd_alu import ara_pkg::*; import rvv_pkg::*; #(
   assign result_o = res;
 
 
-  typedef union packed {
-    logic [0:0][71:0] w64;
-    logic [1:0][35:0] w32;
-    logic [3:0][17:0] w16;
-    logic [7:0][ 8:0] w8;
-  } alu_sat_operand_t;
-
-  alu_sat_operand_t sat_sum, sat_sub;
-  vxsat_t     vxsat;
-  vxrm_t      vxrm;
-
+  vxsat_t vxsat;
+  vxrm_t vxrm;
   assign vxrm = vxrm_i;
   assign vxsat_o = vxsat;
 
-  function automatic logic average_rounding_increment(
-    input logic retained_lsb,
-    input logic rounding_bit,
-    input vxrm_t mode
-  );
-    unique case (mode)
-      2'b00: average_rounding_increment = rounding_bit;
-      2'b01: average_rounding_increment = rounding_bit & retained_lsb;
-      2'b10: average_rounding_increment = 1'b0;
-      2'b11: average_rounding_increment = rounding_bit & ~retained_lsb;
-    endcase
-  endfunction : average_rounding_increment
+  logic arith_sub, arith_average, arith_average_signed, arith_reverse;
+  logic arith_mask_carry, compare_signed;
+  logic [63:0] arith_x, arith_y, add_y, correction;
+  logic [63:0] carry_save_sum, carry_save_majority, carry_save_carry, arith_sum;
+  logic [7:0] element_start, byte_extension;
+  logic [7:0] carry_p [4], carry_g [4];
+  logic [63:0] arithmetic_result [4];
+  logic [7:0] arithmetic_sat [4], compare_less [4], compare_equal [4];
+  logic [7:0] less, equal;
 
-  ///////////////////
-  //  Comparisons  //
-  ///////////////////
+  assign arith_sub = op_i inside {VSUB, VSBC, VMSBC, VRSUB, VSSUB, VSSUBU,
+      VASUB, VASUBU, VMIN, VMINU, VMAX, VMAXU, VREDMIN, VREDMINU,
+      VREDMAX, VREDMAXU, VMSEQ, VMSNE, VMSLT, VMSLTU, VMSLE, VMSLEU,
+      VMSGT, VMSGTU};
+  assign arith_average = FixPtSupport == FixedPointEnable &&
+      (op_i inside {VAADD, VAADDU, VASUB, VASUBU});
+  assign arith_average_signed = op_i inside {VAADD, VASUB};
+  assign arith_reverse = op_i == VRSUB;
+  assign arith_mask_carry = !vm_i && (op_i inside {VADC, VMADC, VSBC, VMSBC});
+  assign compare_signed = op_i inside {VMAX, VREDMAX, VMIN, VREDMIN,
+      VMSLT, VMSLE, VMSGT};
+  assign arith_x = arith_reverse ? operand_a_i : operand_b_i;
+  assign arith_y = arith_reverse ? operand_b_i : operand_a_i;
+  assign add_y = arith_y ^ {64{arith_sub}};
 
-  // Comparison instructions that use signed operands
-  logic is_signed;
-  assign is_signed = op_i inside {VMAX, VREDMAX, VMIN, VREDMIN, VMSLT, VMSLE, VMSGT};
-  // Compare operands.
-  // For vew_i = EW8, all bits are valid.
-  // For vew_i = EW16, bits 0, 2, 4, and 6 are valid.
-  // For vew_i = EW32, bits 0 and 4 are valid.
-  // For vew_i = EW64, only bit 0 indicates the result of the comparison.
-  logic [7:0] less;
-  logic [7:0] equal;
-
-  always_comb begin: p_comparison
-    // Default assignment
-    less  = '0;
-    equal = '0;
-
-    if (valid_i) begin
-      unique case (vew_i)
-        EW8 : for (int b = 0; b < 8; b++) less[1*b] =
-            $signed({is_signed & opb.w8 [b][ 7], opb.w8 [b]}) <
-            $signed({is_signed & opa.w8 [b][ 7], opa.w8 [b]});
-        EW16: for (int b = 0; b < 4; b++) less[2*b] =
-            $signed({is_signed & opb.w16[b][15], opb.w16[b]}) <
-            $signed({is_signed & opa.w16[b][15], opa.w16[b]});
-        EW32: for (int b = 0; b < 2; b++) less[4*b] =
-            $signed({is_signed & opb.w32[b][31], opb.w32[b]}) <
-            $signed({is_signed & opa.w32[b][31], opa.w32[b]});
-        EW64: for (int b = 0; b < 1; b++) less[8*b] =
-            $signed({is_signed & opb.w64[b][63], opb.w64[b]}) <
-            $signed({is_signed & opa.w64[b][63], opa.w64[b]});
-        default:;
-      endcase
-
-      unique case (vew_i)
-        EW8 : for (int b = 0; b < 8; b++) equal[1*b] = opa.w8 [b] == opb.w8 [b];
-        EW16: for (int b = 0; b < 4; b++) equal[2*b] = opa.w16[b] == opb.w16[b];
-        EW32: for (int b = 0; b < 2; b++) equal[4*b] = opa.w32[b] == opb.w32[b];
-        EW64: for (int b = 0; b < 1; b++) equal[8*b] = opa.w64[b] == opb.w64[b];
-        default:;
+  // Inject carry/borrow at bit zero and averaging round-up at bit one.
+  // A sparse third operand avoids a second full-width rounding adder.
+  for (genvar b = 0; b < 8; b++) begin : gen_correction
+    wire low_carry = arith_sub
+        ? (~arith_x[8*b] & arith_y[8*b])
+        : ( arith_x[8*b] & arith_y[8*b]);
+    wire retained_lsb = arith_x[8*b+1] ^ arith_y[8*b+1] ^ low_carry;
+    wire discarded_lsb = arith_x[8*b] ^ arith_y[8*b];
+    logic round_up;
+    always_comb begin
+      case (vxrm_i)
+        2'b00: round_up = discarded_lsb;
+        2'b01: round_up = discarded_lsb & retained_lsb;
+        2'b10: round_up = 1'b0;
+        2'b11: round_up = discarded_lsb & ~retained_lsb;
       endcase
     end
-  end : p_comparison
+    assign element_start[b] = (b == 0) ||
+        ((b & ((1 << vew_i) - 1)) == 0);
+    assign correction[8*b+:8] = {6'b0,
+        element_start[b] & arith_average & round_up,
+        element_start[b] & (arith_sub ^ (arith_mask_carry & mask_i[b]))};
+  end
 
-  ///////////
-  //  ALU  //
-  ///////////
+  assign carry_save_sum = arith_x ^ add_y ^ correction;
+  assign carry_save_majority = (arith_x & add_y) |
+      ((arith_x ^ add_y) & correction);
+
+  // Byte-local carry-save plus a three-level prefix. Neither carry path
+  // crosses a SIMD element boundary. Keep the dropped top carry for SEW+1.
+  for (genvar b = 0; b < 8; b++) begin : gen_arith_byte
+    wire carry_from_previous;
+    if (b == 0) assign carry_from_previous = 1'b0;
+    else assign carry_from_previous = carry_save_majority[8*b-1] & ~element_start[b];
+    assign carry_save_carry[8*b+:8] =
+        {carry_save_majority[8*b+:7], carry_from_previous};
+    wire [8:0] base_sum = {1'b0, carry_save_sum[8*b+:8]} +
+                         {1'b0, carry_save_carry[8*b+:8]};
+    assign carry_p[0][b] = (&base_sum[7:0]) & ~element_start[b];
+    assign carry_g[0][b] = base_sum[8];
+    wire cin;
+    if (b == 0) assign cin = 1'b0;
+    else assign cin = carry_g[3][b-1] & ~element_start[b];
+    assign arith_sum[8*b+:8] = base_sum[7:0] + cin;
+    assign byte_extension[b] =
+        arith_sub ^ carry_save_majority[8*b+7] ^ carry_g[3][b];
+  end
+  for (genvar level = 0; level < 3; level++) begin : gen_arith_prefix
+    for (genvar b = 0; b < 8; b++) begin : gen_byte
+      if (b >= (1 << level)) begin
+        assign carry_p[level+1][b] = carry_p[level][b] & carry_p[level][b-(1 << level)];
+        assign carry_g[level+1][b] = carry_g[level][b] |
+            (carry_p[level][b] & carry_g[level][b-(1 << level)]);
+      end else begin
+        assign carry_p[level+1][b] = carry_p[level][b];
+        assign carry_g[level+1][b] = carry_g[level][b];
+      end
+    end
+  end
+
+  // Only result formatting is replicated by SEW; the arithmetic is shared.
+  for (genvar fmt = 0; fmt < 4; fmt++) begin : gen_arith_format
+    localparam int W = 8 << fmt;
+    for (genvar e = 0; e < 64/W; e++) begin : gen_element
+      wire [W-1:0] sum = arith_sum[e*W+:W];
+      wire xs = arith_x[e*W+W-1];
+      wire ys = arith_y[e*W+W-1];
+      wire ext = byte_extension[e*(W/8)+W/8-1];
+      wire signed_overflow = (xs ^ sum[W-1]) & ~((xs ^ ys) ^ arith_sub);
+      wire signed_sat = op_i inside {VSADD, VSSUB};
+      wire unsigned_sat = op_i inside {VSADDU, VSSUBU};
+      wire saturate = FixPtSupport == FixedPointEnable &&
+          ((signed_sat & signed_overflow) | (unsigned_sat & ext));
+      wire [W-1:0] limit = signed_sat
+          ? {xs, {(W-1){~xs}}} : {W{~arith_sub}};
+      wire average_ext = ext ^ (arith_average_signed & (xs ^ ys));
+      assign arithmetic_result[fmt][e*W+:W] =
+          (op_i inside {VMADC, VMSBC}) ? {{(W-2){1'b0}}, 1'b1, ext} :
+          arith_average ? {average_ext, sum[W-1:1]} :
+          saturate ? limit : sum;
+      // Preserve the existing VSSUB byte-enable-facing saturation encoding.
+      assign arithmetic_sat[fmt][e*(W/8)+:W/8] = op_i == VSSUB
+          ? {{(W/8-1){1'b0}}, saturate} : {(W/8){saturate}};
+      assign compare_less[fmt][e*(W/8)+:W/8] =
+          {{(W/8-1){1'b0}}, (compare_signed && (xs != ys)) ? xs : ext};
+      assign compare_equal[fmt][e*(W/8)+:W/8] =
+          {{(W/8-1){1'b0}}, operand_a_i[e*W+:W] == operand_b_i[e*W+:W]};
+    end
+  end
+  assign less = valid_i && vew_i <= EW64 ? compare_less[vew_i[1:0]] : '0;
+  assign equal = valid_i && vew_i <= EW64 ? compare_equal[vew_i[1:0]] : '0;
 
   always_comb begin: p_alu
     // Default assignment
@@ -151,257 +195,15 @@ module simd_alu import ara_pkg::*; import rvv_pkg::*; #(
         // Mask operands pass-through
         VRGATHER, VRGATHEREI16, VCOMPRESS: res = operand_a_i;
 
-        // Arithmetic instructions
-        VSADDU: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
-            EW8: for (int b = 0; b < 8; b++) begin
-                automatic logic [8:0] sum = prefix_add65(opa.w8[b], opb.w8[b], 1'b0);
-                vxsat.w8[b]   = sum[8];
-                res.w8[b]     = vxsat.w8[b] ? {8{1'b1}} : sum[7:0];
-              end
-            EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic [16:0] sum = prefix_add65(opa.w16[b], opb.w16[b], 1'b0);
-                vxsat.w16[b]   = {2{sum[16]}};
-                res.w16[b]     = &vxsat.w16[b] ? {16{1'b1}} : sum[15:0];
-              end
-            EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic [32:0] sum = prefix_add65(opa.w32[b], opb.w32[b], 1'b0);
-                vxsat.w32[b]   = {4{sum[32]}};
-                res.w32[b]     = &vxsat.w32[b] ? {32{1'b1}} : sum[31:0];
-              end
-            EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic [64:0] sum = prefix_add65(opa.w64[b], opb.w64[b], 1'b0);
-                vxsat.w64[b]   = {8{sum[64]}};
-                res.w64[b]     = &vxsat.w64[b] ? {64{1'b1}} : sum[63:0];
-              end
-          endcase
-        VSADD: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
-            EW8: for (int b = 0; b < 8; b++) begin
-                automatic logic [8:0] sum = prefix_add65(opa.w8[b], opb.w8[b], 1'b0);
-                vxsat.w8[b]   = (sum[7]^opa.w8[b][7]) & ~(opa.w8[b][7] ^ opb.w8[b][7]);
-                res.w8[b]     = vxsat.w8[b] ? (sum[7] ? {1'b0, {7{1'b1}}} : {1'b1, {7{1'b0}}} ) : sum[7:0];
-              end
-            EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic [16:0] sum = prefix_add65(opa.w16[b], opb.w16[b], 1'b0);
-                vxsat.w16[b]   = {2{(sum[15] ^ opa.w16[b][15]) & ~(opa.w16[b][15] ^ opb.w16[b][15])}};
-                res.w16[b]     = &vxsat.w16[b] ? (sum[15] ? {1'b0, {15{1'b1}}} : {1'b1, {15{1'b0}}} ) : sum[15:0];
-              end
-            EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic [32:0] sum = prefix_add65(opa.w32[b], opb.w32[b], 1'b0);
-                vxsat.w32[b]   = {4{(sum[31] ^ opa.w32[b][31]) && !(opa.w32[b][31] ^ opb.w32[b][31])}};
-                res.w32[b]     = &vxsat.w32[b] ? (sum[31] ? {1'b0, {31{1'b1}}} : {1'b1, {31{1'b0}}} ) : sum[31:0];
-              end
-            EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic [64:0] sum = prefix_add65(opa.w64[b], opb.w64[b], 1'b0);
-                vxsat.w64[b]   = {8{(sum[63] ^ opa.w64[b][63]) & ~(opa.w64[b][63] ^ opb.w64[b][63])}};
-                res.w64[b]     = &vxsat.w64[b] ? (sum[63] ? {1'b0, {63{1'b1}}} : {1'b1, {63{1'b0}}} ) : sum[63:0];
-              end
-          endcase
-        VAADD, VAADDU: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
-            EW8: for (int b = 0; b < 8; b++) begin
-                automatic logic signed_mode = op_i == VAADD;
-                automatic logic retained_lsb =
-                    opa.w8[b][1] ^ opb.w8[b][1] ^
-                    (opa.w8[b][0] & opb.w8[b][0]);
-                automatic logic round = average_rounding_increment(
-                    retained_lsb, opa.w8[b][0] ^ opb.w8[b][0], vxrm);
-                automatic logic [8:0] rounded_sum =
-                    prefix_add3_65({signed_mode & opb.w8[b][7], opb.w8[b]},
-                    {signed_mode & opa.w8[b][7], opa.w8[b]},
-                    {7'b0, round, 1'b0}, 1'b0);
-                res.w8[b] = rounded_sum[8:1];
-              end
-            EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic signed_mode = op_i == VAADD;
-                automatic logic retained_lsb =
-                    opa.w16[b][1] ^ opb.w16[b][1] ^
-                    (opa.w16[b][0] & opb.w16[b][0]);
-                automatic logic round = average_rounding_increment(
-                    retained_lsb, opa.w16[b][0] ^ opb.w16[b][0], vxrm);
-                automatic logic [16:0] rounded_sum =
-                    prefix_add3_65({signed_mode & opb.w16[b][15], opb.w16[b]},
-                    {signed_mode & opa.w16[b][15], opa.w16[b]},
-                    {15'b0, round, 1'b0}, 1'b0);
-                res.w16[b] = rounded_sum[16:1];
-              end
-            EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic signed_mode = op_i == VAADD;
-                automatic logic retained_lsb =
-                    opa.w32[b][1] ^ opb.w32[b][1] ^
-                    (opa.w32[b][0] & opb.w32[b][0]);
-                automatic logic round = average_rounding_increment(
-                    retained_lsb, opa.w32[b][0] ^ opb.w32[b][0], vxrm);
-                automatic logic [32:0] rounded_sum =
-                    prefix_add3_65({signed_mode & opb.w32[b][31], opb.w32[b]},
-                    {signed_mode & opa.w32[b][31], opa.w32[b]},
-                    {31'b0, round, 1'b0}, 1'b0);
-                res.w32[b] = rounded_sum[32:1];
-              end
-            EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic signed_mode = op_i == VAADD;
-                automatic logic retained_lsb =
-                    opa.w64[b][1] ^ opb.w64[b][1] ^
-                    (opa.w64[b][0] & opb.w64[b][0]);
-                automatic logic round = average_rounding_increment(
-                    retained_lsb, opa.w64[b][0] ^ opb.w64[b][0], vxrm);
-                automatic logic [64:0] rounded_sum =
-                    prefix_add3_65({signed_mode & opb.w64[b][63], opb.w64[b]},
-                    {signed_mode & opa.w64[b][63], opa.w64[b]},
-                    {63'b0, round, 1'b0}, 1'b0);
-                res.w64[b] = rounded_sum[64:1];
-              end
-          endcase
-        VADD, VADC, VMADC, VREDSUM, VWREDSUMU, VWREDSUM: unique case (vew_i)
-            EW8: for (int b = 0; b < 8; b++) begin
-                automatic logic [ 8:0] sum = prefix_add65(opa.w8 [b], opb.w8 [b],
-                logic'(op_i inside {VADC, VMADC} && mask_i[1*b] & ~vm_i));
-                res.w8[b] = (op_i == VMADC) ? {6'b0, 1'b1, sum[8]} : sum[7:0];
-              end
-            EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic [16:0] sum = prefix_add65(opa.w16[b], opb.w16[b],
-                logic'(op_i inside {VADC, VMADC} && mask_i[2*b] & ~vm_i));
-                res.w16[b] = (op_i == VMADC) ? {14'b0, 1'b1, sum[16]} : sum[15:0];
-              end
-            EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic [32:0] sum = prefix_add65(opa.w32[b], opb.w32[b],
-                logic'(op_i inside {VADC, VMADC} && mask_i[4*b] & ~vm_i));
-                res.w32[b] = (op_i == VMADC) ? {30'b0, 1'b1, sum[32]} : sum[31:0];
-              end
-            EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic [64:0] sum = prefix_add65(opa.w64[b], opb.w64[b],
-                logic'(op_i inside {VADC, VMADC} && mask_i[8*b] & ~vm_i));
-                res.w64[b] = (op_i == VMADC) ? {62'b0, 1'b1, sum[64]} : sum[63:0];
-              end
-          endcase
-        VSUB, VSBC, VMSBC: unique case (vew_i)
-            EW8: for (int b = 0; b < 8; b++) begin
-                automatic logic [ 8:0] sub = prefix_sub65(opb.w8 [b], opa.w8 [b],
-                logic'(op_i inside {VSBC, VMSBC} && mask_i[1*b] & ~vm_i));
-                res.w8[b] = (op_i == VMSBC) ? {6'b0, 1'b1, sub[8]} : sub[7:0];
-              end
-            EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic [16:0] sub = prefix_sub65(opb.w16[b], opa.w16[b],
-                logic'(op_i inside {VSBC, VMSBC} && mask_i[2*b] & ~vm_i));
-                res.w16[b] = (op_i == VMSBC) ? {14'b0, 1'b1, sub[16]} : sub[15:0];
-              end
-            EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic [32:0] sub = prefix_sub65(opb.w32[b], opa.w32[b],
-                logic'(op_i inside {VSBC, VMSBC} && mask_i[4*b] & ~vm_i));
-                res.w32[b] = (op_i == VMSBC) ? {30'b0, 1'b1, sub[32]} : sub[31:0];
-              end
-            EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic [64:0] sub = prefix_sub65(opb.w64[b], opa.w64[b],
-                logic'(op_i inside {VSBC, VMSBC} && mask_i[8*b] & ~vm_i));
-                res.w64[b] = (op_i == VMSBC) ? {62'b0, 1'b1, sub[64]} : sub[63:0];
-              end
-          endcase
-        VRSUB: unique case (vew_i)
-            EW8 : for (int b = 0; b < 8; b++) res.w8 [b] = prefix_sub65(opa.w8 [b], opb.w8 [b], 1'b0);
-            EW16: for (int b = 0; b < 4; b++) res.w16[b] = prefix_sub65(opa.w16[b], opb.w16[b], 1'b0);
-            EW32: for (int b = 0; b < 2; b++) res.w32[b] = prefix_sub65(opa.w32[b], opb.w32[b], 1'b0);
-            EW64: for (int b = 0; b < 1; b++) res.w64[b] = prefix_sub65(opa.w64[b], opb.w64[b], 1'b0);
-          endcase
-        VSSUBU: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
-            EW8: for (int b = 0; b < 8; b++) begin
-                automatic logic [8:0] sub = prefix_sub65(opb.w8 [b], opa.w8 [b], 1'b0);
-                vxsat.w8[b]   = sub[8];
-                res.w8[b]     = vxsat.w8[b] ? {8{1'b0}} : sub[7:0];
-              end
-            EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic [16:0] sub = prefix_sub65(opb.w16[b], opa.w16[b], 1'b0);
-                vxsat.w16[b]   = {2{sub[16]}};
-                res.w16[b]     = &vxsat.w16[b] ? {16{1'b0}} : sub[15:0];
-              end
-            EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic [32:0] sub = prefix_sub65(opb.w32[b], opa.w32[b], 1'b0);
-                vxsat.w32[b]   = {4{sub[32]}};
-                res.w32[b]     = &vxsat.w32[b] ? {32{1'b0}} : sub[31:0];
-              end
-            EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic [64:0] sub = prefix_sub65(opb.w64[b], opa.w64[b], 1'b0);
-                vxsat.w64[b]   = {8{sub[64]}};
-                res.w64[b]     = &vxsat.w64[b] ? {64{1'b0}} : sub[63:0];
-              end
-          endcase
-        VSSUB: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
-          EW8: for (int b = 0; b < 8; b++) begin
-              automatic logic [8:0] sub = prefix_sub65(opb.w8[b], opa.w8[b], 1'b0);
-              vxsat.w8[b]   = (!opb.w8[b][7] & opa.w8[b][7] & sub[7]) |
-                              (opb.w8[b][7] & !opa.w8[b][7] & !sub[7]);
-              res.w8[b]     = vxsat.w8[b] ? (opb.w8[b][7] ? 8'h80 : 8'h7F) : sub[7:0];
+        // Arithmetic instructions share the same partitioned datapath.
+        VADD, VADC, VMADC, VSUB, VSBC, VMSBC, VRSUB,
+        VREDSUM, VWREDSUMU, VWREDSUM:
+          if (vew_i <= EW64) res = arithmetic_result[vew_i[1:0]];
+        VSADD, VSADDU, VSSUB, VSSUBU, VAADD, VAADDU, VASUB, VASUBU:
+          if (FixPtSupport == FixedPointEnable && vew_i <= EW64) begin
+            res = arithmetic_result[vew_i[1:0]];
+            vxsat = arithmetic_sat[vew_i[1:0]];
           end
-          EW16: for (int b = 0; b < 4; b++) begin
-              automatic logic [16:0] sub = prefix_sub65(opb.w16[b], opa.w16[b], 1'b0);
-              vxsat.w16[b]   = (!opb.w16[b][15] & opa.w16[b][15] & sub[15]) |
-                               (opb.w16[b][15] & !opa.w16[b][15] & !sub[15]);
-              res.w16[b]     = vxsat.w16[b] ? (opb.w16[b][15] ? 16'h8000 : 16'h7FFF) : sub[15:0];
-          end
-          EW32: for (int b = 0; b < 2; b++) begin
-              automatic logic [32:0] sub = prefix_sub65(opb.w32[b], opa.w32[b], 1'b0);
-              vxsat.w32[b]   = (!opb.w32[b][31] & opa.w32[b][31] & sub[31]) |
-                               (opb.w32[b][31] & !opa.w32[b][31] & !sub[31]);
-              res.w32[b]     = vxsat.w32[b] ? (opb.w32[b][31] ? 32'h80000000 : 32'h7FFFFFFF) : sub[31:0];
-          end
-          EW64: for (int b = 0; b < 1; b++) begin
-              automatic logic [64:0] sub = prefix_sub65(opb.w64[b], opa.w64[b], 1'b0);
-              vxsat.w64[b]   = (!opb.w64[b][63] & opa.w64[b][63] & sub[63]) |
-                               (opb.w64[b][63] & !opa.w64[b][63] & !sub[63]);
-              res.w64[b]     = vxsat.w64[b] ? (opb.w64[b][63] ? 64'h8000000000000000 : 64'h7FFFFFFFFFFFFFFF) : sub[63:0];
-          end
-          endcase
-        VASUB, VASUBU: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
-            EW8: for (int b = 0; b < 8; b++) begin
-                automatic logic signed_mode = op_i == VASUB;
-                automatic logic low_borrow = ~opb.w8[b][0] & opa.w8[b][0];
-                automatic logic retained_lsb =
-                    opb.w8[b][1] ^ opa.w8[b][1] ^ low_borrow;
-                automatic logic round = average_rounding_increment(
-                    retained_lsb, opb.w8[b][0] ^ opa.w8[b][0], vxrm);
-                automatic logic [8:0] rounded_sub =
-                    prefix_add3_65({signed_mode & opb.w8[b][7], opb.w8[b]},
-                    ~65'({signed_mode & opa.w8[b][7], opa.w8[b]}),
-                    {7'b0, round, 1'b0}, 1'b1);
-                res.w8[b] = rounded_sub[8:1];
-              end
-            EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic signed_mode = op_i == VASUB;
-                automatic logic low_borrow = ~opb.w16[b][0] & opa.w16[b][0];
-                automatic logic retained_lsb =
-                    opb.w16[b][1] ^ opa.w16[b][1] ^ low_borrow;
-                automatic logic round = average_rounding_increment(
-                    retained_lsb, opb.w16[b][0] ^ opa.w16[b][0], vxrm);
-                automatic logic [16:0] rounded_sub =
-                    prefix_add3_65({signed_mode & opb.w16[b][15], opb.w16[b]},
-                    ~65'({signed_mode & opa.w16[b][15], opa.w16[b]}),
-                    {15'b0, round, 1'b0}, 1'b1);
-                res.w16[b] = rounded_sub[16:1];
-              end
-            EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic signed_mode = op_i == VASUB;
-                automatic logic low_borrow = ~opb.w32[b][0] & opa.w32[b][0];
-                automatic logic retained_lsb =
-                    opb.w32[b][1] ^ opa.w32[b][1] ^ low_borrow;
-                automatic logic round = average_rounding_increment(
-                    retained_lsb, opb.w32[b][0] ^ opa.w32[b][0], vxrm);
-                automatic logic [32:0] rounded_sub =
-                    prefix_add3_65({signed_mode & opb.w32[b][31], opb.w32[b]},
-                    ~65'({signed_mode & opa.w32[b][31], opa.w32[b]}),
-                    {31'b0, round, 1'b0}, 1'b1);
-                res.w32[b] = rounded_sub[32:1];
-              end
-            EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic signed_mode = op_i == VASUB;
-                automatic logic low_borrow = ~opb.w64[b][0] & opa.w64[b][0];
-                automatic logic retained_lsb =
-                    opb.w64[b][1] ^ opa.w64[b][1] ^ low_borrow;
-                automatic logic round = average_rounding_increment(
-                    retained_lsb, opb.w64[b][0] ^ opa.w64[b][0], vxrm);
-                automatic logic [64:0] rounded_sub =
-                    prefix_add3_65({signed_mode & opb.w64[b][63], opb.w64[b]},
-                    ~65'({signed_mode & opa.w64[b][63], opa.w64[b]}),
-                    {63'b0, round, 1'b0}, 1'b1);
-                res.w64[b] = rounded_sub[64:1];
-              end
-          endcase
 
         // Shift instructions
         VSLL: unique case (vew_i)
