@@ -1,0 +1,47 @@
+{
+  "state": "linux_boot_basic_system_and_rvv_smoke_passed",
+  "bitstream_record": "qbs_akv_bitstream_20261103.json",
+  "bitstream_sha256": "86930e50ae590d3b1441a537a7258aab53bbb4e1fd0ea537b74c0b6244554c88",
+  "fpga_source_commit": "ed39f750589ea5c04d38b35c186316b97ced613b",
+  "windows_evidence": "D:/fpga_runs/ara_validated_board_20261104_01",
+  "local_evidence": "/home/wangwy/fpga_runs/ara_validated_board_20261104_01/observed",
+  "board_modified": true,
+  "flash_modified": false,
+  "frequency_hz": 50000000,
+  "host_caps": 3,
+  "programmed_new_image": true,
+  "ethernet_smoke_passed": true,
+  "linux_init_marker_passed": true,
+  "shell_memory_smoke_passed": true,
+  "basic_system_cases_passed": 8,
+  "basic_system_cases_failed": 0,
+  "mem_total_kib": 3996732,
+  "ddr1_observed_read_bytes": 1452925584,
+  "ddr1_observed_write_bytes": 411544067,
+  "ddr2_observed_read_bytes": 368776840,
+  "ddr2_observed_write_bytes": 551188785,
+  "ddr1_axi_error_count": 0,
+  "ddr2_axi_error_count": 0,
+  "linux_load_metrics": {
+    "payload_bytes": 34902190,
+    "seconds": 3.5617013999726623,
+    "bytes_per_second_including_readback": 9799302.659192005
+  },
+  "rvv_smoke": {
+    "context_runs_passed": 3,
+    "resident_control_loops": 50,
+    "resident_overlap_loops": 50,
+    "hash_checks_passed": 3,
+    "kernel_health_check_passed": true,
+    "total_runner_steps_passed": 9,
+    "failed": 0,
+    "not_run": 0
+  },
+  "scope_limits": [
+    "Not exhaustive DDR addresses, patterns or ISA testing",
+    "QBS/AKV compute and validated llama.cpp delivery not yet exercised",
+    "Normal-memory eligibility and optimized runtime performance not established",
+    "CDC remains baseline-compared, not full manual signoff"
+  ],
+  "full_optimization_hardware_acceptance": false
+}
