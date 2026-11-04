@@ -1,0 +1,55 @@
+{
+  "state": "A_started_B_queued_results_not_accepted",
+  "evidence_root_windows": "D:/fpga_runs/qwen3_hw_sw_ab_20261104_01",
+  "evidence_root_linux": "/home/wangwy/fpga_runs/qwen3_hw_sw_ab_20261104_01",
+  "hardware": {
+    "source_commit": "ed39f750589ea5c04d38b35c186316b97ced613b",
+    "bitstream_sha256": "86930e50ae590d3b1441a537a7258aab53bbb4e1fd0ea537b74c0b6244554c88",
+    "profile": "dual_ddr_ethernet",
+    "frequency_hz": 50000000,
+    "workers": 1,
+    "same_for_both_variants": true,
+    "flash_modified": false
+  },
+  "model": {
+    "name": "Qwen3-1.7B Q4_K_M",
+    "sha256": "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5",
+    "thinking": false,
+    "sampling": "greedy",
+    "kv_policy": "Historical default KV types retained for the main comparison"
+  },
+  "A": {
+    "variant": "hardware_only_relative_to_historical_showcase",
+    "runtime_binary_sha256": "c46726aaa8c5270888338c6a6b0623ee00fdd1cfb3665f55711b14c3eda87a2b",
+    "software": "Unchanged historical executable; historical native QBS/AKV enabled, not pure RVV",
+    "task": "Ara Qwen3 hardware-only 20261104 01"
+  },
+  "B": {
+    "variant": "new_hardware_and_fixed_optimized_software",
+    "llama_commit": "da56aa750559c180d631b466de983ff2bb5d54d9",
+    "ara_sdk_commit": "1e48e205df5cec34183222c36d22eb4858466810",
+    "runtime_binary_sha256": "7e0626d1362a3b60c14867c8afe7646d32053098c3a42178f38d6a0ef4e1f71c",
+    "build_inputs": "git archive of fixed commits; no dirty source inputs or new development worktree",
+    "m4_prepare_packed_parallel_sums_cache_requested": true,
+    "normal_memory_promise": false,
+    "quantized_kv_paths_counted_as_exercised": false,
+    "task": "Ara Qwen3 hardware-software queued 20261104 01"
+  },
+  "cases": [
+    {"name": "01_chinese_facts", "generation_limit": 64},
+    {"name": "02_log_diagnosis", "generation_limit": 96},
+    {"name": "03_long_document", "generation_limit": 96},
+    {"name": "04_longer_answer", "generation_limit": 128}
+  ],
+  "scheduling": "One board, A then B; do not replace unknown or failed guest state automatically",
+  "required_results": [
+    "Measured input and generated token counts, not generation limits",
+    "Prefill and decode timing; model loading separately identified",
+    "Raw UART, answer text, exit status and native QBS/AKV execution counts",
+    "Answer quality review separate from execution pass",
+    "Same prompt/model hashes across variants; retain RVV fallback",
+    "Do not claim Register-PV or grouped quantized Prefill coverage with historical KV types"
+  ],
+  "all_runs_completed": false,
+  "optimized_hardware_acceptance": false
+}
