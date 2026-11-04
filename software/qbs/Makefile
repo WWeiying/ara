@@ -10,12 +10,24 @@ OBJECTS := $(SOURCES:%.c=$(BUILD)/%.o)
 
 all: $(BUILD)/libqbs_runtime.a
 
-check: $(BUILD)/qbs_runtime_test $(BUILD)/qbs_runtime_adapter_example $(BUILD)/qbs_format_test $(BUILD)/qbs_segmented_test $(BUILD)/qbs_planner_traffic
+check: $(BUILD)/qbs_runtime_test $(BUILD)/qbs_runtime_adapter_example $(BUILD)/qbs_format_test $(BUILD)/qbs_segmented_test $(BUILD)/qbs_planner_traffic $(BUILD)/qbs_context_admission_test $(BUILD)/qbs_context_cost_test
 	$(BUILD)/qbs_runtime_test
 	$(BUILD)/qbs_runtime_adapter_example
 	$(BUILD)/qbs_format_test
 	$(BUILD)/qbs_segmented_test
 	$(BUILD)/qbs_planner_traffic > /dev/null
+	$(BUILD)/qbs_context_admission_test
+	$(BUILD)/qbs_context_cost_test
+
+$(BUILD)/qbs_context_admission_test: tests/qbs_context_admission_test.c $(OBJECTS)
+	$(CC) $(CFLAGS) $^ -o $@
+
+$(BUILD)/context-cost/qbs_runtime.o: src/qbs_runtime.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -finstrument-functions -MMD -MP -c $< -o $@
+
+$(BUILD)/qbs_context_cost_test: tests/qbs_context_cost_test.c $(BUILD)/context-cost/qbs_runtime.o $(BUILD)/src/qbs_format.o
+	$(CC) $(CFLAGS) $^ -o $@
 
 example: $(BUILD)/qbs_runtime_adapter_example
 
@@ -46,4 +58,4 @@ $(BUILD)/%.o: %.c
 clean:
 	rm -rf $(BUILD)
 
--include $(OBJECTS:.o=.d)
+-include $(OBJECTS:.o=.d) $(BUILD)/context-cost/qbs_runtime.d

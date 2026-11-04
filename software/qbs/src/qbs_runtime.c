@@ -712,8 +712,9 @@ static bool plan_context_eligible(const qbs_plan_t *plan,
        (UINT16_C(1) << plan->problem.activation_profile)) == 0u)
     return false;
 
-  /* Inspect actual commands, including mixed-width tails, before any FILL.
-     A singleton N tile cannot both FILL and RELEASE with the current ABI. */
+  /* Within one input tile only N and weight/output offsets vary. The first
+     command bounds M*N and detects singleton N; the last covers its N tail.
+     Keep visiting every input tile so mixed-width M tails are still checked. */
   qbs_plan_cursor_t cursor;
   qbs_plan_cursor_reset(&cursor);
   bool saw_command = false;
@@ -750,6 +751,10 @@ static bool plan_context_eligible(const qbs_plan_t *plan,
                   &payload_bytes) ||
         payload_bytes > caps->activation_context_capacity_bytes)
       return false;
+    if (command.output_start == 0u && cursor.output_start != 0u) {
+      cursor.output_start =
+          ((plan->problem.n - 1u) / command.n) * command.n;
+    }
   }
 }
 
