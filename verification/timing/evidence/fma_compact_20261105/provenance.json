@@ -1,0 +1,63 @@
+{
+  "rtl_commit": "cad2e4950",
+  "rtl_sha256": "9bd6ddab2869b8067c59e55ec589dbb4b898a98b1c8be371e0582bb8b06ffcd4",
+  "scope": "Component evidence and bounded SoC acceptance, not FPGA or physical signoff",
+  "sources": {
+    "status.json": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_compact_20261105_01/status.json",
+      "sha256": "727ccad0bf3f2c92c8641dba3e0db03969c0fde70f6c9094fac93b1709e7a042"
+    },
+    "soc_report.json": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_compact_20261105_01/soc/report.json",
+      "sha256": "bff72fba9ce6317de7bdf973dd886fd2d7ffbf57b45cfc015dc9580ebf795fa2"
+    },
+    "soc_status.json": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_compact_20261105_01/soc/status.json",
+      "sha256": "40b50283dcfea226e610fc4c7a8841769ce80f989f552817affb62f778c3c5ed"
+    },
+    "performance_comparison.json": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_compact_20261105_01/performance-comparison.json",
+      "sha256": "f5487c510137a04b95e4071c467c0ad794b5d68cc9d6a28970b0543f1622e52c"
+    },
+    "ppa.json": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_compact_20261105_01/ppa/report.json",
+      "sha256": "c1c70d54f9bb2d622ad337788746fb20cf634fc80c8e7aac9009e2ef1ddab89c"
+    },
+    "ppa_manifest.json": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_compact_20261105_01/ppa/manifest.json",
+      "sha256": "55034838a244dbc706db5b6d5d80f651a46261a6963b469d57ee483ef8cadb74"
+    },
+    "library_pins.json": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_compact_20261105_01/ppa/library-pins.json",
+      "sha256": "53c16e9d5c81e9d247171a4397d008f9b9259c9ac208352b5d30bf2e0a419822"
+    },
+    "baseline_qor.rpt": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_compact_20261105_01/ppa/baseline/qor.rpt",
+      "sha256": "a4177b0a2b388a4c67730df84ed829f9d016e7dde09a2c04559b764a821afc10"
+    },
+    "compact_qor.rpt": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_compact_20261105_01/ppa/shared/qor.rpt",
+      "sha256": "1fc767a894b412b1a3ee7ddfe3810b74b2d07cb6e138d75c3e295e14007dfc18"
+    },
+    "compact_area.rpt": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_compact_20261105_01/ppa/shared/area.rpt",
+      "sha256": "0ce2dc3f4d3516ab58e301790653ed44e3955e7d96f73a987f0e8d20e4edbac5"
+    },
+    "pipeline_check.json": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_pipeline_20261105_01/status.json",
+      "sha256": "7a6f693dc86f3eb7759edf4469c249f9a92addcbce10b08f3d34bf31dfceb503"
+    },
+    "softfloat_check.json": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_softfloat_20261105_01/status.json",
+      "sha256": "a14938bb58bab9e1f8ec204aba5f1f86c460c50592288a27c36c41b97c7ac901"
+    },
+    "tag_check.json": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_tag_20261105_01/report.json",
+      "sha256": "6c55fecc8d93590f99597952e6a126f637c79c2f4e2dd4954807f427198fa0da"
+    },
+    "original_vs_shared_ppa.json": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_ppa_20261105_02/report.json",
+      "sha256": "b43b49ae55e75c90252b7ff98861e1818e739dec6ea4bc77b89b273d8e5a9da4"
+    }
+  }
+}

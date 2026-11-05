@@ -1,0 +1,5 @@
+{
+  "state": "PASS",
+  "vectors": 7200,
+  "scope": "Independent SoftFloat ADDMUL component checks"
+}

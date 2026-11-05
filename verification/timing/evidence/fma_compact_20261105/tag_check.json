@@ -1,0 +1,15 @@
+{
+  "state": "PASS",
+  "runs": [
+    {
+      "corrupt": false,
+      "returncode": 0,
+      "expected_rejection": false
+    },
+    {
+      "corrupt": true,
+      "returncode": 0,
+      "expected_rejection": true
+    }
+  ]
+}

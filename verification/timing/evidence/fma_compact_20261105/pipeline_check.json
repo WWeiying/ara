@@ -1,0 +1,7 @@
+{
+  "state": "PASS",
+  "cycle_checks": 23966,
+  "results": [
+    "SHARED_FMA_PASS accepted=14586 checked=14358 aborted=228 stalls=8135"
+  ]
+}

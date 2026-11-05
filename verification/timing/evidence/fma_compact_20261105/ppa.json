@@ -1,0 +1,17 @@
+{
+  "state": "MEASURED",
+  "metrics": {
+    "baseline": {
+      "area_um2": 35576.687576,
+      "clk_i_slack_ns": 3.99351e-06,
+      "clk_i_arrival_ns": 0.853836
+    },
+    "shared": {
+      "area_um2": 32175.023623,
+      "clk_i_slack_ns": 2.65241e-05,
+      "clk_i_arrival_ns": 0.838602
+    }
+  },
+  "area_reduction_pct": 9.561497106028371,
+  "scope": "Local matched ADDMUL measurement; inspect all timing groups before adoption"
+}
