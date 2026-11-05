@@ -74,7 +74,10 @@ VMFPU 的 `queue_latency_conflict_d`、`latency_transition_stall` 明确阻止
 ## 后台系统验收与综合门槛
 
 入口：`verification/timing/run_shared_fma_tagpack_acceptance.py`。
-计划目录：`verification/out/shared_fma_tagpack_acceptance_20261105_01/`。
+执行目录：`verification/out/shared_fma_tagpack_acceptance_20261105_02/`。
+首轮 `_01` 在 VCS 构建阶段因 bind 参数中的 `$bits(TagType)` 类型引用不能
+解析而停止，未运行程序。探针改为读取同宽的常量 `KeepMask`，没有修改 DUT
+或放宽位宽检查，首轮日志保留。
 
 保持先验证后综合：
 

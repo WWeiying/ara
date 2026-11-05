@@ -9,5 +9,5 @@ module shared_fma_tagpack_soc_monitor #(
   end
 endmodule
 bind simd_fma_shared shared_fma_tagpack_soc_monitor #(
-  .InputBits($bits(TagType)),.StoredBits(TagBits)
+  .InputBits($bits(KeepMask)),.StoredBits(TagBits)
 ) i_tagpack_config ();
