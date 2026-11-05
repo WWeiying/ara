@@ -8,6 +8,7 @@ import run_operand_ext as api
 SOURCES = [
     'hardware/deps/common_cells/src/cf_math_pkg.sv',
     'hardware/deps/common_cells/src/lzc.sv',
+    'hardware/deps/common_cells/src/stream_register.sv',
     'hardware/deps/fpnew/src/fpnew_pkg.sv',
     'hardware/deps/fpnew/src/fpnew_classifier.sv',
     'hardware/deps/fpnew/src/fpnew_rounding.sv',

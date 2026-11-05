@@ -2,6 +2,7 @@
 // Experimental ADDMUL-only candidate; not enabled by the production build.
 module simd_fma_shared #(
   parameter int unsigned NumPipeRegs = 5,
+  parameter bit CompactPipeline = 1'b1,
   parameter type TagType = logic
 ) (
   input logic clk_i, rst_ni,
@@ -29,6 +30,17 @@ module simd_fma_shared #(
     fp_format_e fmt;
     logic vectorial;
   } aux_t;
+  typedef struct packed {
+    logic [63:0] result;
+    status_t status;
+    TagType tag;
+  } output_t;
+  // Preserve the total elastic capacity/latency; delay packed results rather
+  // than repeating wide operand and intermediate-sum registers.
+  localparam int CorePipeRegs = CompactPipeline && NumPipeRegs > 3 ? 3 : NumPipeRegs;
+  localparam int OutputPipeRegs = NumPipeRegs - CorePipeRegs;
+  output_t [OutputPipeRegs:0] output_data;
+  logic [OutputPipeRegs:0] output_valid, output_ready;
   function automatic fmt_logic_t formats(int lane);
     fmt_logic_t mask;
     mask = '0;
@@ -43,13 +55,26 @@ module simd_fma_shared #(
   status_t [3:0] flags;
   TagType [3:0] tags;
   aux_t [3:0] aux;
-  logic accept, retire;
+  logic accept, retire, core_valid;
   assign in_ready_o = &ready;
-  assign out_valid_o = &valid;
+  assign core_valid = &valid;
   assign accept = in_valid_i & in_ready_o;
-  assign retire = out_valid_o & out_ready_i;
-  assign busy_o = |busy;
-  assign tag_o = tags[0];
+  assign retire = core_valid & output_ready[0];
+  assign busy_o = (|busy) | (|output_valid);
+  assign output_valid[0] = core_valid;
+  assign output_data[0].tag = tags[0];
+  assign output_ready[OutputPipeRegs] = out_ready_i;
+  assign out_valid_o = output_valid[OutputPipeRegs];
+  assign result_o = output_data[OutputPipeRegs].result;
+  assign status_o = output_data[OutputPipeRegs].status;
+  assign tag_o = output_data[OutputPipeRegs].tag;
+  for (genvar s = 0; s < OutputPipeRegs; s++) begin : gen_output_pipeline
+    stream_register #(.T(output_t)) i_stage (
+      .clk_i, .rst_ni, .clr_i(flush_i), .testmode_i(1'b0),
+      .valid_i(output_valid[s]), .ready_o(output_ready[s]), .data_i(output_data[s]),
+      .valid_o(output_valid[s+1]), .ready_i(output_ready[s+1]), .data_o(output_data[s+1])
+    );
+  end
 
   for (genvar l = 0; l < 4; l++) begin : gen_lane
     localparam fmt_logic_t Formats = formats(l);
@@ -91,7 +116,7 @@ module simd_fma_shared #(
     // All sublanes carry all tokens, including legal, masked-off FP16 dummies.
     // Identical stage counts plus atomic acceptance/retirement preserve alignment.
     fpnew_fma_multi #(
-      .FpFmtConfig(Formats), .NumPipeRegs(NumPipeRegs),
+      .FpFmtConfig(Formats), .NumPipeRegs(CorePipeRegs),
       .PipeConfig(DISTRIBUTED), .TagType(TagType), .AuxType(aux_t)
     ) i_fma (
       .clk_i, .rst_ni, .operands_i(ops), .is_boxed_i(boxed),
@@ -107,17 +132,17 @@ module simd_fma_shared #(
   end
 
   always_comb begin
-    result_o = '1;
-    status_o = '0;
+    output_data[0].result = '1;
+    output_data[0].status = '0;
     case (aux[0].fmt)
       FP16: for (int l = 0; l < 4; l++)
-        if (l == 0 || aux[0].vectorial) result_o[16*l+:16] = results[l][15:0];
+        if (l == 0 || aux[0].vectorial) output_data[0].result[16*l+:16] = results[l][15:0];
       FP32: for (int l = 0; l < 2; l++)
-        if (l == 0 || aux[0].vectorial) result_o[32*l+:32] = results[l][31:0];
-      FP64: result_o = results[0];
+        if (l == 0 || aux[0].vectorial) output_data[0].result[32*l+:32] = results[l][31:0];
+      FP64: output_data[0].result = results[0];
       default: ;
     endcase
-    for (int l = 0; l < 4; l++) status_o |= flags[l] & {5{masks[l]}};
+    for (int l = 0; l < 4; l++) output_data[0].status |= flags[l] & {5{masks[l]}};
   end
 
 `ifndef SYNTHESIS
@@ -132,7 +157,7 @@ module simd_fma_shared #(
     // Tags may carry an unused operand with X bits (e.g. operand A for ADD).
     // Require exact four-state preservation, not wildcard matching. Control
     // metadata must still be known and equal; real tag-bit differences fail.
-    if (out_valid_o) begin
+    if (core_valid) begin
       for (int l = 1; l < 4; l++)
         assert (tags[l] === tags[0] && aux[l] == aux[0])
           else $fatal(1, "Shared FMA sublane metadata divergence lane=%0d tag0=%h tag=%h aux0=%h aux=%h",

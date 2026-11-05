@@ -12,6 +12,7 @@ DEPS=[
     'hardware/deps/common_cells/src/cf_math_pkg.sv',
     'hardware/deps/common_cells/src/lzc.sv',
     'hardware/deps/common_cells/src/rr_arb_tree.sv',
+    'hardware/deps/common_cells/src/stream_register.sv',
     *['hardware/deps/fpnew/src/'+name for name in (
         'fpnew_pkg.sv','fpnew_classifier.sv','fpnew_rounding.sv','fpnew_fma.sv',
         'fpnew_fma_multi.sv','fpnew_opgroup_fmt_slice.sv','fpnew_opgroup_block.sv')],
@@ -23,6 +24,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('output',type=Path)
     p.add_argument('--soc',type=Path,required=True)
+    p.add_argument('--prior-shared-ppa',type=Path)
     a=p.parse_args(); out=a.output.resolve(); soc=a.soc.resolve()
     # No polling and no synthesis if functionality is still pending.
     report=api.read(soc/'report.json')
@@ -31,6 +33,10 @@ def main():
             len(plan['cases'])<31 or 'fma_edges' not in plan['cases']):
         raise ValueError('Complete paired SoC functional prerequisite missing')
     api.verify(soc)
+    prior=a.prior_shared_ppa.resolve() if a.prior_shared_ppa else None
+    if prior:
+        if api.read(prior/'report.json')['state']!='MEASURED': raise ValueError('Prior shared PPA missing')
+        api.verify(prior)
     out.mkdir(parents=True,exist_ok=False)
     status={'state':'PREPARING'}
     def state(**kw):
@@ -54,16 +60,22 @@ set_host_options -max_cores 2''')
         for variant in ('baseline','shared'):
             d=out/variant; (d/'src').mkdir(parents=True)
             for rel in DEPS: shutil.copy2(source/rel,d/'src'/Path(rel).name)
+            if variant=='baseline' and prior:
+                shutil.copy2(prior/'shared/src/simd_fma_shared.sv',d/'src/simd_fma_shared.sv')
+                for rel in DEPS:
+                    if '/deps/fpnew/' in rel and api.sha(d/'src'/Path(rel).name)!=api.sha(prior/'shared/src'/Path(rel).name):
+                        raise ValueError('Prior shared arithmetic differs: '+rel)
             shutil.copy2(api.HERE/'shared_fma_timing.sv',d/'src/shared_fma_timing.sv')
             shutil.copytree(source/'hardware/deps/common_cells/include',d/'include')
             shutil.copy2(api.ROOT/'backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.env',d/'library_env.tcl')
             (d/'run.tcl').write_text(tcl.replace('set defines {SYNTHESIS}',
-                'set defines {SYNTHESIS SHARED_FMA_PPA}' if variant=='shared' else 'set defines {SYNTHESIS}'))
+                'set defines {SYNTHESIS SHARED_FMA_PPA}' if variant=='shared' or prior else 'set defines {SYNTHESIS}'))
         shutil.copy2(__file__,out/'worker.py')
         shutil.copy2(Path(api.__file__),out/'run_operand_ext.py')
         api.save(out/'manifest.json',dict(soc=str(soc),scope='Per-lane ADDMUL only; excludes DIVSQRT and other SoC area',
                  period_ns=1.0,setup_uncertainty_ns=0.15,tag_bits=80,
-                 baseline_latency_fp16_fp32_fp64=[3,4,5],shared_latency_fp16_fp32_fp64=[5,5,5]))
+                 baseline_latency_fp16_fp32_fp64=[5,5,5] if prior else [3,4,5],
+                 shared_latency_fp16_fp32_fp64=[5,5,5],prior_shared_ppa=str(prior) if prior else None))
         pins={str(f):api.sha(f) for f in out.rglob('*') if f.is_file() and f.name!='status.json'}
         pins[str(soc/'report.json')]=api.sha(soc/'report.json')
         api.save(out/'source-pins.json',pins)
@@ -77,6 +89,8 @@ set_host_options -max_cores 2''')
         libraries=(out/'baseline/resolved_libraries.txt').read_text().splitlines()
         if not libraries: raise ValueError('No libraries selected')
         library_pins={name:api.sha(Path(name)) for name in libraries}
+        if prior and library_pins!=api.read(prior/'library-pins.json'):
+            raise ValueError('Prior shared and compact measurement libraries differ')
         api.save(out/'library-pins.json',library_pins)
         for variant in ('baseline','shared'):
             api.verify(out)

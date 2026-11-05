@@ -21,7 +21,7 @@ module shared_fma_tag_tb;
     rst=1; iv=1;
     do @(posedge clk); while(!ir);
     @(negedge clk); iv=0;
-    wait(ov);
+    wait(dut.core_valid);
     @(negedge clk);
     $display("TAG_OBSERVATION t=%0t tag0=%h tag1=%h logical_equal=%b case_equal=%b aux_equal=%b",
       $time,dut.tags[0],dut.tags[1],dut.tags[0]==dut.tags[1],
@@ -30,6 +30,8 @@ module shared_fma_tag_tb;
     @(posedge clk);
     #1;
     if ($test$plusargs("CORRUPT")) $fatal(1,"Checker missed a real tag mismatch");
+    wait(ov);
+    @(negedge clk);
     if (result !== {4{16'h4000}} || flags !== '0 || tag !== 32'hxx00000f)
       $fatal(1,"Tag or arithmetic changed");
     $display("SHARED_FMA_TAG_PASS");

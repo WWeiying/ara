@@ -34,6 +34,31 @@ module shared_fma_tb;
     .out_valid_o(ov), .out_ready_i(ready), .busy_o(busy)
   );
 
+`ifdef SHARED_FMA_CYCLE_MITER
+  logic prior_ir, prior_ov, prior_busy;
+  logic [63:0] prior_result;
+  logic [31:0] prior_tag;
+  status_t prior_flags;
+  int cycle_checks = 0;
+  simd_fma_prior #(.TagType(logic [31:0])) prior (
+    .clk_i(clk), .rst_ni(rst), .operands_i(operands), .is_boxed_i(boxed),
+    .rnd_mode_i(rm), .op_i(op), .op_mod_i(mod), .fmt_i(fmt),
+    .vectorial_op_i(vec), .simd_mask_i(mask), .tag_i(tag),
+    .in_valid_i(iv), .in_ready_o(prior_ir), .flush_i(flush),
+    .result_o(prior_result), .status_o(prior_flags), .tag_o(prior_tag),
+    .out_valid_o(prior_ov), .out_ready_i(ready), .busy_o(prior_busy)
+  );
+  always @(posedge clk) if (rst && !flush) begin
+    if ({ir,ov,busy} !== {prior_ir,prior_ov,prior_busy})
+      $fatal(1,"Pipeline control changed tag=%0d current=%b prior=%b",tag,
+             {ir,ov,busy},{prior_ir,prior_ov,prior_busy});
+    if (ov && {result,flags,out_tag} !== {prior_result,prior_flags,prior_tag})
+      $fatal(1,"Pipeline visible result changed tag=%0d",out_tag);
+    cycle_checks++;
+  end
+  final $display("SHARED_FMA_CYCLE_CHECKS %0d",cycle_checks);
+`endif
+
   // Old per-format arithmetic is combinational here; the scoreboard is
   // independent of the candidate pipeline latency, packing and mask reduction.
   for (genvar f = 0; f < 3; f++) begin : gen_ref

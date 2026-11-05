@@ -62,6 +62,7 @@ def main():
     p.add_argument('--component',type=Path,required=True)
     p.add_argument('--tag-check',type=Path,required=True)
     p.add_argument('--edges',type=Path,required=True)
+    p.add_argument('--pipeline-check',type=Path)
     a=p.parse_args(); out=a.output.resolve(); old=a.accepted.resolve(); comp=a.component.resolve()
     out.mkdir(parents=True,exist_ok=False)
     status={'state':'PREPARING','completed_runs':0}
@@ -78,7 +79,14 @@ def main():
         tag_check=a.tag_check.resolve(); edges=a.edges.resolve()
         if read(tag_check/'report.json')['state']!='PASS': raise ValueError('Tag checker qualification missing')
         if read(edges/'manifest.json')['phases']!=144: raise ValueError('Directed matrix incomplete')
-        for directory in (old,comp,tag_check,edges):
+        directories=[old,comp,tag_check,edges]
+        if a.pipeline_check:
+            pipeline=a.pipeline_check.resolve()
+            if read(pipeline/'status.json')['state']!='PASS': raise ValueError('Cycle miter prerequisite missing')
+            if api.sha(api.ROOT/CHANGED[-1])!=api.sha(pipeline/'src/simd_fma_shared.sv'):
+                raise ValueError('Candidate differs from cycle miter')
+            directories.append(pipeline)
+        for directory in directories:
             for f,h in read(directory/'source-pins.json').items():
                 if api.sha(Path(f))!=h: raise ValueError('Inherited input drift: '+f)
                 pins[f]=h
@@ -94,6 +102,8 @@ def main():
                      'fpnew_fma.sv','fpnew_fma_multi.sv'):
             if api.sha(comp/'src'/name)!=api.sha(old/'source/hardware/deps/fpnew/src'/name):
                 raise ValueError('SoC and independent reference use different fpnew: '+name)
+        if api.sha(comp/'src/stream_register.sv')!=api.sha(old/'source/hardware/deps/common_cells/src/stream_register.sv'):
+            raise ValueError('Output pipeline dependency differs from arithmetic check')
         # Confirm the starting snapshot really has the accepted production FPU.
         for rel in CHANGED[:2]:
             prior=subprocess.check_output(['git','-C',str(api.ROOT),'show','b3228cfa7:'+rel])
@@ -139,6 +149,7 @@ def main():
             builds[variant]=command
         api.save(out/'plan.json',dict(cases=names,workers=6,accepted=str(old),component=str(comp),
                  tag_check=str(tag_check),directed_edges=str(edges),
+                 pipeline_check=str(a.pipeline_check.resolve()) if a.pipeline_check else None,
                  scope='Paired optional ADDMUL integration; unchanged DIVSQRT/CONV/NONCOMP'))
         for f in out.rglob('*'):
             if f.is_file() and f.name!='status.json': pins[str(f)]=api.sha(f)
