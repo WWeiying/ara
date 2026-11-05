@@ -1,0 +1,6 @@
+{
+  "state": "PASS",
+  "paired_cases": 62,
+  "exact_result_cycle_activity_equivalence": true,
+  "scope": "Bounded SoC acceptance; no physical/FPGA or coverage signoff"
+}

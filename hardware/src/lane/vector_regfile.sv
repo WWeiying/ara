@@ -126,24 +126,45 @@ module vector_regfile import ara_pkg::*; #(
   //  Multiplexer  //
   ///////////////////
 
-  stream_xbar #(
-    .NumInp   (NrBanks        ),
-    .NumOut   (NrOperandQueues),
-    .DataWidth(DataWidth      ),
-    .AxiVldRdy('1             )
-  ) i_vrf_mux (
-    .clk_i  (clk_i          ),
-    .rst_ni (rst_ni         ),
-    .flush_i(1'b0           ),
-    .rr_i   ('0             ),
-    .data_i (rdata          ),
-    .valid_i(rdata_valid_q  ),
-    .ready_o(/* Unused */   ),
-    .sel_i  (tgt_opqueue_q  ),
-    .data_o (operand_o      ),
-    .valid_o(operand_valid_o),
-    .idx_o  (/* Unused */   ),
-    .ready_i('1             ) // Always ready
-  );
+  // Each queue has one requester issuing to at most one bank per cycle.
+  // Bank arbitration preserves that invariant; the SRAM and return tags both
+  // have one-cycle latency. No return-side arbitration or buffering is needed.
+  for (genvar queue = 0; queue < NrOperandQueues; queue++) begin : gen_return
+    logic [NrBanks-1:0] hit;
+    for (genvar bank = 0; bank < NrBanks; bank++) begin : gen_hit
+      assign hit[bank] = rdata_valid_q[bank] &
+                        (tgt_opqueue_q[bank] == opqueue_e'(queue));
+    end
+    assign operand_valid_o[queue] = |hit;
+    for (genvar bit_idx = 0; bit_idx < DataWidth; bit_idx++) begin : gen_data
+      logic [NrBanks-1:0] selected;
+      for (genvar bank = 0; bank < NrBanks; bank++) begin : gen_bank
+        assign selected[bank] = hit[bank] & rdata[bank][bit_idx];
+      end
+      assign operand_o[queue][bit_idx] = |selected;
+    end
+
+    // This is an integration invariant, not a collision-resolution policy.
+    // synthesis translate_off
+    always @(posedge clk_i) if (rst_ni) begin
+      assert (!$isunknown(hit) && $onehot0(hit))
+        else $fatal(1, "VRF_RETURN_COLLISION_OR_UNKNOWN queue=%0d", queue);
+    end
+    // synthesis translate_on
+  end
+
+  // synthesis translate_off
+  for (genvar bank = 0; bank < NrBanks; bank++) begin : gen_return_checks
+    always @(posedge clk_i) if (rst_ni) begin
+      assert (!$isunknown(rdata_valid_q[bank]))
+        else $fatal(1, "VRF_RETURN_UNKNOWN_VALID bank=%0d", bank);
+      if (rdata_valid_q[bank]) begin
+        assert (!$isunknown(tgt_opqueue_q[bank]) &&
+                unsigned'(tgt_opqueue_q[bank]) < NrOperandQueues)
+          else $fatal(1, "VRF_RETURN_INVALID_TARGET bank=%0d", bank);
+      end
+    end
+  end
+  // synthesis translate_on
 
 endmodule : vector_regfile

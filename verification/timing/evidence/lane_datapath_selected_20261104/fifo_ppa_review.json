@@ -1,0 +1,13 @@
+{
+  "decision": "PROCEED_FUNCTIONAL_REGRESSION_ONLY",
+  "origin": "operand_fifo_soc_20261104_01 remains STOPPED_PPA_REVIEW",
+  "reason": "10.703 ps longer command-decode to occupancy clock-gate path; setup +116.475 ps",
+  "outstanding": "COMBO setup: 65 violations each, WNS -0.26/-0.27 ns; hold 4/5, worst -0.02/-0.03 ns",
+  "physical_acceptance": false,
+  "reviewed_files": {
+    "ppa/report.json": "789e56d6cbb6b9ea446eb6cd110d696bdb9ab5de2f6fb037f2b4c5946040fd02",
+    "src/operand_queue.sv": "e2e44f41cf41615fae0d7e276b20c206c66062103c8faf22ea68548b4372a00c",
+    "ppa/baseline/qor.rpt": "5e497be9b1b6eeaf2760484f918cf2e48e7a39d09ba0e4e0eb1fd8926316b67a",
+    "ppa/candidate/qor.rpt": "ab6a5323bec4e46b9314c2371c51324775ecf6b567fd382a7ecfd08316b9a3e8"
+  }
+}

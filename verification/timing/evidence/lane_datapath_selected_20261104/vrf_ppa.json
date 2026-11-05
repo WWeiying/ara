@@ -1,0 +1,16 @@
+{
+  "state": "PASS",
+  "metrics": {
+    "baseline": {
+      "area_um2": 6593.327893,
+      "clk_i_slack_ns": 0.202664,
+      "clk_i_arrival_ns": 0.640244
+    },
+    "candidate": {
+      "area_um2": 5477.303901,
+      "clk_i_slack_ns": 0.367344,
+      "clk_i_arrival_ns": 0.471378
+    }
+  },
+  "area_reduction_pct": 16.92656591802235
+}

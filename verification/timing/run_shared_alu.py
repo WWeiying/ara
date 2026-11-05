@@ -69,15 +69,18 @@ def worker(out, action):
               'started': datetime.now(timezone.utc).isoformat()}
     save(out/(action+'.status.json'), status)
     try:
-        verify(out)
+        manifest = verify(out)
         if action == 'test':
             sources = [str(out/'src'/Path(p).name) for p in PACKAGES]
             sources += [str(out/'src'/n) for n in
                         ('fixed_p_rounding.sv', 'simd_alu.sv', 'reference.sv')]
-            for name, top, args, marker in [
+            tests = [
                 ('miter', 'shared_alu_tb', [], 'SHARED_ALU_PASS'),
                 ('rounding', 'simd_alu_equivalence_tb', ['+EDGES_ONLY'],
-                 'SIMD ALU equivalence PASS')]:
+                 'SIMD ALU equivalence PASS')]
+            if manifest.get('shift_test'):
+                tests.insert(0, ('shift', 'shared_alu_shift_tb', [], 'SHARED_ALU_SHIFT_PASS'))
+            for name, top, args, marker in tests:
                 d = out/name
                 d.mkdir()
                 command(['vcs', '-full64', '-sverilog', '-timescale=1ns/1ps',
@@ -114,6 +117,7 @@ def main():
     parser.add_argument('--reference', default='b69df88f0')
     parser.add_argument('--worker', choices=('test', 'baseline', 'candidate'))
     parser.add_argument('--start-dc', action='store_true')
+    parser.add_argument('--shift-test', action='store_true')
     args = parser.parse_args()
     out = args.output.resolve()
     if args.worker:
@@ -141,12 +145,15 @@ def main():
         shutil.copy2(ROOT/path, out/'src'/Path(path).name)
     for name in ('shared_alu_tb.sv', 'simd_alu_equivalence_tb.sv', 'simd_alu_timing.sv'):
         shutil.copy2(HERE/name, out/'src'/name)
+    if args.shift_test:
+        shutil.copy2(HERE/'shared_alu_shift_tb.sv', out/'src/shared_alu_shift_tb.sv')
     shutil.copy2(HERE/'shared_alu_ppa.tcl', out/'shared_alu_ppa.tcl')
     shutil.copy2(ROOT/'backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.env',
                  out/'library_env.tcl')
     shutil.copy2(__file__, out/'worker.py')
     hashes = {str(f.relative_to(out)): sha(f) for f in out.rglob('*') if f.is_file()}
     save(out/'manifest.json', {'reference': reference, 'hashes': hashes,
+        'shift_test': args.shift_test,
         'scope': 'local combinational SIMD ALU with registered timing boundary',
         'period_ns': 1.0, 'setup_uncertainty_ns': 0.15,
         'functional_configurations': ['fixed_point_disabled', 'fixed_point_enabled'],

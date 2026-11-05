@@ -1,0 +1,7 @@
+{
+  "state": "PASS",
+  "cases": 62,
+  "baseline_reused": true,
+  "exact_result_cycle_activity_equivalence": true,
+  "scope": "Bounded SoC regression, not FPGA/signoff"
+}

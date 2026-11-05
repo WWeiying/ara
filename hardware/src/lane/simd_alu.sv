@@ -167,6 +167,169 @@ module simd_alu import ara_pkg::*; import rvv_pkg::*; #(
   assign less = valid_i && vew_i <= EW64 ? compare_less[vew_i[1:0]] : '0;
   assign equal = valid_i && vew_i <= EW64 ? compare_equal[vew_i[1:0]] : '0;
 
+  logic shift_left, shift_signed, shift_narrow, shift_clip;
+  logic [2:0] shift_sew;
+  logic [5:0] shift_amount [8];
+  logic [7:0] shift_fill;
+  logic [63:0] shift_stage [7];
+  logic [63:0] shifted, rounded;
+  logic [7:0] round_start, round_boundary, round_cin, round_cout;
+  logic [7:0] round_p [4], round_g [4];
+  logic [63:0] narrow_result [3];
+  logic [7:0] narrow_sat [3];
+  logic [63:0] selected_operand;
+  logic select_a [8];
+
+  assign shift_left = op_i == VSLL;
+  assign shift_signed = op_i inside {VSRA, VNSRA, VSSRA, VNCLIP};
+  assign shift_narrow = op_i inside {VNSRL, VNSRA, VNCLIP, VNCLIPU};
+  assign shift_clip = FixPtSupport == FixedPointEnable &&
+      (op_i inside {VNCLIP, VNCLIPU});
+  assign shift_sew = {1'b0, vew_i[1:0]} + {2'b0, shift_narrow};
+
+  // Global bit reversal turns left shifts into right shifts. Reverse the
+  // element controls too; no variable per-element reversal network is needed.
+  for (genvar bitpos = 0; bitpos < 64; bitpos++) begin : gen_shift_reverse
+    assign shift_stage[0][bitpos] = shift_left ? operand_b_i[63-bitpos] : operand_b_i[bitpos];
+    assign shifted[bitpos] = shift_left ? shift_stage[6][63-bitpos] : shift_stage[6][bitpos];
+  end
+  for (genvar b = 0; b < 8; b++) begin : gen_shift_control
+    logic [5:0] right_amount, left_amount;
+    logic sign_bit;
+    always_comb begin
+      right_amount = '0;
+      left_amount = '0;
+      sign_bit = 1'b0;
+      case (shift_sew)
+        EW8: begin
+          right_amount = {3'b0, operand_a_i[8*b+:3]};
+          left_amount = {3'b0, operand_a_i[8*(7-b)+:3]};
+          sign_bit = operand_b_i[8*b+7];
+        end
+        EW16: begin
+          right_amount = {2'b0, operand_a_i[16*(b/2)+:4]};
+          left_amount = {2'b0, operand_a_i[16*((7-b)/2)+:4]};
+          sign_bit = operand_b_i[16*(b/2)+15];
+        end
+        EW32: begin
+          right_amount = {1'b0, operand_a_i[32*(b/4)+:5]};
+          left_amount = {1'b0, operand_a_i[32*((7-b)/4)+:5]};
+          sign_bit = operand_b_i[32*(b/4)+31];
+        end
+        EW64: begin
+          right_amount = operand_a_i[5:0];
+          left_amount = operand_a_i[5:0];
+          sign_bit = operand_b_i[63];
+        end
+        default:;
+      endcase
+    end
+    assign shift_amount[b] = shift_left ? left_amount : right_amount;
+    assign shift_fill[b] = shift_signed & sign_bit;
+  end
+  // Six constant-distance stages shared by every SEW and shift operation.
+  // Cross-element inputs are replaced by zero or the element's original sign.
+  for (genvar stage = 0; stage < 6; stage++) begin : gen_shift_stage
+    for (genvar bitpos = 0; bitpos < 64; bitpos++) begin : gen_bit
+      localparam int From = bitpos + (1 << stage);
+      wire source_bit;
+      if (From >= 64) begin
+        assign source_bit = shift_fill[bitpos/8];
+      end else begin
+        localparam int MinSew = (bitpos/8 == From/8) ? 0 :
+            (bitpos/16 == From/16) ? 1 : (bitpos/32 == From/32) ? 2 : 3;
+        assign source_bit = shift_sew >= MinSew
+            ? shift_stage[stage][From] : shift_fill[bitpos/8];
+      end
+      assign shift_stage[stage+1][bitpos] = shift_amount[bitpos/8][stage]
+          ? source_bit : shift_stage[stage][bitpos];
+    end
+  end
+
+  // A shared incrementer rounds the shifted low destination-width field.
+  // In narrowing mode the upper half must neither receive nor propagate carry.
+  for (genvar b = 0; b < 8; b++) begin : gen_shift_round
+    always_comb begin
+      round_start[b] = 1'b0;
+      round_boundary[b] = 1'b1;
+      case (vew_i)
+        EW8: begin
+          round_start[b] = shift_narrow ? ((b%2 == 0) & rm[b/2]) : rm[b];
+          round_boundary[b] = 1'b1;
+        end
+        EW16: begin
+          round_start[b] = shift_narrow ? ((b%4 == 0) & rm[b/4]) : ((b%2 == 0) & rm[b/2]);
+          round_boundary[b] = b%2 == 0;
+        end
+        EW32: begin
+          round_start[b] = shift_narrow ? ((b == 0) & rm[0]) : ((b%4 == 0) & rm[b/4]);
+          round_boundary[b] = b%4 == 0;
+        end
+        EW64: begin
+          round_start[b] = (b == 0) & rm[0];
+          round_boundary[b] = b == 0;
+        end
+        default:;
+      endcase
+    end
+    wire byte_all_ones = &shifted[8*b+:8];
+    assign round_p[0][b] = byte_all_ones & ~round_boundary[b];
+    assign round_g[0][b] = byte_all_ones & round_start[b];
+    if (b == 0) assign round_cin[b] = round_start[b];
+    else assign round_cin[b] = round_start[b] |
+        (round_g[3][b-1] & ~round_boundary[b]);
+    assign rounded[8*b+:8] = shifted[8*b+:8] + round_cin[b];
+    assign round_cout[b] = byte_all_ones & round_cin[b];
+  end
+  for (genvar stage = 0; stage < 3; stage++) begin : gen_round_prefix
+    for (genvar b = 0; b < 8; b++) begin : gen_byte
+      if (b >= (1 << stage)) begin
+        assign round_p[stage+1][b] = round_p[stage][b] & round_p[stage][b-(1 << stage)];
+        assign round_g[stage+1][b] = round_g[stage][b] |
+            (round_p[stage][b] & round_g[stage][b-(1 << stage)]);
+      end else begin
+        assign round_p[stage+1][b] = round_p[stage][b];
+        assign round_g[stage+1][b] = round_g[stage][b];
+      end
+    end
+  end
+  for (genvar fmt = 0; fmt < 3; fmt++) begin : gen_narrow_format
+    localparam int W = 8 << fmt;
+    for (genvar e = 0; e < 64/(2*W); e++) begin : gen_element
+      wire [W-1:0] high_bits = shifted[2*W*e+W+:W];
+      wire [W-1:0] low_bits = rounded[2*W*e+:W];
+      wire negative = shifted[2*W*e+2*W-1];
+      wire carry = round_cout[(2*W*e+W)/8-1];
+      wire signed_sat = negative
+          ? ((!(&high_bits)) | (!carry & !low_bits[W-1]))
+          : ((|high_bits) | carry | low_bits[W-1]);
+      wire sat = shift_clip & ((op_i == VNCLIP) ? signed_sat : ((|high_bits) | carry));
+      wire [W-1:0] limit = op_i == VNCLIP
+          ? {negative, {(W-1){~negative}}} : {W{1'b1}};
+      wire [W-1:0] value = shift_clip ? (sat ? limit : low_bits) : shifted[2*W*e+:W];
+      assign narrow_result[fmt][2*W*e+:2*W] = narrowing_select_i
+          ? {value, {W{1'b0}}} : {{W{1'b0}}, value};
+      assign narrow_sat[fmt][2*W*e/8+:2*W/8] = narrowing_select_i
+          ? {{(W/8){sat}}, {(W/8){1'b0}}} : {{(W/8){1'b0}}, {(W/8){sat}}};
+    end
+  end
+
+  // Merge and min/max differ only in the per-element source selection.
+  for (genvar b = 0; b < 8; b++) begin : gen_operand_select
+    wire choose_max = op_i inside {VMAX, VMAXU, VREDMAX, VREDMAXU};
+    logic [7:0] selectors;
+    assign selectors = op_i == VMERGE ? mask_i : ~(less ^ {8{choose_max}});
+    always_comb begin
+      case (vew_i)
+        EW8: select_a[b] = selectors[b];
+        EW16: select_a[b] = selectors[2*(b/2)];
+        EW32: select_a[b] = selectors[4*(b/4)];
+        default: select_a[b] = selectors[0];
+      endcase
+    end
+    assign selected_operand[8*b+:8] = select_a[b] ? operand_a_i[8*b+:8] : operand_b_i[8*b+:8];
+  end
+
   always_comb begin: p_alu
     // Default assignment
     res       = '0;
@@ -205,185 +368,30 @@ module simd_alu import ara_pkg::*; import rvv_pkg::*; #(
             vxsat = arithmetic_sat[vew_i[1:0]];
           end
 
-        // Shift instructions
-        VSLL: unique case (vew_i)
-            EW8 : for (int b = 0; b < 8; b++) res.w8 [b] = opb.w8 [b] << opa.w8 [b][2:0];
-            EW16: for (int b = 0; b < 4; b++) res.w16[b] = opb.w16[b] << opa.w16[b][3:0];
-            EW32: for (int b = 0; b < 2; b++) res.w32[b] = opb.w32[b] << opa.w32[b][4:0];
-            EW64: for (int b = 0; b < 1; b++) res.w64[b] = opb.w64[b] << opa.w64[b][5:0];
-          endcase
-        VSRL: unique case (vew_i)
-            EW8 : for (int b = 0; b < 8; b++) res.w8 [b] = opb.w8 [b] >> opa.w8 [b][2:0];
-            EW16: for (int b = 0; b < 4; b++) res.w16[b] = opb.w16[b] >> opa.w16[b][3:0];
-            EW32: for (int b = 0; b < 2; b++) res.w32[b] = opb.w32[b] >> opa.w32[b][4:0];
-            EW64: for (int b = 0; b < 1; b++) res.w64[b] = opb.w64[b] >> opa.w64[b][5:0];
-          endcase
-        VSRA: unique case (vew_i)
-            EW8 : for (int b = 0; b < 8; b++) res.w8 [b] = $signed(opb.w8 [b]) >>> opa.w8 [b][2:0];
-            EW16: for (int b = 0; b < 4; b++) res.w16[b] = $signed(opb.w16[b]) >>> opa.w16[b][3:0];
-            EW32: for (int b = 0; b < 2; b++) res.w32[b] = $signed(opb.w32[b]) >>> opa.w32[b][4:0];
-            EW64: for (int b = 0; b < 1; b++) res.w64[b] = $signed(opb.w64[b]) >>> opa.w64[b][5:0];
-          endcase
-        VNSRL: unique case (vew_i)
-            EW8 : for (int b = 0; b < 4; b++) res.w8 [2*b + narrowing_select_i] = opb.w16[b] >>
-                opa.w16[b][3:0];
-            EW16: for (int b = 0; b < 2; b++) res.w16[2*b + narrowing_select_i] = opb.w32[b] >>
-                opa.w32[b][4:0];
-            EW32: for (int b = 0; b < 1; b++) res.w32[2*b + narrowing_select_i] = opb.w64[b] >>
-                opa.w64[b][5:0];
-          endcase
-        VNSRA: unique case (vew_i)
-            EW8 : for (int b = 0; b < 4; b++) res.w8 [2*b + narrowing_select_i] =
-                $signed(opb.w16[b]) >>> opa.w16[b][3:0];
-            EW16: for (int b = 0; b < 2; b++) res.w16[2*b + narrowing_select_i] =
-                $signed(opb.w32[b]) >>> opa.w32[b][4:0];
-            EW32: for (int b = 0; b < 1; b++) res.w32[2*b + narrowing_select_i] =
-                $signed(opb.w64[b]) >>> opa.w64[b][5:0];
-          endcase
+        // Shared shift, rounding and narrowing datapaths.
+        VSLL, VSRL, VSRA:
+          if (vew_i <= EW64) res = shifted;
+        VNSRL, VNSRA:
+          if (vew_i <= EW32) res = narrow_result[vew_i[1:0]];
+        VSSRL, VSSRA:
+          if (FixPtSupport == FixedPointEnable && vew_i <= EW64)
+            res = rounded;
+        VNCLIP, VNCLIPU:
+          if (FixPtSupport == FixedPointEnable && vew_i <= EW32) begin
+            res = narrow_result[vew_i[1:0]];
+            vxsat = narrow_sat[vew_i[1:0]];
+          end
 
-        // Fixed point shift instructions
-        VSSRA: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
-            EW8: for (int b = 0; b < 8; b++) begin
-                automatic logic [7:0] sra = $signed(opb.w8 [b]) >>> opa.w8 [b][2:0];
-                res.w8[b] = prefix_add65(sra, 65'd0, rm[b]);
-              end
-            EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic [15:0] sra = $signed(opb.w16[b]) >>> opa.w16[b][3:0];
-                res.w16[b] = prefix_add65(sra, 65'd0, rm[b]);
-              end
-            EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic [31:0] sra = $signed(opb.w32[b]) >>> opa.w32[b][4:0];
-                res.w32[b] = prefix_add65(sra, 65'd0, rm[b]);
-              end
-            EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic [63:0] sra = $signed(opb.w64[b]) >>> opa.w64[b][5:0];
-                res.w64[b] = prefix_add65(sra, 65'd0, rm[b]);
-              end
-          endcase
-        VSSRL: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
-            EW8: for (int b = 0; b < 8; b++) begin
-                automatic logic [8:0] srl = opb.w8 [b] >> opa.w8 [b][2:0];
-                res.w8[b] = prefix_add65(srl, 65'd0, rm[b]);
-              end
-            EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic [16:0] srl = opb.w16[b] >> opa.w16[b][3:0];
-                res.w16[b] = prefix_add65(srl, 65'd0, rm[b]);
-              end
-            EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic [32:0] srl = opb.w32[b] >> opa.w32[b][4:0];
-                res.w32[b] = prefix_add65(srl, 65'd0, rm[b]);
-              end
-            EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic [64:0] srl = opb.w64[b] >> opa.w64[b][5:0];
-                res.w64[b] = prefix_add65(srl, 65'd0, rm[b]);
-              end
-          endcase
-
-        // Fixed point clip instructions
-        VNCLIP: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
-            EW8 : for (int b = 0; b < 4; b++) begin
-                automatic logic signed [15:0] shifted =
-                    $signed(opb.w16[b]) >>> opa.w16[b][3:0];
-                automatic logic [8:0] low_sum =
-                    prefix_add65({1'b0, shifted[7:0]}, 65'd0, rm[b]);
-                automatic logic negative = shifted[15];
-                automatic logic sat = negative
-                    ? ((shifted[15:8] != 8'hff) ||
-                       (!low_sum[8] && !low_sum[7]))
-                    : ((shifted[15:8] != 8'h00) ||
-                       low_sum[8] || low_sum[7]);
-                vxsat.w8[2*b + narrowing_select_i] = sat;
-                res.w8[2*b + narrowing_select_i] = sat
-                    ? (negative ? 8'h80 : 8'h7f) : low_sum[7:0];
-              end
-            EW16: for (int b = 0; b < 2; b++) begin
-                automatic logic signed [31:0] shifted =
-                    $signed(opb.w32[b]) >>> opa.w32[b][4:0];
-                automatic logic [16:0] low_sum =
-                    prefix_add65({1'b0, shifted[15:0]}, 65'd0, rm[b]);
-                automatic logic negative = shifted[31];
-                automatic logic sat = negative
-                    ? ((shifted[31:16] != 16'hffff) ||
-                       (!low_sum[16] && !low_sum[15]))
-                    : ((shifted[31:16] != 16'h0000) ||
-                       low_sum[16] || low_sum[15]);
-                vxsat.w16[2*b + narrowing_select_i] = {2{sat}};
-                res.w16[2*b + narrowing_select_i] = sat
-                    ? (negative ? 16'h8000 : 16'h7fff) : low_sum[15:0];
-              end
-            EW32: for (int b = 0; b < 1; b++) begin
-                automatic logic signed [63:0] shifted =
-                    $signed(opb.w64[b]) >>> opa.w64[b][5:0];
-                automatic logic [32:0] low_sum =
-                    prefix_add65({1'b0, shifted[31:0]}, 65'd0, rm[b]);
-                automatic logic negative = shifted[63];
-                automatic logic sat = negative
-                    ? ((shifted[63:32] != 32'hffff_ffff) ||
-                       (!low_sum[32] && !low_sum[31]))
-                    : ((shifted[63:32] != 32'h0000_0000) ||
-                       low_sum[32] || low_sum[31]);
-                vxsat.w32[narrowing_select_i] = {4{sat}};
-                res.w32[narrowing_select_i] = sat
-                    ? (negative ? 32'h8000_0000 : 32'h7fff_ffff)
-                    : low_sum[31:0];
-              end
-          endcase
-        VNCLIPU: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
-            EW8 : for (int b = 0; b < 4; b++) begin
-                automatic logic [15:0] shifted =
-                    opb.w16[b] >> opa.w16[b][3:0];
-                automatic logic [8:0] low_sum =
-                    prefix_add65({1'b0, shifted[7:0]}, 65'd0, rm[b]);
-                automatic logic sat = |shifted[15:8] || low_sum[8];
-                vxsat.w8[2*b + narrowing_select_i] = sat;
-                res.w8[2*b + narrowing_select_i] = sat
-                    ? 8'hff : low_sum[7:0];
-              end
-            EW16: for (int b = 0; b < 2; b++) begin
-                automatic logic [31:0] shifted =
-                    opb.w32[b] >> opa.w32[b][4:0];
-                automatic logic [16:0] low_sum =
-                    prefix_add65({1'b0, shifted[15:0]}, 65'd0, rm[b]);
-                automatic logic sat = |shifted[31:16] || low_sum[16];
-                vxsat.w16[2*b + narrowing_select_i] = {2{sat}};
-                res.w16[2*b + narrowing_select_i] = sat
-                    ? 16'hffff : low_sum[15:0];
-              end
-            EW32: for (int b = 0; b < 1; b++) begin
-                automatic logic [63:0] shifted =
-                    opb.w64[b] >> opa.w64[b][5:0];
-                automatic logic [32:0] low_sum =
-                    prefix_add65({1'b0, shifted[31:0]}, 65'd0, rm[b]);
-                automatic logic sat = |shifted[63:32] || low_sum[32];
-                vxsat.w32[narrowing_select_i] = {4{sat}};
-                res.w32[narrowing_select_i] = sat
-                    ? 32'hffff_ffff : low_sum[31:0];
-              end
-          endcase
-
-        // Merge instructions
-        VMERGE: unique case (vew_i)
-            EW8 : for (int b = 0; b < 8; b++) res.w8 [b] = mask_i[1*b] ? opa.w8 [b] : opb.w8 [b];
-            EW16: for (int b = 0; b < 4; b++) res.w16[b] = mask_i[2*b] ? opa.w16[b] : opb.w16[b];
-            EW32: for (int b = 0; b < 2; b++) res.w32[b] = mask_i[4*b] ? opa.w32[b] : opb.w32[b];
-            EW64: for (int b = 0; b < 1; b++) res.w64[b] = mask_i[8*b] ? opa.w64[b] : opb.w64[b];
-          endcase
+        VMERGE:
+          if (vew_i <= EW64) res = selected_operand;
 
         // Scalar move
         VMVSX, VFMVSF: res = opa;
 
         // Comparison instructions
         VMIN, VMINU, VMAX, VMAXU,
-        VREDMINU, VREDMIN, VREDMAXU, VREDMAX: unique case (vew_i)
-            EW8 : for (int b = 0; b < 8; b++) res.w8 [b] =
-                (less[1*b] ^ (op_i == VMAX || op_i == VMAXU || op_i == VREDMAXU || op_i == VREDMAX)) ? opb.w8 [b] : opa.w8 [b];
-            EW16: for (int b = 0; b < 4; b++) res.w16[b] =
-                (less[2*b] ^ (op_i == VMAX || op_i == VMAXU || op_i == VREDMAXU || op_i == VREDMAX)) ? opb.w16[b] : opa.w16[b];
-            EW32: for (int b = 0; b < 2; b++) res.w32[b] =
-                (less[4*b] ^ (op_i == VMAX || op_i == VMAXU || op_i == VREDMAXU || op_i == VREDMAX)) ? opb.w32[b] : opa.w32[b];
-            EW64: for (int b = 0; b < 1; b++) res.w64[b] =
-                (less[8*b] ^ (op_i == VMAX || op_i == VMAXU || op_i == VREDMAXU || op_i == VREDMAX)) ? opb.w64[b] : opa.w64[b];
-          endcase
+        VREDMINU, VREDMIN, VREDMAXU, VREDMAX:
+          if (vew_i <= EW64) res = selected_operand;
         VMSEQ, VMSNE: unique case (vew_i)
             EW8 : for (int b = 0; b < 8; b++) res.w8 [b][1:0] =
                 {mask_i[1*b], equal[1*b] ^ (op_i == VMSNE)};

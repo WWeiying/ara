@@ -93,13 +93,12 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   logic  ibuf_empty;
   logic  ibuf_pop;
 
-  fifo_v3 #(
+  operand_queue_data_fifo #(
     .DEPTH     (DataBufDepth),
     .DATA_WIDTH(DataWidth   )
   ) i_input_buffer (
     .clk_i     (clk_i          ),
     .rst_ni    (rst_ni         ),
-    .testmode_i(1'b0           ),
     .flush_i   (flush_i        ),
     .data_i    (operand_i      ),
     .push_i    (operand_valid_i),
@@ -556,3 +555,80 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   end : p_type_conversion_ff
 
 endmodule : operand_queue
+
+// Local non-fall-through specialization of common_cells fifo_v3 (Solderpad 0.51).
+// Control reset invalidates every entry. Payload is written before it can be
+// observed as valid, so data flops need neither reset nor flush clearing.
+module operand_queue_data_fifo #(
+    parameter int unsigned DEPTH = 2,
+    parameter int unsigned DATA_WIDTH = 64,
+    localparam int unsigned ADDR_DEPTH = DEPTH > 1 ? $clog2(DEPTH) : 1
+  ) (
+    input logic clk_i, rst_ni, flush_i,
+    input logic [DATA_WIDTH-1:0] data_i,
+    input logic push_i, pop_i,
+    output logic full_o, empty_o,
+    output logic [DATA_WIDTH-1:0] data_o,
+    output logic [ADDR_DEPTH-1:0] usage_o
+  );
+  logic [ADDR_DEPTH-1:0] read_pointer_n, read_pointer_q;
+  logic [ADDR_DEPTH-1:0] write_pointer_n, write_pointer_q;
+  logic [ADDR_DEPTH:0] status_cnt_n, status_cnt_q;
+  logic [DEPTH-1:0][DATA_WIDTH-1:0] mem_n, mem_q;
+  logic gate_clock;
+
+  assign full_o = status_cnt_q == DEPTH;
+  assign empty_o = status_cnt_q == 0;
+  assign usage_o = status_cnt_q[ADDR_DEPTH-1:0];
+
+  always_comb begin
+    read_pointer_n = read_pointer_q;
+    write_pointer_n = write_pointer_q;
+    status_cnt_n = status_cnt_q;
+    data_o = mem_q[read_pointer_q];
+    mem_n = mem_q;
+    gate_clock = 1'b1;
+    if (push_i && !full_o) begin
+      mem_n[write_pointer_q] = data_i;
+      gate_clock = 1'b0;
+      if (write_pointer_q == DEPTH-1) write_pointer_n = '0;
+      else write_pointer_n = write_pointer_q + 1'b1;
+      status_cnt_n = status_cnt_q + 1'b1;
+    end
+    if (pop_i && !empty_o) begin
+      if (read_pointer_q == DEPTH-1) read_pointer_n = '0;
+      else read_pointer_n = read_pointer_q + 1'b1;
+      status_cnt_n = status_cnt_q - 1'b1;
+    end
+    if (push_i && pop_i && !full_o && !empty_o) status_cnt_n = status_cnt_q;
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      read_pointer_q <= '0;
+      write_pointer_q <= '0;
+      status_cnt_q <= '0;
+    end else if (flush_i) begin
+      read_pointer_q <= '0;
+      write_pointer_q <= '0;
+      status_cnt_q <= '0;
+    end else begin
+      read_pointer_q <= read_pointer_n;
+      write_pointer_q <= write_pointer_n;
+      status_cnt_q <= status_cnt_n;
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (!gate_clock) mem_q <= mem_n;
+  end
+
+`include "common_cells/assertions.svh"
+`ifndef COMMON_CELLS_ASSERTS_OFF
+  `ASSERT_INIT(positive_depth, DEPTH > 0, "Operand FIFO requires positive depth.")
+  `ASSERT(full_write, full_o |-> !push_i, clk_i, !rst_ni,
+          "Trying to push into a full operand FIFO.")
+  `ASSERT(empty_read, empty_o |-> !pop_i, clk_i, !rst_ni,
+          "Trying to pop an empty operand FIFO.")
+`endif
+endmodule : operand_queue_data_fifo
