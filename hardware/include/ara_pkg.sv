@@ -137,6 +137,8 @@ package ara_pkg;
 
   // FPU latencies.
   localparam int unsigned LatFCompEW64    = 'd5;
+  // Experimental lane ADDMUL sharing; retain the accepted implementation by default.
+  localparam bit EnableSharedFma = 1'b0;
   localparam int unsigned LatFCompEW32    = 'd4;
   localparam int unsigned LatFCompEW16    = 'd3;
   localparam int unsigned LatFCompEW8     = 'd2;

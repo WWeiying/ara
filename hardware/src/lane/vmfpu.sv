@@ -14,6 +14,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     parameter  config_pkg::cva6_cfg_t CVA6Cfg         = cva6_config_pkg::cva6_cfg,
     // Support for floating-point data types
     parameter  fpu_support_e          FPUSupport      = FPUSupportHalfSingleDouble,
+    parameter  bit                    SharedFma       = EnableSharedFma,
     // External support for vfrec7, vfrsqrt7, rounding-toward-odd
     parameter  fpext_support_e        FPExtSupport    = FPExtSupportEnable,
     // Support for fixed-point data types
@@ -242,7 +243,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       [VFMIN:VFSGNJX],
       [VMFEQ:VMFGE]:          fpu_latency = LatFNonComp;
       default: begin
-        case (sew)
+        if (SharedFma && ara_fpnew_opgroup(op) == fpnew_pkg::ADDMUL)
+          fpu_latency = LatFCompEW64;
+        else case (sew)
           EW64:    fpu_latency = LatFCompEW64;
           EW32:    fpu_latency = LatFCompEW32;
           EW16:    fpu_latency = LatFCompEW16;
@@ -1304,13 +1307,15 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       control:   vfpu_control_in
     };
 
-    fpnew_top #(
+    simd_fpnew #(
       .Features      (FPUFeatures      ),
       .Implementation(FPUImplementation),
       .DivSqrtSel    (DivSqrtSel       ),
       .TagType       (vfpu_tag_t       ),
       .TrueSIMDClass (TrueSIMDClass    ),
-      .EnableSIMDMask(EnableSIMDMask   )
+      .EnableSIMDMask(EnableSIMDMask   ),
+      .SharedFma    (SharedFma        ),
+      .SharedFmaPipeRegs(LatFCompEW64  )
     ) i_fpnew_bulk (
       .clk_i         (clk_i          ),
       .rst_ni        (rst_ni         ),

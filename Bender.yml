@@ -49,6 +49,8 @@ sources:
     - hardware/src/lane/operand_queue.sv
     - hardware/src/lane/operand_requester.sv
     - hardware/src/lane/simd_alu.sv
+    - hardware/src/lane/simd_fma_shared.sv
+    - hardware/src/lane/simd_fpnew.sv
     - hardware/src/lane/simd_div.sv
     - hardware/src/lane/simd_mul.sv
     - hardware/src/lane/simd_mul_shared_product.sv

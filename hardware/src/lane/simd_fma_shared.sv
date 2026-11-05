@@ -121,6 +121,7 @@ module simd_fma_shared #(
   end
 
 `ifndef SYNTHESIS
+  int unsigned x_tag_observations = 0;
   initial assert (NumPipeRegs > 0) else $fatal(1, "Shared FMA requires registered stages");
   always @(posedge clk_i) if (rst_ni && !flush_i) begin
     assert (ready == {4{ready[0]}} && valid == {4{valid[0]}})
@@ -128,9 +129,20 @@ module simd_fma_shared #(
     if (accept) assert (fmt_i inside {FP16, FP32, FP64} &&
                        op_i inside {ADD, MUL, FMADD, FNMSUB})
       else $fatal(1, "Unsupported shared FMA operation");
-    if (out_valid_o) for (int l = 1; l < 4; l++)
-      assert (tags[l] == tags[0] && aux[l] == aux[0])
-        else $fatal(1, "Shared FMA sublane metadata divergence");
+    // Tags may carry an unused operand with X bits (e.g. operand A for ADD).
+    // Require exact four-state preservation, not wildcard matching. Control
+    // metadata must still be known and equal; real tag-bit differences fail.
+    if (out_valid_o) begin
+      for (int l = 1; l < 4; l++)
+        assert (tags[l] === tags[0] && aux[l] == aux[0])
+          else $fatal(1, "Shared FMA sublane metadata divergence lane=%0d tag0=%h tag=%h aux0=%h aux=%h",
+                      l,tags[0],tags[l],aux[0],aux[l]);
+      if ($isunknown(tags[0]) && x_tag_observations == 0) begin
+        $display("FMA_IDENTICAL_X_TAG %m tag0=%h tag1=%h aux0=%h aux1=%h",
+                 tags[0],tags[1],aux[0],aux[1]);
+        x_tag_observations++;
+      end
+    end
   end
 `endif
 endmodule
