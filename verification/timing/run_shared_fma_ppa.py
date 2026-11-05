@@ -25,6 +25,7 @@ def main():
     p.add_argument('output',type=Path)
     p.add_argument('--soc',type=Path,required=True)
     p.add_argument('--prior-shared-ppa',type=Path)
+    p.add_argument('--compact-tag',action='store_true')
     a=p.parse_args(); out=a.output.resolve(); soc=a.soc.resolve()
     # No polling and no synthesis if functionality is still pending.
     report=api.read(soc/'report.json')
@@ -33,6 +34,8 @@ def main():
             len(plan['cases'])<31 or 'fma_edges' not in plan['cases']):
         raise ValueError('Complete paired SoC functional prerequisite missing')
     api.verify(soc)
+    if a.compact_tag and (not plan.get('compact_tag') or not a.prior_shared_ppa):
+        raise ValueError('Compact-tag integration prerequisite missing')
     prior=a.prior_shared_ppa.resolve() if a.prior_shared_ppa else None
     if prior:
         if api.read(prior/'report.json')['state']!='MEASURED': raise ValueError('Prior shared PPA missing')
@@ -68,12 +71,16 @@ set_host_options -max_cores 2''')
             shutil.copy2(api.HERE/'shared_fma_timing.sv',d/'src/shared_fma_timing.sv')
             shutil.copytree(source/'hardware/deps/common_cells/include',d/'include')
             shutil.copy2(api.ROOT/'backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.env',d/'library_env.tcl')
+            defines=['SYNTHESIS']
+            if variant=='shared' or prior: defines.append('SHARED_FMA_PPA')
+            if variant=='shared' and a.compact_tag: defines.append('SHARED_FMA_COMPACT_TAG')
             (d/'run.tcl').write_text(tcl.replace('set defines {SYNTHESIS}',
-                'set defines {SYNTHESIS SHARED_FMA_PPA}' if variant=='shared' or prior else 'set defines {SYNTHESIS}'))
+                'set defines {'+' '.join(defines)+'}'))
         shutil.copy2(__file__,out/'worker.py')
         shutil.copy2(Path(api.__file__),out/'run_operand_ext.py')
         api.save(out/'manifest.json',dict(soc=str(soc),scope='Per-lane ADDMUL only; excludes DIVSQRT and other SoC area',
                  period_ns=1.0,setup_uncertainty_ns=0.15,tag_bits=80,
+                 stored_tag_bits=16 if a.compact_tag else 80,
                  baseline_latency_fp16_fp32_fp64=[5,5,5] if prior else [3,4,5],
                  shared_latency_fp16_fp32_fp64=[5,5,5],prior_shared_ppa=str(prior) if prior else None))
         pins={str(f):api.sha(f) for f in out.rglob('*') if f.is_file() and f.name!='status.json'}

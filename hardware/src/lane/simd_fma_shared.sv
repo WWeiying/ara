@@ -3,7 +3,9 @@
 module simd_fma_shared #(
   parameter int unsigned NumPipeRegs = 5,
   parameter bit CompactPipeline = 1'b1,
-  parameter type TagType = logic
+  parameter type TagType = logic,
+  // Opt-in contract: omitted tag bits are unused by this caller and return zero.
+  parameter TagType TagKeepMask = '1
 ) (
   input logic clk_i, rst_ni,
   input logic [2:0][63:0] operands_i,
@@ -30,10 +32,14 @@ module simd_fma_shared #(
     fp_format_e fmt;
     logic vectorial;
   } aux_t;
+  localparam logic [$bits(TagType)-1:0] KeepMask = TagKeepMask;
+  localparam int TagBits = $countones(KeepMask);
+  typedef logic [(TagBits > 0 ? TagBits : 1)-1:0] pipe_tag_t;
+  pipe_tag_t input_tag;
   typedef struct packed {
     logic [63:0] result;
     status_t status;
-    TagType tag;
+    pipe_tag_t tag;
   } output_t;
   // Preserve the total elastic capacity/latency; delay packed results rather
   // than repeating wide operand and intermediate-sum registers.
@@ -53,7 +59,7 @@ module simd_fma_shared #(
   logic [3:0] ready, valid, busy, masks;
   logic [3:0][63:0] results;
   status_t [3:0] flags;
-  TagType [3:0] tags;
+  pipe_tag_t [3:0] tags;
   aux_t [3:0] aux;
   logic accept, retire, core_valid;
   assign in_ready_o = &ready;
@@ -67,7 +73,17 @@ module simd_fma_shared #(
   assign out_valid_o = output_valid[OutputPipeRegs];
   assign result_o = output_data[OutputPipeRegs].result;
   assign status_o = output_data[OutputPipeRegs].status;
-  assign tag_o = output_data[OutputPipeRegs].tag;
+  // Constant ranks become wires, not a variable pack/unpack network.
+  for (genvar b = 0; b < $bits(TagType); b++) begin : gen_tag_bits
+    if (KeepMask[b]) begin : gen_keep
+      localparam int Rank = $countones(KeepMask << ($bits(TagType)-b));
+      assign input_tag[Rank] = tag_i[b];
+      assign tag_o[b] = output_data[OutputPipeRegs].tag[Rank];
+    end else begin : gen_drop
+      assign tag_o[b] = 1'b0;
+    end
+  end
+  if (TagBits == 0) assign input_tag = '0;
   for (genvar s = 0; s < OutputPipeRegs; s++) begin : gen_output_pipeline
     stream_register #(.T(output_t)) i_stage (
       .clk_i, .rst_ni, .clr_i(flush_i), .testmode_i(1'b0),
@@ -117,11 +133,11 @@ module simd_fma_shared #(
     // Identical stage counts plus atomic acceptance/retirement preserve alignment.
     fpnew_fma_multi #(
       .FpFmtConfig(Formats), .NumPipeRegs(CorePipeRegs),
-      .PipeConfig(DISTRIBUTED), .TagType(TagType), .AuxType(aux_t)
+      .PipeConfig(DISTRIBUTED), .TagType(pipe_tag_t), .AuxType(aux_t)
     ) i_fma (
       .clk_i, .rst_ni, .operands_i(ops), .is_boxed_i(boxed),
       .rnd_mode_i, .op_i, .op_mod_i,
-      .src_fmt_i(local_fmt), .dst_fmt_i(local_fmt), .tag_i,
+      .src_fmt_i(local_fmt), .dst_fmt_i(local_fmt), .tag_i(input_tag),
       .mask_i(mask), .aux_i(aux_t'({fmt_i, vectorial_op_i})),
       .in_valid_i(accept), .in_ready_o(ready[l]), .flush_i,
       .result_o(result), .status_o(flags[l]), .extension_bit_o(),

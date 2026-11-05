@@ -22,7 +22,11 @@ module shared_fma_timing (
   localparam fmt_unsigned_t BaselinePipeRegs = '{4,5,3,2,3,2};
   localparam fmt_unit_types_t BaselineUnitTypes = '{default:PARALLEL};
 `ifdef SHARED_FMA_PPA
-  simd_fma_shared #(.NumPipeRegs(5),.TagType(logic [79:0])) i_addmul (
+  simd_fma_shared #(.NumPipeRegs(5),.TagType(logic [79:0])
+`ifdef SHARED_FMA_COMPACT_TAG
+    ,.TagKeepMask(80'h0000000000000000ffff)
+`endif
+  ) i_addmul (
     .clk_i,.rst_ni,.operands_i,.is_boxed_i('1),.rnd_mode_i,.op_i,.op_mod_i,.fmt_i,
     .vectorial_op_i(1'b1),.simd_mask_i(mask_i),.tag_i,.in_valid_i,.in_ready_o,
     .flush_i(1'b0),.result_o,.status_o,.tag_o,.out_valid_o,.out_ready_i,.busy_o

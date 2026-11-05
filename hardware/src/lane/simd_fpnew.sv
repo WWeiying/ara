@@ -5,6 +5,7 @@ module simd_fpnew #(
   parameter fpnew_pkg::fpu_implementation_t Implementation = fpnew_pkg::DEFAULT_NOREGS,
   parameter fpnew_pkg::divsqrt_unit_t DivSqrtSel = fpnew_pkg::THMULTI,
   parameter type TagType = logic,
+  parameter TagType SharedFmaTagKeepMask = '1,
   parameter logic TrueSIMDClass = 1'b0,
   parameter logic EnableSIMDMask = 1'b0,
   parameter bit SharedFma = 1'b0,
@@ -71,7 +72,8 @@ module simd_fpnew #(
       logic issue;
       assign issue = in_valid_i && get_opgroup(op_i) == opgroup_e'(g);
       if (g == int'(ADDMUL)) begin : gen_fma
-        simd_fma_shared #(.NumPipeRegs(SharedFmaPipeRegs), .TagType(TagType)) i_fma (
+        simd_fma_shared #(.NumPipeRegs(SharedFmaPipeRegs), .TagType(TagType),
+                         .TagKeepMask(SharedFmaTagKeepMask)) i_fma (
           .clk_i, .rst_ni, .operands_i, .is_boxed_i(boxed), .rnd_mode_i,
           .op_i, .op_mod_i, .fmt_i(dst_fmt_i), .vectorial_op_i, .simd_mask_i(mask),
           .tag_i, .in_valid_i(issue), .in_ready_o(ready[g]), .flush_i,

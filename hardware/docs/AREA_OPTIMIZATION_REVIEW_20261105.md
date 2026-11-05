@@ -7,6 +7,10 @@
 下一项优先审查 ADDMUL 专用事务标签，随后再依据映射面积决定是否扩展到
 其他流水数据存储。本文只整理证据和静态方案，不新增 RTL 试验或综合任务。
 
+后续进展：ADDMUL 专用 tag 候选已实施并通过部件检查，详见
+[tag 精简与验收](FMA_TAG_COMPACTION_20261105.md)。下表仍为已完成综合的
+保留版数字，不能把新候选的预计收益计入其中。
+
 工作目录为 `ara_dsa`，最新紧凑 FMA 实现提交 `cad2e4950`；仿真与综合
 证据统一在 `ara_dsa_signoff_integration/verification/out/`。
 整数共享乘法器仍需 `ARA_SHARED_SIMD_MUL` 开关，浮点共享仍默认关闭。

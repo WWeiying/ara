@@ -996,6 +996,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     strb_t flag_mask;
     strb_t control;
   } vfpu_tag_t;
+  // Only NONCOMP consumers need operand_a (estimates and comparison NV bits).
+  // Preserve all control and simulation identity bits through ADDMUL.
+  localparam vfpu_tag_t AddmulTagKeepMask = '{default:'1, operand_a:'0};
 
   vfpu_tag_t vfpu_tag_in, vfpu_tag_out;
   strb_t vfpu_control_in;
@@ -1315,6 +1318,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       .TrueSIMDClass (TrueSIMDClass    ),
       .EnableSIMDMask(EnableSIMDMask   ),
       .SharedFma    (SharedFma        ),
+      .SharedFmaTagKeepMask(AddmulTagKeepMask),
       .SharedFmaPipeRegs(LatFCompEW64  )
     ) i_fpnew_bulk (
       .clk_i         (clk_i          ),
