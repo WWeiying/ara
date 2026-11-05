@@ -19,6 +19,8 @@ module shared_fma_timing (
   output logic busy_o
 );
   import fpnew_pkg::*;
+  localparam fmt_unsigned_t BaselinePipeRegs = '{4,5,3,2,3,2};
+  localparam fmt_unit_types_t BaselineUnitTypes = '{default:PARALLEL};
 `ifdef SHARED_FMA_PPA
   simd_fma_shared #(.NumPipeRegs(5),.TagType(logic [79:0])) i_addmul (
     .clk_i,.rst_ni,.operands_i,.is_boxed_i('1),.rnd_mode_i,.op_i,.op_mod_i,.fmt_i,
@@ -28,8 +30,8 @@ module shared_fma_timing (
 `else
   fpnew_opgroup_block #(
     .OpGroup(ADDMUL),.Width(64),.EnableVectors(1'b1),.FpFmtMask(6'b111000),
-    .IntFmtMask('1),.FmtPipeRegs('{4,5,3,2,3,2}),
-    .FmtUnitTypes('{default:PARALLEL}),.PipeConfig(DISTRIBUTED),.TagType(logic [79:0])
+    .IntFmtMask('1),.FmtPipeRegs(BaselinePipeRegs),
+    .FmtUnitTypes(BaselineUnitTypes),.PipeConfig(DISTRIBUTED),.TagType(logic [79:0])
   ) i_addmul (
     .clk_i,.rst_ni,.hart_id_i('0),.operands_i,.is_boxed_i('1),.rnd_mode_i,
     .op_i,.op_mod_i,.src_fmt_i(fmt_i),.dst_fmt_i(fmt_i),.int_fmt_i(INT64),
