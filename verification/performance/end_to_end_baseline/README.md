@@ -177,6 +177,13 @@ and 128 field-copy vectors, but fails negative-source-line attribution: VCS
 reports the correct SVA `assert property` line rather than its `else $fatal`
 line. Preserve both original FAILs; any scoped host replay must bind the exact
 source and retain every other negative gate, without rerunning the RTL.
+`collect_wide_clients_scoped.py --collect` now provides that completed audit:
+exact mask property, instance, time and unique fatal are checked before only
+the fatal-header line is projected for the unchanged negative checker. All
+66 pins, nine artifacts and both raw checkers were independently replayed;
+`evidence/wide_clients_20261106_01/result.json` binds the accepted scope. The
+original FAILs and raw logs are unchanged. Host mutation tests reject unrelated
+origins, lines, predicates, duplicate fatals and unexpected PASS text.
 Wide client selection remains default-OFF. Ordinary RVV and actual AKV SoC
 operation, physical memory width, real permission checks and SDK performance
 are later integration gates, not implied by these command/component fixtures.

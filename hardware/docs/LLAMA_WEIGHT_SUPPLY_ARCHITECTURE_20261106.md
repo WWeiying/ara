@@ -569,7 +569,14 @@ syntax error. Its checked successor completes 128 normal cases, 12 faults and
 128 direct metadata copies. The negative test emits the intended unique
 upper-strobe fatal, but its checker expects the `else $fatal` line whereas VCS
 attributes the SVA failure to the `assert property` line. Both original FAIL
-reports remain unchanged; negative-origin acceptance has a separate scoped
-audit. Neither a failed report nor a source-location correction proves a
+reports remain unchanged. A host-only scoped audit binds the exact property,
+mask consequent, instance, time, source hash and unique fatal, then projects
+only that header's source line to replay every other original negative gate.
+Its 66 pins, nine artifacts and both raw checkers have been independently
+replayed; all 128 normal cases, 12 faults and 128 metadata copies pass, as does
+the exact upper-strobe guard. The wide run exercises 193 AKV upper-half narrow
+returns and 809 full-width returns. Receipt:
+`verification/performance/evidence/wide_clients_20261106_01/result.json`.
+Neither a failed report nor a source-location correction proves a
 physical wide SoC. Real CVA6 PMP footprint checks, ordinary RVV/AKV SoC
 regressions, physical memory width and actual-SDK/model latency remain required.
