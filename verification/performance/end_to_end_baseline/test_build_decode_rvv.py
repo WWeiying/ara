@@ -1,7 +1,7 @@
 import struct
 import unittest
 
-from build_decode_rvv import custom_instructions, modified_recipe
+from build_decode_rvv import custom_instructions, modified_recipe, upstream_warning_recipe
 
 
 def elf(text, data=b''):
@@ -15,6 +15,14 @@ def elf(text, data=b''):
 
 
 class BuildDecodeRVVTests(unittest.TestCase):
+    def test_upstream_policy_changes_no_math_or_isa_option(self):
+        command = ['/cc', '-O3', '-Wall', '-Wextra', '-Werror', '-fno-fast-math',
+                   '-ffp-contract=off', '-march=rv64gcv_zfh_zvfh', '-c', 'upstream.cpp']
+        actual = upstream_warning_recipe(command, '/cc -O3 -Wall -c upstream.cpp')
+        self.assertEqual(actual, [word for word in command if word != '-Werror'])
+        for record in ('/cc -Werror -c upstream.cpp', '/cc -Werror=strict-aliasing -c upstream.cpp'):
+            with self.assertRaises(ValueError): upstream_warning_recipe(command, record)
+
     def test_recipe_preserves_isa_math_and_compile_flags(self):
         original = ['/cc', '-O3', '-ffp-contract=off', '-march=rv64gcv_zfh_zvfh', '-c', 'a.cpp', '-o', 'a.o']
         result = modified_recipe(original, 'b.cpp', 'b.o')

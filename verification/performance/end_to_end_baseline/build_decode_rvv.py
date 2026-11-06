@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
+import sys
 
 from audit import digest, require, verify_pins
 from prepare_wide_soc import HERE, ROOT, VERIFY, RUNS
@@ -32,6 +33,15 @@ def modified_recipe(template, source, target):
     require(not any('GGML_USE_RISCV_QBS' in value or 'GGML_CPU_GENERIC' in value for value in result),
             'RVV baseline may not select QBS or rename generic implementations')
     return result
+
+
+def upstream_warning_recipe(command, recorded):
+    actual = shlex.split(recorded)
+    require(not any(word == '-Werror' or word.startswith('-Werror=') for word in actual),
+            'Recorded upstream build did require warning errors')
+    # Keep every optimization/ISA/math option. Do not promote upstream's
+    # existing warnings to errors merely because the new driver uses -Werror.
+    return [word for word in command if word != '-Werror']
 
 
 def custom_instructions(data):
@@ -120,6 +130,12 @@ def main(output):
                      'decode_rvv_data.py', 'test_decode_rvv_data.py', 'test_decode_rvv_source.py',
                      'test_build_decode_rvv.py', 'audit.py'):
             pin(HERE / name)
+        for module in tuple(sys.modules.values()):
+            path = getattr(module, '__file__', None)
+            if path and Path(path).is_file() and any(Path(path).resolve().is_relative_to(root) for root in (ROOT, VERIFY)):
+                pin(path)
+        compilation = GRAPH / 'build/compile_commands.json'; pin(compilation, archived[str(compilation)])
+        production_commands = json.loads(compilation.read_text()); warning_policy = []
         records = json.loads((BASE / 'commands.json').read_text())
         recipes = {r['label']: r['argv'] for r in records}
         cpp = recipes['compile-0']; cc = recipes['compile-1']
@@ -138,6 +154,12 @@ def main(output):
         for index, (source, template) in enumerate(sources):
             if source.is_relative_to(GRAPH): pin(source, archived[str(source)])
             obj = out / f'compiled-{index}.o'; cmd = modified_recipe(template, source, obj)
+            if source.is_relative_to(GRAPH):
+                selected = [r for r in production_commands if r['file'] == str(source)]
+                require(len(selected) == 1 and 'command' in selected[0], 'Recorded upstream compile policy missing')
+                cmd = upstream_warning_recipe(cmd, selected[0]['command'])
+                warning_policy.append(dict(source=str(source), source_sha256=digest(source),
+                    policy='Keep warnings visible, not errors, as in pinned GGML build; ISA/math/optimization unchanged'))
             dep = [v for i,v in enumerate(cmd) if i not in (cmd.index('-c'), cmd.index('-o'), cmd.index('-o')+1)]
             text = run([*dep, '-M', '-MT', 'object'], 'deps-'+str(index))
             for name in shlex.split(text.replace('\\\n', ' ').split(':', 1)[1]):
@@ -180,6 +202,10 @@ def main(output):
             parts=list(NAMES), k=original['k'], profiles=original['profiles'], preparation_stages=4,
             preparation_included=True, cold_weight_repack_included=False, no_custom_opcodes=True,
             preload_segments=loads, compiler_tools=tools, linked_archives=libraries,
+            upstream_warning_policy=warning_policy,
+            prior_attempts=[dict(run=str(RUNS / 'e2e_decode_rvv_build_20261106_01'),
+                state='FAIL', source_commit='6ed7a6ae2', stage='compile-2',
+                reason='Fixture -Werror applied to unrelated upstream repack kernels; original report retained')],
             numerical_oracle='Existing independent QBS C reference with declared RVV tolerance; '
                 'not bit-exact RVV reference acceptance',
             limits=['Build only: runtime numerics, protocol, repeatability and timings remain unaccepted',
@@ -188,6 +214,10 @@ def main(output):
         result.update(state='FAIL', error=repr(exc)); raise
     finally:
         (out / 'status.json').write_text(json.dumps(result, indent=2)+'\n')
+        # Retain input identities on failure as well as success. A later build
+        # must not erase which tool/source produced the original diagnostic.
+        if not (out / 'source-pins.json').exists():
+            (out / 'source-pins.json').write_text(json.dumps(pins, indent=2)+'\n')
         result['artifacts'] = {str(p): digest(p) for p in out.iterdir()
                                if p.is_file() and p.name not in ('status.json', 'build.json')}
         (out / 'build.json').write_text(json.dumps(result, indent=2)+'\n')
