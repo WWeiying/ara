@@ -19,6 +19,26 @@ omitting the last flag performs preflight only. Each side uses two identical
 Q/K/V workload trials, with preparation included and checks/printing excluded.
 This is a cropped-N QKV SDK region, not whole-model timing or cold repack time.
 
+`collect_projection_native.py --base <run> --wide <run> --output <fresh-dir>`
+replays actual stage timings, captured-oracle checksums, independent protocol
+results, source/image inventories and exclusive QBS phase counters.
+`watch_projection_pair.py` takes the same arguments and waits on inotify file
+events before calling that collector once, avoiding timed status polling.
+The accepted Qwen3 pair has SDK-region ratio 1.33418x and execution-only ratio
+1.62669x. `diagnose_projection_pair.py --pair <pair/result.json> --output
+<fresh-json>` verifies that 98304 saved dot issues minus 7744 extra strict
+weight-wait cycles exactly equals 90560 saved SDK-region cycles. This identity
+is scoped to this measured pair, not a general additive-stall model.
+
+`build_output_gqa6.py --output <fresh-dir>` prepares a genuine Qwen2.5 Decode
+GQA6/D128/visible128 full-call ABBA, reusing fifteen checked common objects and
+rebuilding only caller/data. Raw captured KV is converted to token-major with
+an inverse-layout check; input values and the original numerical tolerance are
+unchanged. `run_output_gqa6.py --build <build-dir> --output <fresh-dir>
+--execute-reviewed` uses the audited wide SoC. This measures software schedule
+choices on one image, not old versus new hardware. Its logical `value_decodes`
+does not count the output-tile schedule's repeated physical V decoding.
+
 `audit.py` implements the first, read-only step of the end-to-end performance
 plan. It does not build software, start VCS/QEMU, access the board, alter a sealed
 input, or promote an experimental runtime. Separate reconstruction and bounded

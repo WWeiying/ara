@@ -1,0 +1,332 @@
+{
+  "state": "REAL_QWEN3_SDK_RTL_PAIR_REAUDITED",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_qwen3_matrix_pair_20261106_01",
+  "result_sha256": "b747e874756923b912205a1a7c611261773a29d0cdf30294003064d746a4c5b1",
+  "comparison": {
+    "parts": [
+      {
+        "part": 0,
+        "profile": 1,
+        "baseline_execution": 79223,
+        "candidate_execution": 48711,
+        "execution_ratio": 1.626388290119275
+      },
+      {
+        "part": 1,
+        "profile": 1,
+        "baseline_execution": 77657,
+        "candidate_execution": 47169,
+        "execution_ratio": 1.6463567173355382
+      },
+      {
+        "part": 2,
+        "profile": 2,
+        "baseline_execution": 78185,
+        "candidate_execution": 48625,
+        "execution_ratio": 1.607917737789203
+      }
+    ],
+    "region_ratio": 1.334175907304563,
+    "execution_ratio": 1.6266911179543961,
+    "preparation_ratio": 1
+  },
+  "reports": [
+    {
+      "wide": 0,
+      "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_qwen3_matrix_base_20261106_01",
+      "build": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_qwen3_projection_native_build_20261106_03",
+      "elf_sha256": "11b7f121fd5c7f93c840154a4ea6818e7bd4405c4afa92ed026ffd56d04590ed",
+      "measured": {
+        "trials": [
+          {
+            "id": 0,
+            "preparation": 57840,
+            "admission": 4754,
+            "execution": 117821,
+            "region": 181195,
+            "commands": 12,
+            "errors": 0
+          },
+          {
+            "id": 1,
+            "preparation": 57824,
+            "admission": 4558,
+            "execution": 117244,
+            "region": 180360,
+            "commands": 12,
+            "errors": 0
+          }
+        ],
+        "parts": [
+          {
+            "trial": 0,
+            "part": 0,
+            "profile": 1,
+            "admission": 1899,
+            "execution": 39857,
+            "fcsr": 9,
+            "vcsr": 5,
+            "checksum": 985956418,
+            "errors": 0
+          },
+          {
+            "trial": 0,
+            "part": 1,
+            "profile": 1,
+            "admission": 1566,
+            "execution": 38854,
+            "fcsr": 9,
+            "vcsr": 5,
+            "checksum": 415326393,
+            "errors": 0
+          },
+          {
+            "trial": 0,
+            "part": 2,
+            "profile": 2,
+            "admission": 1289,
+            "execution": 39110,
+            "fcsr": 9,
+            "vcsr": 5,
+            "checksum": 2903585671,
+            "errors": 0
+          },
+          {
+            "trial": 1,
+            "part": 0,
+            "profile": 1,
+            "admission": 1825,
+            "execution": 39366,
+            "fcsr": 9,
+            "vcsr": 5,
+            "checksum": 985956418,
+            "errors": 0
+          },
+          {
+            "trial": 1,
+            "part": 1,
+            "profile": 1,
+            "admission": 1421,
+            "execution": 38803,
+            "fcsr": 9,
+            "vcsr": 5,
+            "checksum": 415326393,
+            "errors": 0
+          },
+          {
+            "trial": 1,
+            "part": 2,
+            "profile": 2,
+            "admission": 1312,
+            "execution": 39075,
+            "fcsr": 9,
+            "vcsr": 5,
+            "checksum": 2903585671,
+            "errors": 0
+          }
+        ],
+        "qbs_commands": 24,
+        "useful_pairs": 6291456,
+        "qbs_busy_cycles": 221006,
+        "dot_issue_count": 196608,
+        "preparation_cycles": 115664,
+        "execution_cycles": 235065,
+        "region_cycles": 361555,
+        "whole_model": false,
+        "full_ggml": false,
+        "preparation_included": true
+      },
+      "checked_inputs": 962,
+      "result_sha256": "c2d8f85de0b3edb16dc5fb363c254cd4bb9a6c992342de5b6c6881edbc6b305a",
+      "log_sha256": "239d5f33c5a7fe67f7a5ed4d39ebeb7fceeef9c1debdf048a6be1ef2dcf6dd66",
+      "protocol_sha256": "a843b0789c47254a2fc29cf6cc6da4f892f15a13fdcfdd329c38fc2a4a41d11b",
+      "source_pins_sha256": "873adcb9395e1af081be9aeac9173885d325514489aad2071e637eaf99cdb0af"
+    },
+    {
+      "wide": 1,
+      "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_qwen3_matrix_wide_20261106_01",
+      "build": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_qwen3_projection_native_build_20261106_03",
+      "elf_sha256": "11b7f121fd5c7f93c840154a4ea6818e7bd4405c4afa92ed026ffd56d04590ed",
+      "measured": {
+        "trials": [
+          {
+            "id": 0,
+            "preparation": 57840,
+            "admission": 4754,
+            "execution": 72541,
+            "region": 135915,
+            "commands": 12,
+            "errors": 0
+          },
+          {
+            "id": 1,
+            "preparation": 57824,
+            "admission": 4558,
+            "execution": 71964,
+            "region": 135080,
+            "commands": 12,
+            "errors": 0
+          }
+        ],
+        "parts": [
+          {
+            "trial": 0,
+            "part": 0,
+            "profile": 1,
+            "admission": 1899,
+            "execution": 24601,
+            "fcsr": 9,
+            "vcsr": 5,
+            "checksum": 985956418,
+            "errors": 0
+          },
+          {
+            "trial": 0,
+            "part": 1,
+            "profile": 1,
+            "admission": 1566,
+            "execution": 23610,
+            "fcsr": 9,
+            "vcsr": 5,
+            "checksum": 415326393,
+            "errors": 0
+          },
+          {
+            "trial": 0,
+            "part": 2,
+            "profile": 2,
+            "admission": 1289,
+            "execution": 24330,
+            "fcsr": 9,
+            "vcsr": 5,
+            "checksum": 2903585671,
+            "errors": 0
+          },
+          {
+            "trial": 1,
+            "part": 0,
+            "profile": 1,
+            "admission": 1825,
+            "execution": 24110,
+            "fcsr": 9,
+            "vcsr": 5,
+            "checksum": 985956418,
+            "errors": 0
+          },
+          {
+            "trial": 1,
+            "part": 1,
+            "profile": 1,
+            "admission": 1421,
+            "execution": 23559,
+            "fcsr": 9,
+            "vcsr": 5,
+            "checksum": 415326393,
+            "errors": 0
+          },
+          {
+            "trial": 1,
+            "part": 2,
+            "profile": 2,
+            "admission": 1312,
+            "execution": 24295,
+            "fcsr": 9,
+            "vcsr": 5,
+            "checksum": 2903585671,
+            "errors": 0
+          }
+        ],
+        "qbs_commands": 24,
+        "useful_pairs": 6291456,
+        "qbs_busy_cycles": 130446,
+        "dot_issue_count": 98304,
+        "preparation_cycles": 115664,
+        "execution_cycles": 144505,
+        "region_cycles": 270995,
+        "whole_model": false,
+        "full_ggml": false,
+        "preparation_included": true
+      },
+      "checked_inputs": 962,
+      "result_sha256": "1a50c15eab017b7366c14946e5cea3105644fd6977eb892ff4388e51144b1b6b",
+      "log_sha256": "e712fe88bb01df1ad177282644826e991b35222276305324192b53e190360d84",
+      "protocol_sha256": "ea882cd3ae2959363f68063f01cabf5e68b45daf8d7de3959befd767fadd4bda",
+      "source_pins_sha256": "eccf3c487d8ebc61387cf31c8ccb479c280b031c2a1f38404a6d8f6351a6f584"
+    }
+  ],
+  "diagnosis": {
+    "comparison": {
+      "parts": [
+        {
+          "part": 0,
+          "profile": 1,
+          "baseline_execution": 79223,
+          "candidate_execution": 48711,
+          "execution_ratio": 1.626388290119275
+        },
+        {
+          "part": 1,
+          "profile": 1,
+          "baseline_execution": 77657,
+          "candidate_execution": 47169,
+          "execution_ratio": 1.6463567173355382
+        },
+        {
+          "part": 2,
+          "profile": 2,
+          "baseline_execution": 78185,
+          "candidate_execution": 48625,
+          "execution_ratio": 1.607917737789203
+        }
+      ],
+      "region_ratio": 1.334175907304563,
+      "execution_ratio": 1.6266911179543961,
+      "preparation_ratio": 1
+    },
+    "unchanged_work": {
+      "ar": 2056,
+      "r_beats": 78040,
+      "payload_bytes": 1244544,
+      "weight_bytes": 1019904,
+      "activation_bytes": 224256,
+      "useful_pairs": 6291456,
+      "fp_uop_issue": 122880,
+      "accumulator_updates": 24576
+    },
+    "dot_issue_cycles_saved": 98304,
+    "extra_strict_weight_wait": 7744,
+    "qbs_busy_cycles_saved": 90560,
+    "strict_wait": {
+      "ar": 2056,
+      "r_beats": 78040,
+      "payload_bytes": 1244544,
+      "weight_bytes": 1019904,
+      "activation_bytes": 224256,
+      "useful_pairs": 6291456,
+      "fp_uop_issue": 122880,
+      "accumulator_updates": 24576,
+      "weight_prefetch_wait_cycles": 7744,
+      "probe_weight_wait_no_outstanding_cycles": 336,
+      "probe_weight_wait_response_idle_cycles": 0,
+      "probe_weight_wait_r_transfer_cycles": 7408,
+      "probe_weight_wait_r_blocked_cycles": 0
+    },
+    "preparation_fraction_of_this_candidate_region": 0.4268123028100149,
+    "ideal_ratio_if_only_new_weight_wait_were_removed": 1.0294167923388704,
+    "explanation": "For this pair only: actual savings equal dot issue reduction minus additional strict weight wait",
+    "not_model_fraction": "N=128 is a prefix; full operator N changes activation-preparation amortization",
+    "not_ddr_latency": "R-transfer buckets observe shared-reader activity while compute waits, not weight-only DDR latency"
+  },
+  "diagnosis_run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_qwen3_matrix_diagnosis_20261106_01",
+  "diagnosis_sha256": "6745d804175eae7b431785adcdb4c2510b7745f8d4ee91ac6319d12469bacf76",
+  "default_enabled": false,
+  "area_measured": false,
+  "model_performance_measured": false,
+  "limitations": [
+    "Cropped output channels, full K and real first-layer prompt inputs",
+    "SDK preparation/execution included; full GGML dispatch and cold weight repack excluded",
+    "QBS phases partition busy; other wait counters overlap and must not be added",
+    "QBS reader traffic is not full SoC or physical DDR traffic",
+    "No synthesis, frequency, area or FPGA acceptance"
+  ]
+}
