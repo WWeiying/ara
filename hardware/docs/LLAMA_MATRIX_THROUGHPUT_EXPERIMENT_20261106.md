@@ -91,3 +91,24 @@
 | M1，response_gap=3 | 2269 | 2269 | 1.00000x |
 
 gap 是测试从设备相邻响应的受控间隔，不是板上 DDR 延迟模型。慢供给下矩阵吞吐增量缩小，支持后续同时检查驻留和供给，不能据快速响应点继续承诺翻倍计算就会带来接近翻倍的完整调用收益。
+
+## 6. 完整命令验收与整机入口
+
+后继完整 context 测试及独立审计已完成，状态为 `MATRIX_FULL_ENGINE_COMPOSITE_REAUDITED`。重新检查 175 项输入身份和全部相关原始日志，每配置共 100 项直接命令检查、26 项 context 生命周期检查通过。该数量包括 50 项向量场景在两种响应调度下运行，不是 100 个独立模型。原失败记录和被动复现保持 FAIL，没有改写。
+
+审计组合明确区分：初次 worker 已通过的七组配对，以及修正故障刺激后的 context/gap3 配对。正常调用的响应间隔、向量输入及数值标准不变；只在人为注入的故障流量中加快排空以覆盖所要求的 active replay 取消。两种调度下都保留恢复后按原输入重新计算的检查。
+
+已检查的直接命令没有周期退化。Q4_K M4/N5、4 blocks 的 context 点在 gap0 时，FILL 为 1591 -> 1085 cycles，REUSE 为 1435 -> 929；gap3 时分别为 2887 -> 2381、1719 -> 1213。32 元素块的 M4 context 点保持原周期。完整 SDK 的准备开销仍未包含，因此不能把这些比值当作完整模型增量。
+
+审计回执：`verification/performance/evidence/matrix_engine_pair_20261106_01/result.json`；重新检查工具为 `collect_matrix_fault_schedule.py`。
+
+整机采用显式开关：
+
+```text
+qbs=1 qbs_matrix_dot=0   原点积与修正组织，默认
+qbs=1 qbs_matrix_dot=1   启用候选，由格式和局部 M 自动选择宽点积
+```
+
+`hardware/Makefile` 检查开关为 0/1，拒绝在 qbs=0 时启用；Bender 将 `ARA_QBS_WIDE_MATRIX_DOT` 传给实际 VLSU 实例。`simulator.conf` 同时记录 `qbs_matrix_dot`，避免只凭目录名判断所用硬件。没有修改生成的 `qbs_pkg.sv` 或 ISA/描述符定义，ABI 生成检查通过。两侧工作树的 38 项工具测试通过，包括开关和非法配置的真实 make 展开。
+
+已验证的五个 QBS 模块及两处配置入口同步到唯一验证工作树，其他主线 RTL 不随此次同步。下一门槛是实际 CVA6+RVV SoC、普通 RVV 回归和相同 ELF 的完整 SDK 调用测量；在这些门槛前，默认值不变，不部署 FPGA，也不启动综合。
