@@ -34,6 +34,38 @@ functional check: 607,744 logits, token/CSR and actual work match across two KV
 choices. See `evidence/trace_context_model_20261106_01/result.json`. QEMU is used
 only for functionality; no hardware timing is inferred from this run.
 
+## SDK integration and supply decision
+
+`build_sdk_dispatch_library.py` reconstructs the accepted original runtime object
+byte for byte using the original GGML compile recipe. It compiles the measured
+single-input candidate without symbol renaming, replaces only `qbs_runtime.c.o`
+in a copy of the accepted trace-context library, and checks all other 31 archive
+members, member order and exported symbols. The 13-test archive suite and its
+compact receipt are under `evidence/sdk_dispatch_library_20261106_01/`.
+
+`sdk_dispatch_model_campaign.py --run <fresh-run> --audit <fresh-audit> --output
+<fresh-campaign>` owns the complete Qwen3 paired functional run and independent
+replay. It reuses the accepted model object and full-logit comparison driver,
+reproduces the prior baseline ELF exactly, then links a candidate with only the
+SDK archive changed. No model or driver translation unit is recompiled. The
+guest compares 607744 logits, tokens/CSR and the full projection/Attention work
+for both KV choices. Existing `TRACE_CONTEXT_*` guest markers are retained
+because the driver binary is unchanged; the worker/audit states identify the
+SDK experiment. This is not a new trace-context optimization or a cycle result.
+Production code remains unchanged until functional and non-M1 performance
+acceptance are both available.
+
+`study_weight_supply_codec.py` is a host-only, exact-GGUF feasibility check for
+one lossless residual-byte codec. It preserves quantized values and metadata,
+accounts for mode/bitmap/panel-index bytes and allows whole-tensor raw fallback.
+All 197 Qwen3 projection tensors, 6720512 blocks and 1100961792 raw bytes were
+checked; every tensor selects raw fallback, with zero net saving. The 15-test
+suite includes an independent scalar plane mapping and serialized decoder
+negatives. `evidence/weight_supply_codec_20261106_01/result.json` binds the
+replayed statistics and source/artifact hashes. This candidate is rejected for
+RTL implementation, not presented as a compressed-memory speedup. It neither
+rules out every other codec nor removes the local decoded-input bandwidth limit.
+
 Latest matrix integration: `collect_matrix_soc.py` audits the two completed
 SoC builds without rewriting their original failed worker reports. It admits
 only the proven single appended blank line, not different sources or macros.

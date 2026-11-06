@@ -1,0 +1,19 @@
+{
+  "state": "SDK_DISPATCH_LIBRARY_BUILT_ARCHIVE_VERIFIED",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_sdk_dispatch_library_20261106_01/attempt-02",
+  "result_sha256": "abc847330267ef8a6cc794b413f0f5067eded89846ce9c74a73fa971c1135653",
+  "baseline_library_sha256": "d440c7d2894f5ab0c5165d8ca4bfc9a437df65fcb7d3aeb0771e2718293a803b",
+  "candidate_library_sha256": "d335a23205c19f0f4e4e8e77b4160812a925b3e848cb967b4479b0a6f4d29c5f",
+  "source_pins_sha256": "42359053fbb29d5031b5ff43326fa7b593c55e515c05b4b4fa2cfe8bc8360cf3",
+  "member": "qbs_runtime.c.o",
+  "original_object_reproduced_exactly": true,
+  "unchanged_other_members": 31,
+  "inventory_and_order_unchanged": true,
+  "public_exports_unchanged": true,
+  "compiled_translation_units": 2,
+  "unit_tests": 13,
+  "performance_measured": false,
+  "target_executed": false,
+  "production_changes": false,
+  "rtl_changed": false
+}
