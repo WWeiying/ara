@@ -1,0 +1,27 @@
+{
+  "state": "REAL_QWEN3_DECODE_RVV_BUILD_REAUDITED_NOT_EXECUTED",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_decode_rvv_build_audit_20261106_01",
+  "result_sha256": "a5301ebbbfc665fea08563b28b5a8095e29909bc67457acbfdc313e215938124",
+  "source_pins_sha256": "e4c8870d528963659c65f0cccd4e076142fdbdba858da7d9c939dca2abe64b40",
+  "checked_inputs": 286,
+  "checked_producer_artifacts": 42,
+  "elf_sha256": "fa87eeffd8605ae96e10f10c0c53e34db93068af9ebfe72b00535335bba6789b",
+  "producer_state": "FAIL",
+  "producer_relabelled": false,
+  "m": 1,
+  "n": 128,
+  "parts": 7,
+  "outputs": 896,
+  "no_custom_opcodes": true,
+  "preload_admitted_at_bits": [128, 256],
+  "runtime_accepted": false,
+  "performance_measured": false,
+  "synthesis_run": false,
+  "whole_model": false,
+  "limits": [
+    "Same real model input prefixes/full K; not full GGML or whole-model execution",
+    "Independent RVV numeric oracle, cross-width repeatability and protocol remain pending",
+    "Initial VCSR and timed CSR-observation differences need alignment or a justified bound before complete-call comparison",
+    "Scoped audit accepts exact GCC clone/call target only; original producer FAIL retained"
+  ]
+}

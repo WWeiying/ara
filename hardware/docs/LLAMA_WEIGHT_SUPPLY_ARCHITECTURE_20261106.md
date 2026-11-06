@@ -678,3 +678,39 @@ slower result is retained, not relabelled as a failed numerical test. At least
 criterion; a regression above 2% needs explanation. This comparison changes
 both the physical memory platform and optional weight ingress. It cannot by
 itself isolate QBS-only benefit or predict an unchanged external DDR system.
+
+### Standard RVV Counterpart Preparation
+
+The same real first-Decode inputs now have a separately linked RVV-only
+counterpart: Q4_K uses the actual GGML `ggml_gemv_q4_K_32x1_q8_K` selected by
+its VLEN1024/N-multiple-of-32 runtime policy, and Q6_K uses the actual
+VLEN-dispatched `ggml_vec_dot_q6_K_q8_K`. It is not a deliberately weak
+single-output Q4 loop. All seven N128 prefixes retain full K2048/6144 and the
+same four quantization boundaries. Q4 weights are reversibly repacked to the
+production R32 format; Q6 bytes remain native row-major. The existing archived
+quantizer object is reused. No QBS/AKV executor or custom opcode is linked.
+
+The independent build receipt is
+`verification/performance/evidence/decode_rvv_build_20261106_01/result.json`.
+It binds 286 inputs and 42 producer artifacts, verifies actual runtime archives,
+and admits the same 1.8 MB preload at either physical width. The first compile
+attempt applied the fixture's global warning-as-error policy to unrelated
+upstream kernels. The successor preserves the pinned upstream warning policy,
+including scoped C errors, without changing optimization, ISA or FP options.
+The last producer remains FAIL because GCC names its internal Q6 implementation
+`.isra.0`; a scoped host audit verifies that exact clone and the VLEN1024
+dispatcher target, then rechecks every other post-build gate without compiling
+again. Original failures are not rewritten.
+
+This closes build preparation, not numerical or timing acceptance. All 896
+output words and numerical-difference diagnostics are available after the timed
+region. The current driver uses the existing QBS C-reference outputs with the
+previous standalone RVV tolerance; it explicitly declares that an independent
+RVV oracle is not yet present. Before an RVV/QBS complete-call comparison,
+obtain independent RVV numerical evidence, check cross-width bitwise repeatability
+and protocol, and align or bound instrumentation/CSR-seed differences. The
+current RVV driver seeds VCSR=5 while the QBS driver seeds VCSR=3; both expect
+the original quantizer's post-state, but that is not an identical initial state.
+It also takes additional timed CSR observations. These differences cannot be
+silently folded into a clean complete-call speedup. No RVV performance jobs
+are dispatched by the existing SDK supply queue, and full-QKV RVV remains pending.

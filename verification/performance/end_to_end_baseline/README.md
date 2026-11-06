@@ -639,3 +639,18 @@ cycles and ratios, exact reader work, the 10%-cycle-reduction screening result,
 and >2% region regressions. Same-platform best RVV and translated Linux paths
 remain separate acceptance requirements; generic-SRAM bandwidth is not DDR
 bandwidth, and neither SDK workload is full-model timing.
+
+`build_decode_rvv.py --output <fresh-dir>` prepares the real Decode counterpart
+using frozen production Q4 R32 GEMV, Q6 VLEN-dispatched RVV and the original
+quantizer. It does not run a simulator. Q4 byte-layout conversion has a separate
+inverse and independent field-placement tests. Its numerical driver emits all
+896 output words after timing and explicitly marks its current reference as a
+QBS-reference tolerance screen, not independent bit-exact RVV acceptance.
+
+The compiled build-03 ELF has a scoped successor audit:
+`collect_decode_rvv_build.py --output <fresh-dir>` binds its exact original FAIL
+receipt and accepts only the known GCC `.isra.0` clone, its actual VLEN1024
+dispatch target and all unchanged build/admission checks. It neither modifies
+the failed producer nor recompiles the ELF. The accepted state ends in
+`BUILD_REAUDITED_NOT_EXECUTED`; runtime numerics/protocol, matched initial CSR
+state and timed-instrumentation accounting remain necessary before timing claims.
