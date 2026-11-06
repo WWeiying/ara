@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: SHL-0.51
 
 module qbs_profile_engine_int import qbs_pkg::*; #(
-  parameter bit CompactRead = 1'b0
+  parameter bit CompactRead = 1'b0,
+  parameter bit WideMatrixDot = 1'b0
 ) (
   input  logic                clk_i,
   input  logic                rst_ni,
@@ -63,6 +64,7 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
   localparam int unsigned NumStreams = 16;
   localparam int unsigned FlatEntries = NumContexts * NumStreams;
   localparam int unsigned DotLatency = 3;
+  localparam int unsigned CorrectionLanes = WideMatrixDot ? 4 : 2;
 
   qbs_weight_profile_e profile_q;
   qbs_activation_profile_e activation_profile_q;
@@ -159,14 +161,14 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
   logic [NumStreams-1:0] correction_consume [NumContexts];
   logic correction_consume_any;
   logic [4:0] correction_last_index;
-  logic [1:0] correction_valid;
-  logic correction_context [2];
-  logic [3:0] correction_stream [2];
-  logic signed [28:0] correction_dot_product [2];
-  logic signed [29:0] correction_dot [2];
+  logic [CorrectionLanes-1:0] correction_valid;
+  logic correction_context [CorrectionLanes];
+  logic [3:0] correction_stream [CorrectionLanes];
+  logic signed [28:0] correction_dot_product [CorrectionLanes];
+  logic signed [29:0] correction_dot [CorrectionLanes];
   // Preserve all sixteen encoded bsum bits, including noncanonical inputs.
-  logic signed [22:0] correction_aux_product [2];
-  logic signed [26:0] correction_aux [2];
+  logic signed [22:0] correction_aux_product [CorrectionLanes];
+  logic signed [26:0] correction_aux [CorrectionLanes];
 
   typedef struct packed {
     logic valid;
@@ -187,8 +189,9 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
     logic signed [28:0] dot_product;
     logic signed [22:0] aux_product;
   } correction_product_t;
-  correction_operand_t correction_operand_q [2];
-  correction_product_t correction_product_q [2];
+  correction_operand_t correction_operand_q [CorrectionLanes];
+  correction_product_t correction_product_q [CorrectionLanes];
+  logic [CorrectionLanes-1:0] correction_lane_busy;
 
   logic [FlatEntries-1:0] correction_pending_flat;
   logic [FlatEntries-1:0] correction_first_upper_mask;
@@ -247,9 +250,11 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
     if (context_valid_q[0]) start_context = 1'b1;
   end
 
-  assign correction_pipeline_busy = correction_operand_q[0].valid ||
-      correction_operand_q[1].valid || correction_product_q[0].valid ||
-      correction_product_q[1].valid;
+  for (genvar lane = 0; lane < CorrectionLanes; lane++) begin : gen_correction_busy
+    assign correction_lane_busy[lane] = correction_operand_q[lane].valid ||
+                                        correction_product_q[lane].valid;
+  end
+  assign correction_pipeline_busy = |correction_lane_busy;
   assign correction_drain_empty = correction_pending_flat == '0 &&
       !correction_pipeline_busy;
   assign busy_q = compute_active_q || (|context_valid_q) || correction_pipeline_busy;
@@ -280,7 +285,9 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
   assign buffer_read_valid_o = compute_active_q && issue_active_q;
   assign buffer_read_k_base_o = k_cursor_q;
 
-  qbs_profile_decoder #(.CompactRead(CompactRead)) i_profile_decoder (
+  qbs_profile_decoder #(
+    .CompactRead(CompactRead), .WideMatrixDot(WideMatrixDot)
+  ) i_profile_decoder (
     .profile_i             (profile_q),
     .activation_profile_i  (activation_profile_q),
     .m_i                   (m_q),
@@ -303,10 +310,11 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
     .activation_d_o        (decoder_activation_d)
   );
 
-  qbs_dot_array i_dot_array (
+  qbs_dot_array #(.WideMatrixDot(WideMatrixDot)) i_dot_array (
     .clk_i                 (clk_i),
     .rst_ni                (rst_ni),
     .valid_i               (s0_valid_q),
+    .matrix_wide_i         (m_q >= 3 && block_elements_q == 256),
     .m_i                   (m_q),
     .row_count_i           (row_count_q),
     .stream_valid_i        (decoder_stream_valid),
@@ -342,6 +350,7 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
     end
   end
 
+  if (!WideMatrixDot) begin : gen_two_corrections
   always_comb begin
     correction_first_upper_mask = '0;
     correction_first_lower_mask = '0;
@@ -393,15 +402,54 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
     end
   end
 
-  // Two shared lanes retain two corrections/cycle. Read the subtotal only at
-  // commit, not at selection: earlier updates to the same stream must be visible.
+  end else begin : gen_row_corrections
+    logic [2:0] rr_q [4];
+    logic [7:0] upper [4], lower [4];
+    logic [2:0] upper_index [4], lower_index [4], selected [4];
+    logic [3:0] upper_empty, lower_empty;
+    // Each lane owns one physical weight row. This avoids a four-grant
+    // global selector and confines subtotal routing to that row's contexts.
+    for (genvar row = 0; row < 4; row++) begin : gen_row
+      for (genvar entry = 0; entry < 8; entry++) begin : gen_mask
+        wire pending = slot_valid_q[entry / 4][4*row + entry % 4];
+        assign upper[row][entry] = pending && 3'(entry) >= rr_q[row];
+        assign lower[row][entry] = pending && 3'(entry) < rr_q[row];
+      end
+      lzc #(.WIDTH(8), .MODE(1'b0)) i_upper (
+        .in_i(upper[row]), .cnt_o(upper_index[row]), .empty_o(upper_empty[row]));
+      lzc #(.WIDTH(8), .MODE(1'b0)) i_lower (
+        .in_i(lower[row]), .cnt_o(lower_index[row]), .empty_o(lower_empty[row]));
+      assign selected[row] = !upper_empty[row] ? upper_index[row] : lower_index[row];
+      always_ff @(posedge clk_i or negedge rst_ni)
+        if (!rst_ni) rr_q[row] <= '0;
+        else if (correction_valid[row]) rr_q[row] <= selected[row] + 1'b1;
+    end
+    always_comb begin
+      correction_consume = '{default:'0};
+      correction_valid = '0;
+      correction_context = '{default:'0};
+      correction_stream = '{default:'0};
+      correction_last_index = correction_rr_q;
+      for (int row = 0; row < 4; row++) begin
+        correction_valid[row] = !upper_empty[row] || !lower_empty[row];
+        correction_context[row] = selected[row][2];
+        correction_stream[row] = {2'(row), selected[row][1:0]};
+        if (correction_valid[row])
+          correction_consume[selected[row][2]][4*row + unsigned'(selected[row][1:0])] = 1'b1;
+      end
+      correction_consume_any = |correction_valid;
+    end
+  end
+
+  // Read the subtotal at commit, not selection: earlier updates to the same
+  // stream must be visible when the pipelined correction returns.
   always_comb begin
     correction_dot_product = '{default: '0};
     correction_aux_product = '{default: '0};
     correction_dot = '{default: '0};
     correction_aux = '{default: '0};
 
-    for (int lane = 0; lane < 2; lane++) begin
+    for (int lane = 0; lane < CorrectionLanes; lane++) begin
       if (correction_operand_q[lane].valid) begin
         correction_dot_product[lane] =
             correction_operand_q[lane].dot * correction_operand_q[lane].scale;
@@ -492,7 +540,7 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
       dot_metadata_valid_q <= '0;
       for (int stage = 0; stage < DotLatency; stage++)
         dot_metadata_q[stage] <= '0;
-      for (int lane = 0; lane < 2; lane++) begin
+      for (int lane = 0; lane < CorrectionLanes; lane++) begin
         correction_operand_q[lane] <= '0;
         correction_product_q[lane] <= '0;
       end
@@ -590,12 +638,15 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
 
       if (compute_active_q && issue_active_q) begin
         automatic int unsigned k_per;
-        k_per = m_q == 1 ? 8 : (m_q == 2 ? 4 : 2);
+        k_per = m_q == 1 ? 8 : (m_q == 2 ? 4 :
+            (WideMatrixDot && block_elements_q == 256 ? 4 : 2));
         s0_valid_q <= 1'b1;
         s0_context_q <= compute_context_q;
         s0_k_base_q <= k_cursor_q;
         useful_pairs_o <= useful_pairs_o + row_count_q * m_q * k_per;
-        pair_capacity_o <= pair_capacity_o + row_count_q * 8;
+        // Physical product slots in participating rows, including unused slots
+        // on the wide design's unchanged M1/M2 and 32-element-block paths.
+        pair_capacity_o <= pair_capacity_o + row_count_q * (WideMatrixDot ? 16 : 8);
         dot_active_cycles_o <= dot_active_cycles_o + 1'b1;
         if (unsigned'(k_cursor_q) + k_per == block_elements_q)
           issue_active_q <= 1'b0;
@@ -619,9 +670,9 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
         end
       end
 
-      if (correction_consume_any)
+      if (!WideMatrixDot && correction_consume_any)
         correction_rr_q <= correction_last_index + 1'b1;
-      for (int lane = 0; lane < 2; lane++) begin
+      for (int lane = 0; lane < CorrectionLanes; lane++) begin
         correction_operand_q[lane].valid <= correction_valid[lane];
         correction_product_q[lane].valid <= correction_operand_q[lane].valid;
         if (correction_valid[lane]) begin
@@ -738,7 +789,7 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
         assert (!context_valid_q[start_context])
           else $fatal(1, "QBS reused a live integer tile context");
       end
-      for (int lane = 0; lane < 2; lane++) begin
+      for (int lane = 0; lane < CorrectionLanes; lane++) begin
         if (correction_product_q[lane].valid) begin
           assert (context_valid_q[correction_product_q[lane].context_id] &&
               !result_pending_q[correction_product_q[lane].context_id]
@@ -757,10 +808,16 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
       end
       assert (dot_valid == dot_metadata_valid_q[DotLatency-1])
         else $fatal(1, "QBS dot data and metadata pipeline lost alignment");
-      if (correction_product_q[0].valid && correction_product_q[1].valid)
-        assert ({correction_product_q[0].context_id, correction_product_q[0].stream} !=
-                {correction_product_q[1].context_id, correction_product_q[1].stream})
-          else $fatal(1, "QBS correction lanes committed the same stream twice");
+      for (int lane = 0; lane < CorrectionLanes; lane++) begin
+        if (WideMatrixDot && correction_valid[lane])
+          assert (correction_stream[lane][3:2] == 2'(lane))
+            else $fatal(1, "QBS row-local correction escaped its bank");
+        for (int other = lane + 1; other < CorrectionLanes; other++)
+          if (correction_product_q[lane].valid && correction_product_q[other].valid)
+            assert ({correction_product_q[lane].context_id, correction_product_q[lane].stream} !=
+                    {correction_product_q[other].context_id, correction_product_q[other].stream})
+              else $fatal(1, "QBS correction lanes committed the same stream twice");
+      end
       for (int context_index = 0; context_index < NumContexts;
            context_index++) begin
         for (int stream = 0; stream < NumStreams; stream++) begin

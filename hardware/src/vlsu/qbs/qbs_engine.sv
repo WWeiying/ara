@@ -18,6 +18,7 @@ module qbs_engine
     parameter int unsigned VLEN = 1024,
     parameter bit ActivationLookahead = 1'b1,
     parameter bit SeedRestoreEnable = 1'b0,
+    parameter bit WideMatrixDot = 1'b0,
     parameter type         vid_t = logic,
     parameter type         vaddr_t = logic,
     parameter type         axi_ar_t = logic,
@@ -1014,7 +1015,9 @@ module qbs_engine
     for (genvar b = 0; b < 8; b++) assign seed_data[b] = '0;
   end
 
-  qbs_compute_engine #(.SeedRestoreEnable(SeedRestoreEnable)) i_compute_engine (
+  qbs_compute_engine #(
+    .SeedRestoreEnable(SeedRestoreEnable), .WideMatrixDot(WideMatrixDot)
+  ) i_compute_engine (
     .clk_i,
     .rst_ni,
     .command_valid_i                (compute_command_valid),

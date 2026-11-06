@@ -1032,6 +1032,9 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   qbs_engine #(
     .reader_req_t(shared_read_req_t), .reader_rsp_t(shared_read_rsp_t),
     .SeedRestoreEnable(QbsVrfContinuationEnable && NrLanes == 4 && VLEN == 1024),
+`ifdef ARA_QBS_WIDE_MATRIX_DOT
+    .WideMatrixDot(1'b1),
+`endif
     .AxiDataWidth(AxiDataWidth),
     .AxiAddrWidth(AxiAddrWidth),
     .VAddrWidth(CVA6Cfg.VLEN),

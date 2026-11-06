@@ -5,7 +5,8 @@ module qbs_compute_engine
   import qbs_pkg::*;
   import fpnew_pkg::*;
 #(
-  parameter bit SeedRestoreEnable = 1'b0
+  parameter bit SeedRestoreEnable = 1'b0,
+  parameter bit WideMatrixDot = 1'b0
 )
 (
   input  logic                    clk_i,
@@ -538,7 +539,9 @@ module qbs_compute_engine
   assign probe_weight_wait_active = state_q == QBS_WAIT_WEIGHT;
 `endif
 
-  qbs_profile_engine_int #(.CompactRead(1'b1)) i_profile_engine_int (
+  qbs_profile_engine_int #(
+    .CompactRead(1'b1), .WideMatrixDot(WideMatrixDot)
+  ) i_profile_engine_int (
     .clk_i,
     .rst_ni,
     .weight_block_i                (weight_block),
