@@ -179,3 +179,48 @@ cat /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_de
 运行目录为 `verification/out/e2e_decode_native_vcs_20261106_01/`，最终独立
 审计目录为 `verification/out/e2e_decode_native_audit_20261106_01/`。本批先在
 现有基线镜像测 M1，不因 M4 的宽点积收益额外跑一遍未改变的 M1 硬件。
+
+## 7. 原库与 trace-context 候选的模型级验收
+
+静态库成员一致只能证明修改范围，不能替代实际数值验证。因此增加独立的
+`trace_context_model_campaign.py`：在一个 QEMU guest 中分别 exec 原库和
+候选库链接的程序，避免全局环境缓存跨版本遗留；guest 内的比较程序读取
+两个结果文件，逐字节比较全部 logits、token 和 CSR，不用最终 token 相同
+代替数值一致。
+
+两侧共用同一个 `model.o` 和同一组其他静态库，只替换 `libggml-cpu.a`。
+测试由已接受完整模型 fixture 机械生成，保持原 prompt、模型、线程、数值
+和运行时选择；仅选择已有 output-tile Attention，减少一个重复 Decode
+step，并开启已有 aggregate trace，保持逐命令 lifetime 日志关闭。
+
+| 项目 | 配置或检查 |
+| --- | --- |
+| 模型 | 实际 Qwen3-1.7B Q4_K_M，28 层，151936 词表 |
+| 输入 | 同一 40-token prompt；每种 KV 各执行完整 Prefill 和一个 Decode step |
+| KV | Q8_0 K / Q8_0 V；Q4_0 K / Q8_0 V |
+| 数据 | 两侧各 4 份完整 logits，共 607744 个 FP32 配对；每侧结果文件 2431060 bytes |
+| 调用 | 每侧 788 个量化投影调用、56 个 Prefill Attention 和 56 个 Decode Attention |
+| 对照 | 新旧结果逐字节比较，token/CSR 同时匹配先前已接受控制运行的对应步骤 |
+
+`projection-schema.json` 从原始 GGUF 的 197 个权重 tensor 导出格式与尺寸，
+核对封存的 Qwen3 图及模型盘身份。检查器逐层按 Q/V/K/Wo/gate/up/down 的
+真实调度次序检查每个 CALL；Prefill 的末层 FFN 与词表只请求最后一个输出，
+因此是 193 GEMM + 4 GEMV，而不是将全部 197 个投影都强行视为 40 行。
+Decode 则为 197 GEMV。两个 KV 配置重复相同的投影形状。
+
+验收不只比较两个总数：按 profile 与 GEMV/GEMM 重建输入行、输出行、MAC、
+M1/M4 命令数，与 native EXEC 摘要逐项对账；FILL/REUSE/RELEASE 不能超过
+相应格式具备 context 资格的实际命令。Attention 的 LAYOUT、PV、输出驻留、
+REGISTER 和主调用记录全部参与比较，并匹配原控制运行相应步骤；QBS tensor
+coverage 记录也不静默丢弃。逐命令日志关闭，避免输出数十万条命令拖慢测试。
+
+host C++ 测试实际编译比较程序，验证最后一个 logit 改变、CSR 不同、两边
+相同 NaN、文件截断和额外字节都会拒绝；日志负例检查拒绝的具体原因，包括
+两边同时错误缩小工作量、把所有调用摘要重分配到一个格式、虚增 context
+计数、改变 KV 字节数等。准备阶段曾发现 LAYOUT/PV 没有 status 字段的误拒绝，
+已在启动长测试之前通过正例和负例修正，未用目标仿真反复试错。
+
+运行器和独立 collector 均核对源码、库、ELF、模型盘、native QEMU 构建来源
+以及链接参数。自动完成状态为 `TRACE_CONTEXT_QWEN3_MODEL_PAIR_REAUDITED`；
+preflight 与启动都不等于验收。本项使用 QEMU 只验证完整模型功能与工作量，
+不产生硬件周期、速度提升、PPA 或板卡验收结论，也不提前替换生产库。

@@ -333,3 +333,21 @@ Twelve unit tests exercise malformed archives, duplicate/reordered/stale members
 dependency/symlink drift and exact patch application. This is an archive-verified
 candidate, not a new target/model numerical or timing acceptance. Consumers must
 keep trace flags fixed inside a blocking context and refresh at the next one.
+
+`trace_context_model_campaign.py --run <fresh-run> --audit <fresh-audit> --output
+<fresh-campaign>` performs a full-model functional pair and independent replay.
+Both static executables share one mechanically derived model object, varying
+only the verified CPU archive. Each executes the accepted 40-token Qwen3 prompt
+and one complete Decode step for both KV choices. A separate guest comparator
+checks all 607744 logits, tokens, CSR and exact record lengths. Host tests
+compile this comparator and reject last-logit mutations, nonfinite values,
+truncated/extra records and CSR mismatches.
+
+The runner binds a 197-tensor projection schema to the original GGUF and graph.
+The checker verifies per-step CALL order/shapes, profile/mode/native-command
+accounting, eligible context bounds and all Attention layout/PV/control work
+against the accepted control. No per-command lifetime trace flood is emitted.
+`run_trace_context_model.py --output <fresh-dir>` is preflight only; add
+`--execute-reviewed` for explicit execution. QEMU supplies functional evidence,
+never RTL timing. Only the independent
+`TRACE_CONTEXT_QWEN3_MODEL_PAIR_REAUDITED` result closes this software gate.
