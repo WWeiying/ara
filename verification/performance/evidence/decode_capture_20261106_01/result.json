@@ -1,0 +1,27 @@
+{
+  "state": "REAL_QWEN3_DECODE_CAPTURE_REAUDITED",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_decode_capture_audit_20261106_01",
+  "result_sha256": "805950ae1a78d10fe022e32cac70a28bf2581d64b4618fa2c9144347019dac2f",
+  "worker_result_sha256": "16a0b450843ba41276c4f56dfbd9abcf974020c6db97b19e1cda10b6864bf52f",
+  "source_pins_sha256": "d55e84abd22b1ff3618a0fd15b9ec04d0a5d72da5683315c1633a4b45c33c574",
+  "checked_inputs": 231,
+  "prompt_tokens": 40,
+  "input_token": 22406,
+  "position": 40,
+  "rows": 1,
+  "native_projection_calls": 196,
+  "native_projection_commands": 17920,
+  "activation_access_counts": {"0": 1792, "1": 84, "2": 15960, "3": 84},
+  "payload_sha256": {
+    "attn_norm-0": "f718530b673014fe9720eaa5ccff5e9d29d37882fb17e6a7828cf3b9edfe7ed7",
+    "ffn_norm-0": "d4fa6452622611321f7320df8a0a01f245852d1a7944289032a6a24b147f3c56",
+    "ffn_swiglu-0": "cd45a6be9c13836d73c140e6057154faa06c87601c69d78c25fab19a228b5d77",
+    "result_norm": "386b3e43206ad53167995f11e0926d33214bba9e73d5246c03d8e2c5333d6ea4"
+  },
+  "native_emulator_postchecked": true,
+  "weights_reextracted": true,
+  "complete_prefill_executed": true,
+  "complete_decode_executed": false,
+  "performance_measured": false,
+  "scope": "Actual first Decode operands after real Prefill; stop before vocabulary output; no RTL timing"
+}

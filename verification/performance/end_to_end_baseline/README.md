@@ -49,6 +49,15 @@ regions. Use `watch_projection_pair.py --full` with those arguments to wait
 for both results without timed polling. Its parent-directory watches also
 handle workers that have not created their output directories yet.
 
+The full-N pair completed: 1287703 versus 803294 region cycles (1.60303x),
+1224484 versus 740075 SDK execution cycles (1.65454x), with identical 57816
+preparation cycles. `diagnose_full_projection.py --pair <pair/result.json>
+--output <fresh-dir>` replays the pair and its strict-wait buckets: 524288 saved
+dot issues minus 39879 extra wait cycles equals the 484409 actual region-cycle
+reduction. The compact full-output receipt is
+`evidence/full_qwen3_qkv_20261106_01/result.json`. Full output N is not all prompt
+rows, a complete GGML call, or whole-model timing.
+
 The first build attempt remains FAIL because its helper changed while being
 consumed; the frozen successor is a different build. The first full-pair watcher
 also remains FAIL due to a startup-order race. The successor watcher fixes that
@@ -90,6 +99,32 @@ events and calls `collect_ffn_native.py` once. Every output, quantized payload,
 CSR state and guard is checked. This is full K but cropped N, not full FFN:
 down uses the real captured input, and the cropped gate/up outputs do not feed
 it. See `hardware/docs/LLAMA_FFN_THROUGHPUT_EXPERIMENT_20261106.md`.
+
+The pair completed with all outputs, payloads, CSR and independent protocol
+checks passing: SDK execution is 191186 versus 116797 cycles (1.63691x), while
+the N128 region including preparation is 430352 versus 355963 (1.20898x).
+These distinct scopes must not be used interchangeably or as full FFN latency.
+
+## Genuine Decode input capture
+
+`run_decode_capture.py --output <fresh-dir>` uses the shared source-gated
+`capture_model_inputs.py` runner and the accepted complete-model libraries.
+It finishes the real 40-token Prefill, checks greedy token 22406, then captures
+actual M1 inputs for first-layer QKV/gate/up/down and final vocabulary projection.
+It stops before the Decode vocabulary operation, not after a completed Decode.
+The checker audits 196 logical projection calls and 17920 native commands,
+source boundaries, actual Attention routes, and use of activation context.
+Prefill rows cannot be relabelled as Decode. Weight inventory is checked before
+the bounded QEMU run; QEMU provides operands/functionality, never RTL timing.
+See `hardware/docs/LLAMA_DECODE_INPUT_STUDY_20261106.md` for the intended M1
+baseline and the remaining model-library trace-context integration step.
+
+The genuine Decode capture completed. `collect_decode_capture.py --run
+<capture> --output <fresh-dir>` independently replays source boundaries and all
+operands, re-extracts seven weight prefixes from the original GGUF, and checks
+native QEMU provenance. The receipt is
+`evidence/decode_capture_20261106_01/result.json`. Observed context counts belong
+to the capture scope before the vocabulary operation, not complete-model timing.
 
 `projection_work_ledger.py --run <historical-register-model> --output
 <fresh-dir>` replays the historical model's original numerical/route checker and
