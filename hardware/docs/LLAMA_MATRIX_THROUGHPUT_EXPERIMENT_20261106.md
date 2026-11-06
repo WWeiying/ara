@@ -53,3 +53,28 @@
 当前参数默认关闭，尚未在整机、真实 GGML 投影或 FPGA 中启用。不改变原交付 SDK、指令编码、普通 RVV 路径或封存中的模型任务。
 
 下一步在完整 QBS engine 中测量真实读响应、激活 context FILL/REUSE/RELEASE、结果提交及异常恢复；随后用完整 SDK 调用配对检查准备、命令和输出总成本。若收益主要被供给等待隐藏，应优先改善驻留/供给，而不是继续堆乘法器。只有完整调用证据和代表性回归通过，才讨论运行时集成与生产默认值。
+
+## 5. 完整命令测试与故障场景核查
+
+`qbs_engine.sv` 现已向 compute engine 转发默认关闭的 `WideMatrixDot` 参数。完整命令测试使用实际共享读模块及 VRF 提交路径，原冻结 bench 的输出、fflags、计数、unknown 检查、context 生命周期及故障恢复断言均保留；独立派生 wrapper 仅增加参数传递。
+
+初次运行目录：`verification/out/e2e_matrix_engine_pair_20261106_01/`。安排的四组向量为普通 36 项、真实 M1/M4 切片，以及 12 项容量边界 context 测试，每组采用 response_gap=0/3。前七组配对日志通过，但最后的 context/gap3 在两侧均失败，原运行保持 FAIL。
+
+失败位于 `wide context fault did not interrupt active replay` 检查：Q4_K、M4/N5、4 blocks 的 REUSE 权重 AXI 错误没有观察到所要求的故障/replay 重叠。两侧在该检查前均通过了故障返回、replay 已停止以及原 context 仍有效的检查。不能将它直接判定为新候选引入的功能错误，也不能因两侧同失败就忽略。
+
+静态假设是：共享读模块要排空故障 AXI 事务才报告 `read_fault_valid`；response_gap=3 延长排空，replay 可能先完成，因此刺激未满足“故障打断 active replay”的前提。后继工具 `run_matrix_fault_schedule.py` 保留原失败，首先以相同前两项向量和被动探针记录 replay start/last/idle、AXI error/last、read fault 的周期顺序。只有顺序证据支持假设，才继续检查可选的故障从设备快速排空调度。
+
+后继并不删除重叠断言，也不修改功能 RTL。快速排空只影响人为注入错误的 REUSE/RELEASE 响应，正常调用仍使用原 response_gap；所有输出、fflags、saved-context、VRF 无部分提交及重试检查保持不变。完整门槛在后继测试与独立审计完成前仍未关闭，不使用初次运行的局部通过来声称整个命令测试已通过。
+
+初次探针编译因 include 放在 bench 声明之前而失败，未执行仿真，该记录仍在 `verification/out/e2e_matrix_fault_schedule_20261106_01/`。声明顺序修正后的入口为 `run_matrix_fault_schedule_v2.py`，运行目录 `e2e_matrix_fault_schedule_20261106_02/`；冻结的首个 worker、探针和失败报告未被改写。实验工具的 36 项单元测试通过，这些是工具检查，不替代 RTL 测试或面积/时序证据。
+
+初次完整命令运行中已经独立检查的真实切片结果如下。这里包含共享读模块、实际响应交互及 VRF 提交，但不含 CPU/SDK 准备；整组验收仍受上述故障场景门槛约束。
+
+| 真实 Q4_K，N8/K1536 | 原配置 cycles | 候选 cycles | 命令区间时间比 |
+| --- | ---: | ---: | ---: |
+| M4，response_gap=0 | 2054 | 1486 | 1.38223x |
+| M4，response_gap=3 | 4434 | 4050 | 1.09481x |
+| M1，response_gap=0 | 775 | 775 | 1.00000x |
+| M1，response_gap=3 | 2269 | 2269 | 1.00000x |
+
+gap 是测试从设备相邻响应的受控间隔，不是板上 DDR 延迟模型。慢供给下矩阵吞吐增量缩小，支持后续同时检查驻留和供给，不能据快速响应点继续承诺翻倍计算就会带来接近翻倍的完整调用收益。

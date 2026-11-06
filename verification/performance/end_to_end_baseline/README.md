@@ -1,4 +1,4 @@
-# End-to-end baseline evidence replay
+# End-to-end optimization experiments and evidence
 
 `audit.py` implements the first, read-only step of the end-to-end performance
 plan. It does not build software, start VCS/QEMU, access the board, alter a sealed
@@ -81,7 +81,7 @@ and VLEN256 QEMU guests. No board access or RTL performance is implied.
 `collect_output_tile.py --leaf <dir> --online <dir> --runtime <dir> --entry <dir>
 --output <new-json>` rechecks current source identities, ELF hashes and raw guest
 verdicts. The accepted receipt is
-`verification/performance/evidence/output_tile_20261106_01/result.json`.
+`verification/performance/evidence/output_tile_20261106_02/result.json`.
 The failed original runtime tests remain in the external run area; their
 diagnostic translation unit is `test_output_binding.c` and their exact compiler
 commands remain in those runs' `commands.json` files.
@@ -92,3 +92,54 @@ because multiple head pairs re-read V. See
 `hardware/docs/LLAMA_OUTPUT_RESIDENCY_EXPERIMENT_20261106.md` for costs and the
 required real-QK, RTL and model gates. The overall architectural goal remains
 broader than this experiment and permits justified additional hardware.
+
+## Real graph, model, and RTL scopes
+
+The graph adapter is reconstructed from the fixed llama.cpp delivery into
+isolated build inputs; it does not overwrite the dirty external checkout.
+`prepare_output_backend.py` and `check_output_backend.py` check the opt-in
+patch and its compilation. Actual GGML graph dispatch is covered by the
+`output_graph_20261106_01` receipt. The original graph run with a missing native
+QBS CPU flag is preserved as FAIL; its successful replay uses the same ELF and
+initramfs with the correct emulator configuration.
+
+`output_model_20261106_01/result.json` records a complete Qwen3-1.7B paired
+model run with 40 prompt tokens and three logits records per KV profile.
+The program compared 911616 logit values bitwise, and the independent audit
+verified routes, native work, final CSR equality and emulator provenance.
+This is functionality evidence, not model throughput or acceptance of the
+subsequent optional wide-dot RTL.
+
+The two Qwen3 GQA2/D128/visible20 full-call VCS pairs are in
+`output_native_20261106_01/result.json`: output residency gives about
+1.25--1.27x versus the accepted Register-PV software on the same hardware.
+Do not turn these selected head-group measurements into a full-model speedup.
+
+## Optional matrix throughput experiment
+
+`WideMatrixDot` defaults off. The candidate accelerates M3/M4 local waves for
+256-element profiles and uses row-local integer correction lanes; short blocks
+and M1/M2 keep their original dot issue step. FP arithmetic and ISA are unchanged.
+
+`run_matrix_dot_pair.py` builds matched compute-level VCS images and uses the
+existing C oracle. Only structural dot-cycle and capacity expectations differ
+between vector files; payloads, outputs, flags and remaining counters do not.
+Both configurations passed 38 cases; the receipt is
+`matrix_dot_pair_20261106_01/result.json` in the evidence directory. Its ratios
+include testbench-controlled input delivery, not the native SDK's overhead.
+
+The full-command successor also includes the production shared reader and
+commit path, two response schedules, and context lifecycle/fault recovery:
+
+```sh
+python3 -B verification/performance/end_to_end_baseline/run_matrix_engine_pair.py \
+  --component-run /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_matrix_dot_pair_20261106_01 \
+  --output /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/matrix_engine_next
+```
+
+Use a new output directory. Run the worker directly under the owning service,
+not through a launcher that exits before its children. The original frozen
+wrapper and assertions are retained; a separate derived wrapper only forwards
+the width parameter. A passing worker can be re-audited using
+`collect_matrix_engine_pair.py --run <run> --output <fresh-evidence-directory>`.
+It still does not cover CVA6 dispatch, SDK preparation or complete inference.
