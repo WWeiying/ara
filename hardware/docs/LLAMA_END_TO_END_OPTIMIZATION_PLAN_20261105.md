@@ -217,6 +217,14 @@ Decode 中权重通常被单个 token 消费；Prefill 中同一权重块可服�
 
 ### 7.1 不能遗漏的吞吐约束
 
+完整历史 Qwen3 工作量重放还区分了两个重点：当前矩阵候选对应约 99.3680%
+的 Prefill 投影 MAC，却不改变 Decode 的 M1 命令；Decode 的 FFN 与词表输出层
+分别占量化投影 MAC 的 61.4353% 和 18.0862%。这些不是周期占比。后续不能只
+测 QKV，也不能以扩大 M1 乘法吞吐代替权重供给分析。Q4_K/Q6_K 在 32 乘积/
+cycle 下分别需要约 18/26.25 B/cycle 的权重数据，而当前 reader 理想上限为
+16 B/cycle。完整范围、原数值检查和服务下界的限制见
+`LLAMA_MODEL_WORK_LEDGER_20261106.md`；新硬件的实际 reader 效率仍需实测。
+
 现有 `fp_uop_issue` 是 FP arithmetic、I2F cast、half-scale 三条端口成功发射数之和，不是一个单端口的占用周期。不能由该总数直接判断 FPU 是否饱和。子组修正的 pending 周期也只是存在待处理项，不等同于阻塞周期。
 
 新增只读仿真探针 `verification/performance/end_to_end_baseline/projection_resource_monitor.svh` 分别观察三条 FP 发射端口、状态类型、dot issue、子组产出和修正握手。它嵌入已有 compute-engine bench，保留全部参考输出、fflags、计数及故障排空检查；不驱动 ready/valid 或修改 RTL。`run_projection_resources.py` 使用独立 VCS 构建和输出目录，`projection_resources.py` 对原始计数守恒及原测试判定进行独立核对。

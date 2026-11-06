@@ -71,6 +71,17 @@ original FP32 input bytes. Counts are not hardware cycles, and this M4 cache
 must not be confused with M1 hardware activation-context reuse. No QEMU elapsed
 time is used as an RTL performance result.
 
+`projection_work_ledger.py --run <historical-register-model> --output
+<fresh-dir>` replays the historical model's original numerical/route checker and
+conserves logical MAC work against native commands for each of the six model
+steps. It records actual command/call shapes, M1/M4 boundaries and ideal weight
+R-beat/dot-issue service budgets. Runtime artifacts are rehashed against their
+original pins; old symlink-name pins and canonical-name pins both retain exact
+content checks. It does not claim a full old-source re-audit or current RTL
+performance. The accepted compact receipt is
+`evidence/projection_work_ledger_20261106_01/result.json`; the implications and
+non-timing scope are in `hardware/docs/LLAMA_MODEL_WORK_LEDGER_20261106.md`.
+
 `build_output_gqa6.py --output <fresh-dir>` prepares a genuine Qwen2.5 Decode
 GQA6/D128/visible128 full-call ABBA, reusing fifteen checked common objects and
 rebuilding only caller/data. Raw captured KV is converted to token-major with
