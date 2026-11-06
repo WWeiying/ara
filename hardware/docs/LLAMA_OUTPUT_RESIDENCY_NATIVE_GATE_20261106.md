@@ -59,14 +59,18 @@ final-dot retirement；不能跳过源码身份检查后把旧镜像称为当前
 采用现有严格构建流程生成当前验证分支的新独立镜像：
 
 - 计划预检：`e2e_vcs_build_plan_20261106_01`，已通过。
-- 新 VCS 构建目录：`e2e_vcs_build_20261106_01`。
+- 新 VCS 构建目录：`e2e_vcs_build_20261106_01`，已完成，退出码 0。
 - systemd 服务：`ara-e2e-output-vcs-build-20261106-01.service`。
-- 工作进程直接由服务管理；已确认实际 `vcs1` 执行。
+- 工作进程直接由服务管理；构建阶段确认过实际 `vcs1` 执行。
 - 4 lanes、VLEN1024、16 MiB 仿真内存、真实 CVA6、QBS/AKV-v2，保留 UVM、
   contract monitor 和断言失败保护；不采集 FSDB 或覆盖率。
 - 该构建仅创建仿真镜像，不自动开始 benchmark，不进行面积/时序综合。
 
-查看状态：
+构建回执 SHA256 为
+`32190b89a1dcf5ce0bb43a201a7b26ba23830fc753c9639837837d525a79c77c`。
+新镜像严格准入通过，没有放宽旧源码漂移检查。
+
+查看构建记录：
 
 ```sh
 systemctl --user status ara-e2e-output-vcs-build-20261106-01.service --no-pager
@@ -75,9 +79,30 @@ tail -n 30 /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out
 
 ## 下一步验收
 
-新构建成功后，以其 `result.json` 的准确 SHA256 传给新 runner 的
-`--soc-build` / `--soc-sha256`，仍须通过完整源码、依赖、镜像及配置身份校验，
-不能只填一个新路径绕过校验。随后在独立服务中执行两个完整调用对照。
+已以新构建 `result.json` 的准确 SHA256 传给 runner 的
+`--soc-build` / `--soc-sha256`，完成源码、依赖、镜像及配置身份校验。
+两组完整调用在独立目录、独立服务中并行运行：
+
+| 类型 | 运行目录 | systemd 服务 |
+| --- | --- | --- |
+| Q4_0 K | `e2e_output_q4_vcs_20261106_01` | `ara-e2e-output-q4-vcs-20261106-01.service` |
+| Q8_0 K | `e2e_output_q8_vcs_20261106_01` | `ara-e2e-output-q8-vcs-20261106-01.service` |
+
+启动检查时两个 worker 均为 RUNNING，`manifest-before` 和内存/ELF 合同检查均为
+退出码 0。已核对两个实际 simv 进程及各自 ELF/日志路径，不仅检查服务状态文件。
+此处记录的是启动，不代表测试已完成；最终以每组 `result.json` 为准。
+
+运行结束后可使用 `collect_output_native.py --q4 <Q4运行目录> --q8 <Q8运行目录>
+--output <新结果JSON>` 重新校验原始输出、golden、CSR、源文件及协议证据，并
+按 ABBA 调用配对提取 QBS 活动。只有双方完整 PASS 才生成汇总。
+
+活动分析额外要求每次调用恰有一个 QBS command，检查 M/N、量化输入字节数、
+5120 个有效乘积对及命令阶段和。QBS engine 的阶段计数是互斥分类，并有 RTL
+总和断言；它们可以描述 QBS 内部阶段。但 QBS busy 与整次软件调用的比例只作
+诊断，不能与 RVV busy 等重叠事件相加作为完整 stall breakdown。
+
+工具单元测试现为 15 项通过，新增拒绝重复/缺失 command、错误工作量、阶段和
+不一致和未完成调用的检查。运行中的 worker 及其 sealed helper 未改动。
 
 如果出现异常或 contract 错误，提前停止对应任务并保留证据；只有数值、活动、
 协议检查全部通过，才报告周期和加速比。尚未获得新的性能数值，不用解析器的
