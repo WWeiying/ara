@@ -188,6 +188,51 @@ Wide client selection remains default-OFF. Ordinary RVV and actual AKV SoC
 operation, physical memory width, real permission checks and SDK performance
 are later integration gates, not implied by these command/component fixtures.
 
+### Physical SoC width experiment
+
+`prepare_wide_soc.py prepare --output <fresh-dir>` snapshots the accepted full
+processor/dependency inventory, overlays only the reviewed QBS integration and
+adds four new source modules. It excludes unrelated main-tree ALU/multiplier/
+VRF area changes. This is an experimental build-input tree without Git metadata,
+not another development worktree or canonical-source promotion. The baseline
+Makefile metadata is pinned, but no Bender/Make regeneration or dirty dependency
+selection occurs: compilation reuses the exact native VCS compiler recipe and
+frozen DPI object. Historical filelist target names do not invoke Verilator.
+
+`prepare_wide_soc.py compile --prepared <dir> --prepared-sha <sha> --width
+128|256 --output <fresh-dir>` selects actual generic SRAM word width and the
+matching weight ingress. Both use four lanes, VLEN1024, 16 MiB and WideMatrixDot.
+The two full-processor builds have completed; each preserves all 131 exact
+baseline compile diagnostics. Source, artifact, image-library and raw compiler
+checks were independently replayed. See
+`evidence/physical_wide_soc_builds_20261106_01/result.json`. Compilation alone
+is not runtime or performance acceptance.
+
+`wide_soc_memory_smoke_build.py --build` produces one ELF for both images,
+using scalar reference arithmetic rather than vectorized expected results.
+It checks 180 scalar cases and 240 vector cases across all naturally aligned
+bus phases, e8/e16/e32/e64, masks, tails and 4-KiB physical boundaries. At
+VLEN1024 the independent host oracle requires 360 value checks, 113728 byte
+checks, 90 source and 90 destination crossings, and digest 96466774f378327d.
+No agnostic register bytes are compared. The ELF contains 1924 planned dynamic
+vector instructions; this is stimulus work, not evidence of executed work.
+
+`run_wide_soc_smoke.py` requires exact image/program receipt hashes, independently
+parses ELF64 PT_LOAD records to reject unaligned/overlapping rounded DPI writes,
+checks physical memory geometry/activity and runs the existing independent
+CVXIF/VID/AXI UVM checker. Its UART oracle is separate from the full-log protocol
+check, so normal zero-error UVM summaries are not mistaken for UART errors.
+The platform probe observes all SoC memory traffic; it is not a QBS ROI counter.
+
+`continue_wide_soc.py --output <fresh-dir>` waits on terminal result-file events,
+not timed polling. Only after both memory runs pass does it execute the same
+committed QBS/AKV/RVV handoff ELF on both images in parallel. A producer/consumer
+receipt adapter changes build-state spelling only, preserving the exact ELF,
+source inventory, load checks and original successful build report. Any failed
+gate stops subsequent dispatch. Neither these smoke tests nor a passing build
+authorizes wide Linux/NORMAL_MEMORY use; real PMP footprint and actual-SDK/model
+performance remain separate requirements. No synthesis or board action runs.
+
 ## Ordered fused RMSNorm: scoped replay
 
 `collect_rms_norm_scoped.py --output <fresh-dir>` audits the preserved completed

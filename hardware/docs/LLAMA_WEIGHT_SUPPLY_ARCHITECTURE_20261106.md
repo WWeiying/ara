@@ -229,6 +229,17 @@ passed PMP. The accelerator MMU request visible in `ara.sv` /
 an explicit whole-burst byte interval. Therefore a permission proof is an
 implementation prerequisite, not inherited automatically from a parameter.
 
+The inspected `ara_soc.gen_usr_cva6_config()` explicitly sets `NrPMPEntries=0`;
+this is also true in both frozen experimental images. Their first smoke uses
+translation-off, file-backed/allocated physical RAM. It is not a PMP-enabled
+test. For this selected zero-PMP target, the remaining translated-path proof
+is page permissions plus complete physical RAM/PMA footprint and fault/drain
+behavior. A nonzero-PMP implementation is a separate configuration extension,
+not a reason to add unneeded PMP hardware to the current width experiment.
+If PMP is later enabled, address-only admission is insufficient: require the
+whole span within an effective readable region, respecting higher-priority
+interior restrictions. Checking only endpoints can miss a denied interior.
+
 Before a 32-byte access, prove permission for its complete physical footprint,
 including aligned head/tail overfetch. Cover in-page permission boundaries as
 well as page boundaries. If only an old-width access is permitted, use a
@@ -580,3 +591,47 @@ returns and 809 full-width returns. Receipt:
 Neither a failed report nor a source-location correction proves a
 physical wide SoC. Real CVA6 PMP footprint checks, ordinary RVV/AKV SoC
 regressions, physical memory width and actual-SDK/model latency remain required.
+
+### Physical Generic-SRAM SoC: Built, Runtime Gate In Progress
+
+The full processor now has two compiled experimental VCS images, not merely a
+synthetic AXI endpoint. Both derive from the accepted scalar/RVV/dependency
+inventory with an explicit reviewed QBS overlay. Unrelated main-tree area
+experiments are excluded. The original DPI object and native compiler recipe
+are reused; source copies and tool inputs are frozen in build artifacts, not a
+new development worktree. The only non-QBS functional configuration change is
+the testbench's physical bus-width selection. The SoC adds an observation-only
+geometry/one-cycle-response probe. Both images preserve every one of the 131
+original compile diagnostics, rather than claiming a warning-free baseline.
+The independent source/image/compiler replay receipt is
+`verification/performance/evidence/physical_wide_soc_builds_20261106_01/result.json`.
+
+The 128-bit image physically instantiates 1048576 words; the 256-bit image has
+524288 words. Both hold 16 MiB with four lanes and VLEN1024. The initial runtime
+records confirm the actual generic memory array word width and depth. This is
+on-chip behavioral SRAM service, not an external-DDR bandwidth or macro/PPA
+result. Both images retain the same WideMatrixDot setting; no arithmetic gain
+is folded into the bus-width comparison.
+
+An identical ordinary-RVV/scalar ELF is running on both images. Its independent
+host oracle covers 180 scalar and 240 vector scenarios, all natural alignment
+phases, masks/tails, each supported element width and physical page crossings.
+The runtime gate checks final bytes/digest, physical memory activity and the
+independent CVXIF/VID/AXI UVM result. Only after both sides pass does an event-driven
+worker run the same committed QBS/AKV/RVV ownership-handoff program in parallel.
+These runs are pending, not accepted performance measurements. They use flat
+physical RAM, not virtual-memory fault or real PMP coverage.
+
+The DPI loader enumerates nonempty, file-backed PT_LOAD segments using p_paddr
+and p_memsz; it does not enumerate individual ELF sections. At either width,
+the run admission independently checks segment alignment, rounded loaded-range
+nonoverlap, physical/virtual address identity and the fixed RAM bounds. This
+prevents an invalid preload from being misdiagnosed as a wider VLSU bug.
+
+After these gates, actual-SDK Q4_K/Q6_K Decode and matched Prefill measurements
+remain the performance decision. Same-platform ordinary RVV is still required
+to separate generic memory-platform benefit from QBS benefit. Linux production
+use still needs actual translated-path permission/fault tests for the selected
+zero-PMP configuration. Nonzero-PMP configurations require the separate
+full-span admission proof described in Section 5. This experiment does not
+bypass either boundary or alter a checker to claim success.
