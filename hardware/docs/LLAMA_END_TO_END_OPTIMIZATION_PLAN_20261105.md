@@ -21,7 +21,12 @@ Qwen3 M4/K2048/全 N QKV 的 SDK 调用组上取得 1.60303x，总计包含准�
 增量加速。数值、工作量和来源详见
 `LLAMA_MATRIX_THROUGHPUT_EXPERIMENT_20261106.md` 第 11 节。
 
-下一步补真实 Decode 数据与 M1 的权重供给/命令成本。全 N QKV 的候选准备
+真实 Decode 数据与 M1 的权重供给/命令成本已补齐：七个 N128 前缀的 VCS
+独立审计通过，SDK execution 为 145475 cycles，QBS busy 为 130052，R beats
+为 107012。Q6_K 的 reader transfer duty 已约为 busy 的 84%--86%，而 FP
+输入及结果端口反压为零。因此下一项不先增加 M1 乘法器，而应比较供给通路
+投入、命令推进与剩余软件成本。完整取证和范围见
+`LLAMA_DECODE_INPUT_STUDY_20261106.md` 第 8 节。全 N QKV 的候选准备
 占比为 7.1974%，已经修正 N128 的 42.68% 小切片印象；新暴露的严格权重
 等待即使理想地全部移除，也只为全 N 候选再带来约 1.05224x。因此不以清理
 这点等待代替完整推理目标，也不先增加 M1 乘法器。
@@ -50,7 +55,8 @@ down 输入来自真实图捕获而不是采样的 gate/up 输出。详见
 已核验的首个贪心 token 进入 Decode，读取第一层 QKV/FFN 及最终词表投影的
 真实输入，核对 196 个调用、17920 条 native 命令及已有 context 路径。
 不把 Prefill 的某一行重新标成 Decode；捕获本身不用于估算硬件周期。M1
-SDK 测量和模型库 trace-context 热路径固化是接下来的工作，详见
+SDK 测量现已通过；模型库 trace-context 的完整模型功能配对正在独立后台
+运行，验收前不替换生产库、不计作性能提升。详见
 `LLAMA_DECODE_INPUT_STUDY_20261106.md`。
 
 上述实验用于作出下一项结构选择，不把主目标收缩为“这些实验通过”。若完整

@@ -321,6 +321,16 @@ The accepted status is `REAL_QWEN3_DECODE_SDK_BASELINE_REAUDITED`, not preflight
 or simulator launch. Timing excludes cold weight repack and full GGML dispatch;
 the sampled output channels cannot establish full-model speedup.
 
+The baseline has now completed VCS and independent replay: 227810 region cycles,
+68377 preparation, 11610 admission, 145475 SDK execution, and 130052 QBS busy.
+All 896 outputs and four quantized payloads match the independent oracle. The
+917-input audit is retained under `e2e_decode_native_audit_20261106_01` in the
+verification tree. `diagnose_decode_native.py --audit <audit/result.json>
+--output <fresh-dir>` checks service/byte accounting and reports bounded local
+headroom, not full-model speedup. In particular the 107012 R beats cannot be
+removed by more multipliers; strict WAIT subdivisions are shared-reader signals,
+and the 15423 SDK cycles outside QBS busy are not all CPU arithmetic.
+
 ## Isolated model trace-context library
 
 `build_trace_context_library.py --output <fresh-dir>` reconstructs the registered

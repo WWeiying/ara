@@ -166,9 +166,9 @@ ELF 检查全部量化字节、896 个输出、前后 canary、累计 fflags、f
 只有最终 `REAL_QWEN3_DECODE_SDK_BASELINE_REAUDITED` 才算接受性能数据；
 编译、preflight 和模拟器启动都不是 PASS。本批没有新 RTL 或全模型性能结论。
 
-正式任务已由 `ara-e2e-decode-native-20261106-01.service` 直接持有，已确认
-实际 `simv` 子进程和递增的指令握手记录。不是短启动器退出后留下的孤儿任务。
-模拟器及独立审计完成前，本节不填入周期结论。进度与最终结果分别查看：
+正式任务由 `ara-e2e-decode-native-20261106-01.service` 直接持有，现已成功
+完成 VCS、独立协议检查及重放审计，服务 exit=0，未遗留模拟器。独立结果为
+`REAL_QWEN3_DECODE_SDK_BASELINE_REAUDITED`；实测值见第 8 节。状态与结果查看：
 
 ```bash
 systemctl --user status ara-e2e-decode-native-20261106-01.service --no-pager
@@ -224,3 +224,63 @@ host C++ 测试实际编译比较程序，验证最后一个 logit 改变、CSR 
 以及链接参数。自动完成状态为 `TRACE_CONTEXT_QWEN3_MODEL_PAIR_REAUDITED`；
 preflight 与启动都不等于验收。本项使用 QEMU 只验证完整模型功能与工作量，
 不产生硬件周期、速度提升、PPA 或板卡验收结论，也不提前替换生产库。
+
+## 8. 真实 M1 VCS 基线已通过及下一项结构判断
+
+VCS 和独立审计已完成，917 项输入、镜像、原始日志、独立协议及全部数据
+再次核对。完整区域为 227810 cycles，其中准备 68377、admission 11610、
+SDK execution 145475，剩余区域控制 2348。所有输出、量化字节、guard、
+FCSR=9、VCSR=3 和 vstart=0 均通过。注意这里是七个 N128 前缀，不是连续
+的完整模型图，也不是完整层/词表时间。
+
+| 投影 | 格式 | K | SDK execution | QBS busy | R beats | strict weight wait |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Q | Q4_K | 2048 | 14944 | 12038 | 9372 | 378 |
+| V | Q6_K | 2048 | 18366 | 16174 | 13572 | 4170 |
+| K | Q4_K | 2048 | 13735 | 11888 | 9220 | 380 |
+| gate | Q4_K | 2048 | 14204 | 12038 | 9372 | 376 |
+| up | Q4_K | 2048 | 14000 | 11886 | 9220 | 378 |
+| down | Q6_K | 6144 | 51686 | 49703 | 42532 | 13890 |
+| vocabulary | Q6_K | 2048 | 18540 | 16325 | 13724 | 4169 |
+
+四份生产单行量化的周期依次为 11541、11571、33842、11423；QKV 与 gate/up
+没有重复准备。28 条命令共有 FILL=3、REUSE/RELEASE 命中=21，实际 context
+回放及节省的逻辑 AXI 激活读取均为 49056 bytes。全部 reader payload 为
+1700512 bytes，其中权重 1665024、实际激活读取 35040、descriptor 448。
+107012 个 128-bit R beats 还包含对齐填充，不能将 payload 当作总线总字节。
+
+各调用 R transfer duty 为 Q4_K 约 77.56%--77.85%、Q6_K 约
+83.91%--85.57% 的 QBS busy。这里的通路确为 128 bit：封存 4-lane SoC
+的宽接口是 `64*NrLanes/2`，共享 reader 沿该宽度发出 AR；不是外部已有
+256-bit 通路却被 QBS 无意只用了一半。不能只改一个 QBS 宏就宣称带宽翻倍。
+
+对这一批数据可作以下判断：
+
+1. FP input 和 profile-result 反压均为零，没有证据支持先增加 M1 的浮点
+   服务能力。当前 reader 每周期最多 16 bytes；Q6_K 在 dot 保持当前吞吐时
+   已暴露明显传输服务压力。
+2. 长 K down 的 13890 个严格等待周期中，12724 个周期有 R transfer，945
+   个周期 R 被阻塞，192 个周期无 outstanding，29 个周期等待 R valid。
+   它不是主要由漫长的外部响应空洞造成，也不能只靠增加 outstanding 数
+   承诺很大收益。R transfer 来自共享 reader，不等价于逐周期权重 DDR 延迟。
+3. Q4_K 的严格等待仅约 busy 的 3.2%，其中主要表现为 R 被阻塞而非 R 空闲。
+   后续可追 bank 所有权、payload 接纳和 tile 切换，但单独清理这一小段
+   不足以解释显著端到端加速，不能只围绕这个状态反复试改。
+4. SDK execution 中有 15423 cycles 不在 QBS busy 内，占 10.60%；包含提交、
+   接口完成、结果存储和软件控制，不称为纯 CPU 运算或全部可删除的开销。
+   真正 GGML 层的 trace/getenv 成本还需使用固化的新软件基线，不能与此 C
+   SDK 区域混为同一项。
+5. N128 区域的准备占比为 30.01%，完整 N 会改变摊销，尤其词表为 N151936。
+   不能据此将激活量化硬件列为最高优先级。长 K context 扩容仍是候选，但
+   本点激活流量远小于权重流量，须先计算整体收益再增加 SRAM。
+
+`diagnose_decode_native.py` 独立重放上述结果，并为每个阻塞调用给出
+`max(dot_issue, R_beats)` 服务下界。它不是可实现的调度，也不是相加的 stall
+分解；例如 down 的 busy 与该下界之比约为 1.1686，说明在保持当前物理传输
+工作和宽度时，只优化零散控制的空间有限。扩大 Decode 点积通路之前，应
+同时比较内存通路投入、命令批量推进以及与已有 Prefill 吞吐扩展的收益。
+
+精简回执位于 `verification/performance/evidence/decode_native_20261106_01/`；
+原始独立审计和归因分别位于唯一验证树
+`verification/out/e2e_decode_native_audit_20261106_01/`、
+`verification/out/e2e_decode_native_diagnosis_20261106_01/`。
