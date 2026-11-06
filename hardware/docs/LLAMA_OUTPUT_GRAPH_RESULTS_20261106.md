@@ -83,3 +83,42 @@ QEMU 不提供真实 RTL 周期。本轮 GQA6/128-token 的数值和调度通过
 
 此外，普通 RVV、F16 Attention、线程和 mask-hole 等 fallback 应继续回归。
 这些工作完成前，不将本轮图级通过作为整个 LLM 软硬件优化目标完成。
+
+## 5. 完整模型 A/B 已启动准备
+
+后继 `run_output_model.py` 使用上面的固定交付树及归档 SDK，完整构建 llama.cpp
+的 `llama` 静态库与模型测试程序，不复用未核对的本地库。生产模型目录和位流不改。
+测试源码从已验收的 `register_model_test.cpp` 生成，只改变两侧选择、日志标签
+和大量的调试打印：
+
+| 项目 | 两侧共同设置 / 差异 |
+| --- | --- |
+| 模型 | Qwen3-1.7B Q4_K_M，同一只读模型磁盘 |
+| 对照 | baseline=Register-PV；candidate=output-tile |
+| ISA / 运行时 | 同一个静态 ELF、相同 QBS/native opt-in、单 worker |
+| Prefill | 两侧均启用已存在的 grouped Prefill，不把其收益归入新方案 |
+| KV 格式 | 分别 Q8_0 K 和 Q4_0 K；V 均 Q8_0 |
+| 上下文 | n_ctx=128，n_batch=n_ubatch=64；固定自然语言 prompt，要求分词数 33..64 |
+| 执行规模 | 每种 KV 格式一次 prompt Prefill，加两次单 token Decode，得到三组 logits |
+| 数值检查 | 六组完整 151936 维 logits 逐位比较，共 911616 个配对值；token 和最终 CSR 一致 |
+| 状态隔离 | 父进程不初始化 GGML，两侧分别 fork，避免缓存的环境选择互相影响 |
+| 覆盖检查 | 每侧应有 56 次成功 Prefill、112 次成功 Decode，并核对新旧选择互斥及工作量一致 |
+
+这是一轮完整模型的短生成数值回归，不是长对话、质量基准或性能基准。
+QEMU 使用显式 `xaraqbs=true`，执行前核对 native 模型源码、配置、构建及磁盘身份。
+
+运行目录：唯一验证工作树 `verification/out/e2e_output_model_20261106_01/`。
+服务：`ara-e2e-output-model-20261106-01.service`。本节写入时，完整库及测试 ELF
+构建/链接完成，正在完成启动输入校验；不能据此称为模型运行已经通过。
+QEMU 阶段设定 7200 秒边界，由后台服务直接管理，不频繁轮询。
+
+`check_output_model.py` 是独立的顺序检查器，不仅读取最终 PASS。工具单元测试
+现为 22 项通过，包括误选后端、漏掉 Decode、改变 token、输入许可错误与失败
+guest 退出码。模型测试的最终结果须同时满足程序内比较和这些独立活动检查。
+
+查看任务：
+
+```sh
+systemctl --user status ara-e2e-output-model-20261106-01.service --no-pager
+tail -n 20 /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_model_20261106_01/qemu.log
+```
