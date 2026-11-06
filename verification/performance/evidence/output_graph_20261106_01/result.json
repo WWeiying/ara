@@ -1,0 +1,106 @@
+{
+  "state": "GRAPH_FUNCTIONAL_AND_DISPATCH_PASS",
+  "functional_only": true,
+  "performance_measured": false,
+  "original_run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_graph_20261106_01",
+  "elf_sha256": "de1bc3e563b03999b641f31a334fe63ab590aef3ee7fd0c344ca78180a168f2d",
+  "checked": {
+    "state": "ORDERED_GRAPH_TRACE_PASS",
+    "profiles": 4,
+    "native_calls": 12,
+    "native_commands": 144,
+    "fallback_calls": 8,
+    "trials": [
+      {
+        "name": "qwen25_q8",
+        "candidate": 0,
+        "flags": 9,
+        "max_abs": 1.40070915e-06,
+        "commands": 16
+      },
+      {
+        "name": "qwen25_q8",
+        "candidate": 1,
+        "flags": 9,
+        "max_abs": 1.40070915e-06,
+        "commands": 16
+      },
+      {
+        "name": "qwen25_q8",
+        "candidate": 1,
+        "flags": 9,
+        "max_abs": 1.40070915e-06,
+        "commands": 16
+      },
+      {
+        "name": "qwen25_q4",
+        "candidate": 0,
+        "flags": 11,
+        "max_abs": 9.65595245e-06,
+        "commands": 16
+      },
+      {
+        "name": "qwen25_q4",
+        "candidate": 1,
+        "flags": 11,
+        "max_abs": 9.65595245e-06,
+        "commands": 16
+      },
+      {
+        "name": "qwen25_q4",
+        "candidate": 1,
+        "flags": 11,
+        "max_abs": 9.65595245e-06,
+        "commands": 16
+      },
+      {
+        "name": "qwen3_q8",
+        "candidate": 0,
+        "flags": 9,
+        "max_abs": 2.47731805e-07,
+        "commands": 8
+      },
+      {
+        "name": "qwen3_q8",
+        "candidate": 1,
+        "flags": 9,
+        "max_abs": 2.47731805e-07,
+        "commands": 8
+      },
+      {
+        "name": "qwen3_q8",
+        "candidate": 1,
+        "flags": 9,
+        "max_abs": 2.47731805e-07,
+        "commands": 8
+      },
+      {
+        "name": "qwen3_q4",
+        "candidate": 0,
+        "flags": 9,
+        "max_abs": 2.99885869e-07,
+        "commands": 8
+      },
+      {
+        "name": "qwen3_q4",
+        "candidate": 1,
+        "flags": 9,
+        "max_abs": 2.99885869e-07,
+        "commands": 8
+      },
+      {
+        "name": "qwen3_q4",
+        "candidate": 1,
+        "flags": 9,
+        "max_abs": 2.99885869e-07,
+        "commands": 8
+      }
+    ],
+    "performance_measured": false
+  },
+  "log_sha256": "080ef9b20b2cabbb16093f9da6d76e3cf4e0cf7fa8692028564a77585dccd884",
+  "source_pins_sha256": "8e4d30316534bd8e077ea8122b7a543a8a2278bc1c9772bfd296e24bdc4aa733",
+  "original_failed_run_preserved": true,
+  "elf_rebuilt": false,
+  "production_changed": false
+}
