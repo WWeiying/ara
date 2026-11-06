@@ -12,6 +12,9 @@ module qbs_read_engine import qbs_pkg::*; #(
     parameter int unsigned PAddrWidth      = 56,
     parameter int unsigned RangeBytesWidth = 16,
     parameter int unsigned ReadOutstanding = 2,
+    // Default preserves bus-width transfers. The optional mode retains each
+    // range's AXI size through planning and both ordered response slots.
+    parameter bit          PerRangeTransferSize = 1'b0,
     parameter type         axi_ar_t        = logic,
     parameter type         axi_r_t         = logic,
     parameter type         exception_t     = logic,
@@ -27,6 +30,7 @@ module qbs_read_engine import qbs_pkg::*; #(
     input  tag_t                         range_tag_i,
     input  axi_pkg::cache_t              range_cache_i,
     input  axi_pkg::prot_t               range_prot_i,
+    input  axi_pkg::size_t               range_size_i,
 
     output logic                         data_valid_o,
     input  logic                         data_ready_i,
@@ -86,7 +90,6 @@ module qbs_read_engine import qbs_pkg::*; #(
   localparam int unsigned BeatOffsetWidth =
       BeatBytes > 1 ? $clog2(BeatBytes) : 1;
   localparam int unsigned MaxBurstBeats = 256;
-  localparam int unsigned MaxBurstBytes = MaxBurstBeats * BeatBytes;
   localparam int unsigned QueueDepth = 2;
 
   typedef logic [AxiAddrWidth-1:0] axi_addr_t;
@@ -100,6 +103,7 @@ module qbs_read_engine import qbs_pkg::*; #(
     tag_t            tag;
     axi_pkg::cache_t cache;
     axi_pkg::prot_t  prot;
+    axi_pkg::size_t  size;
   } range_entry_t;
 
   typedef struct packed {
@@ -111,6 +115,7 @@ module qbs_read_engine import qbs_pkg::*; #(
     tag_t                          tag;
     logic                          range_last;
     logic [15:0]                   subreq_seq;
+    axi_pkg::size_t                size;
   } burst_entry_t;
 
   typedef enum logic [1:0] {
@@ -136,6 +141,7 @@ module qbs_read_engine import qbs_pkg::*; #(
   tag_t planner_tag_q;
   axi_pkg::cache_t planner_cache_q;
   axi_pkg::prot_t planner_prot_q;
+  axi_pkg::size_t planner_size_q;
   logic [15:0] planner_sequence_q;
   logic [15:0] next_sequence_q;
 
@@ -143,6 +149,7 @@ module qbs_read_engine import qbs_pkg::*; #(
   range_bytes_t ar_chunk_bytes_q;
   beat_count_t ar_beats_q;
   logic [BeatOffsetWidth-1:0] ar_first_lane_q;
+  axi_pkg::size_t ar_size_q;
   range_bytes_t ar_range_offset_q;
   vaddr_t ar_cursor_vaddr_q;
   tag_t ar_tag_q;
@@ -188,6 +195,7 @@ module qbs_read_engine import qbs_pkg::*; #(
   logic translation_complete;
 
   logic planner_empty_fault;
+  logic planner_size_fault;
   logic planner_mmu_fault;
   logic planner_pma_fault;
   logic planner_fault_event;
@@ -247,6 +255,8 @@ module qbs_read_engine import qbs_pkg::*; #(
 
   always_comb begin : plan_burst
     automatic int unsigned first_lane;
+    automatic int unsigned first_transfer_byte;
+    automatic int unsigned transfer_bytes;
     automatic int unsigned bytes_to_page;
     automatic int unsigned bytes_to_axi_limit;
     automatic int unsigned chunk_bytes;
@@ -259,18 +269,19 @@ module qbs_read_engine import qbs_pkg::*; #(
       translated_addr = AxiAddrWidth'(planner_cursor_q);
 
     first_lane = unsigned'(translated_addr[BeatOffsetWidth-1:0]);
+    transfer_bytes = 1 << planner_size_q;
+    first_transfer_byte = first_lane & (transfer_bytes - 1);
     bytes_to_page = 4096 - unsigned'(planner_cursor_q[11:0]);
-    bytes_to_axi_limit = MaxBurstBytes - first_lane;
+    bytes_to_axi_limit = (MaxBurstBeats << planner_size_q) - first_transfer_byte;
     chunk_bytes = unsigned'(planner_remaining_q);
     if (chunk_bytes > bytes_to_page)
       chunk_bytes = bytes_to_page;
     if (chunk_bytes > bytes_to_axi_limit)
       chunk_bytes = bytes_to_axi_limit;
-    span_bytes = first_lane + chunk_bytes;
-    beat_count = (span_bytes + BeatBytes - 1) / BeatBytes;
+    span_bytes = first_transfer_byte + chunk_bytes;
+    beat_count = (span_bytes + transfer_bytes - 1) >> planner_size_q;
 
-    planned_ar_addr = translated_addr;
-    planned_ar_addr[BeatOffsetWidth-1:0] = '0;
+    planned_ar_addr = translated_addr & ~AxiAddrWidth'(transfer_bytes - 1);
     planned_chunk_bytes = RangeBytesWidth'(chunk_bytes);
     planned_beats = beat_count_t'(beat_count);
     planned_first_lane = BeatOffsetWidth'(first_lane);
@@ -281,12 +292,12 @@ module qbs_read_engine import qbs_pkg::*; #(
       (!en_ld_st_translation_i || mmu_valid_i);
   assign physical_check_addr_o = planned_ar_addr;
   assign physical_check_bytes_o =
-      13'(unsigned'(planned_beats) * BeatBytes);
+      13'(unsigned'(planned_beats) << planner_size_q);
 
   assign axi_ar_o = '{
     addr   : ar_addr_q,
     len    : axi_pkg::len_t'(ar_beats_q - 1'b1),
-    size   : axi_pkg::size_t'(BeatOffsetWidth),
+    size   : ar_size_q,
     burst  : axi_pkg::BURST_INCR,
     cache  : ar_cache_q,
     prot   : ar_prot_q,
@@ -316,7 +327,8 @@ module qbs_read_engine import qbs_pkg::*; #(
     automatic int unsigned available_bytes;
     automatic int unsigned take_bytes;
 
-    available_bytes = BeatBytes - unsigned'(response_head.first_lane);
+    available_bytes = (1 << response_head.size) -
+        (unsigned'(response_head.first_lane) & ((1 << response_head.size) - 1));
     take_bytes = unsigned'(response_head.bytes_left);
     if (take_bytes > available_bytes)
       take_bytes = available_bytes;
@@ -379,11 +391,13 @@ module qbs_read_engine import qbs_pkg::*; #(
                                   response_head.range_last;
 
   assign planner_empty_fault = range_pop && range_fifo_q[range_rd_q].bytes == 0;
+  assign planner_size_fault = PerRangeTransferSize && range_pop &&
+      unsigned'(range_fifo_q[range_rd_q].size) > BeatOffsetWidth;
   assign planner_mmu_fault = plan_state_q == QBS_PLAN_TRANSLATE &&
                              mmu_exception_valid_i;
   assign planner_pma_fault = physical_check_valid_o &&
                              !physical_range_allowed_i;
-  assign planner_fault_event = planner_empty_fault || planner_mmu_fault ||
+  assign planner_fault_event = planner_empty_fault || planner_size_fault || planner_mmu_fault ||
                                planner_pma_fault;
 
   always_comb begin
@@ -392,7 +406,7 @@ module qbs_read_engine import qbs_pkg::*; #(
     planner_fault_tag = planner_tag_q;
     planner_fault_mmu_exception = '0;
     planner_fault_sequence = planner_sequence_q;
-    if (planner_empty_fault) begin
+    if (planner_empty_fault || planner_size_fault) begin
       planner_fault_vaddr = range_fifo_q[range_rd_q].vaddr;
       planner_fault_tag = range_fifo_q[range_rd_q].tag;
       planner_fault_sequence = next_sequence_q;
@@ -416,7 +430,8 @@ module qbs_read_engine import qbs_pkg::*; #(
           bytes: range_bytes_i,
           tag  : range_tag_i,
           cache: range_cache_i,
-          prot : range_prot_i
+          prot : range_prot_i,
+          size : PerRangeTransferSize ? range_size_i : axi_pkg::size_t'(BeatOffsetWidth)
         };
         range_wr_q <= range_wr_q + 1'b1;
       end
@@ -445,12 +460,14 @@ module qbs_read_engine import qbs_pkg::*; #(
       planner_tag_q <= '0;
       planner_cache_q <= '0;
       planner_prot_q <= '0;
+      planner_size_q <= axi_pkg::size_t'(BeatOffsetWidth);
       planner_sequence_q <= '0;
       next_sequence_q <= '0;
       ar_addr_q <= '0;
       ar_chunk_bytes_q <= '0;
       ar_beats_q <= '0;
       ar_first_lane_q <= '0;
+      ar_size_q <= axi_pkg::size_t'(BeatOffsetWidth);
       ar_range_offset_q <= '0;
       ar_cursor_vaddr_q <= '0;
       ar_tag_q <= '0;
@@ -477,9 +494,10 @@ module qbs_read_engine import qbs_pkg::*; #(
               planner_tag_q <= range_fifo_q[range_rd_q].tag;
               planner_cache_q <= range_fifo_q[range_rd_q].cache;
               planner_prot_q <= range_fifo_q[range_rd_q].prot;
+              planner_size_q <= range_fifo_q[range_rd_q].size;
               planner_sequence_q <= next_sequence_q;
               next_sequence_q <= next_sequence_q + 1'b1;
-              if (range_fifo_q[range_rd_q].bytes != 0)
+              if (range_fifo_q[range_rd_q].bytes != 0 && !planner_size_fault)
                 plan_state_q <= QBS_PLAN_WAIT_STORE;
             end
           end
@@ -497,6 +515,7 @@ module qbs_read_engine import qbs_pkg::*; #(
               ar_chunk_bytes_q <= planned_chunk_bytes;
               ar_beats_q <= planned_beats;
               ar_first_lane_q <= planned_first_lane;
+              ar_size_q <= planner_size_q;
               ar_range_offset_q <= planner_offset_q;
               ar_cursor_vaddr_q <= planner_cursor_q;
               ar_tag_q <= planner_tag_q;
@@ -545,7 +564,8 @@ module qbs_read_engine import qbs_pkg::*; #(
           cursor_vaddr: ar_cursor_vaddr_q,
           tag         : ar_tag_q,
           range_last  : ar_range_last_q,
-          subreq_seq  : ar_sequence_q
+          subreq_seq  : ar_sequence_q,
+          size        : ar_size_q
         };
         burst_wr_q <= burst_wr_q + 1'b1;
       end
@@ -555,7 +575,8 @@ module qbs_read_engine import qbs_pkg::*; #(
             response_head.bytes_left - beat_take_bytes;
         burst_fifo_q[burst_rd_q].beats_left <=
             response_head.beats_left - 1'b1;
-        burst_fifo_q[burst_rd_q].first_lane <= '0;
+        burst_fifo_q[burst_rd_q].first_lane <=
+            BeatOffsetWidth'(unsigned'(response_head.first_lane) + unsigned'(beat_take_bytes));
         burst_fifo_q[burst_rd_q].range_offset <=
             response_head.range_offset + beat_take_bytes;
         burst_fifo_q[burst_rd_q].cursor_vaddr <=
@@ -748,6 +769,8 @@ module qbs_read_engine import qbs_pkg::*; #(
       else $fatal(1, "QBS range width must represent a full page");
     assert (ReadOutstanding == 2)
       else $fatal(1, "QBS Full read engine requires two ordered slots");
+    assert (!PerRangeTransferSize || BeatOffsetWidth <= 7)
+      else $fatal(1, "QBS per-range AXI size must fit the three-bit size field");
   end
 
   always_ff @(posedge clk_i) begin
@@ -765,9 +788,9 @@ module qbs_read_engine import qbs_pkg::*; #(
           else $fatal(1, "QBS received R data without an outstanding tag");
       if (ar_fire) begin
         assert (ar_beats_q inside {[1:MaxBurstBeats]});
-        assert (ar_addr_q[BeatOffsetWidth-1:0] == '0);
+        assert ((ar_addr_q & AxiAddrWidth'((1 << ar_size_q) - 1)) == '0);
         assert (unsigned'(ar_addr_q[11:0]) +
-                unsigned'(ar_beats_q) * BeatBytes <= 4096)
+                (unsigned'(ar_beats_q) << ar_size_q) <= 4096)
           else $fatal(1, "QBS AR crosses a 4-KiB page");
       end
       if (data_fire) begin

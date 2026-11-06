@@ -55,6 +55,17 @@ SDK experiment. This is not a new trace-context optimization or a cycle result.
 Production code remains unchanged until functional and non-M1 performance
 acceptance are both available.
 
+The SDK-dispatch model pair has now completed: 607744 full logits, token/CSR and
+788 QBS calls per variant agree exactly. An independent successor,
+`audit_sdk_guest_payload.py`, parses the actual newc archive rather than merely
+reading its listing. It verifies the exact guest entry set, ELF contents/modes,
+distinct baseline/candidate binaries and link/library identities. Its 14-test
+suite rejects A/A packaging, traversal, hardlinks, duplicate entries and malformed
+archives. The completed model result was replayed with the same audited cpio
+and final worker inventory; see `evidence/sdk_dispatch_model_20261106_01/`.
+The payload-only audit itself is not a model PASS, and neither result is RTL
+timing. Non-M1 performance and production promotion remain separate gates.
+
 `study_weight_supply_codec.py` is a host-only, exact-GGUF feasibility check for
 one lossless residual-byte codec. It preserves quantized values and metadata,
 accounts for mode/bitmap/panel-index bytes and allows whole-tensor raw fallback.
@@ -65,6 +76,41 @@ negatives. `evidence/weight_supply_codec_20261106_01/result.json` binds the
 replayed statistics and source/artifact hashes. This candidate is rejected for
 RTL implementation, not presented as a compressed-memory speedup. It neither
 rules out every other codec nor removes the local decoded-input bandwidth limit.
+
+## Wide-supply components, not yet a wide SoC
+
+`hardware/docs/LLAMA_WEIGHT_SUPPLY_ARCHITECTURE_20261106.md` defines the physical
+memory, native mapping, permissions and comparison requirements. Logical SRAM
+bytes remaining constant does not imply constant physical macro area.
+
+`qbs_weight_line_assembler.sv` is an uninstantiated per-bank building block.
+It retains a partial 32-byte word, emits at most one word per port/cycle and
+flushes a final second-word tail without overwriting an older output. Valid and
+mask state reset; invalid payload storage need not reset. Its contract requires
+ordered nonempty prefixes and clear before another bank owner. The first VCS
+worker's 16387 normal cases pass; it remains FAIL because it incorrectly rejects
+VCS's zero exit on a specifically expected fatal. The successor
+`collect_weight_line_assembler.py --run <first-run> --output <fresh-audit>`
+preserves that report, replays normal byte/guard/state checks and completes four
+specific negative contracts. Do not use its old worker state as a clean PASS.
+The compact receipt explicitly lists the remaining width/abort-combination gaps.
+
+`qbs_read_engine.sv` adds default-disabled `PerRangeTransferSize` and a
+`range_size_i` input. The size is stored per range and per outstanding burst,
+affecting AR alignment/length, the checked physical footprint and response lane
+progression. A narrow transfer on a wide physical bus must alternate physical
+halves correctly. The existing shared reader still selects full bus width.
+
+Use `run_mixed_reader_checked.py --output <fresh-dir>` for the reviewed fixture.
+Both legacy128 MMU modes retain mapped-page/fault recovery and six held-AR fault
+cases each. The 256-bit component checks 258 mixed-size/phase cases, four fault
+cases and actual payload/tag/offset/beat accounting. The first mixed fixture
+remains failed: it injected an older response error before the younger AR had
+been sampled as stalled. The successor adds that sampling edge and records
+`ar_stalled_q: 0 -> 1` before injection; no DUT change followed that simulation.
+Its original post-fault checks are retained, not weakened. Real CVA6 PMP, wide
+SoC storage, native weight steering/SRAM integration and SDK latency are not
+proved by this component acceptance.
 
 Latest matrix integration: `collect_matrix_soc.py` audits the two completed
 SoC builds without rewriting their original failed worker reports. It admits

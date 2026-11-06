@@ -75,6 +75,7 @@ module qbs_akv_shared_reader #(
     .range_tag_i(selected_req.range_tag),
     .range_cache_i(selected_req.range_cache),
     .range_prot_i(selected_req.range_prot),
+    .range_size_i(axi_pkg::size_t'($clog2(AxiDataWidth/8))),
     .data_valid_o(reader_rsp.data_valid), .data_ready_i(selected_req.data_ready),
     .data_o(reader_rsp.data), .data_strb_o(reader_rsp.data_strb),
     .data_offset_o(reader_rsp.data_offset), .data_tag_o(reader_rsp.data_tag),
