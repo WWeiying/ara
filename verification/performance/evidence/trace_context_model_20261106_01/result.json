@@ -1,0 +1,23 @@
+{
+  "state": "TRACE_CONTEXT_QWEN3_MODEL_PAIR_REAUDITED",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_trace_context_model_audit_20261106_01",
+  "result_sha256": "3466cc0ff3170a96012af09f224ebde1cc0af8d006354ec3cb567ee97489ba88",
+  "worker_result_sha256": "74d04aece83a5c78764434bbde7d219aeef18ede0c5919f35ed0450654301ab5",
+  "source_pins_sha256": "a7becce2e3aed0258525a949d6b407a5abfee0858a422e03b67a9b851e876756",
+  "log_sha256": "9f305d441a063eec8e8fe59929fd9b9c489ba98c3e34da79d867eb4287156e21",
+  "candidate_library_sha256": "d440c7d2894f5ab0c5165d8ca4bfc9a437df65fcb7d3aeb0771e2718293a803b",
+  "model": "Qwen3-1.7B Q4_K_M",
+  "prompt_tokens": 40,
+  "decode_steps_per_kv_kind": 1,
+  "kv_kinds": ["q8_0/q8_0", "q4_0/q8_0"],
+  "logits_compared": 607744,
+  "identical_full_logits": true,
+  "identical_tokens_and_csr": true,
+  "identical_native_work": true,
+  "qbs_calls_per_variant": 788,
+  "prefill_attention_calls_per_variant": 56,
+  "decode_attention_calls_per_variant": 56,
+  "performance_measured": false,
+  "rtl_changed": false,
+  "production_library_promoted": false
+}

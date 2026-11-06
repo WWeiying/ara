@@ -225,6 +225,14 @@ host C++ 测试实际编译比较程序，验证最后一个 logit 改变、CSR 
 preflight 与启动都不等于验收。本项使用 QEMU 只验证完整模型功能与工作量，
 不产生硬件周期、速度提升、PPA 或板卡验收结论，也不提前替换生产库。
 
+该配对现已完成，独立 collector 给出
+`TRACE_CONTEXT_QWEN3_MODEL_PAIR_REAUDITED`。两侧 607744 个完整 logits
+逐位相同，token、CSR、788 个投影调用以及 Prefill/Decode 各 56 个
+Attention 调用的实际工作记录均一致；复核了 35429 项输入与产物身份。
+候选库只有 `qbs.cpp.o` 改变，其他 31 个 archive 成员保持原样。
+精简回执位于 `verification/performance/evidence/trace_context_model_20261106_01/`。
+这完成了本项完整模型功能配对，不是模型性能测量或生产库自动替换。
+
 ## 8. 真实 M1 VCS 基线已通过及下一项结构判断
 
 VCS 和独立审计已完成，917 项输入、镜像、原始日志、独立协议及全部数据
@@ -284,3 +292,30 @@ FCSR=9、VCSR=3 和 vstart=0 均通过。注意这里是七个 N128 前缀，不
 原始独立审计和归因分别位于唯一验证树
 `verification/out/e2e_decode_native_audit_20261106_01/`、
 `verification/out/e2e_decode_native_diagnosis_20261106_01/`。
+
+## 9. 单输入提交循环的隔离对照
+
+本轮只针对已测得的 SDK 非 busy 成本建立小型软件候选，不将该成本全部
+当成可删除的开销。生产 SDK 未改动；实验补丁位于
+`software/qbs/experimental/single_input/`。它在全部原有参数、容量、
+对齐和 context 校验之后，对无 split/gather/segmented view 的 M1 采用
+预计算 descriptor header 与递增地址，其余计划继续走原通用迭代器。
+
+主机差分分别编译完整原 SDK 与候选 SDK，使用独立符号命名空间核对
+调用序列、真实 n、地址、stride、context 转移、错误返回与 output/workspace
+字节。GCC 和 Clang+UBSan 各 24535 项通过；每侧七项原始 SDK fixture
+通过。定向检查还确认了 fast helper 以及 M4/M8、gather、split、分段和
+view 的 generic 路径确实执行。这证明控制流差分，不冒充真实硬件异常测试。
+
+目标 ELF 同时保留原 SDK 与候选，在同一 SoC 上按 ABBA 顺序执行四轮
+原有真实 Decode 数据，共 112 条命令、3584 个输出。保留生产量化器、
+所有输出逐字节比较、canary、CSR、完整 K、context 作用域及独立协议检查。
+冷启动和最后一轮热基线分别保留；性能无改善也可以通过功能检查，但不能
+因此升级生产 SDK。两侧均为七个 N128 前缀，不是完整模型时间。
+
+目标汇编已确认独立 helper 的 128-byte 栈帧；其调用者为 368 bytes，
+原 generic 入口为 304 bytes，因此本候选不能宣称减少栈占用。
+实际减少的是候选热循环中的通用规划与 header 重建工作，净周期收益待
+VCS 对照测量。首次目标构建只因调用程序清单未展开原公共对象的编译器
+头文件依赖而拒绝；修正为核验两份已封存输入清单的无冲突并集后构建通过，
+没有允许任意新头文件，也没有修改 RTL 或数值路径。

@@ -1,0 +1,23 @@
+{
+  "state": "SDK_SINGLE_INPUT_HOST_DIFF_PASS",
+  "run": "/home/wangwy/openproject/ara_dsa/verification/out/e2e_sdk_single_input_host_20261106_01/attempt-02",
+  "result_sha256": "b099d4a31d001ec34729cd11d85fc7aecfc58f18702f7f65435f857102c4500e",
+  "source_pins_sha256": "25adbc566e641ea7f56f7c2f08519dec143a940584d2b15ce7761b4d99a89845",
+  "compilers": ["gcc", "clang-ubsan"],
+  "cases_per_compiler": 24535,
+  "total_cases": 49070,
+  "executor_calls_across_both_variants_and_compilers": 679060,
+  "injected_execution_failure_cases_per_compiler": 7686,
+  "rejected_option_cases_per_compiler": 4542,
+  "fallback_plan_cases_per_compiler": 7263,
+  "profiles": 9,
+  "accepted_vlens": [256, 512, 1024],
+  "rejected_vlens": [2048],
+  "original_fixture_runs": 14,
+  "guard_rejections": 16,
+  "guard_acceptances": 3,
+  "original_sdk_unchanged": true,
+  "host_only": true,
+  "performance_measured": false,
+  "hardware_context_fault_semantics_validated": false
+}

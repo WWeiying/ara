@@ -1,5 +1,33 @@
 # End-to-end optimization experiments and evidence
 
+## Single-input SDK submission experiment
+
+`prepare_sdk_single_input.py` builds independently namespaced old/candidate SDKs
+from the sealed accepted runtime. GCC and Clang+UBSan each passed 24,535 cases;
+the seven existing SDK fixtures also passed on each version. The production
+runtime is unchanged. The registered prototype is under
+`software/qbs/experimental/single_input/`.
+
+`build_sdk_single_input_native.py --host-result <attempt/result.json> --output
+<fresh-dir>` builds one ELF with both SDKs and the accepted actual Qwen3 Decode
+inputs. It reuses ten original objects and rebuilds the caller and candidate
+runtime. Compiler dependencies must match the sealed caller/common inventories
+or the exact isolated host preparation; conflicts and unknown inputs reject.
+The first build's missing inherited toolchain-header rejection remains FAIL.
+
+`sdk_single_input_campaign.py --build <build> --run <fresh-run> --audit
+<fresh-audit> --output <fresh-campaign>` owns bounded VCS and independent replay.
+Order is ABBA, with production quantization, all output bytes/CSR/guards and
+independent protocol checks retained: 112 commands and 3,584 outputs. Both cold
+and warmed baseline times are reported. Equal hardware work is required, but a
+speedup is not required for functional PASS. No production promotion or model
+speedup is implied.
+
+The trace-context candidate library separately completed its full Qwen3 paired
+functional check: 607,744 logits, token/CSR and actual work match across two KV
+choices. See `evidence/trace_context_model_20261106_01/result.json`. QEMU is used
+only for functionality; no hardware timing is inferred from this run.
+
 Latest matrix integration: `collect_matrix_soc.py` audits the two completed
 SoC builds without rewriting their original failed worker reports. It admits
 only the proven single appended blank line, not different sources or macros.
