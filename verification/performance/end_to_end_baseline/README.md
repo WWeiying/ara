@@ -30,6 +30,47 @@ The accepted Qwen3 pair has SDK-region ratio 1.33418x and execution-only ratio
 weight-wait cycles exactly equals 90560 saved SDK-region cycles. This identity
 is scoped to this measured pair, not a general additive-stall model.
 
+## Full-output Qwen3 successor
+
+`build_full_projection.py --output <fresh-dir>` expands the same activation
+capture to the complete Q/K/V weight matrices, N=2048/1024/1024 and K=2048.
+It verifies all extracted weights against the original GGUF and the existing
+prefix, checks independent row-major/R4 golden results, and reuses nine checked
+common objects while rebuilding only the caller and data. Four genuine token
+rows execute one reset-start trial, 128 native commands and 16384 output floats.
+This is full N, not all prompt tokens or a complete GGML/model benchmark.
+
+`run_full_projection.py --wide 0|1 --build <build-dir> --output <fresh-dir>
+--execute-reviewed` uses the existing audited SoC images and independent
+protocol checker. The numerical checks cover every output and all unused tail
+guards. `collect_full_projection.py --base <run> --wide <run> --output
+<fresh-dir>` audits the actual logs, image and input identities before comparing
+regions. Use `watch_projection_pair.py --full` with those arguments to wait
+for both results without timed polling. Its parent-directory watches also
+handle workers that have not created their output directories yet.
+
+The first build attempt remains FAIL because its helper changed while being
+consumed; the frozen successor is a different build. The first full-pair watcher
+also remains FAIL due to a startup-order race. The successor watcher fixes that
+race without restarting either simulator or changing their acceptance checks.
+
+## Actual-model activation preparation census
+
+`run_preparation_census.py --model <audited-model-run> --audit <model-audit>
+--output <fresh-dir>` reuses the accepted complete llama.cpp static libraries.
+Only the caller is rebuilt: the exact accepted fixture has its two existing
+M4-preparation/lifetime trace flags enabled. All prompt, KV, Attention choices,
+model steps, logits comparisons and numerical checks remain unchanged.
+
+`preparation_census.py` links each actual cache/direct group event to the next
+prepared-buffer record, checking producer, K, epoch, group number and phase.
+It distinguishes actual byte-cache hits from direct recomputation, and checks
+that both Attention choices produce identical preparation-route counts.
+Equal prepared buffers are only duplicate packed outputs, not proof of equal
+original FP32 input bytes. Counts are not hardware cycles, and this M4 cache
+must not be confused with M1 hardware activation-context reuse. No QEMU elapsed
+time is used as an RTL performance result.
+
 `build_output_gqa6.py --output <fresh-dir>` prepares a genuine Qwen2.5 Decode
 GQA6/D128/visible128 full-call ABBA, reusing fifteen checked common objects and
 rebuilding only caller/data. Raw captured KV is converted to token-major with
