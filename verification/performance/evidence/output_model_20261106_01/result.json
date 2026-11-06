@@ -1,0 +1,36 @@
+{
+  "state": "PAIRED_QWEN3_OUTPUT_MODEL_REAUDITED",
+  "pid": 2495520,
+  "performance_measured": false,
+  "checked": {
+    "state": "PAIRED_QWEN3_MODEL_PASS",
+    "logits_compared": 911616,
+    "comparisons": 6,
+    "prompt_tokens": 40,
+    "prefill_calls_per_mode": 56,
+    "decode_calls_per_mode": 112,
+    "identical_tokens_and_csr": true,
+    "identical_native_work": true,
+    "performance_measured": false
+  },
+  "checked_inputs": 73501,
+  "native_emulator_postchecked": true,
+  "worker_result_sha256": "34c9b0e1b30aab16058c41e807f05f19c7f3f5e6dcc0abc7ea115dd860ff3986",
+  "elf_sha256": "5e803a072d5d8809cd6b5254c227f95c1bf75c6d1f93dc419dc38613754996a2",
+  "log_sha256": "e04e11761f5f421c616c8b3692ebac695f16194a045fabcda39d4a196fe28168",
+  "source_pins_sha256": "7c76013d274565cae0c787bbfb60e1dd322a1552e74d8208a171301c0f58be32",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_model_20261106_01",
+  "audit_pins": {
+    "/home/wangwy/openproject/ara_dsa/verification/performance/end_to_end_baseline/collect_output_model.py": "f94c873550ce8eca80d06ed5f56722b97356e6a85b1eaa7be1bd336cc0be9507",
+    "/home/wangwy/openproject/ara_dsa/verification/performance/end_to_end_baseline/audit.py": "b696026ae550f86f7492cd8000444f5e4d79d29b20d3e97b483ff00633dd1659",
+    "/home/wangwy/openproject/ara_dsa/verification/performance/end_to_end_baseline/check_output_model.py": "f4a74fc1e407afa05e31086dae5541eda1f0d2312ecc3415821f8a79c086f569",
+    "/home/wangwy/openproject/ara_dsa/verification/qbs/run_ggml_segmented.py": "aee3a5ef48e1802aae27e02da1cf90e6deff1808274aacfd8de1a21e017b7d6f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_model_20261106_01/result.json": "34c9b0e1b30aab16058c41e807f05f19c7f3f5e6dcc0abc7ea115dd860ff3986",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_model_20261106_01/commands.json": "048c785d821b8b234e32a8f8d97969dbcf0121fc89cb7c4cd28a166d97a9a94f"
+  },
+  "limitations": [
+    "QEMU validates functionality/dispatch, not hardware cycles",
+    "Original hardware: this model run does not enable the optional wide dot prototype",
+    "Paired final CSR state, not universal whole-model CSR preservation"
+  ]
+}

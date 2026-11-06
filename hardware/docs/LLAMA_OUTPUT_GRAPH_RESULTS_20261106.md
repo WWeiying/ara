@@ -115,13 +115,19 @@ token、最终 CSR 及 native 工作量相同。最终 VCSR 不要求保持入�
 前面直接图调用的 VCSR 保持测试混为一谈。
 
 原 worker 有意保持 `MODEL_EXECUTED_PENDING_INDEPENDENT_AUDIT` 状态，不因
-guest 返回 0 就宣告全部输入闭合。后继 `collect_output_model.py` 正在独立核对
-输入 pin、ELF/日志和实际执行命令，并对 native QBS QEMU 的源码、配置与构建
-身份做运行后的检查。目录为 `e2e_output_model_audit_20261106_01/`，检查完成
-后才形成正式审计回执。不会修改原运行的状态或覆盖其日志。
+guest 返回 0 就宣告全部输入闭合。后继 `collect_output_model.py` 已独立核对
+73501 项输入 pin、ELF/日志和实际执行命令，并完成 native QBS QEMU 的源码、
+配置与构建身份后验检查。目录为 `e2e_output_model_audit_20261106_01/`，状态为
+`PAIRED_QWEN3_OUTPUT_MODEL_REAUDITED`。原运行状态及日志保留，不改写为原始
+worker 自身已经完成后验检查。
+
+正式审计回执：`verification/performance/evidence/output_model_20261106_01/result.json`。
+本轮模型功能与新旧选择已闭合，但只覆盖短生成；没有测试长对话质量，也没有
+测得模型级 RTL 性能。本轮使用原生 QEMU 模型，不包含随后新增、默认关闭的
+`WideMatrixDot` RTL 候选，因此不能把模型检查通过作为该新硬件的验收。
 
 `check_output_model.py` 是独立的顺序检查器，不仅读取最终 PASS。工具单元测试
-所在实验工具集合现为 30 项通过，包括误选后端、漏掉 Decode、改变 token、输入许可错误与失败
+所在实验工具集合现为 33 项通过，包括误选后端、漏掉 Decode、改变 token、输入许可错误与失败
 guest 退出码。模型测试的最终结果须同时满足程序内比较和这些独立活动检查。
 
 查看任务：
