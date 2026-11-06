@@ -420,9 +420,67 @@ specific internal-contract rejections, with 1057025 bytes written and 78 accepte
 bytes intentionally discarded by aborts. The initial worker remains FAIL because
 it expected a nonzero VCS exit for an expected fatal; an independent successor
 replays the raw results without changing that report or the RTL. The actual
-negative logs each contain only their intended fatal. Additional checks of
-6/7-bit byte-address parameters, simultaneous emit-plus-tail abort and multiple
-short fragments are being prepared before integration.
+negative logs each contain only their intended fatal. Supplementary checks now
+cover byte-address widths 6/7/8/16, simultaneous emit-plus-tail abort, immediate
+same-address reuse and fragment sizes 1/3/7/16/31: 68 cases, 60 streams and eight
+aborts pass. The successor also requires exactly one global fatal for each
+negative run and rechecks the original four negative logs without relabeling
+their worker. The 20 input pins, 90 artifacts and raw results were independently
+replayed.
+
+### Native Weight Mapping And Private SRAM Bank
+
+`qbs_weight_wide_mapper.sv` decodes each compacted source byte independently
+into its row, low/high payload plane or side-metadata byte. It registers one
+shared 256-bit data packet, plus segment start/count/offset/last and side-byte
+selection controls. Balanced reductions replace serial mutable count and
+priority chains; only packet validity resets. The package map is checked
+against an independent explicit native-region oracle, not against itself.
+
+All nine profiles, row counts 1--4, row-major/grouped ranges and all 32 physical
+base phases pass two traffic schedules: 4608 cases and 36 aborts account for
+1044480 decoded bytes and 1076 deliberately discarded bytes. Eight exact
+contract rejections pass. The current 43 pins, 25 artifacts and raw logs were
+independently replayed. The compact receipt for both component campaigns is
+`verification/performance/evidence/weight_wide_components_20261106_01/result.json`.
+
+`qbs_weight_wide_bank.sv` now has bank-local functional acceptance.
+It connects this mapper to eight line assemblers and the actual payload SRAM
+wrapper, with 4x256 low-plane and 2x256 high-plane logical storage per row.
+All target segments of one packet advance atomically; side bytes commit at
+that handshake, while payload bytes count only at actual SRAM writes. A row
+cannot complete while its payload is buffered. Reads wait for the complete
+private epoch, register the half-select with the synchronous SRAM request,
+and preserve the original 128-bit compute window through idle cycles. Clear
+invalidates partial writes, side validity and read-window validity, not payload
+data. Profile/row-count ownership must remain fixed until clear.
+
+One VCS compile and one functional simulation cover 4608 normal cases, 72
+immediate reuse cases, 72 clear/reset cases and 72 cancelled-read cases. Actual
+SRAM-interface writes and 45832 synchronous reads check byte identity against
+the independent native-layout/address oracle. The run exercises 1526 packets
+with mixed targeted-bank readiness, including 803 carrying side metadata;
+none partially advances. X-safe control/count checks and exact per-epoch read
+counts prevent unknown states from silently bypassing the checks. Unthrottled
+input stalls are zero, and final-input drain takes at most two edges. These
+are local service/functional results, not SDK or model acceleration.
+
+The original worker remains FAIL solely because four shared `initial +=`
+resource tallies each print one quarter of the static bank total. The precise
+simulator scheduling mechanism is not proven. A host-only successor accepts
+only that exact known record, derives the bill from pinned RTL declarations
+and each SRAM instance's geometry checks, and replays the unchanged functional
+checker with a resource-only input projection. It retains the original trace
+and FAIL; all functional/error/terminal gates remain. Its 38 pins, 11 artifacts
+and raw functional checks were independently replayed. Receipt:
+`verification/performance/evidence/weight_wide_bank_20261106_01/result.json`.
+
+The bank is not yet wired into the production compute engine, does not widen
+physical memory, and has no SDK performance or area acceptance. With existing
+depth-eight hard macros its 768 logical payload bytes allocate 2048 physical
+bytes per bank; the two-bank macro overhead in Section 3 still applies. Macro
+allocation is static accounting; this run used the actual generic SRAM branch,
+not a TSMC macro model.
 
 ### Mixed Physical/Logical Transfer Widths
 

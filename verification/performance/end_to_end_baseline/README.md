@@ -93,7 +93,37 @@ VCS's zero exit on a specifically expected fatal. The successor
 `collect_weight_line_assembler.py --run <first-run> --output <fresh-audit>`
 preserves that report, replays normal byte/guard/state checks and completes four
 specific negative contracts. Do not use its old worker state as a clean PASS.
-The compact receipt explicitly lists the remaining width/abort-combination gaps.
+Those width/abort-combination gaps now have a separate successor:
+`run_weight_line_boundaries.py --output <fresh-dir>` checks widths 6/7/8/16,
+short fragments, capacity edges, simultaneous emit/tail abort and immediate
+epoch reuse. Its 68 cases and eight aborts pass, with globally unique expected
+fatals. The original worker and helper remain unchanged.
+
+`run_weight_wide_mapper.py --output <fresh-dir>` checks the balanced native-byte
+mapper against an explicit nine-profile oracle: 4608 cases, all row counts and
+physical phases, two schedules, 36 aborts and eight contract rejections.
+`evidence/weight_wide_components_20261106_01/result.json` binds the independent
+raw-log, pin and artifact replay of both successors. Neither establishes a
+complete SRAM ingress or wide SoC.
+
+`qbs_weight_wide_bank.sv` now connects the mapper, eight assemblers and actual
+generic payload SRAM. Its first VCS worker passes all functional assertions but
+remains FAIL at a resource-banner gate: four shared initial tallies each
+undercount by four. No RTL was changed or simulation repeated.
+`collect_weight_wide_bank.py` permits only the exact known resource record,
+derives logical/macro/register storage from frozen declarations, retains the
+original trace and FAIL, and replays the unchanged functional checker with an
+explicit resource-only projection. The precise simulator scheduling cause of
+the tally error is not established; the observed tally is not used as area.
+
+The independently replayed scope covers 4608 normal cases, 72 reuse cases,
+72 aborts and 72 cancelled reads. There are 45832 synchronous reads, zero
+unthrottled input stalls, maximum two-edge final-input drain, and 1526 actual
+mixed-target stalls (803 with side metadata). It checks byte writes/readback,
+completion, X-safe public controls, idle-window hold and atomic admission.
+`evidence/weight_wide_bank_20261106_01/result.json` binds the successor. This is
+bank-local functional/II1 evidence, not compute-engine integration, a wide
+physical SoC, macro/PPA acceptance or SDK speedup.
 
 `qbs_read_engine.sv` adds default-disabled `PerRangeTransferSize` and a
 `range_size_i` input. The size is stored per range and per outstanding burst,
@@ -111,6 +141,24 @@ been sampled as stalled. The successor adds that sampling edge and records
 Its original post-fault checks are retained, not weakened. Real CVA6 PMP, wide
 SoC storage, native weight steering/SRAM integration and SDK latency are not
 proved by this component acceptance.
+
+## Ordered fused RMSNorm: scoped replay
+
+`collect_rms_norm_scoped.py --output <fresh-dir>` audits the preserved completed
+RMSNorm run without launching a simulation. The original worker remains FAIL
+because its inherited checker demanded positive Ara AXI-write coverage. Actual
+ELF encodings and the independent allocation trace prove zero vector stores;
+the fused functions write output with scalar FSW. The unchanged checker is
+replayed on the same logs, omitting only `--require-axi-write`; every other
+report field, instruction work, image identity and protocol check must match.
+
+Eight real-input ABBA calls check 40960 outputs, 53 boundaries and ten
+order-sensitive sums. Decode and Prefill complete-call ratios are 1.09882x and
+1.10816x. The receipt is `evidence/rms_norm_scoped_20261106_01/result.json`.
+These are software-call results, not model timing, vector-write coverage,
+production integration or a new hardware performance claim.
+
+## Projection and matrix experiments
 
 Latest matrix integration: `collect_matrix_soc.py` audits the two completed
 SoC builds without rewriting their original failed worker reports. It admits
