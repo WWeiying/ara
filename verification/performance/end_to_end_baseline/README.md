@@ -23,6 +23,12 @@ and warmed baseline times are reported. Equal hardware work is required, but a
 speedup is not required for functional PASS. No production promotion or model
 speedup is implied.
 
+The pair completed: execution ratio 1.03539x; preparation-inclusive region ratio
+1.02242x. Mean execution saves 4991 cycles while mean QBS busy increases by only
+6.5 cycles, locating the benefit outside busy rather than in dot throughput.
+All seven warmed call comparisons remain positive. See
+`evidence/sdk_single_input_20261106_01/result.json` for the actual ABBA times.
+
 The trace-context candidate library separately completed its full Qwen3 paired
 functional check: 607,744 logits, token/CSR and actual work match across two KV
 choices. See `evidence/trace_context_model_20261106_01/result.json`. QEMU is used
