@@ -297,3 +297,26 @@ wrapper and assertions are retained; a separate derived wrapper only forwards
 the width parameter. A passing worker can be re-audited using
 `collect_matrix_engine_pair.py --run <run> --output <fresh-evidence-directory>`.
 It still does not cover CVA6 dispatch, SDK preparation or complete inference.
+
+## Real Decode M1 baseline
+
+`build_decode_native.py` consumes the independently audited real Qwen3 Decode
+capture, retaining full K, N128 prefixes, production RVV `quantize_row_q8_K`,
+Q/V/K and gate/up activation-context reuse, long-K DIRECT fallback, and a
+vocabulary-head prefix. It does not relabel a Prefill row or disable existing
+context support. The seven calls contain 28 native commands and 896 outputs.
+
+`run_decode_native.py` supports a no-simulation preflight (default) and explicit
+`--execute-reviewed`. `decode_native_campaign.py --build BUILD --run NEW_RUN
+--audit NEW_AUDIT --output NEW_CAMPAIGN` owns simulation plus independent protocol
+checks and replay collection in one background service. All output directories
+must be new. No RTL build, synthesis, URG or Verilator is performed.
+
+`check_decode_native.py` reconciles all outputs/quantized bytes/guards/CSR,
+command and context work, exclusive phases, strict weight-wait buckets and
+reader payload. `activation_bytes` is **compute intake including SRAM replay**,
+not activation AXI traffic. Four checker tests reject weakened context baselines,
+CSR mismatches, changed payload accounting, wrong oracles and incomplete work.
+The accepted status is `REAL_QWEN3_DECODE_SDK_BASELINE_REAUDITED`, not preflight
+or simulator launch. Timing excludes cold weight repack and full GGML dispatch;
+the sampled output channels cannot establish full-model speedup.

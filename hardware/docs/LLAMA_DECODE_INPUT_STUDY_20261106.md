@@ -83,3 +83,69 @@ DIRECT 对应超出 context 容量的长 K 路径；已有的 QKV/gate-up 共享
 后续在独立构建输入中只重建这一对象并核对其余库成员，验证调用之间更新
 配置的行为、native 序列、结果及 CSR 后再固化新基线。不能覆盖当前脏 llama
 工作区，也不能修改正在被 Decode 捕获消费的库或源码。
+
+## 6. 已建立的真实 M1 SDK 基线
+
+`build_decode_native.py` 已在独立目录完成编译和内存准入，状态为
+`REAL_QWEN3_DECODE_SDK_BUILT_NOT_EXECUTED`。程序为单次 reset 后的 M1/N128
+七个投影：Q、V、K、gate、up、down、vocabulary，顺序与第一层实际图调度相符。
+所有 K 保持完整，down 为 K6144，其余为 K2048。输出共 896 个 FP32，28 条
+native 命令，2359296 个有效 MAC pair；这些前缀不代表完整层或完整词表。
+
+### 6.1 不弱化软件和硬件基线
+
+四个真实输入分别只准备一次。量化直接编译封存 GGML 的
+`arch/riscv/quants.c::quantize_row_q8_K` 及 `q8_K-decode-sums.h`，不使用
+M4 量化器或计时内的标量替代。原库的其他 8 个通用 SDK/startup 对象复用，
+只新增 caller、原生产量化器和真实数据三个对象。
+
+| 消费者 | 使用的输入 | 调用 scope | N128 的四条命令 |
+| --- | --- | --- | --- |
+| Q | `attn_norm-0` | FILL_KEEP | FILL, REUSE, REUSE, REUSE |
+| V | 同一份量化输入 | REUSE_KEEP | REUSE, REUSE, REUSE, REUSE |
+| K | 同一份量化输入 | REUSE_RELEASE | REUSE, REUSE, REUSE, RELEASE |
+| gate | `ffn_norm-0` | FILL_KEEP | FILL, REUSE, REUSE, REUSE |
+| up | 同一份量化输入 | REUSE_RELEASE | REUSE, REUSE, REUSE, RELEASE |
+| down | `ffn_swiglu-0` | DIRECT | DIRECT 四次 |
+| vocabulary | `result_norm` | OPERATION | FILL, REUSE, REUSE, RELEASE |
+
+三个独立激活生命周期使用不同 generation。正常执行预期有 DIRECT=4、
+FILL=3、REUSE=18、RELEASE=3；RELEASE 也消费片上激活，因此硬件的
+`context_reuse_count` 合计应为 21，而非 18。K6144 的 7008-byte 激活超过
+4672-byte context，仍保留普通 DIRECT，不改变能力声明。
+
+### 6.2 校验和计数语义
+
+独立 host oracle 比较原 row-major 与 R4 权重布局的全部输出及异常标志；
+ELF 检查全部量化字节、896 个输出、前后 canary、累计 fflags、frm、vcsr
+及 vstart。M1 生产量化器使用显式 RNE narrowing，会将初始 VCSR=5 改为
+3；这是原有软件行为，不套用 M4 测试中的 VCSR 不变假设。后续 QBS 调用
+必须保持量化后的 VCSR=3 和 vstart=0。
+
+四组有限真实输入共 48 块没有正负等幅最大值冲突，可与独立 scalar oracle
+逐字节比较。该批通过也不能证明两个量化器对任意 tie 输入全域等价。
+
+每次调用分别记录 preparation、admission 和 execution，总 region 包含调用
+间控制；校验和打印在区间外。除排他的 phase 账目外，其余等待/忙计数不
+相加成 stall breakdown。尤其注意：
+
+- `activation_bytes` 是 compute adapter 接收字节，包含 SRAM context 回放。
+- `context_read_bytes` 是实际 context 回放数据；FILL 本身不算 REUSE。
+- `activation_axi_bytes_saved` 是已匹配 context 避免的逻辑激活读取字节。
+- 本测试每条命令 reader payload 为 16-byte descriptor 加权重和实际激活
+  读取。以 `payload_bytes - weight_bytes - 16` 核对实际激活 AXI payload，
+  再与 `activation_bytes - activation_axi_bytes_saved` 对账。
+- R beat 包含总线传输；不等于仅权重数据，也不代表板上 DDR 带宽。
+
+### 6.3 可复现运行与自动收集
+
+构建目录位于唯一验证树：
+`verification/out/e2e_decode_native_build_20261106_02/`。第一次构建因新增
+生产量化器使用的工具链 `float.h` 尚未纳入依赖清单而拒绝；失败目录保留，
+第二次显式准入并固定该工具链头文件，没有改变量化源码或 RTL。
+
+`run_decode_native.py` 已完成不启动模拟器的 preflight。正式运行由
+`decode_native_campaign.py` 依次执行 VCS、独立协议检查和
+`collect_decode_native.py`，均使用全新目录并校验源码、参考数据和镜像身份。
+只有最终 `REAL_QWEN3_DECODE_SDK_BASELINE_REAUDITED` 才算接受性能数据；
+编译、preflight 和模拟器启动都不是 PASS。本批没有新 RTL 或全模型性能结论。
