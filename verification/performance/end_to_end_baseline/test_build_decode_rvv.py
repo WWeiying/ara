@@ -20,8 +20,9 @@ class BuildDecodeRVVTests(unittest.TestCase):
                    '-ffp-contract=off', '-march=rv64gcv_zfh_zvfh', '-c', 'upstream.cpp']
         actual = upstream_warning_recipe(command, '/cc -O3 -Wall -c upstream.cpp')
         self.assertEqual(actual, [word for word in command if word != '-Werror'])
-        for record in ('/cc -Werror -c upstream.cpp', '/cc -Werror=strict-aliasing -c upstream.cpp'):
-            with self.assertRaises(ValueError): upstream_warning_recipe(command, record)
+        with self.assertRaises(ValueError): upstream_warning_recipe(command, '/cc -Werror -c upstream.cpp')
+        scoped = upstream_warning_recipe(command, '/cc -Werror=implicit-int -Werror=implicit-function-declaration -c upstream.c')
+        self.assertEqual(scoped, actual+['-Werror=implicit-int', '-Werror=implicit-function-declaration'])
 
     def test_recipe_preserves_isa_math_and_compile_flags(self):
         original = ['/cc', '-O3', '-ffp-contract=off', '-march=rv64gcv_zfh_zvfh', '-c', 'a.cpp', '-o', 'a.o']

@@ -37,11 +37,12 @@ def modified_recipe(template, source, target):
 
 def upstream_warning_recipe(command, recorded):
     actual = shlex.split(recorded)
-    require(not any(word == '-Werror' or word.startswith('-Werror=') for word in actual),
+    require('-Werror' not in actual,
             'Recorded upstream build did require warning errors')
     # Keep every optimization/ISA/math option. Do not promote upstream's
     # existing warnings to errors merely because the new driver uses -Werror.
-    return [word for word in command if word != '-Werror']
+    scoped = [word for word in actual if word.startswith('-Werror=')]
+    return [word for word in command if word != '-Werror'] + [word for word in scoped if word not in command]
 
 
 def custom_instructions(data):
@@ -205,7 +206,11 @@ def main(output):
             upstream_warning_policy=warning_policy,
             prior_attempts=[dict(run=str(RUNS / 'e2e_decode_rvv_build_20261106_01'),
                 state='FAIL', source_commit='6ed7a6ae2', stage='compile-2',
-                reason='Fixture -Werror applied to unrelated upstream repack kernels; original report retained')],
+                reason='Fixture -Werror applied to unrelated upstream repack kernels; original report retained'),
+                dict(run=str(RUNS / 'e2e_decode_rvv_build_20261106_02'), state='FAIL',
+                     stage='generic-C warning policy admission',
+                     reason='Guard rejected upstream scoped implicit-declaration errors as global -Werror; '
+                            'arch/generic repack compilation succeeded; no simulation')],
             numerical_oracle='Existing independent QBS C reference with declared RVV tolerance; '
                 'not bit-exact RVV reference acceptance',
             limits=['Build only: runtime numerics, protocol, repeatability and timings remain unaccepted',
