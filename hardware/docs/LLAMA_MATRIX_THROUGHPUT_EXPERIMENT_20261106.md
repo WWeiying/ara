@@ -112,3 +112,24 @@ qbs=1 qbs_matrix_dot=1   启用候选，由格式和局部 M 自动选择宽点�
 `hardware/Makefile` 检查开关为 0/1，拒绝在 qbs=0 时启用；Bender 将 `ARA_QBS_WIDE_MATRIX_DOT` 传给实际 VLSU 实例。`simulator.conf` 同时记录 `qbs_matrix_dot`，避免只凭目录名判断所用硬件。没有修改生成的 `qbs_pkg.sv` 或 ISA/描述符定义，ABI 生成检查通过。两侧工作树的 38 项工具测试通过，包括开关和非法配置的真实 make 展开。
 
 已验证的五个 QBS 模块及两处配置入口同步到唯一验证工作树，其他主线 RTL 不随此次同步。下一门槛是实际 CVA6+RVV SoC、普通 RVV 回归和相同 ELF 的完整 SDK 调用测量；在这些门槛前，默认值不变，不部署 FPGA，也不启动综合。
+
+## 7. 整机配对构建
+
+主线配置入口提交为 `39f745675`，唯一验证分支七文件同步提交为 `45e28f45c`。`build_matrix_soc.py` 检查五个引擎文件与完整命令验收身份一致，两处 glue 与固定提交一致，其他已编译设计输入与前一套已检查的 SoC 保持原哈希。不会将主线未提交的 testbench、AKV 汇编或依赖差异带入验证构建。
+
+两侧均已完成预检查：`e2e_matrix_soc_preflight_20261106_02/` 为候选，`_03/` 为基线，状态均为 `MATRIX_SOC_PREFLIGHT_NOT_COMPILED`。初次预检查因 PATH 中的 ccache/g++ 与既有基线不一致而失败，保留在 `_01/`，没有启动 VCS。正式 worker 固定 `/usr/bin/g++`、`/usr/bin/python3` 和相同 VCS，清除影响编译的环境覆盖。
+
+预检查使用实际 make 展开和 Bender 生成源清单；只允许在相同位置增加宽点积宏，不放松其他源码、顺序或宏上下文。官方 Makefile 中的 `bender script verilator` 仅生成 VCS 使用的源清单格式，不调用 Verilator 仿真器。ABI 生成检查及 41 项工具测试通过。
+
+正式构建入口如下，必须使用新目录：
+
+```sh
+python3 -B verification/performance/end_to_end_baseline/build_matrix_soc.py \
+  --wide 0 --execute \
+  --output /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/matrix_soc_base_next
+python3 -B verification/performance/end_to_end_baseline/build_matrix_soc.py \
+  --wide 1 --execute \
+  --output /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/matrix_soc_wide_next
+```
+
+两套构建的输出和 VCS 增量目录独立，可以并行。每个 worker 直接由 systemd 管理，完整编译上限 7200 秒；只构建、不自动执行程序。构建结束后仍需核对实际 VCS 命令、原有严格 lint 检查、生成配置、源清单和镜像哈希。通过构建不等于通过普通 RVV 或 SDK 性能验收。
