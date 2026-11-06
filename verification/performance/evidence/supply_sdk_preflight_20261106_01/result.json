@@ -1,0 +1,67 @@
+{
+  "state": "PHYSICAL_SUPPLY_SDK_INPUTS_PREFLIGHT_REAUDITED",
+  "performance_measured": false,
+  "runtime_accepted": false,
+  "synthesis_run": false,
+  "whole_model": false,
+  "pairs": [
+    {
+      "kind": "decode",
+      "elf_sha256": "6f321585e2f25e9037269733a2fc0e3217c19c7d5345ed7cb6d45ab9b9a1256b",
+      "commands_per_image": 28,
+      "outputs_per_image": 896,
+      "preflights": [
+        {
+          "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_supply_sdk_decode128_preflight_20261106_02",
+          "width": 128,
+          "result_sha256": "4c2bf7ac4c2f895bb5c9c33046e5e0e2b0cc92c3f3d06d67eef3b47c3363fc64",
+          "source_pins_sha256": "a2b3186f830c932dda79e9808db404ff318fe1200b468e22255e84e9fbe4fb6b",
+          "checked_inputs": 1328,
+          "checked_artifacts": 2
+        },
+        {
+          "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_supply_sdk_decode256_preflight_20261106_02",
+          "width": 256,
+          "result_sha256": "151fbcafe5967e9ffd4370e9478a5c69fbc93d1ba7d75e6c847b06079a1a200b",
+          "source_pins_sha256": "e3502458811d413d6138776198ee92758069f4f795785991d0cdfd7cb5fe8a85",
+          "checked_inputs": 1328,
+          "checked_artifacts": 2
+        }
+      ]
+    },
+    {
+      "kind": "prefill",
+      "elf_sha256": "4422e0562c951eebaec3593848d06c3e18fcd9bbf0b4c571a15fb69e814b5bea",
+      "commands_per_image": 128,
+      "outputs_per_image": 16384,
+      "preflights": [
+        {
+          "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_supply_sdk_prefill128_preflight_20261106_02",
+          "width": 128,
+          "result_sha256": "96c346b146c2338448b2eaebaea23dfd4180608903f1e616a778f27e358653c8",
+          "source_pins_sha256": "6d7b0ac8f396e49dfcc78686ea1b1cf9f4b9912964fe405cd4f1f9b54bd6daf1",
+          "checked_inputs": 1348,
+          "checked_artifacts": 2
+        },
+        {
+          "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_supply_sdk_prefill256_preflight_20261106_02",
+          "width": 256,
+          "result_sha256": "0fd0fdf22bc246d7c942ab3c4bd1b58e6b7053b1469aa1e8e096cdf6a54f9434",
+          "source_pins_sha256": "60246d0aaa1f5cdd5f8d1f0315ad18b4f223cfacb33d11feeb1dbf189e0bce54",
+          "checked_inputs": 1348,
+          "checked_artifacts": 2
+        }
+      ]
+    }
+  ],
+  "raw_legacy_128bit_replays": {
+    "decode": "PASS, all 28 commands, exact reader beats, outputs/CSR/context and timing partitions",
+    "prefill": "PASS, all 128 commands, exact reader beats, outputs/CSR and timing partitions"
+  },
+  "limits": [
+    "Preflight is source/image/preload admission, not execution on either new image",
+    "SDK successor exact beats corroborate the pinned role-size mux; no independent per-role ARSIZE trace",
+    "Ordinary memory and handoff runtime gate must pass before SDK dispatch",
+    "Physical generic-SRAM comparison is not an unchanged external-DDR or whole-model performance claim"
+  ]
+}

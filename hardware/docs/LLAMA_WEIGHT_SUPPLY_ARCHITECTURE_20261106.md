@@ -589,8 +589,10 @@ the exact upper-strobe guard. The wide run exercises 193 AKV upper-half narrow
 returns and 809 full-width returns. Receipt:
 `verification/performance/evidence/wide_clients_20261106_01/result.json`.
 Neither a failed report nor a source-location correction proves a
-physical wide SoC. Real CVA6 PMP footprint checks, ordinary RVV/AKV SoC
-regressions, physical memory width and actual-SDK/model latency remain required.
+physical wide SoC. Ordinary RVV/AKV SoC regressions, actual physical memory
+width, applicable translation/permission checks and actual-SDK/model latency
+remain required. The selected SoC has zero PMP entries; nonzero-PMP support
+is a separate configuration extension, not a prerequisite for this flat-RAM test.
 
 ### Physical Generic-SRAM SoC: Built, Runtime Gate In Progress
 
@@ -635,3 +637,44 @@ use still needs actual translated-path permission/fault tests for the selected
 zero-PMP configuration. Nonzero-PMP configurations require the separate
 full-span admission proof described in Section 5. This experiment does not
 bypass either boundary or alter a checker to claim success.
+
+### Same-ELF SDK Supply Comparison
+
+The successor scripts `run_supply_sdk.py` and `continue_supply_sdk.py` prepare
+the actual SDK experiment without recompiling either workload. Both physical
+widths retain WideMatrixDot=1, four lanes, VLEN1024 and 16 MiB of generic SRAM.
+The Decode ELF is `6f321585e2f25e9037269733a2fc0e3217c19c7d5345ed7cb6d45ab9b9a1256b`;
+the full-QKV ELF is `4422e0562c951eebaec3593848d06c3e18fcd9bbf0b4c571a15fb69e814b5bea`.
+All four real input/image/preload preflights pass; this is not runtime acceptance.
+
+| SDK workload | Work checked on each image | Timing scope |
+| --- | --- | --- |
+| Real first Decode input | Seven N128 projection prefixes, full K2048/6144, 28 commands, 896 outputs | Four preparations plus admission and execution; existing context reuse retained |
+| Real Prefill QKV | M4, K2048, N2048/1024/1024, 128 commands, 16384 outputs | Four captured prompt tokens, full output width; preparation included |
+
+The new Decode checker preserves the original numerical, CSR, context,
+workload and phase checks. It replaces only the invalid fixed-16-byte reader
+lower bound: weights use 16/32-byte transfers, but descriptors and activations
+remain 16-byte transfers. It additionally requires exact per-command beat
+counts from the pinned SDK alignment and R4 layout: a Q4 R4 range uses 36/18
+beats, a Q6 R4 range 53/27, an M1 activation block 19 and an M4 block 73.
+Page/burst splitting does not add beats at these aligned split boundaries.
+Together with the pinned role-size mux, this rejects an all-narrow weight
+stream on the wide image. It is not independently observed per-role ARSIZE.
+The Prefill successor reuses the original numerical
+checker with matrix-dot enabled at both widths and adds explicit reader,
+phase and zero-context accounting. Both successors replay the accepted original
+128-bit raw logs. `supply_footprint.py` independently models page/burst splitting
+and lane compaction. The aggregate byte lower bound remains a sanity check,
+not a substitute for this exact range-based accounting.
+
+The continuation watches the existing memory/handoff campaign's terminal file
+events, revalidates its original raw evidence and only dispatches after all four
+smokes pass. It runs two widths concurrently, Decode first and Prefill second;
+each simulation is bounded to two hours. A failed prerequisite, input drift,
+numerical error or protocol error prevents subsequent dispatch. A valid but
+slower result is retained, not relabelled as a failed numerical test. At least
+10% fewer complete-region cycles is the initial performance continuation
+criterion; a regression above 2% needs explanation. This comparison changes
+both the physical memory platform and optional weight ingress. It cannot by
+itself isolate QBS-only benefit or predict an unchanged external DDR system.

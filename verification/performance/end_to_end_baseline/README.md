@@ -612,3 +612,30 @@ against the accepted control. No per-command lifetime trace flood is emitted.
 `--execute-reviewed` for explicit execution. QEMU supplies functional evidence,
 never RTL timing. Only the independent
 `TRACE_CONTEXT_QWEN3_MODEL_PAIR_REAUDITED` result closes this software gate.
+
+## Physical supply SDK pair
+
+`run_supply_sdk.py --kind decode|prefill --width 128|256 --output <fresh-dir>`
+checks the actual full-processor image, SDK build, input hashes and DPI preload
+geometry without executing VCS. `--execute-reviewed` requires the accepted
+physical memory and QBS/AKV handoff pair before starting a bounded simulation.
+Each pair uses the same ELF and fixed WideMatrixDot=1. Descriptors/activations
+remain 16-byte transfers even on the actual 256-bit bus; only weights widen.
+The checked old 128-bit raw logs replay through both successor checkers.
+
+`continue_supply_sdk.py --output <fresh-dir>` seals both pairs, waits for the
+existing memory/handoff campaign's terminal-file event, then runs Decode and
+full-QKV Prefill in sequence, with two widths concurrent. It independently
+replays raw SDK results and binds the UVM check to the same log, trace, ELF and
+image. An unfinished/failed prerequisite never admits execution, and partially
+published JSON cannot poison the retry inventory. Fresh source/image drift or
+a functional/protocol failure stops subsequent dispatch. Each simulation has a
+two-hour limit; no simulator compilation, synthesis or physical flow is started.
+
+The terminal campaign status is `PHYSICAL_SUPPLY_SDK_PAIR_PASS`. This means
+the same-work functional/protocol pair passed, **not** that a performance target
+was reached. `completed_pairs` records preparation/admission/execution/region
+cycles and ratios, exact reader work, the 10%-cycle-reduction screening result,
+and >2% region regressions. Same-platform best RVV and translated Linux paths
+remain separate acceptance requirements; generic-SRAM bandwidth is not DDR
+bandwidth, and neither SDK workload is full-model timing.
