@@ -1,0 +1,121 @@
+{
+  "state": "OUTPUT_TILE_FUNCTIONAL_ACCEPTED_ONLY",
+  "trials": [
+    {
+      "suite": "leaf",
+      "root": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_tile_20261106_03",
+      "state": "LEAF_FUNCTIONAL_PASS_NOT_ONLINE_OR_RTL_ACCEPTED",
+      "trials": [
+        {
+          "vlen": 1024,
+          "marker": "OUTPUT_TILE_PASS cases=1472 real=32 rejected=15 unaligned=3 exact=1 flags=1 scalar_oracle=1",
+          "log_sha256": "4bcc54f0389a2310478037ef296cdc683471f269b198daed707fd04387fc9ee2"
+        },
+        {
+          "vlen": 256,
+          "marker": "OUTPUT_TILE_UNSUPPORTED_PASS no_effects=1",
+          "log_sha256": "21f0e652ef69409f8fef95ab2baeb6f52e904f16aebdf8f14650d9d4707d70fb"
+        }
+      ],
+      "source_pins_checked": 140,
+      "artifacts": {
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_tile_20261106_03/result.json": "0b2580f69bf32512597cff7100f42028a8e27cd074f34b7a4806f697edfc6c47",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_tile_20261106_03/source-pins.json": "00ecc48dd30072b83bda9fbe3e922c4939060f76d7276cd8588a697d1a12228a",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_tile_20261106_03/commands.json": "167c70c60dd94d2b230226d55dc8a4c865e242c5bfa8dca9e1e424843506bb82",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_tile_20261106_03/disassembly.log": "1d69360abd09e027bc8853fabade91483f2011b4360f02406a728f6d7b5145fa",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_tile_20261106_03/test": "cd7eabce3e155ba4c1a36a6f3b834a9107a983e606f66964db3e9d11119091cd",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_tile_20261106_03/qemu-1024.log": "4bcc54f0389a2310478037ef296cdc683471f269b198daed707fd04387fc9ee2",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_tile_20261106_03/qemu-256.log": "21f0e652ef69409f8fef95ab2baeb6f52e904f16aebdf8f14650d9d4707d70fb"
+      }
+    },
+    {
+      "suite": "online",
+      "root": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_online_20261106_04",
+      "state": "SCHEDULE_FUNCTIONAL_PASS_NOT_QK_OR_RTL_ACCEPTED",
+      "trials": [
+        {
+          "vlen": 1024,
+          "marker": "OUTPUT_ONLINE_PASS cases=752 real=32 rejected=17 callback_failures=6 exact=1 flags=1",
+          "log_sha256": "3a6518395f6332ca37a8416779c7fd4a26cba5125f56101ec9f540791ed36c73"
+        },
+        {
+          "vlen": 256,
+          "marker": "OUTPUT_ONLINE_UNSUPPORTED_PASS no_effects=1",
+          "log_sha256": "df34e2c51d6700f6c76e4eb06540b0b40d6880ecfbdd3cc66d97706405fc3b41"
+        }
+      ],
+      "source_pins_checked": 142,
+      "artifacts": {
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_online_20261106_04/result.json": "b60816ffccd30d42c4a6392a44bfeee7c19bc8742d4fb61e3cc4967bb330c4dd",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_online_20261106_04/source-pins.json": "13b2c39ce947906d73df2b279464b115fbbce3fda8eeec474f612c1fc9270f2a",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_online_20261106_04/commands.json": "e3800ca5df73d912d863c0ecbebd0019dbe89ee95631a58438b583c51a5cc9bf",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_online_20261106_04/disassembly.log": "2d8ba38eb4b28d3cb7876aa97e368aeba7e61a0c342311dc5d0c86efb0c87de2",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_online_20261106_04/test": "eb27ba4b3eafc82604ca785ed15422428185f207d7581b9a1f18e0071f59ecf5",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_online_20261106_04/qemu-1024.log": "3a6518395f6332ca37a8416779c7fd4a26cba5125f56101ec9f540791ed36c73",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_online_20261106_04/qemu-256.log": "df34e2c51d6700f6c76e4eb06540b0b40d6880ecfbdd3cc66d97706405fc3b41"
+      }
+    },
+    {
+      "suite": "runtime",
+      "root": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_runtime_20261106_04",
+      "state": "RUNTIME_REFERENCE_PASS_NOT_NATIVE_OR_MODEL_ACCEPTED",
+      "trials": [
+        {
+          "vlen": 1024,
+          "marker": "REGISTER_RUNTIME_PASS cases=288 exact=1 flags=1 panels=1 failure_no_retry=1",
+          "log_sha256": "d0b4f9ce0d615ddc8f99a71ceba0dcdf496b490959d43e6add8886d8207d6699"
+        },
+        {
+          "vlen": 256,
+          "marker": "REGISTER_RUNTIME_UNSUPPORTED_VLEN_PASS no_effects=1",
+          "log_sha256": "75a8db83cb684468bb461ad03134c307f85c22af99c76e9239237d11fb1c3d50"
+        }
+      ],
+      "source_pins_checked": 174,
+      "artifacts": {
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_runtime_20261106_04/result.json": "300164f435e5c5660632a84bfee0427fc2e1d0fdbaa244feff3b1018f19f2e73",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_runtime_20261106_04/source-pins.json": "c05ccf6c313708568ec0f4ef13015f87a202533bdc90cad8e3eafe599e1cc245",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_runtime_20261106_04/commands.json": "ab4f61aa2d5edad5e813a2ace35cae5639d648d8522fc941e46ec60642db7173",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_runtime_20261106_04/disassembly.log": "1129145e32214657f9631dccff5bfb553be78551703e4ec4cdffdf18e58c6cb2",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_runtime_20261106_04/test": "62a29ab3b3d85bf31fef68eea8f1a99e9759b2f38c65c09a7e87dec4b6e3ab81",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_runtime_20261106_04/qemu-1024.log": "d0b4f9ce0d615ddc8f99a71ceba0dcdf496b490959d43e6add8886d8207d6699",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_runtime_20261106_04/qemu-256.log": "75a8db83cb684468bb461ad03134c307f85c22af99c76e9239237d11fb1c3d50"
+      }
+    },
+    {
+      "suite": "entry",
+      "root": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_entry_20261106_03",
+      "state": "RUNTIME_REFERENCE_PASS_NOT_NATIVE_OR_MODEL_ACCEPTED",
+      "trials": [
+        {
+          "vlen": 1024,
+          "marker": "REGISTER_GUARD_PASS vlen=1024 cases=28 no_effects=1 csr_preserved=1",
+          "log_sha256": "75dd372e29f980c3e611d629f72de3673b9e9dcac096d8c3d1cc6f0dfefad691"
+        },
+        {
+          "vlen": 256,
+          "marker": "REGISTER_GUARD_PASS vlen=256 cases=30 no_effects=1 csr_preserved=1",
+          "log_sha256": "83c150873ab018495b5d78d2ea1a99f862473cfb0e9299d84f47e91912527833"
+        }
+      ],
+      "source_pins_checked": 173,
+      "artifacts": {
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_entry_20261106_03/result.json": "04385de5afd8f17eba51d14534954d7debc241bf4d5788a744bb81edfc99f282",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_entry_20261106_03/source-pins.json": "cf57b112821fbcc6f9980afae394a7d32562ae1e60670e346992f27f6c4ceacb",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_entry_20261106_03/commands.json": "0815443f04b99df06a8481bac076b9a9137d5e086fff8fe4c1df81fbd3d4cb38",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_entry_20261106_03/disassembly.log": "994e45a2d261f184c1c58990f3b9e6c8d1ac2bccbbc2cb1c97a32009fb3be664",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_entry_20261106_03/test": "3e1880271619b4f428ab9a96271a296adf79645d75d8c97627732d02bc1c2d84",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_entry_20261106_03/qemu-1024.log": "75dd372e29f980c3e611d629f72de3673b9e9dcac096d8c3d1cc6f0dfefad691",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_entry_20261106_03/qemu-256.log": "83c150873ab018495b5d78d2ea1a99f862473cfb0e9299d84f47e91912527833"
+      }
+    }
+  ],
+  "rtl_measured": false,
+  "model_integrated": false,
+  "new_hardware": false,
+  "limitations": [
+    "QK is synthetic in schedule tests and a reference executor in runtime tests",
+    "Real captured V is checked; real full Attention/model performance is not",
+    "Report value_decodes counts logical rows, not pairwise physical decodes"
+  ]
+}

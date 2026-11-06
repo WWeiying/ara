@@ -7,7 +7,9 @@
 #define quant_register_online akv_output_tile_online
 #define quant_register_execute quant_output_tile_inner_execute
 #define quant_register_workspace_bytes quant_output_tile_workspace_bytes
+#define quant_register_unused_grouped_execute quant_output_tile_unused_grouped_execute
 #include "software/akv/experimental/quantized_kv/register_pv/runtime.c"
+#undef quant_register_unused_grouped_execute
 #undef quant_register_workspace_bytes
 #undef quant_register_execute
 #undef quant_register_online
