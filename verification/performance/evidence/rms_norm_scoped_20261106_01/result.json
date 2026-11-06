@@ -1,0 +1,49 @@
+{
+  "state": "REAL_QWEN3_FUSED_RMS_NORM_SCOPED_ACCEPTANCE_INDEPENDENTLY_REPLAYED",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_rms_norm_scoped_audit_20261106_01",
+  "result_sha256": "893d134aa7fa9b91df8a22cea8198f050ab9723e232e4b34c7ba5db72bde49b9",
+  "source_pins_sha256": "099940e29da9c64f86c3c7ac300ef184fcf22e6049d486c63eb71d7e30ec02c6",
+  "checked_pins": 1471,
+  "checked_artifacts": 18,
+  "checked_image_files": 66,
+  "host_checker_tests_passed": 9,
+  "elf_sha256": "6853d59f059a08b2f37e80029f1258218f1fc782bd1c91f0c13cb3015a53a38e",
+  "original_worker_state": "FAIL",
+  "original_worker_relabelled": false,
+  "sole_original_issue": "real DUT UVM observed no complete Ara AXI write traffic",
+  "scope_evidence": "Actual ELF contains no vector-store instruction; all four fused output functions contain scalar FSW; independent trace has 937 allocations and zero vector stores",
+  "checker_changed": false,
+  "only_requirement_delta": "Omit positive --require-axi-write coverage demand; retain all protocol checks, backend work, CVXIF events and AXI read requirements",
+  "all_other_protocol_report_fields_identical": true,
+  "new_simulations": 0,
+  "raw_outputs_activity_protocol_and_disassembly_replayed": true,
+  "complete_fused_call": true,
+  "timing_includes_csr_completion": true,
+  "order": ["baseline", "candidate", "candidate", "baseline"],
+  "decode": {
+    "rows": 1,
+    "width": 2048,
+    "baseline_cycles": [54909, 55491],
+    "candidate_cycles": [50371, 50100],
+    "call_speedup": 1.0988245364333986
+  },
+  "prefill": {
+    "rows": 4,
+    "width": 2048,
+    "baseline_cycles": [222289, 221494],
+    "candidate_cycles": [200502, 199967],
+    "call_speedup": 1.1081581845286401
+  },
+  "outputs_checked": 40960,
+  "boundary_cases": 53,
+  "order_sensitive_sum_cases": 10,
+  "whole_model": false,
+  "rtl_changed": false,
+  "production_library_changed": false,
+  "limitations": [
+    "No architectural vector-write coverage is established by this workload",
+    "Benefits apply to the captured complete fused calls, not whole-model timing",
+    "Actual GGML integration, production promotion and broader performance acceptance remain separate",
+    "No synthesis, area, power or FPGA acceptance"
+  ]
+}
