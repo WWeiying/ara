@@ -1,0 +1,19 @@
+{
+  "soc": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_tagpack_acceptance_20261105_02/soc",
+  "scope": "Per-lane ADDMUL only; excludes DIVSQRT and other SoC area",
+  "period_ns": 1.0,
+  "setup_uncertainty_ns": 0.15,
+  "tag_bits": 80,
+  "stored_tag_bits": 16,
+  "baseline_latency_fp16_fp32_fp64": [
+    5,
+    5,
+    5
+  ],
+  "shared_latency_fp16_fp32_fp64": [
+    5,
+    5,
+    5
+  ],
+  "prior_shared_ppa": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/shared_fma_compact_20261105_01/ppa"
+}

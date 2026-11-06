@@ -1,0 +1,187 @@
+ 
+****************************************
+Report : area
+Design : shared_fma_timing
+Version: T-2022.03-SP2
+Date   : Thu Nov  5 08:59:45 2026
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    tcbn28hpcplusbwp12t40p140hvttt0p9v25c (File: /home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140hvt_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140hvt_180a_nldm/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp12t40p140hvt_180a/tcbn28hpcplusbwp12t40p140hvttt0p9v25c.db)
+    tcbn28hpcplusbwp12t40p140lvttt0p9v25c (File: /home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140lvt_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140lvt_180a_nldm/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp12t40p140lvt_180a/tcbn28hpcplusbwp12t40p140lvttt0p9v25c.db)
+    tcbn28hpcplusbwp12t40p140tt0p9v25c (File: /home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140_180a_nldm/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp12t40p140_180a/tcbn28hpcplusbwp12t40p140tt0p9v25c.db)
+
+Number of ports:                         3826
+Number of nets:                         34908
+Number of cells:                        29868
+Number of combinational cells:          27772
+Number of sequential cells:              1561
+Number of macros/black boxes:               0
+Number of buf/inv:                       5112
+Number of references:                       3
+
+Combinational area:              24922.127728
+Buf/Inv area:                     1979.039979
+Noncombinational area:            6419.615920
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                 31341.743648
+Total area:                 undefined
+
+Hierarchical area distribution
+------------------------------
+
+                                  Global cell area            Local cell area
+                                  -------------------  ----------------------------- 
+Hierarchical cell                 Absolute    Percent  Combi-      Noncombi-  Black-
+                                  Total       Total    national    national   boxes   Design
+--------------------------------  ----------  -------  ----------  ---------  ------  ------------------------------------------------------
+shared_fma_timing                 31341.7436    100.0     22.1760     0.0000  0.0000  shared_fma_timing
+i_addmul                          31319.5676     99.9    405.5520     0.0000  0.0000  simd_fma_shared_5_0000000000000000ffff_921242
+i_addmul/gen_lane[0].i_fma        18935.7838     60.4  15159.9838  3049.0320  0.0000  fpnew_fma_multi_38_3_3_797242
+i_addmul/gen_lane[0].i_fma/clk_gate_inp_pipe_op_q_reg[1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_14
+i_addmul/gen_lane[0].i_fma/clk_gate_inp_pipe_operands_q_reg[1][0]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_16
+i_addmul/gen_lane[0].i_fma/clk_gate_inp_pipe_operands_q_reg[1][0]_0
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_15
+i_addmul/gen_lane[0].i_fma/clk_gate_inp_pipe_operands_q_reg[1][1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_18
+i_addmul/gen_lane[0].i_fma/clk_gate_inp_pipe_operands_q_reg[1][1]_0
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_17
+i_addmul/gen_lane[0].i_fma/clk_gate_inp_pipe_operands_q_reg[1][2]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_0
+i_addmul/gen_lane[0].i_fma/clk_gate_inp_pipe_operands_q_reg[1][2]_0
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_20
+i_addmul/gen_lane[0].i_fma/clk_gate_inp_pipe_operands_q_reg[1][2]_1
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_19
+i_addmul/gen_lane[0].i_fma/clk_gate_mid_pipe_dst_fmt_q_reg[1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_6
+i_addmul/gen_lane[0].i_fma/clk_gate_mid_pipe_eff_sub_q_reg
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_13
+i_addmul/gen_lane[0].i_fma/clk_gate_mid_pipe_spec_res_q_reg[1][mantissa]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_5
+i_addmul/gen_lane[0].i_fma/clk_gate_mid_pipe_spec_res_q_reg[1][mantissa]_0
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_4
+i_addmul/gen_lane[0].i_fma/clk_gate_mid_pipe_sum_q_reg[1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_11
+i_addmul/gen_lane[0].i_fma/clk_gate_mid_pipe_sum_q_reg[1]_0
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_10
+i_addmul/gen_lane[0].i_fma/clk_gate_mid_pipe_sum_q_reg[1]_1
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_9
+i_addmul/gen_lane[0].i_fma/clk_gate_mid_pipe_sum_q_reg[1]_2
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_8
+i_addmul/gen_lane[0].i_fma/clk_gate_mid_pipe_sum_q_reg[1]_3
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_7
+i_addmul/gen_lane[0].i_fma/clk_gate_mid_pipe_tent_exp_q_reg[1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_12
+i_addmul/gen_lane[0].i_fma/clk_gate_out_pipe_result_q_reg[1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_3
+i_addmul/gen_lane[0].i_fma/clk_gate_out_pipe_result_q_reg[1]_0
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_2
+i_addmul/gen_lane[0].i_fma/clk_gate_out_pipe_result_q_reg[1]_1
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_38_3_3_797242_1
+i_addmul/gen_lane[0].i_fma/fmt_init_inputs[0].active_format.i_fpnew_classifier
+                                     69.2160      0.2     69.2160     0.0000  0.0000  fpnew_classifier_0_3_1
+i_addmul/gen_lane[0].i_fma/fmt_init_inputs[1].active_format.i_fpnew_classifier
+                                     98.6160      0.3     98.6160     0.0000  0.0000  fpnew_classifier_1_3
+i_addmul/gen_lane[0].i_fma/fmt_init_inputs[2].active_format.i_fpnew_classifier
+                                     42.0000      0.1     42.0000     0.0000  0.0000  fpnew_classifier_2_3_3
+i_addmul/gen_lane[0].i_fma/i_fpnew_rounding
+                                    227.9760      0.7    227.9760     0.0000  0.0000  fpnew_rounding_0000003f_0
+i_addmul/gen_lane[0].i_fma/i_lzc    225.4560      0.7    225.4560     0.0000  0.0000  lzc_0000006d_1
+i_addmul/gen_lane[1].i_fma         6497.5679     20.7   4796.7360  1382.3040  0.0000  fpnew_fma_multi_28_3_3_797242
+i_addmul/gen_lane[1].i_fma/clk_gate_inp_pipe_operands_q_reg[1][0]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_28_3_3_797242_9
+i_addmul/gen_lane[1].i_fma/clk_gate_inp_pipe_operands_q_reg[1][1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_28_3_3_797242_10
+i_addmul/gen_lane[1].i_fma/clk_gate_inp_pipe_operands_q_reg[1][2]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_28_3_3_797242_0
+i_addmul/gen_lane[1].i_fma/clk_gate_inp_pipe_operands_q_reg[1][2]_0
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_28_3_3_797242_11
+i_addmul/gen_lane[1].i_fma/clk_gate_mid_pipe_eff_sub_q_reg
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_28_3_3_797242_8
+i_addmul/gen_lane[1].i_fma/clk_gate_mid_pipe_spec_res_q_reg[1][mantissa]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_28_3_3_797242_3
+i_addmul/gen_lane[1].i_fma/clk_gate_mid_pipe_sum_q_reg[1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_28_3_3_797242_6
+i_addmul/gen_lane[1].i_fma/clk_gate_mid_pipe_sum_q_reg[1]_0
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_28_3_3_797242_5
+i_addmul/gen_lane[1].i_fma/clk_gate_mid_pipe_sum_q_reg[1]_1
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_28_3_3_797242_4
+i_addmul/gen_lane[1].i_fma/clk_gate_mid_pipe_tent_exp_q_reg[1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_28_3_3_797242_7
+i_addmul/gen_lane[1].i_fma/clk_gate_out_pipe_result_q_reg[1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_28_3_3_797242_2
+i_addmul/gen_lane[1].i_fma/clk_gate_out_pipe_result_q_reg[1]_0
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_28_3_3_797242_1
+i_addmul/gen_lane[1].i_fma/fmt_init_inputs[0].active_format.i_fpnew_classifier
+                                     56.1120      0.2     56.1120     0.0000  0.0000  fpnew_classifier_0_3_0
+i_addmul/gen_lane[1].i_fma/fmt_init_inputs[2].active_format.i_fpnew_classifier
+                                     34.2720      0.1     34.2720     0.0000  0.0000  fpnew_classifier_2_3_2
+i_addmul/gen_lane[1].i_fma/i_fpnew_rounding
+                                    107.8560      0.3    107.8560     0.0000  0.0000  fpnew_rounding_0000001f_0
+i_addmul/gen_lane[1].i_fma/i_lzc     84.0000      0.3     84.0000     0.0000  0.0000  lzc_00000033_1
+i_addmul/gen_lane[2].i_fma         2508.2400      8.0   1664.0400   707.1120  0.0000  fpnew_fma_multi_08_3_3_797242_1
+i_addmul/gen_lane[2].i_fma/clk_gate_inp_pipe_operands_q_reg[1][0]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_08_3_3_797242_1_5
+i_addmul/gen_lane[2].i_fma/clk_gate_inp_pipe_operands_q_reg[1][1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_08_3_3_797242_1_6
+i_addmul/gen_lane[2].i_fma/clk_gate_inp_pipe_operands_q_reg[1][2]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_08_3_3_797242_1_0
+i_addmul/gen_lane[2].i_fma/clk_gate_mid_pipe_eff_sub_q_reg
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_08_3_3_797242_1_4
+i_addmul/gen_lane[2].i_fma/clk_gate_mid_pipe_sum_q_reg[1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_08_3_3_797242_1_3
+i_addmul/gen_lane[2].i_fma/clk_gate_mid_pipe_sum_q_reg[1]_0
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_08_3_3_797242_1_2
+i_addmul/gen_lane[2].i_fma/clk_gate_out_pipe_result_q_reg[1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_08_3_3_797242_1_1
+i_addmul/gen_lane[2].i_fma/fmt_init_inputs[2].active_format.i_fpnew_classifier
+                                     38.1360      0.1     38.1360     0.0000  0.0000  fpnew_classifier_2_3_1
+i_addmul/gen_lane[2].i_fma/i_fpnew_rounding
+                                     41.8320      0.1     41.8320     0.0000  0.0000  fpnew_rounding_0000000f_0_1
+i_addmul/gen_lane[2].i_fma/i_lzc     35.9520      0.1     35.9520     0.0000  0.0000  lzc_00000019_1_1
+i_addmul/gen_lane[3].i_fma         2424.9120      7.7   1688.7360   600.7680  0.0000  fpnew_fma_multi_08_3_3_797242_0
+i_addmul/gen_lane[3].i_fma/clk_gate_inp_pipe_operands_q_reg[1][0]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_08_3_3_797242_0_5
+i_addmul/gen_lane[3].i_fma/clk_gate_inp_pipe_operands_q_reg[1][1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_08_3_3_797242_0_6
+i_addmul/gen_lane[3].i_fma/clk_gate_inp_pipe_operands_q_reg[1][2]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_08_3_3_797242_0_0
+i_addmul/gen_lane[3].i_fma/clk_gate_mid_pipe_eff_sub_q_reg
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_08_3_3_797242_0_4
+i_addmul/gen_lane[3].i_fma/clk_gate_mid_pipe_sum_q_reg[1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_08_3_3_797242_0_3
+i_addmul/gen_lane[3].i_fma/clk_gate_mid_pipe_sum_q_reg[1]_0
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_08_3_3_797242_0_2
+i_addmul/gen_lane[3].i_fma/clk_gate_out_pipe_result_q_reg[1]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_fpnew_fma_multi_08_3_3_797242_0_1
+i_addmul/gen_lane[3].i_fma/fmt_init_inputs[2].active_format.i_fpnew_classifier
+                                     37.1280      0.1     37.1280     0.0000  0.0000  fpnew_classifier_2_3_0
+i_addmul/gen_lane[3].i_fma/i_fpnew_rounding
+                                     42.0000      0.1     42.0000     0.0000  0.0000  fpnew_rounding_0000000f_0_0
+i_addmul/gen_lane[3].i_fma/i_lzc     35.1120      0.1     35.1120     0.0000  0.0000  lzc_00000019_1_0
+i_addmul/gen_output_pipeline[0].i_stage
+                                    274.1760      0.9      5.0400   260.0640  0.0000  stream_register_262242_1
+i_addmul/gen_output_pipeline[0].i_stage/clk_gate_data_o_reg[result]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_stream_register_262242_0_5
+i_addmul/gen_output_pipeline[0].i_stage/clk_gate_data_o_reg[result]_0
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_stream_register_262242_0_4
+i_addmul/gen_output_pipeline[0].i_stage/clk_gate_data_o_reg[result]_1
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_stream_register_262242_0_3
+i_addmul/gen_output_pipeline[1].i_stage
+                                    273.3360      0.9      4.2000   260.0640  0.0000  stream_register_262242_0
+i_addmul/gen_output_pipeline[1].i_stage/clk_gate_data_o_reg[result]
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_stream_register_262242_0_0
+i_addmul/gen_output_pipeline[1].i_stage/clk_gate_data_o_reg[result]_0
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_stream_register_262242_0_2
+i_addmul/gen_output_pipeline[1].i_stage/clk_gate_data_o_reg[result]_1
+                                      3.0240      0.0      0.0000     3.0240  0.0000  SNPS_CLOCK_GATE_HIGH_stream_register_262242_0_1
+--------------------------------  ----------  -------  ----------  ---------  ------  ------------------------------------------------------
+Total                                                  24922.1277  6419.6159  0.0000
+
+1

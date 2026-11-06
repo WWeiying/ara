@@ -1,0 +1,576 @@
+{
+  "state": "PASS",
+  "paired_cases": 39,
+  "pairs": [
+    {
+      "case": "rv64uv-ara-vfrec7",
+      "baseline_finish": 249875000,
+      "shared_finish": 249875000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfrsqrt7",
+      "baseline_finish": 152925000,
+      "shared_finish": 152925000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vmfeq",
+      "baseline_finish": 458795000,
+      "shared_finish": 458795000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vmfne",
+      "baseline_finish": 460235000,
+      "shared_finish": 460235000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vmflt",
+      "baseline_finish": 294345000,
+      "shared_finish": 294345000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vmfle",
+      "baseline_finish": 302925000,
+      "shared_finish": 302925000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vmfgt",
+      "baseline_finish": 160625000,
+      "shared_finish": 160625000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vmfge",
+      "baseline_finish": 164615000,
+      "shared_finish": 164615000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfadd",
+      "baseline_finish": 636495000,
+      "shared_finish": 636495000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "fma_edges",
+      "baseline_finish": 1998895000,
+      "shared_finish": 1998895000,
+      "baseline_hw_cycles": [
+        "33761"
+      ],
+      "shared_hw_cycles": [
+        "33761"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfmul",
+      "baseline_finish": 345105000,
+      "shared_finish": 345105000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfmacc",
+      "baseline_finish": 360945000,
+      "shared_finish": 360945000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfmadd",
+      "baseline_finish": 358235000,
+      "shared_finish": 358235000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfmsac",
+      "baseline_finish": 361245000,
+      "shared_finish": 361245000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfmsub",
+      "baseline_finish": 361375000,
+      "shared_finish": 361375000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfnmacc",
+      "baseline_finish": 359165000,
+      "shared_finish": 359165000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfnmadd",
+      "baseline_finish": 358145000,
+      "shared_finish": 358145000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfnmsac",
+      "baseline_finish": 360885000,
+      "shared_finish": 360885000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfnmsub",
+      "baseline_finish": 361975000,
+      "shared_finish": 361975000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfwadd",
+      "baseline_finish": 461565000,
+      "shared_finish": 461565000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfwmul",
+      "baseline_finish": 243375000,
+      "shared_finish": 243375000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfwmacc",
+      "baseline_finish": 258875000,
+      "shared_finish": 258875000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfwmsac",
+      "baseline_finish": 258675000,
+      "shared_finish": 258675000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfwnmacc",
+      "baseline_finish": 256425000,
+      "shared_finish": 256425000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfwnmsac",
+      "baseline_finish": 254685000,
+      "shared_finish": 254685000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfredusum",
+      "baseline_finish": 518125000,
+      "shared_finish": 518125000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfredosum",
+      "baseline_finish": 505435000,
+      "shared_finish": 505435000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfwredusum",
+      "baseline_finish": 339085000,
+      "shared_finish": 339085000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfwredosum",
+      "baseline_finish": 342065000,
+      "shared_finish": 342065000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfdiv",
+      "baseline_finish": 351775000,
+      "shared_finish": 351775000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfsqrt",
+      "baseline_finish": 184425000,
+      "shared_finish": 184425000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfcvt",
+      "baseline_finish": 946915000,
+      "shared_finish": 946915000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfncvt_int8",
+      "baseline_finish": 24042475000,
+      "shared_finish": 24042475000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfsgnj",
+      "baseline_finish": 423025000,
+      "shared_finish": 423025000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfredmin",
+      "baseline_finish": 478555000,
+      "shared_finish": 478555000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vfredmax",
+      "baseline_finish": 473805000,
+      "shared_finish": 473805000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vadd",
+      "baseline_finish": 646965000,
+      "shared_finish": 646965000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "rv64uv-ara-vmul",
+      "baseline_finish": 454975000,
+      "shared_finish": 454975000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [],
+      "shared_micro": []
+    },
+    {
+      "case": "llama_q4km_micro",
+      "baseline_finish": 3234505000,
+      "shared_finish": 3234505000,
+      "baseline_hw_cycles": [
+        "0"
+      ],
+      "shared_hw_cycles": [
+        "0"
+      ],
+      "baseline_micro": [
+        [
+          "quantize_f32_to_q8_k_k1536",
+          "13103",
+          " bytes=1752"
+        ],
+        [
+          "quantize_f32_to_q8_k_k8960",
+          "73694",
+          " bytes=10220"
+        ],
+        [
+          "q4_k_x_q8_k_dot_n1536_nrc1",
+          "5738",
+          " actual=0x3dc987a1 golden=0x3dc987a5"
+        ],
+        [
+          "q4_k_x_q8_k_dot_n8960_nrc1",
+          "31769",
+          " actual=0xc1644cf4 golden=0xc1644cf7"
+        ],
+        [
+          "q6_k_x_q8_k_dot_n1536_nrc1",
+          "4838",
+          " actual=0xbebb0709 golden=0xbebb0709"
+        ],
+        [
+          "q6_k_x_q8_k_dot_n8960_nrc1",
+          "27392",
+          " actual=0x3d210a8f golden=0x3d210a92"
+        ]
+      ],
+      "shared_micro": [
+        [
+          "quantize_f32_to_q8_k_k1536",
+          "13103",
+          " bytes=1752"
+        ],
+        [
+          "quantize_f32_to_q8_k_k8960",
+          "73694",
+          " bytes=10220"
+        ],
+        [
+          "q4_k_x_q8_k_dot_n1536_nrc1",
+          "5738",
+          " actual=0x3dc987a1 golden=0x3dc987a5"
+        ],
+        [
+          "q4_k_x_q8_k_dot_n8960_nrc1",
+          "31769",
+          " actual=0xc1644cf4 golden=0xc1644cf7"
+        ],
+        [
+          "q6_k_x_q8_k_dot_n1536_nrc1",
+          "4838",
+          " actual=0xbebb0709 golden=0xbebb0709"
+        ],
+        [
+          "q6_k_x_q8_k_dot_n8960_nrc1",
+          "27392",
+          " actual=0x3d210a8f golden=0x3d210a92"
+        ]
+      ]
+    }
+  ],
+  "performance": "Exact cycle, lane activity and microkernel output comparison"
+}
