@@ -4,6 +4,7 @@ module qbs_akv_shared_reader #(
   parameter int unsigned AxiAddrWidth = 64,
   parameter int unsigned VAddrWidth = 64,
   parameter int unsigned PAddrWidth = 56,
+  parameter bit PerRangeTransferSize = 1'b0,
   parameter type req_t = logic,
   parameter type rsp_t = logic,
   parameter type axi_ar_t = logic,
@@ -40,6 +41,13 @@ module qbs_akv_shared_reader #(
   typedef logic [15:0] tag_t;
   req_t selected_req;
   rsp_t reader_rsp;
+  axi_pkg::size_t selected_size;
+
+  if (PerRangeTransferSize) begin : gen_range_size
+    assign selected_size = selected_req.range_size;
+  end else begin : gen_bus_size
+    assign selected_size = axi_pkg::size_t'($clog2(AxiDataWidth/8));
+  end
 
   // Ownership is supplied by the existing command controller, not arbitrated.
   // Invalid ownership is rejected by assertions and selects neither endpoint.
@@ -64,6 +72,7 @@ module qbs_akv_shared_reader #(
     .AxiDataWidth(AxiDataWidth), .AxiAddrWidth(AxiAddrWidth),
     .VAddrWidth(VAddrWidth), .PAddrWidth(PAddrWidth),
     .RangeBytesWidth(16), .ReadOutstanding(2),
+    .PerRangeTransferSize(PerRangeTransferSize),
     .axi_ar_t(axi_ar_t), .axi_r_t(axi_r_t),
     .exception_t(exception_t), .tag_t(tag_t)
   ) i_read_engine (
@@ -75,7 +84,7 @@ module qbs_akv_shared_reader #(
     .range_tag_i(selected_req.range_tag),
     .range_cache_i(selected_req.range_cache),
     .range_prot_i(selected_req.range_prot),
-    .range_size_i(axi_pkg::size_t'($clog2(AxiDataWidth/8))),
+    .range_size_i(selected_size),
     .data_valid_o(reader_rsp.data_valid), .data_ready_i(selected_req.data_ready),
     .data_o(reader_rsp.data), .data_strb_o(reader_rsp.data_strb),
     .data_offset_o(reader_rsp.data_offset), .data_tag_o(reader_rsp.data_tag),

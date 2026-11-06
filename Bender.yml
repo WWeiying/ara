@@ -70,8 +70,12 @@ sources:
     - hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv
     - hardware/src/vlsu/qbs/qbs_read_engine.sv
     - hardware/src/vlsu/qbs_akv_shared_reader.sv
+    - hardware/src/vlsu/qbs_reader_narrow_view.sv
     - hardware/src/vlsu/qbs/qbs_activation_context.sv
     - hardware/src/vlsu/qbs/qbs_payload_sram.sv
+    - hardware/src/vlsu/qbs/qbs_weight_line_assembler.sv
+    - hardware/src/vlsu/qbs/qbs_weight_wide_mapper.sv
+    - hardware/src/vlsu/qbs/qbs_weight_wide_bank.sv
     - hardware/src/vlsu/qbs/qbs_payload_buffer.sv
     - hardware/src/vlsu/qbs/qbs_block_adapter.sv
     - hardware/src/vlsu/qbs/qbs_profile_engine_int.sv

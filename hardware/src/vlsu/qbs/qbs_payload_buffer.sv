@@ -10,7 +10,8 @@ module qbs_payload_buffer import qbs_pkg::*; #(
   // arbitrary-target clients retain the generic last-writer data selection.
   parameter bit StreamWriteData = 1'b0,
   parameter int unsigned ActivationContextBase = 0,
-  parameter bit NarrowActivationAlias = 1'b0
+  parameter bit NarrowActivationAlias = 1'b0,
+  parameter bit EnableWeightStorage = 1'b1
 ) (
   input logic clk_i, rst_ni,
   input qbs_weight_profile_e weight_profile_i,
@@ -319,13 +320,22 @@ module qbs_payload_buffer import qbs_pkg::*; #(
     for (genvar r = 0; r < 4; r++) begin : gen_row
       wire rd = p == 2 ? activation_read_i : weight_read_i;
       localparam int DataWidth = p == 2 ? 256 : 128;
-      qbs_payload_sram #(.NumWords(p == 1 ? 4 : 8), .DataWidth(DataWidth)) i_payload (
-        .clk_i, .rst_ni, .req_i(rd || write_req[1][p][r]), .we_i(write_req[1][p][r]),
-        .addr_i(write_req[1][p][r] ? write_addr[1][p][r] : read_addr[p]),
-        .wdata_i(write_data[1][p][r][DataWidth-1:0]),
-        .be_i(write_be[1][p][r][DataWidth/8-1:0]), .rdata_o(read_data[p][r][DataWidth-1:0])
-      );
-      if (p != 2) assign read_data[p][r][255:128] = '0;
+      if (p == 2 || EnableWeightStorage) begin : gen_storage
+        qbs_payload_sram #(.NumWords(p == 1 ? 4 : 8), .DataWidth(DataWidth)) i_payload (
+          .clk_i, .rst_ni, .req_i(rd || write_req[1][p][r]), .we_i(write_req[1][p][r]),
+          .addr_i(write_req[1][p][r] ? write_addr[1][p][r] : read_addr[p]),
+          .wdata_i(write_data[1][p][r][DataWidth-1:0]),
+          .be_i(write_be[1][p][r][DataWidth/8-1:0]), .rdata_o(read_data[p][r][DataWidth-1:0])
+        );
+        if (p != 2) assign read_data[p][r][255:128] = '0;
+      end else begin : gen_external_weight_storage
+        assign read_data[p][r] = '0;
+`ifndef SYNTHESIS
+        assert property (@(posedge clk_i) disable iff (!rst_ni)
+            !weight_read_i && weight_valid_i == 0)
+          else $fatal(1, "QBS disabled legacy weight storage received traffic");
+`endif
+      end
 `ifndef SYNTHESIS
       assert property (@(posedge clk_i) disable iff (!rst_ni)
           !(rd && write_req[1][p][r]))

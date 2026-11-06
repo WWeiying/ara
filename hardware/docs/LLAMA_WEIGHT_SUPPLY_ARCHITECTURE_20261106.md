@@ -475,8 +475,9 @@ and FAIL; all functional/error/terminal gates remain. Its 38 pins, 11 artifacts
 and raw functional checks were independently replayed. Receipt:
 `verification/performance/evidence/weight_wide_bank_20261106_01/result.json`.
 
-The bank is not yet wired into the production compute engine, does not widen
-physical memory, and has no SDK performance or area acceptance. With existing
+The bank is now wired into a default-disabled compute-engine configuration,
+as described below. It does not widen physical memory, and has no SDK
+performance or area acceptance. With existing
 depth-eight hard macros its 768 logical payload bytes allocate 2048 physical
 bytes per bank; the two-bank macro overhead in Section 3 still applies. Macro
 allocation is static accounting; this run used the actual generic SRAM branch,
@@ -485,8 +486,8 @@ not a TSMC macro model.
 ### Mixed Physical/Logical Transfer Widths
 
 `qbs_read_engine.sv` now has `PerRangeTransferSize=0` by default and a
-`range_size_i` input. The shared production reader continues to request full
-bus-width transfers. The optional path records transfer size in the range FIFO,
+`range_size_i` input. The default shared production reader continues to request
+full bus-width transfers. The optional path records transfer size in the range FIFO,
 planner/AR registers and each outstanding burst. Alignment, burst length, checked
 physical footprint and response lane advancement use the recorded size.
 No public ISA or descriptor field changes are required for this internal hook.
@@ -506,6 +507,69 @@ The same RTL passes. This is a stimulus correction, not suppression of a DUT
 failure. Receipt: `verification/performance/evidence/mixed_reader_20261106_01/`.
 
 The wide target and permission signal are synthetic. Neither these tests nor
-the assembler prove real CVA6 PMP coverage, the 256-bit physical SoC path,
-native-format-to-SRAM integration or SDK/model speedup. Those remain explicit
-next acceptance boundaries; no synthesis or FPGA work has been started.
+the assembler prove real CVA6 PMP coverage, the 256-bit physical SoC path or
+SDK/model speedup. Native-format-to-SRAM integration is separately checked
+below; no synthesis or FPGA work has been started.
+
+### Optional Compute And Client Integration
+
+`qbs_compute_engine.WideWeightIngress=0` retains the original adapter and
+arithmetic by default. Enabling it selects two native wide SRAM banks and
+removes the legacy weight SRAM instances; the legacy adapters still supply
+the unchanged 128-bit activation path. Compute consumes the original 128-bit
+weight windows and side bytes. The wide bank byte counter reports SRAM-committed
+bytes, not merely admitted input bytes, preserving command-counter semantics.
+
+The first response's row count is visible before READY on an unowned bank.
+After admission it remains fixed until clear. A future one-row tail held on
+VALID cannot reconfigure a still-owned four-row bank. Child VALID is qualified
+by the parent's state/admission conditions, not the child's READY, avoiding a
+combinational READY/VALID loop. Completion waits for all line-assembler writes.
+
+The frozen compute-only pair passes 66 normal commands, five recoveries and
+five injected fault scenarios per image, covering all nine profiles, row-major
+and R4 layouts, M1--M8 and N tails. Both images select the same WideMatrixDot
+arithmetic. All 17736 floating-point events have identical operands and
+per-accumulator order; all final result bits, fflags and work counters match
+the independent C reference. A held future tail is blocked for 51 edges while
+2944 current-bank window bytes are checked. The two real-input cases are
+Qwen2.5 Prefill-row slices, not actual Decode or Qwen3 timing. The source pins,
+artifacts and raw checker were independently replayed. This is compute
+integration evidence, not a reader/SoC/SDK performance claim.
+
+The complete default128 QBS controller, shared reader and commit path also
+retain every direct/context cycle in the accepted original 36-case reference.
+The original context lifecycle, fault/retry and reset checks remain in place.
+This regression uses original arithmetic with WideMatrixDot disabled and a
+synthetic AXI/MMU/PMA fixture; it is distinct from the compute-only pair.
+
+Internal reader requests now carry a per-range size. Optional wide QBS uses
+32-byte weight transfers and 16-byte descriptor/activation transfers. The AKV
+compatibility view explicitly copies every metadata, counter and fault field,
+retaining only the low 128 data bits after compaction; it rejects nonzero upper
+strobes instead of silently losing bytes. VLSU selection is default-OFF under
+`ARA_QBS_WIDE_WEIGHT_INGRESS`, and it requires a real 256-bit physical bus.
+With the feature disabled, the AKV response width stays exactly equal to the
+original physical width. No ISA/SDK descriptor changes are involved.
+
+The complete128/256 controller pair passes 36 commands per width at response
+gaps zero and three. It uses physical-width AXI returns, recorded ARSIZE stepping
+and actual upper-half narrow lanes. The synthetic direct-command totals are
+30179/29445 cycles at gap zero and 48907/43674 at gap three; total reader beats
+are 9287/7213 at either gap. Logical payload and arithmetic remain equal. These
+heterogeneous directed-case totals are not a model speedup or a throughput
+forecast. Original first-beat-only AXI fault injection is retained; this test
+does not add later-beat fault coverage. The default128 timing independently
+matches the accepted original. All three exact worker identities, 332 input
+pins and raw checkers were replayed by `collect_wide_ingress.py`; receipt:
+`verification/performance/evidence/wide_ingress_20261106_01/result.json`.
+
+The first shared-client worker failed before simulation on a testbench typedef
+syntax error. Its checked successor completes 128 normal cases, 12 faults and
+128 direct metadata copies. The negative test emits the intended unique
+upper-strobe fatal, but its checker expects the `else $fatal` line whereas VCS
+attributes the SVA failure to the `assert property` line. Both original FAIL
+reports remain unchanged; negative-origin acceptance has a separate scoped
+audit. Neither a failed report nor a source-location correction proves a
+physical wide SoC. Real CVA6 PMP footprint checks, ordinary RVV/AKV SoC
+regressions, physical memory width and actual-SDK/model latency remain required.

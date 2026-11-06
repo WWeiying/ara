@@ -2,8 +2,16 @@
 `include "shared_reader_types.svh"
 `QBS_AKV_SHARED_READER_TYPEDEF_REQ_T(shared_read_req_t, CVA6Cfg.VLEN)
 `QBS_AKV_SHARED_READER_TYPEDEF_RSP_T(shared_read_rsp_t, AxiDataWidth, CVA6Cfg.VLEN, exception_t)
+`ifdef ARA_QBS_WIDE_WEIGHT_INGRESS
+localparam bit QbsWideWeightIngressEnable = 1'b1;
+`else
+localparam bit QbsWideWeightIngressEnable = 1'b0;
+`endif
+localparam int unsigned AkvReaderDataWidth = QbsWideWeightIngressEnable ? 128 : AxiDataWidth;
+`QBS_AKV_SHARED_READER_TYPEDEF_RSP_T(narrow_read_rsp_t, AkvReaderDataWidth, CVA6Cfg.VLEN, exception_t)
 shared_read_req_t shared_read_req [2];
 shared_read_rsp_t shared_read_rsp [2];
+narrow_read_rsp_t akv_read_rsp;
 logic shared_read_clk, shared_read_clk_en;
 logic shared_mmu_req, shared_mmu_is_store;
 logic [CVA6Cfg.VLEN-1:0] shared_mmu_vaddr;
@@ -22,6 +30,7 @@ tc_clk_gating #(.IS_FUNCTIONAL(1'b1)) i_shared_read_clk_gate (
 );
 qbs_akv_shared_reader #(
   .AxiDataWidth(AxiDataWidth), .AxiAddrWidth(AxiAddrWidth),
+  .PerRangeTransferSize(QbsWideWeightIngressEnable),
   .VAddrWidth(CVA6Cfg.VLEN), .PAddrWidth(CVA6Cfg.PLEN),
   .req_t(shared_read_req_t), .rsp_t(shared_read_rsp_t),
   .axi_ar_t(axi_ar_t), .axi_r_t(axi_r_t), .exception_t(exception_t)
@@ -42,6 +51,21 @@ qbs_akv_shared_reader #(
   .axi_ar_ready_i(shared_axi_ar_ready), .axi_r_i(shared_axi_r),
   .axi_r_valid_i(shared_axi_r_valid), .axi_r_ready_o(shared_axi_r_ready)
 );
+
+if (QbsWideWeightIngressEnable) begin : gen_narrow_akv_reader
+  qbs_reader_narrow_view #(
+    .wide_rsp_t(shared_read_rsp_t), .narrow_rsp_t(narrow_read_rsp_t)
+  ) i_narrow_view (
+    .clk_i(shared_read_clk), .rst_ni,
+    .wide_i(shared_read_rsp[1]), .narrow_o(akv_read_rsp)
+  );
+`ifndef SYNTHESIS
+  initial assert (AxiDataWidth == 256)
+    else $fatal(1, "QBS wide ingress requires a real 256-bit physical bus");
+`endif
+end else begin : gen_original_akv_reader
+  assign akv_read_rsp = shared_read_rsp[1];
+end
 
 // Keep the existing VLSU AXI/MMU ownership mux and cut unchanged. These aliases
 // also preserve per-owner interface probes; there is no extra arbitration/state.

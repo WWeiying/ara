@@ -8,6 +8,7 @@ import sys
 from pyslang.driver import Driver
 from pyslang import Diags, DiagnosticSeverity
 from collections import Counter
+from payload_hierarchy import resolve_payload_ram
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("package", type=Path)
@@ -60,7 +61,8 @@ for bank in range(2):
     paths.append(payload)
     for plane in range(3):
         for row in range(4):
-            ram = payload + f".gen_plane[{plane}].gen_row[{row}].i_payload"
+            ram = resolve_payload_ram(
+                compilation.getRoot(), payload + f".gen_plane[{plane}].gen_row[{row}]")
             paths.append(ram)
             payload_rams.append(ram)
             payload_widths[ram] = 256 if plane == 2 else 128

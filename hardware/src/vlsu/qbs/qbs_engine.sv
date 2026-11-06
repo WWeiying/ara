@@ -19,6 +19,7 @@ module qbs_engine
     parameter bit ActivationLookahead = 1'b1,
     parameter bit SeedRestoreEnable = 1'b0,
     parameter bit WideMatrixDot = 1'b0,
+    parameter bit WideWeightIngress = 1'b0,
     parameter type         vid_t = logic,
     parameter type         vaddr_t = logic,
     parameter type         axi_ar_t = logic,
@@ -838,8 +839,8 @@ module qbs_engine
     compute_activation_write_k = read_data_tag.k_block;
     compute_activation_write_context = read_data_tag.target;
     compute_activation_write_offset = read_data_offset[11:0];
-    compute_activation_write_data = read_data;
-    compute_activation_write_strb = read_data_strb;
+    compute_activation_write_data = read_data[127:0];
+    compute_activation_write_strb = read_data_strb[15:0];
     if (activation_access_q inside {
           QBS_ACTIVATION_ACCESS_REUSE,
           QBS_ACTIVATION_ACCESS_RELEASE}) begin
@@ -868,6 +869,7 @@ module qbs_engine
     range_tag: 16'(read_range_tag),
     range_cache: cache_q,
     range_prot: prot_q,
+    range_size: axi_pkg::size_t'(WideWeightIngress && read_range_tag.role == QBS_RANGE_WEIGHT ? 5 : 4),
     data_ready: read_data_ready,
     completion_ready: read_completion_ready,
     fault_ready: read_fault_ready
@@ -944,8 +946,8 @@ module qbs_engine
     .fill_write_valid_i        (context_fill_write),
     .fill_write_k_block_i      (read_data_tag.k_block),
     .fill_write_offset_i       (read_data_offset[11:0]),
-    .fill_write_data_i         (read_data),
-    .fill_write_strb_i         (read_data_strb),
+    .fill_write_data_i         (read_data[127:0]),
+    .fill_write_strb_i         (read_data_strb[15:0]),
     .fill_block_complete_i     (context_fill_block_complete),
     .fill_complete_k_block_i   (read_completion_tag.k_block),
     .fill_commit_i             (context_fill_commit),
@@ -1016,7 +1018,8 @@ module qbs_engine
   end
 
   qbs_compute_engine #(
-    .SeedRestoreEnable(SeedRestoreEnable), .WideMatrixDot(WideMatrixDot)
+    .SeedRestoreEnable(SeedRestoreEnable), .WideMatrixDot(WideMatrixDot),
+    .WideWeightIngress(WideWeightIngress)
   ) i_compute_engine (
     .clk_i,
     .rst_ni,
@@ -1527,14 +1530,17 @@ module qbs_engine
   end
 
   initial begin
-    assert (AxiDataWidth == 128)
-      else $fatal(1, "QBS block adapter requires a 128-bit read beat");
+    assert (AxiDataWidth == (WideWeightIngress ? 256 : 128))
+      else $fatal(1, "QBS physical width and weight ingress configuration disagree");
     assert (NrLanes == 4)
       else $fatal(1, "QBS commit requires four vector lanes");
   end
 
   always_ff @(posedge clk_i) begin
     if (rst_ni) begin
+      if (read_data_valid && read_data_tag.role != QBS_RANGE_WEIGHT)
+        assert ((read_data_strb >> 16) == 0)
+          else $fatal(1, "QBS narrow client received more than sixteen compacted bytes");
       if (state_q == QBS_ENGINE_RUN && scheduler_tuple_current) begin
         assert (weight_k_offset_q == 24'(compute_expected_k * weight_block_bytes_q))
           else $fatal(1, "QBS weight K-byte offset is not aligned with its scheduler");

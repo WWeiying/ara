@@ -1031,6 +1031,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   qbs_engine #(
     .reader_req_t(shared_read_req_t), .reader_rsp_t(shared_read_rsp_t),
+    .WideWeightIngress(QbsWideWeightIngressEnable),
     .SeedRestoreEnable(QbsVrfContinuationEnable && NrLanes == 4 && VLEN == 1024),
 `ifdef ARA_QBS_WIDE_MATRIX_DOT
     .WideMatrixDot(1'b1),
@@ -1138,8 +1139,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   );
 
   akv_engine #(
-    .reader_req_t(shared_read_req_t), .reader_rsp_t(shared_read_rsp_t),
-    .AxiDataWidth (AxiDataWidth),
+    .reader_req_t(shared_read_req_t), .reader_rsp_t(narrow_read_rsp_t),
+    .AxiDataWidth (AkvReaderDataWidth),
     .AxiAddrWidth (AxiAddrWidth),
     .VAddrWidth   (CVA6Cfg.VLEN),
     .PAddrWidth   (CVA6Cfg.PLEN),
@@ -1176,7 +1177,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .fault_mmu_exception_o         (akv_fault_mmu_exception),
     .context_ready_o               (akv_context_ready),
     .reader_req_o(shared_read_req[1]),
-    .reader_rsp_i(shared_read_rsp[1]),
+    .reader_rsp_i(akv_read_rsp),
     .ldu_result_req_o              (akv_ldu_result_req),
     .ldu_result_id_o               (akv_ldu_result_id),
     .ldu_result_addr_o             (akv_ldu_result_addr),

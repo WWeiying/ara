@@ -142,6 +142,45 @@ Its original post-fault checks are retained, not weakened. Real CVA6 PMP, wide
 SoC storage, native weight steering/SRAM integration and SDK latency are not
 proved by this component acceptance.
 
+### Optional integrated wide ingress
+
+`run_wide_compute.py` freezes two compute-only images with identical arithmetic
+and the original versus wide SRAM weight path. Both pass 66 normal commands,
+five numeric recoveries and five faults; 17736 FP events have equal operands
+and per-accumulator order. All nine native profiles, both layouts and M1--M8
+remain checked. This is not a complete reader/SoC or SDK speedup measurement.
+
+`run_wide_default_engine.py --output <fresh-dir>` rechecks the complete
+default128 QBS controller/shared-reader/commit against the sealed original
+36-case raw reference. Every direct/context cycle and work result matches.
+Context lifecycle, fault/retry and reset tests are retained. The optional
+feature remains disabled, so this gate alone cannot accept the wide path.
+
+`run_wide_complete_engine.py --output <fresh-dir>` generates a separate
+successor fixture and pairs full128/256 command paths with unchanged original
+arithmetic. Its synthetic target returns a full physical word, steps by the
+captured ARSIZE and places narrow responses in the correct bus half. Both
+response gaps retain the original golden/work/atomic-fault checks. It records
+per-command cycles and traffic, not SDK/model speedup or real PMP acceptance.
+The original sealed benchmark and all older worker failures remain untouched.
+
+The complete pair now passes 36 commands per width at response gaps zero/three;
+the accepted default128 cycles remain identical. `collect_wide_ingress.py
+--output <fresh-dir>` binds exact worker result hashes and replays all three
+component/controller checkers, 332 pins and the original artifacts. The compact
+receipt is `evidence/wide_ingress_20261106_01/result.json`. The synthetic direct
+command totals, 30179/29445 and 48907/43674 cycles, are not model speedup data.
+
+The new shared-client worker's first compile fails on testbench typedef syntax,
+before simulation. Its checked successor passes all 128 normal cases/12 faults
+and 128 field-copy vectors, but fails negative-source-line attribution: VCS
+reports the correct SVA `assert property` line rather than its `else $fatal`
+line. Preserve both original FAILs; any scoped host replay must bind the exact
+source and retain every other negative gate, without rerunning the RTL.
+Wide client selection remains default-OFF. Ordinary RVV and actual AKV SoC
+operation, physical memory width, real permission checks and SDK performance
+are later integration gates, not implied by these command/component fixtures.
+
 ## Ordered fused RMSNorm: scoped replay
 
 `collect_rms_norm_scoped.py --output <fresh-dir>` audits the preserved completed

@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "state": "OPTIONAL_WIDE_INGRESS_COMPONENTS_REPLAYED",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_wide_ingress_replay_20261106_01",
+  "result_sha256": "57b1b9eec818dfb005deeb908035d7243a33ddb38b430bc096cf42c1cbafddfe",
+  "source_pins_sha256": "1475ef0891844bd6da78f330225dc9a06c9466b3b40a91f8d98e0632bf098abb",
+  "replayed_pin_count": 332,
+  "compute_normal_per_image": 66,
+  "compute_recoveries_per_image": 5,
+  "compute_faults_per_image": 5,
+  "equal_fp_operand_events_per_image": 17736,
+  "default_36_direct_and_context_cycles_unchanged": true,
+  "complete_command_cases_per_width_and_gap": 36,
+  "complete_command_response_gaps": [0, 3],
+  "complete_command_original_arithmetic": true,
+  "production_enabled": false,
+  "physical_soc_accepted": false,
+  "real_pmp_accepted": false,
+  "model_speedup_measured": false,
+  "synthesis_run": false,
+  "limitations": [
+    "Compute component and synthetic full-controller tests are distinct scopes",
+    "Complete controller pair retains original first-beat AXI fault injection",
+    "Shared-client narrow-view negative acceptance has a separate audit",
+    "No ordinary RVV/AKV physical SoC, SDK, model latency or hardware PPA acceptance"
+  ]
+}
