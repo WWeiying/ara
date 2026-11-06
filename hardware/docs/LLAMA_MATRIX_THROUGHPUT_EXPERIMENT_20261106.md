@@ -133,3 +133,64 @@ python3 -B verification/performance/end_to_end_baseline/build_matrix_soc.py \
 ```
 
 两套构建的输出和 VCS 增量目录独立，可以并行。每个 worker 直接由 systemd 管理，完整编译上限 7200 秒；只构建、不自动执行程序。构建结束后仍需核对实际 VCS 命令、原有严格 lint 检查、生成配置、源清单和镜像哈希。通过构建不等于通过普通 RVV 或 SDK 性能验收。
+
+## 8. 整机镜像复核及真实 Qwen3 输入
+
+两套 VCS 均已完成编译和链接。原构建 worker 在后置清单检查处保持 FAIL：
+Make 在 Bender 输出末尾追加了一行空白，而 worker 使用逐行完全相等比较。
+`collect_matrix_soc.py` 不修改原记录，仅允许 `actual == planned + '\n'` 这一确切差异；
+同时重新检查源文件顺序、全部宏、七文件批准范围、编译命令、完整头文件清单、
+既有严格 lint 规则及镜像组成。没有追加源码/宏豁免，也没有重新编译。
+
+独立回执状态为 `MATRIX_SOC_PAIR_REAUDITED_NOT_EXECUTED`，保存在
+`verification/performance/evidence/matrix_soc_20261106_01/result.json`。两套均为实际
+CVA6、4 lanes、VLEN1024、16 MiB 仿真 L2，配置只在 `qbs_matrix_dot=0/1` 有别。
+此回执只接受编译产物，不接受程序执行、普通 RVV 回归或性能。
+
+### 8.1 抓取方式与数据身份
+
+`capture_projection.cpp` 复用已完成模型配对验证的 llama/GGML 静态库，加载
+Qwen3-1.7B Q4_K_M，执行固定自然语言 prompt 的真实图。GGML callback 在第一层
+`attn_norm-0` 完成并同步后，读取前四个 token 的完整 FP32 向量。这个张量正是
+`build_qkv` 的共同输入，不是 RoPE 后的 Q/K，也不是以随机数替代的激活。
+抓取完成即主动退出，不执行后续 28 层，不把这次退出称为完整模型生成通过。
+
+输入为 40 个真实 prompt token 中的前四行；四行数据逐字节不同，所有元素有限。
+每行 K=2048，未缩短 K。宿主机 GGUF 与 QEMU 只读 ext4 中的模型文件通过
+`debugfs` 只读流式 SHA256 核对相同，再由归档的官方 GGUFReader 提取原生权重，
+没有把运行时 repack 后的内存误认为原始 GGUF 数据。
+
+| 第一层权重 | 原始 K×N | 原生格式 | 测量用 K×N |
+| --- | ---: | --- | ---: |
+| Q | 2048×2048 | Q4_K | 2048×128 |
+| K | 2048×1024 | Q4_K | 2048×128 |
+| V | 2048×1024 | Q6_K | 2048×128 |
+
+原始抓取在唯一验证树的 `verification/out/e2e_qwen3_projection_capture_20261106_03/`，
+激活 SHA256 为 `98ed03f837793c9b55dbd67b088e3fdce0a3f34dcada3a3c22e3c918d9386f83`。
+`run_projection_capture.py` 的首个尝试在新增工具链头文件登记前停止；v2 在
+gen_init_cpio 软链接的身份查询处停止。两者均未进入 QEMU。v3 明确登记新编译
+依赖并使用解析后的工具路径，保留两次原失败；它是当前可复现的抓取入口。
+
+### 8.2 同一份 SDK 工作量
+
+`projection_golden.c` 使用既有独立 QBS C reference 量化、打包及计算，逐 tile
+比较 ROW_MAJOR 与 R4 布局的全部输出位。三个投影均通过；每个投影的计算
+FFLAGS 为 NX。该 host 程序不链接到性能 ELF。
+
+`projection_native.cpp` 直接使用已验收运行时中的并行 group-sum 量化 helper，
+以及 SDK planner/native executor；不是新写一个有利于候选的量化循环。四行
+激活准备一次，供 Q/K/V 三个调用消费；两套硬件使用同一 ELF、同一准备方式，
+不把已有的软件复用收益算作新增硬件收益。
+
+每个试次含三次 M4/N128/K2048 投影、12 条 native 命令、1536 个输出，两试次
+共 24 条命令、3072 个输出、6,291,456 个有效乘积。计时分别记录激活准备、
+SDK admission、执行及总区域；校验、checksum 和串口打印均在计时区间外。
+输出逐位对照独立 reference，检查最终 FCSR/VCSR、量化 payload、命令数及
+前后 guard。只读 RTL monitor 还核对实际命令形状、有效乘积和 dot issue 数。
+
+该测试是**真实数据的 QKV SDK 调用组**，不是全尺寸 QKV、完整 GGML dispatch
+或整个模型。权重已在运行前重排，冷启动权重准备不计入；N 前缀只是限制 VCS
+运行时间。M4/K2048 的 9344 B 激活超过当前 4672 B context 容量，走正常 DIRECT
+路径，不为候选人为开启原硬件无法容纳的常驻配置。这也为后续供给优化留下
+真实瓶颈证据，不能把该点用作“整个激活已经常驻”的例子。

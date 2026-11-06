@@ -1,5 +1,24 @@
 # End-to-end optimization experiments and evidence
 
+Latest matrix integration: `collect_matrix_soc.py` audits the two completed
+SoC builds without rewriting their original failed worker reports. It admits
+only the proven single appended blank line, not different sources or macros.
+The compact receipt is `evidence/matrix_soc_20261106_01/result.json`.
+
+For actual Qwen3 projection inputs, use `run_projection_capture_v3.py` with a
+fresh verification output directory. Earlier capture entries preserve two
+pre-boot inventory failures. The accepted capture retains four distinct real
+token rows and full K=2048; the GGUF host file and guest disk file are hashed
+against one another. This is a capture, not a complete model inference.
+`build_projection_native.py --capture <accepted-capture> --output <fresh-dir>`
+builds the same SDK workload for both hardware images. Its independent host
+reference compares row-major/R4 output bytes; no reference executor is linked
+into the measured ELF. `run_projection_native.py --wide 0|1 --build <build-dir>
+--output <fresh-dir> --execute-reviewed` is a directly owned bounded worker;
+omitting the last flag performs preflight only. Each side uses two identical
+Q/K/V workload trials, with preparation included and checks/printing excluded.
+This is a cropped-N QKV SDK region, not whole-model timing or cold repack time.
+
 `audit.py` implements the first, read-only step of the end-to-end performance
 plan. It does not build software, start VCS/QEMU, access the board, alter a sealed
 input, or promote an experimental runtime. Separate reconstruction and bounded
