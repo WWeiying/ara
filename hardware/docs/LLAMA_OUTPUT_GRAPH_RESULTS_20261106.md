@@ -77,14 +77,14 @@ QEMU CPU 配置，在 `qbs_native_info` 的 0x0005155b 指令触发 SIGILL。
 QEMU 不提供真实 RTL 周期。本轮 GQA6/128-token 的数值和调度通过，不能证明
 该形状也具有 GQA2/20-token 在 VCS 中约 1.25x..1.27x 的完整调用收益。
 
-默认生产 checkout、完整模型程序与 FPGA 位流没有替换。接下来还需在隔离源码
-中构建完整 llama.cpp，并做模型级 A/B 数值与实际选择检查，再根据真实时间占比
-决定适用形状。吞吐和 token/s 仍须由 RTL/板测获得，不从 QEMU 时间换算。
+默认生产 checkout 与 FPGA 位流没有替换。隔离源码中的完整 llama.cpp 模型
+配对已经执行，状态见第 5 节；仍须根据真实时间占比决定适用形状。吞吐和
+token/s 由 RTL/板测获得，不从 QEMU 时间换算。
 
 此外，普通 RVV、F16 Attention、线程和 mask-hole 等 fallback 应继续回归。
 这些工作完成前，不将本轮图级通过作为整个 LLM 软硬件优化目标完成。
 
-## 5. 完整模型 A/B 已启动准备
+## 5. 完整模型 A/B 与后验核验
 
 后继 `run_output_model.py` 使用上面的固定交付树及归档 SDK，完整构建 llama.cpp
 的 `llama` 静态库与模型测试程序，不复用未核对的本地库。生产模型目录和位流不改。
@@ -98,7 +98,7 @@ QEMU 不提供真实 RTL 周期。本轮 GQA6/128-token 的数值和调度通过
 | ISA / 运行时 | 同一个静态 ELF、相同 QBS/native opt-in、单 worker |
 | Prefill | 两侧均启用已存在的 grouped Prefill，不把其收益归入新方案 |
 | KV 格式 | 分别 Q8_0 K 和 Q4_0 K；V 均 Q8_0 |
-| 上下文 | n_ctx=128，n_batch=n_ubatch=64；固定自然语言 prompt，要求分词数 33..64 |
+| 上下文 | n_ctx=128，n_batch=n_ubatch=64；固定自然语言 prompt，实际分词数 40 |
 | 执行规模 | 每种 KV 格式一次 prompt Prefill，加两次单 token Decode，得到三组 logits |
 | 数值检查 | 六组完整 151936 维 logits 逐位比较，共 911616 个配对值；token 和最终 CSR 一致 |
 | 状态隔离 | 父进程不初始化 GGML，两侧分别 fork，避免缓存的环境选择互相影响 |
@@ -108,17 +108,25 @@ QEMU 不提供真实 RTL 周期。本轮 GQA6/128-token 的数值和调度通过
 QEMU 使用显式 `xaraqbs=true`，执行前核对 native 模型源码、配置、构建及磁盘身份。
 
 运行目录：唯一验证工作树 `verification/out/e2e_output_model_20261106_01/`。
-服务：`ara-e2e-output-model-20261106-01.service`。本节写入时，完整库及测试 ELF
-构建/链接完成，正在完成启动输入校验；不能据此称为模型运行已经通过。
-QEMU 阶段设定 7200 秒边界，由后台服务直接管理，不频繁轮询。
+完整库、测试 ELF 和 initramfs 已重新构建，QEMU 已正常关机，guest 退出码为 0。
+独立日志解析确认每侧 56 次 Prefill、112 次 Decode，911616 个 logits 逐位一致，
+token、最终 CSR 及 native 工作量相同。最终 VCSR 不要求保持入口的 5；完整模型
+内部允许改变向量定点配置，检查的是新旧软件路径的最终状态一致，不能将其与
+前面直接图调用的 VCSR 保持测试混为一谈。
+
+原 worker 有意保持 `MODEL_EXECUTED_PENDING_INDEPENDENT_AUDIT` 状态，不因
+guest 返回 0 就宣告全部输入闭合。后继 `collect_output_model.py` 正在独立核对
+输入 pin、ELF/日志和实际执行命令，并对 native QBS QEMU 的源码、配置与构建
+身份做运行后的检查。目录为 `e2e_output_model_audit_20261106_01/`，检查完成
+后才形成正式审计回执。不会修改原运行的状态或覆盖其日志。
 
 `check_output_model.py` 是独立的顺序检查器，不仅读取最终 PASS。工具单元测试
-现为 22 项通过，包括误选后端、漏掉 Decode、改变 token、输入许可错误与失败
+所在实验工具集合现为 30 项通过，包括误选后端、漏掉 Decode、改变 token、输入许可错误与失败
 guest 退出码。模型测试的最终结果须同时满足程序内比较和这些独立活动检查。
 
 查看任务：
 
 ```sh
-systemctl --user status ara-e2e-output-model-20261106-01.service --no-pager
-tail -n 20 /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_model_20261106_01/qemu.log
+systemctl --user status ara-e2e-output-model-audit-20261106-01.service --no-pager
+cat /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_model_audit_20261106_01/status.json
 ```
