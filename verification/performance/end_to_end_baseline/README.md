@@ -71,6 +71,26 @@ original FP32 input bytes. Counts are not hardware cycles, and this M4 cache
 must not be confused with M1 hardware activation-context reuse. No QEMU elapsed
 time is used as an RTL performance result.
 
+## Real FFN projection successor
+
+`run_ffn_capture.py --output <fresh-dir>` uses the same accepted model libraries
+and actual native QBS/grouped-Prefill paths to capture first-layer `attn_norm-0`,
+`ffn_norm-0`, and `ffn_swiglu-0`. It verifies the prior QKV boundary and the six
+logical calls/5760 native commands before stopping before down. Both trace gates
+are required for command records; the first incomplete observation remains FAIL.
+The accepted capture is `e2e_ffn_capture_20261106_02` in the verification tree.
+
+`build_ffn_native.py --capture <accepted-dir> --output <fresh-dir>` prepares a
+matched SDK triplet, M4/N128 and K=2048/2048/6144, with gate/up input preparation
+shared. Nine checked common objects are reused, only caller/data rebuilt.
+`run_ffn_native.py --wide 0|1 --build <build-dir> --output <fresh-dir>` performs
+preflight; add `--execute-reviewed` to run bounded VCS plus protocol checks.
+`watch_ffn_pair.py --base <run> --wide <run> --output <fresh-dir>` waits on file
+events and calls `collect_ffn_native.py` once. Every output, quantized payload,
+CSR state and guard is checked. This is full K but cropped N, not full FFN:
+down uses the real captured input, and the cropped gate/up outputs do not feed
+it. See `hardware/docs/LLAMA_FFN_THROUGHPUT_EXPERIMENT_20261106.md`.
+
 `projection_work_ledger.py --run <historical-register-model> --output
 <fresh-dir>` replays the historical model's original numerical/route checker and
 conserves logical MAC work against native commands for each of the six model
@@ -90,6 +110,14 @@ unchanged. `run_output_gqa6.py --build <build-dir> --output <fresh-dir>
 --execute-reviewed` uses the audited wide SoC. This measures software schedule
 choices on one image, not old versus new hardware. Its logical `value_decodes`
 does not count the output-tile schedule's repeated physical V decoding.
+
+The completed GQA6 ABBA gives 410489 versus 344633.5 mean cycles, ratio
+1.1910885x, with bit-identical paired outputs/CSR. This is a software comparison
+on the same wide SoC, not a full-model speedup or a hardware-width comparison.
+`collect_followups.py --study gqa6|preparation --run <completed-run> --output
+<fresh-dir>` replays these completed studies, including image/protocol checks or
+native QEMU provenance, respectively. Compact receipts are in
+`evidence/output_gqa6_20261106_01` and `evidence/preparation_census_20261106_01`.
 
 `audit.py` implements the first, read-only step of the end-to-end performance
 plan. It does not build software, start VCS/QEMU, access the board, alter a sealed

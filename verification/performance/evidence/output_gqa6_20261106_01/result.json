@@ -1,0 +1,20 @@
+{
+  "state": "GQA6_OUTPUT_CALL_REAUDITED",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_output_gqa6_audit_20261106_01",
+  "result_sha256": "3531a68d86d3f776feb4e6dc5e15a8974ce21ed4c03515103356c375b037192e",
+  "worker_result_sha256": "0091308118b39b5782885efe013f0b99f4b5e01d02522e1450d602ad907c1981",
+  "source_pins_sha256": "7685150c337deba335482cfc89a8464ba3b1c5fcb52b4105d21396aa33d3be78",
+  "collector_sha256": "35a95dc7a58b944ac16d4dc0084e89fe33e4d3f4e23f3d237ab7eb983c4de5de",
+  "checked_inputs": 756,
+  "baseline_cycles": 410489.0,
+  "candidate_cycles": 344633.5,
+  "speedup": 1.1910885041645691,
+  "paired_bitexact": true,
+  "outputs_per_trial": 768,
+  "commands_per_trial": 8,
+  "useful_pairs_per_trial": 98304,
+  "protocol_reaudited": true,
+  "same_hardware_software_comparison": true,
+  "whole_model": false,
+  "scope": "Real Qwen2.5 first KV group; GQA6/D128/visible128 complete-call ABBA"
+}
