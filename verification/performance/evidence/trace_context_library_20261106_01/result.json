@@ -1,0 +1,22 @@
+{
+  "state": "TRACE_CONTEXT_LIBRARY_BUILT_ARCHIVE_VERIFIED",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_trace_context_library_20261106_01/attempt-02",
+  "result_sha256": "231aa969ad09e506257834fd59a726f0c4a02f029adc59664717701d9075e2d1",
+  "source_pins_sha256": "e5a647e34c14402ed4c520a41e9e808e6b6aa29e8fab0f291a3e0c015593024d",
+  "original_library_sha256": "ddd71e17273789a7f60cc435d392829b5768addea6719b405a04d9d215f9ccc4",
+  "candidate_library_sha256": "d440c7d2894f5ab0c5165d8ca4bfc9a437df65fcb7d3aeb0771e2718293a803b",
+  "source_before_sha256": "43a86cfd658b3a94817077b8e3cc20eb08f948113bcbc841f449e1279d913f6e",
+  "source_after_sha256": "9aa982ff55414f92d8fc10df8b09cc29eb013dcd2b81deadcbed99216158c8f9",
+  "compiled_translation_units": 1,
+  "archive_members": 32,
+  "unchanged_other_members": 31,
+  "inventory_and_order_unchanged": true,
+  "global_definition_names": 919,
+  "global_definition_records": 923,
+  "checked_pins": 333,
+  "unit_tests": 12,
+  "target_executed": false,
+  "performance_measured": false,
+  "rtl_changed": false,
+  "scope": "Isolated one-object model library; target numerical/CSR/native-work validation still required before promotion"
+}

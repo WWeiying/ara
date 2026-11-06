@@ -320,3 +320,16 @@ CSR mismatches, changed payload accounting, wrong oracles and incomplete work.
 The accepted status is `REAL_QWEN3_DECODE_SDK_BASELINE_REAUDITED`, not preflight
 or simulator launch. Timing excludes cold weight repack and full GGML dispatch;
 the sampled output channels cannot establish full-model speedup.
+
+## Isolated model trace-context library
+
+`build_trace_context_library.py --output <fresh-dir>` reconstructs the registered
+trace-context patch against exact sealed pre/postimages and recompiles only the
+actual model's `qbs.cpp` using its recorded compiler options. It replaces the
+same-named `qbs.cpp.o` member in a copied `libggml-cpu.a`; the original library
+is never edited. Archive inventory/order, every unchanged member, global defined
+exports, actual header closure, compiler/tool identities and artifacts are checked.
+Twelve unit tests exercise malformed archives, duplicate/reordered/stale members,
+dependency/symlink drift and exact patch application. This is an archive-verified
+candidate, not a new target/model numerical or timing acceptance. Consumers must
+keep trace flags fixed inside a blocking context and refresh at the next one.

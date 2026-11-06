@@ -84,6 +84,22 @@ DIRECT 对应超出 context 容量的长 K 路径；已有的 QKV/gate-up 共享
 配置的行为、native 序列、结果及 CSR 后再固化新基线。不能覆盖当前脏 llama
 工作区，也不能修改正在被 Decode 捕获消费的库或源码。
 
+该独立库现已完成构建和 archive 审核，工具为
+`build_trace_context_library.py`；输入仍是已接受的实际模型静态库及原编译
+命令，非另一次全库 CMake 编译。在唯一验证树
+`verification/out/e2e_trace_context_library_20261106_01/attempt-02/` 中：
+
+- 新库只替换一个同名 `qbs.cpp.o`，32 个成员的名称和顺序不变，其余 31 个
+  成员逐字节相同；不能用 `ar q` 追加一个新名字而留下旧实现。
+- 全局定义的 919 个名字、923 条定义保持一致，原库 SHA 不变。
+- 原封存源码的 preimage 和注册 patch 的 postimage 均严格核验。
+- 333 项 pins、实际编译依赖和全部产物重新通过独立复核；12 项工具测试通过。
+
+状态为 `TRACE_CONTEXT_LIBRARY_BUILT_ARCHIVE_VERIFIED`，不是模型数值验收。
+尚未把新库接入现用模型或计作性能提升，下一次模型功能对照还需检查 native
+命令、结果、CSR 和两次 context 之间的 trace 配置更新。第一次 Python 3.9
+兼容性失败保留在同一输出树，不覆盖其记录。
+
 ## 6. 已建立的真实 M1 SDK 基线
 
 `build_decode_native.py` 已在独立目录完成编译和内存准入，状态为
@@ -149,3 +165,17 @@ ELF 检查全部量化字节、896 个输出、前后 canary、累计 fflags、f
 `collect_decode_native.py`，均使用全新目录并校验源码、参考数据和镜像身份。
 只有最终 `REAL_QWEN3_DECODE_SDK_BASELINE_REAUDITED` 才算接受性能数据；
 编译、preflight 和模拟器启动都不是 PASS。本批没有新 RTL 或全模型性能结论。
+
+正式任务已由 `ara-e2e-decode-native-20261106-01.service` 直接持有，已确认
+实际 `simv` 子进程和递增的指令握手记录。不是短启动器退出后留下的孤儿任务。
+模拟器及独立审计完成前，本节不填入周期结论。进度与最终结果分别查看：
+
+```bash
+systemctl --user status ara-e2e-decode-native-20261106-01.service --no-pager
+cat /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_decode_native_vcs_20261106_01/status.json
+cat /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_decode_native_campaign_20261106_01/result.json
+```
+
+运行目录为 `verification/out/e2e_decode_native_vcs_20261106_01/`，最终独立
+审计目录为 `verification/out/e2e_decode_native_audit_20261106_01/`。本批先在
+现有基线镜像测 M1，不因 M4 的宽点积收益额外跑一遍未改变的 M1 硬件。
