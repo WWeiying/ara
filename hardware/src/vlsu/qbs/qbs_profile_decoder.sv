@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: SHL-0.51
 
 module qbs_profile_decoder import qbs_pkg::*; #(
-  parameter bit CompactRead = 1'b0
+  parameter bit CompactRead = 1'b0,
+  parameter bit WideMatrixDot = 1'b0
 ) (
   input  qbs_weight_profile_e profile_i,
   input  qbs_activation_profile_e activation_profile_i,
@@ -380,6 +381,8 @@ module qbs_profile_decoder import qbs_pkg::*; #(
     k_per_context_o = 4'd2;
     if (m_i == 1) k_per_context_o = 4'd8;
     else if (m_i == 2) k_per_context_o = 4'd4;
+    else if (WideMatrixDot && qbs_weight_block_elements(profile_i) == 256)
+      k_per_context_o = 4'd4;
 
     group_index_o = '0;
     group_end_o = 1'b0;
