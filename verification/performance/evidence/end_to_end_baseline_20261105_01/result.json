@@ -1,0 +1,528 @@
+{
+  "schema": 1,
+  "state": "EVIDENCE_REPLAY_PASS_STAGE_ATTRIBUTION_PENDING",
+  "created_utc": "2026-11-06T07:54:58.909990+00:00",
+  "new_simulations": 0,
+  "hardware_changed": false,
+  "production_software_changed": false,
+  "repositories": {
+    "ara": {
+      "path": "/home/wangwy/openproject/ara_dsa",
+      "head": "71468b1c363696b12f39376d1a87f7f65e0cccee",
+      "branch": "ara_dsa",
+      "delivery": "1e48e205df5cec34183222c36d22eb4858466810",
+      "dirty_tracked_files": {
+        "apps/Makefile": "92227093e11b8efdf4dc53f434eb65d9fc029b89861561b2ca976d685783fa3f",
+        "backend/syn/ara_soc/v1-dc/reports/area.rpt": "0561697ed2b9533fc174c734df431421619a73523ab9d2320532f5e45f988806",
+        "hardware/tb/ara_tb.sv": "3b8f0a7f88ab07e4bf73135bc1918e2c6f75a8dc6ac992479769e5aa60e6ac22",
+        "software/akv/src/akv_v2_attention_rvv.S": "6a7715002dbb826fce4011a4283e13fbccd368f0d58e9322b64dfbaaf8a604ed",
+        "verification/README.md": "be87a14d187e96b10fef1efceea265b9c94d1af0f73d1787abfa028e5c9ec019",
+        "verification/tests/test_audit_final_random_stimulus.py": "d0aa51b960fa1e209b3ba2cb929bb4bba94970a5dc57ee28487dccb9a837fba5",
+        "verification/tests/test_audit_final_rvv_activity.py": "1f9dda91f211d8d1709cd42f35bffa593b13ba9d3e9844e7c3a6680b04d9615f",
+        "verification/uvm/run_store_b_focused_case.sh": "d2b0bdfccb53a1ffb4efa2a76f7cdd1d14754ff5bc121321be5327dfd24b85f5",
+        "verification/uvm/run_store_fp16_merge_smoke.py": "292932efe3d295d6ce8961edd7e1f5d326521ac7dbe5c97bb7b965edd76abb65"
+      },
+      "build_policy": "Use explicit commits and reviewed dependency locks, not dirty checkout",
+      "untracked_files_are_build_inputs": false
+    },
+    "llama": {
+      "path": "/home/wangwy/llama/llama.cpp",
+      "head": "8ed9403e37f1ceb43c6279cdefef01354eac6fd3",
+      "branch": "qbs-activation-context",
+      "delivery": "da56aa750559c180d631b466de983ff2bb5d54d9",
+      "dirty_tracked_files": {
+        "ggml/src/ggml-cpu/CMakeLists.txt": "2168ddbf805dc048b86d868468b4793f8998d635bd55cfa9d247bef4e375275f",
+        "ggml/src/ggml-cpu/arch/riscv/akv.cpp": "a2382b3a19a9c035428181c22a131ca18aaa466c153d9dc8006d7b43a75f97fb",
+        "ggml/src/ggml-cpu/arch/riscv/qbs.cpp": "43a86cfd658b3a94817077b8e3cc20eb08f948113bcbc841f449e1279d913f6e",
+        "ggml/src/ggml-cpu/arch/riscv/qbs.h": "c4f080e34f8bcfdaa3cff72a8f725591327f0a3af1be954ba6f39357bb77f7ad",
+        "ggml/src/ggml-cpu/arch/riscv/quants.c": "26dfc79772e738286a8d751254080b9aa0fdb1e3ada77eb8a1cdaa8f2960a6b5",
+        "ggml/src/ggml-cpu/repack.cpp": "d6a52a7f085acfca9411e006ef9db1101654e636e184c67c83b74c1c9bbd1ea3",
+        "tests/test-ara-q4k-repack.cpp": "65b7deab55dc7e3828dfdb93c855255336ef6b5f935b05663256845e75a23fa6"
+      },
+      "build_policy": "Use explicit commits and reviewed dependency locks, not dirty checkout",
+      "untracked_files_are_build_inputs": false
+    }
+  },
+  "board": {
+    "state": "EXISTING_BOARD_EVIDENCE_REPLAY_PASS",
+    "collections": {
+      "final_e2e_observer_01": {
+        "state": "COLLECTION_HASHES_AND_CHECKER_REPLAY_PASS",
+        "local_pins": 55,
+        "artifacts": 54,
+        "receipt_sha256": "437d9d9aadc4820b7415b30f1acfa6093e2d0d8a2aecac416da103ecef479854",
+        "result_sha256": "de42f70355e9fe406e0393f0b5fa7d665fd8dce3751d644e8b1e1b99e047437b"
+      },
+      "m4_observer_02": {
+        "state": "COLLECTION_HASHES_AND_CHECKER_REPLAY_PASS",
+        "local_pins": 34,
+        "artifacts": 41,
+        "receipt_sha256": "b93bf88f500eb8addd559f5362e506e750611e149785c9dc08f8160d92cbaf25",
+        "result_sha256": "b552e597dfa3d980d328d050de8f2e3fdb2e0f21723d5457db27bf72f24fd61c"
+      },
+      "native_answer_observer_06": {
+        "state": "COLLECTION_HASHES_AND_CHECKER_REPLAY_PASS",
+        "local_pins": 180,
+        "artifacts": 28,
+        "receipt_sha256": "b8c90563bb43a736bb05e6a6f93c81bdf0cc5091a983bb4690dfcadc3c7f7ea8",
+        "result_sha256": "a8ea54a347ec21a081b5d011af56e88af2c6c7f47949416cae72b2a8406ef9b7"
+      },
+      "native_followup_observer_04": {
+        "state": "COLLECTION_HASHES_AND_CHECKER_REPLAY_PASS",
+        "local_pins": 205,
+        "artifacts": 36,
+        "receipt_sha256": "5883cad904b9702b29b7c0b896feec1cc0b7140f06911bb4e00cce418ae19f1b",
+        "result_sha256": "f43a2eb3ee98735e18257e0a1eaed016cad655d9ad9d6411ad87166798a42a40"
+      }
+    },
+    "audit_sha256": "09ef989f495e1eff87db0be4df85407d26c606d2ecb3d12a82504864c5aa7924",
+    "bitstream_sha256": "86930e50ae590d3b1441a537a7258aab53bbb4e1fd0ea537b74c0b6244554c88",
+    "production_binary_sha256": "9ce1bce98b2888b11f6405148366543ab82d4b5f7ee8dfe0342220e15650855d",
+    "experimental_binary_sha256": "d0a1bbfd9a23cf1d90e4c5c6d5b30e619a97d76bc99a3d0174d5ce20a849b570",
+    "candidate_promoted": false,
+    "isolated_rtl_speedup": false,
+    "f16": {
+      "speedups": {
+        "prompt_eval_seconds": 1.3768751751744917,
+        "decode_eval_seconds": 1.2358603180597976,
+        "inference_seconds": 1.3120314910444626,
+        "host_elapsed_seconds": 1.205412964183601
+      },
+      "totals": {
+        "baseline": {
+          "prompt_eval_seconds": 4558.76303,
+          "decode_eval_seconds": 2647.16506,
+          "inference_seconds": 7246.139999999999,
+          "host_elapsed_seconds": 9813.058917999966
+        },
+        "candidate": {
+          "prompt_eval_seconds": 3310.9486699999998,
+          "decode_eval_seconds": 2141.96137,
+          "inference_seconds": 5522.84,
+          "host_elapsed_seconds": 8140.827425600262
+        }
+      },
+      "cases": [
+        {
+          "name": "01_chinese_facts",
+          "prompt_tokens": 135,
+          "generated_tokens": 41,
+          "metrics": {
+            "baseline": {
+              "prompt_eval_seconds": 470.56468,
+              "decode_eval_seconds": 440.58157,
+              "inference_seconds": 918.23,
+              "host_elapsed_seconds": 1513.2594794000033
+            },
+            "candidate": {
+              "prompt_eval_seconds": 333.37386,
+              "decode_eval_seconds": 357.10985999999997,
+              "inference_seconds": 702.71,
+              "host_elapsed_seconds": 1312.6455039998982
+            }
+          },
+          "speedups": {
+            "prompt_eval_seconds": 1.4115224271033129,
+            "decode_eval_seconds": 1.2337423839263357,
+            "inference_seconds": 1.306698353517098,
+            "host_elapsed_seconds": 1.1528318001995157
+          },
+          "full_logits_baseline_compared": true
+        },
+        {
+          "name": "02_log_diagnosis",
+          "prompt_tokens": 212,
+          "generated_tokens": 70,
+          "metrics": {
+            "baseline": {
+              "prompt_eval_seconds": 757.63194,
+              "decode_eval_seconds": 772.8994799999999,
+              "inference_seconds": 1542.3,
+              "host_elapsed_seconds": 2160.8781588999555
+            },
+            "candidate": {
+              "prompt_eval_seconds": 536.0634699999999,
+              "decode_eval_seconds": 622.9746899999999,
+              "inference_seconds": 1179.56,
+              "host_elapsed_seconds": 1814.1074454002082
+            }
+          },
+          "speedups": {
+            "prompt_eval_seconds": 1.4133250676454414,
+            "decode_eval_seconds": 1.240659520212611,
+            "inference_seconds": 1.3075214486757774,
+            "host_elapsed_seconds": 1.1911522464554167
+          },
+          "full_logits_baseline_compared": false
+        },
+        {
+          "name": "03_long_document",
+          "prompt_tokens": 676,
+          "generated_tokens": 33,
+          "metrics": {
+            "baseline": {
+              "prompt_eval_seconds": 2717.1041099999998,
+              "decode_eval_seconds": 403.23740999999995,
+              "inference_seconds": 3126.2,
+              "host_elapsed_seconds": 3865.9560153000057
+            },
+            "candidate": {
+              "prompt_eval_seconds": 2005.75815,
+              "decode_eval_seconds": 331.32478000000003,
+              "inference_seconds": 2347.11,
+              "host_elapsed_seconds": 3092.5528782000765
+            }
+          },
+          "speedups": {
+            "prompt_eval_seconds": 1.3546519105506314,
+            "decode_eval_seconds": 1.2170457337963068,
+            "inference_seconds": 1.3319358700700008,
+            "host_elapsed_seconds": 1.2500856630623125
+          },
+          "full_logits_baseline_compared": false
+        },
+        {
+          "name": "04_longer_answer",
+          "prompt_tokens": 174,
+          "generated_tokens": 94,
+          "metrics": {
+            "baseline": {
+              "prompt_eval_seconds": 613.4623,
+              "decode_eval_seconds": 1030.4466,
+              "inference_seconds": 1659.41,
+              "host_elapsed_seconds": 2272.9652644000016
+            },
+            "candidate": {
+              "prompt_eval_seconds": 435.75319,
+              "decode_eval_seconds": 830.55204,
+              "inference_seconds": 1293.46,
+              "host_elapsed_seconds": 1921.5215980000794
+            }
+          },
+          "speedups": {
+            "prompt_eval_seconds": 1.4078205600743852,
+            "decode_eval_seconds": 1.2406767431454384,
+            "inference_seconds": 1.2829233219426963,
+            "host_elapsed_seconds": 1.1828986292767696
+          },
+          "full_logits_baseline_compared": false
+        }
+      ],
+      "limits": [
+        "Not an isolated before/after RTL hardware speedup.",
+        "Original baseline full-logits stream exists only for first case; other cases check full returned text and native/workload counts, not every baseline logit.",
+        "Separate process/model load per case; single end-to-end run per configuration, supplemented by paired diagnostics.",
+        "Quantized-KV performance/quality is a separate experiment."
+      ]
+    },
+    "m4": {
+      "speedups": {
+        "prompt_eval_seconds": 1.157481156976814,
+        "decode_eval_seconds": 0.9956832517848254,
+        "inference_seconds": 1.0686490671056759,
+        "host_elapsed_seconds": 1.0422129236368396
+      }
+    },
+    "quantized_answer": {
+      "speedups": {
+        "prompt_eval_seconds": 1.169149619922234,
+        "decode_eval_seconds": 1.0649375812377855,
+        "inference_seconds": 1.1099337985008622
+      },
+      "prompt_tokens": 135,
+      "generated_tokens": 55,
+      "full_logits_bitwise_compared": 8508416,
+      "runs": {
+        "native": {
+          "metrics": {
+            "prompt_eval_seconds": 576.4374,
+            "decode_eval_seconds": 649.71779,
+            "inference_seconds": 1242.36
+          },
+          "projection_coverage": {
+            "GGML_RISCV_QBS_COVERAGE:Q4_K": {
+              "type": "Q4_K",
+              "candidate_tensors": 169,
+              "selected_tensors": 169,
+              "segmented_tensors": 0,
+              "candidate_elements": 1207959552,
+              "selected_elements": 1207959552,
+              "fallback_runtime": 0,
+              "fallback_format_filter": 0,
+              "fallback_capability": 0,
+              "fallback_dimensions": 0,
+              "fallback_shape": 0,
+              "fallback_layout": 0,
+              "fallback_profile": 0,
+              "fallback_dispatch": 0
+            },
+            "GGML_RISCV_QBS_EXEC:Q4_K": {
+              "type": "Q4_K",
+              "gemv_calls": 9242,
+              "gemm_calls": 332,
+              "input_rows": 31652,
+              "output_rows": 30222336,
+              "activation_elements": 75718656,
+              "output_elements": 99135488,
+              "dot_elements": 225343176704,
+              "split_calls": 0,
+              "commands_m1": 912064,
+              "commands_m2": 0,
+              "commands_m3": 16192,
+              "commands_m4": 534336,
+              "commands_m5": 0,
+              "commands_m6": 0,
+              "commands_m7": 0,
+              "commands_m8": 0,
+              "native_qbexec": 1462592,
+              "emulated_commands": 0,
+              "command_dot_elements": 225343176704,
+              "segmented_commands": 0,
+              "context_fill": 4621,
+              "context_reuse": 853542,
+              "context_release": 4621
+            },
+            "GGML_RISCV_QBS_COVERAGE:Q6_K": {
+              "type": "Q6_K",
+              "candidate_tensors": 30,
+              "selected_tensors": 30,
+              "segmented_tensors": 0,
+              "candidate_elements": 827850752,
+              "selected_elements": 827850752,
+              "fallback_runtime": 0,
+              "fallback_format_filter": 0,
+              "fallback_capability": 0,
+              "fallback_dimensions": 0,
+              "fallback_shape": 0,
+              "fallback_layout": 0,
+              "fallback_profile": 0,
+              "fallback_dispatch": 0
+            },
+            "GGML_RISCV_QBS_EXEC:Q6_K": {
+              "type": "Q6_K",
+              "gemv_calls": 1597,
+              "gemm_calls": 54,
+              "input_rows": 5242,
+              "output_rows": 10957824,
+              "activation_elements": 21082112,
+              "output_elements": 16405504,
+              "dot_elements": 54788096000,
+              "split_calls": 0,
+              "commands_m1": 339872,
+              "commands_m2": 0,
+              "commands_m3": 1280,
+              "commands_m4": 42240,
+              "commands_m5": 0,
+              "commands_m6": 0,
+              "commands_m7": 0,
+              "commands_m8": 0,
+              "native_qbexec": 383392,
+              "emulated_commands": 0,
+              "command_dot_elements": 54788096000,
+              "segmented_commands": 0,
+              "context_fill": 56,
+              "context_reuse": 290416,
+              "context_release": 56
+            }
+          },
+          "actual_quant_counts": {
+            "step": 999,
+            "mode": "final",
+            "generic_calls": 5320,
+            "register_calls": 0,
+            "prefill_calls": 28,
+            "generic_ok": 5320,
+            "register_ok": 0,
+            "prefill_ok": 28,
+            "fallback": 0,
+            "failed": 0,
+            "invalid_success": 0,
+            "generic_commands": 147840,
+            "register_commands": 0,
+            "prefill_commands": 79520,
+            "generic_groups": 42560,
+            "register_groups": 0,
+            "prefill_groups": 30240,
+            "generic_values": 4064480,
+            "register_values": 0,
+            "prefill_values": 2056320
+          }
+        },
+        "optimized": {
+          "metrics": {
+            "prompt_eval_seconds": 493.03989,
+            "decode_eval_seconds": 610.09941,
+            "inference_seconds": 1119.31
+          },
+          "projection_coverage": {
+            "GGML_RISCV_QBS_COVERAGE:Q4_K": {
+              "type": "Q4_K",
+              "candidate_tensors": 169,
+              "selected_tensors": 169,
+              "segmented_tensors": 0,
+              "candidate_elements": 1207959552,
+              "selected_elements": 1207959552,
+              "fallback_runtime": 0,
+              "fallback_format_filter": 0,
+              "fallback_capability": 0,
+              "fallback_dimensions": 0,
+              "fallback_shape": 0,
+              "fallback_layout": 0,
+              "fallback_profile": 0,
+              "fallback_dispatch": 0
+            },
+            "GGML_RISCV_QBS_EXEC:Q4_K": {
+              "type": "Q4_K",
+              "gemv_calls": 9242,
+              "gemm_calls": 332,
+              "input_rows": 31652,
+              "output_rows": 30222336,
+              "activation_elements": 75718656,
+              "output_elements": 99135488,
+              "dot_elements": 225343176704,
+              "split_calls": 0,
+              "commands_m1": 912064,
+              "commands_m2": 0,
+              "commands_m3": 16192,
+              "commands_m4": 534336,
+              "commands_m5": 0,
+              "commands_m6": 0,
+              "commands_m7": 0,
+              "commands_m8": 0,
+              "native_qbexec": 1462592,
+              "emulated_commands": 0,
+              "command_dot_elements": 225343176704,
+              "segmented_commands": 0,
+              "context_fill": 4621,
+              "context_reuse": 853542,
+              "context_release": 4621
+            },
+            "GGML_RISCV_QBS_COVERAGE:Q6_K": {
+              "type": "Q6_K",
+              "candidate_tensors": 30,
+              "selected_tensors": 30,
+              "segmented_tensors": 0,
+              "candidate_elements": 827850752,
+              "selected_elements": 827850752,
+              "fallback_runtime": 0,
+              "fallback_format_filter": 0,
+              "fallback_capability": 0,
+              "fallback_dimensions": 0,
+              "fallback_shape": 0,
+              "fallback_layout": 0,
+              "fallback_profile": 0,
+              "fallback_dispatch": 0
+            },
+            "GGML_RISCV_QBS_EXEC:Q6_K": {
+              "type": "Q6_K",
+              "gemv_calls": 1597,
+              "gemm_calls": 54,
+              "input_rows": 5242,
+              "output_rows": 10957824,
+              "activation_elements": 21082112,
+              "output_elements": 16405504,
+              "dot_elements": 54788096000,
+              "split_calls": 0,
+              "commands_m1": 339872,
+              "commands_m2": 0,
+              "commands_m3": 1280,
+              "commands_m4": 42240,
+              "commands_m5": 0,
+              "commands_m6": 0,
+              "commands_m7": 0,
+              "commands_m8": 0,
+              "native_qbexec": 383392,
+              "emulated_commands": 0,
+              "command_dot_elements": 54788096000,
+              "segmented_commands": 0,
+              "context_fill": 56,
+              "context_reuse": 290416,
+              "context_release": 56
+            }
+          },
+          "actual_quant_counts": {
+            "step": 999,
+            "mode": "final",
+            "generic_calls": 0,
+            "register_calls": 1540,
+            "prefill_calls": 28,
+            "generic_ok": 0,
+            "register_ok": 1540,
+            "prefill_ok": 28,
+            "fallback": 0,
+            "failed": 0,
+            "invalid_success": 0,
+            "generic_commands": 0,
+            "register_commands": 68320,
+            "prefill_commands": 55328,
+            "generic_groups": 0,
+            "register_groups": 12320,
+            "prefill_groups": 7616,
+            "generic_values": 0,
+            "register_values": 2008160,
+            "prefill_values": 532896
+          }
+        }
+      },
+      "limits": [
+        "One complete-answer pair; balanced restored-prefix timing grid is separate evidence.",
+        "Same native QK arithmetic on both sides. Increment is Register-PV and grouped Prefill, not native QK itself.",
+        "Prefill aggregate counters include generic child counters; do not add them as physical work.",
+        "No F16-versus-quantized quality or isolated old/new-RTL speedup claim."
+      ]
+    },
+    "latest_hardware_stage_time_fractions": null
+  },
+  "graph": {
+    "state": "HISTORICAL_LOG_CHECKER_REPLAY_PASS",
+    "measured": {
+      "state": "FUNCTIONAL_RECORDS_PASS",
+      "graphs": 6,
+      "records": 3894,
+      "logits_compared": 911616,
+      "performance_measured": false,
+      "hardware_command_counts_verified": false,
+      "reuse_counts_verified": true,
+      "native_call_shapes_verified": true,
+      "native_calls_per_mode": 472008,
+      "native_calls_per_step": [
+        189772,
+        23116,
+        23116,
+        189772,
+        23116,
+        23116
+      ],
+      "graph_schedule_verified": true,
+      "schedule_groups_per_mode": 3894,
+      "cache_final": {
+        "epoch": 6,
+        "s0": 2208,
+        "s1": 1328,
+        "s2": 880,
+        "s3": 880,
+        "s4": 0,
+        "s5": 0,
+        "s6": 0,
+        "s7": 0,
+        "s8": 397672448,
+        "s9": 49467392,
+        "s10": 880,
+        "s11": 0,
+        "s12": 0,
+        "s13": 0
+      }
+    },
+    "result_sha256": "b2c28eb0e4b4fa5a2a1e1a02840cafd84eb3ca4c70becbdcaff72b05303e212b",
+    "log_sha256": "bf6b2594b2817cff51a1ce6f32ac04f13823be524308464b0d26a4062c143d43",
+    "all_historical_build_inputs_revalidated": false,
+    "interpretation": "QEMU functional records only; no hardware timing inference"
+  },
+  "remaining_gates": [
+    "Review/pin experimental SDK candidate before using it as a new production baseline",
+    "Measure current hardware per-stage times, including probe overhead, not QEMU timestamps",
+    "Match current RTL configuration and locked dependencies to any new simulator image",
+    "Do not combine F16 and quantized-KV cohorts or multiply their speedups"
+  ],
+  "audit_script_sha256": "b696026ae550f86f7492cd8000444f5e4d79d29b20d3e97b483ff00633dd1659"
+}
