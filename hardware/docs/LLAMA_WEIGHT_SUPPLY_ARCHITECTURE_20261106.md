@@ -755,3 +755,24 @@ speedup or a whole-model gain. Same-platform RVV, Prefill, translated access
 and resource-budget checks remain necessary before production promotion. The
 Decode receipt is `verification/performance/evidence/physical_supply_decode_20261106_01/result.json`;
 the still-running Prefill pair is not included in that acceptance.
+
+### ASIC Memory Mapping Gate
+
+All physical wide results above use actual generic SRAM, not `TARGET_SRAM_MC`.
+The latter branch in `ara_soc.sv` still directly attaches one 8192x128 macro
+per depth bank to the parameterized data bus. At 256 bits that is not a complete
+memory implementation: data/mask ports are truncated and a full 256-bit read
+cannot be supplied. Do not use that branch to claim a functioning wide ASIC
+or an area improvement. This does not invalidate the explicitly generic-memory
+experiments.
+
+Before any future ASIC comparison, retain the byte capacity independently of
+bus width and use two parallel 128-bit slices per 256-bit word. At the default
+1 MiB capacity, 128 bits requires eight depth banks of one macro; 256 bits
+requires four depth banks of two macros, still eight identical macros. Check
+independent byte masks, read-bank selection, idle/write hold, depth-bank edges
+and the one-cycle response, retaining the default first-slice instance names.
+Changing the default word count must preserve existing lane-derived defaults
+while allowing an independent bus-width override. This is an implementation
+gate and resource count, not measured logic area, timing or power. No synthesis
+is started by this plan.

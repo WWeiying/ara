@@ -680,3 +680,28 @@ The same ELF retains all 28 commands, 896 outputs, production contexts and CSR
 checks on both images. See `evidence/physical_supply_decode_20261106_01/`.
 This is the combined bus/native-ingress experiment, not an isolated SRAM change
 or model speedup; the Prefill pair is a separately pending result.
+
+### Completion-Matched Decode Preparation
+
+`decode_matched.cpp` places ordinary RVV and native SDK calls in one ABBA ELF.
+Both use the same four production quantizations, initial FCSR=8/VCSR=5/VSTART=0,
+and VCSR/FCSR/VSTART completion reads before each timed preparation/execution
+ends. All guards, bitwise comparisons, checksums and printing are outside the
+measured region. It does not subtract an assumed CSR latency from older data.
+
+The workload preserves all seven real first-Decode inputs and full K2048/6144,
+but uses N64. One bounded sample of the existing N128 VCS jobs observed about
+400 cycles/s; doubling their RVV work for N128 ABBA could exceed three hours.
+N64 retains two R32 output groups and two native N32 commands per part. The
+suite checks 1792 output values and 28 native commands. It is a representative
+call group, not a full-N or whole-model measurement. The old N128 jobs are
+unchanged. Actual wall time remains subject to RTL activity and checking costs.
+
+`build_decode_matched.py --output <fresh-dir> --driver-sha256 <reviewed-SHA>`
+reuses fourteen original objects and compiles only caller/data objects. Q4 R32,
+Q6 VLEN1024, quantizer and native SDK arithmetic are not recompiled. It verifies
+the real R32/R4 first-64-row byte prefixes and independent oracle prefixes;
+native weights may remain stored as the original complete N128 payload.
+`check_decode_matched.py` requires the appropriate oracle for each backend:
+QBS reference words versus separately executed RVV ISA words. Functionality
+does not require a speedup. A built ELF is not an executed or accepted result.
