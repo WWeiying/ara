@@ -127,5 +127,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     for name in ('qwen3', 'smol', 'boundary'):
         parser.add_argument('--'+name, type=Path, required=True)
+    parser.add_argument('--output', type=Path)
     args = parser.parse_args()
-    print(json.dumps(decide(args.qwen3, args.smol, args.boundary), indent=2))
+    if args.output is not None:
+        require(not args.output.exists() and args.output.resolve().parent == owner.OUT.resolve(),
+                'Use a fresh decision receipt under verification/out')
+    result = decide(args.qwen3, args.smol, args.boundary)
+    result.update(decision_source_sha256=sha(__file__), deployment_approved=False)
+    if args.output is not None:
+        owner.save(args.output, result)
+    print(json.dumps(result, indent=2))
