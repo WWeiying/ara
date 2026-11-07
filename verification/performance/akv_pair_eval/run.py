@@ -29,8 +29,8 @@ def combine(first, second):
 
 
 def load_checker(kind):
-    require(kind in ('qwen3_abba', 'regression'), 'Unknown evaluation kind')
-    path = HERE/'check.py' if kind == 'qwen3_abba' else HERE/'regression/check.py'
+    require(kind in ('qwen3_abba', 'regression', 'boundary'), 'Unknown evaluation kind')
+    path = HERE/'check.py' if kind == 'qwen3_abba' else HERE/kind/'check.py'
     require(path.is_file(), 'Reviewed checker is not prepared')
     spec = importlib.util.spec_from_file_location('akv_pair_'+kind+'_checker', path)
     module = importlib.util.module_from_spec(spec)
@@ -110,7 +110,7 @@ def run(args):
                     proof['log_sha256'] == digest(log) and proof['vector_trace_sha256'] == digest(vector),
                     'Independent protocol evidence/identity mismatch')
             verify(pins)
-            result.update(state='PASS', performance_measured=True, independent_protocol_checked=True,
+            result.update(state='PASS', performance_measured=args.kind != 'boundary', independent_protocol_checked=True,
                           post_pins_match=True, measured=measured, vector_command_work=vector_work,
                           wall_seconds=wall, artifacts={str(p): digest(p) for p in work.iterdir() if p.is_file()})
         verify(pins)
@@ -133,7 +133,7 @@ if __name__ == '__main__':
     parser.add_argument('--soc-build', type=Path, default=OUT/'chain_soc_admitted_20261107_01')
     parser.add_argument('--build', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--kind', choices=('qwen3_abba', 'regression'), default='qwen3_abba')
+    parser.add_argument('--kind', choices=('qwen3_abba', 'regression', 'boundary'), default='qwen3_abba')
     parser.add_argument('--timeout', type=int, default=10800)
     parser.add_argument('--preflight-only', action='store_true')
     def interrupted(sig, _frame):
