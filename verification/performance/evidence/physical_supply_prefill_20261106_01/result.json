@@ -1,0 +1,48 @@
+{
+  "state": "PHYSICAL_PREFILL_PAIR_RAW_REPLAY_PASS",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_physical_supply_sdk_pair_20261106_01",
+  "parent_result_sha256": "4e2b1fcd231cb3534d2224a60f70ec018fcf906e51b36a00dabd2070d98a1ae0",
+  "parent_source_pins_sha256": "2b1719608d5697f4067f4c630d511117035ce1d56d44cc9ae199995a36012e62",
+  "parent_source_pins_checked": 1634,
+  "accepted_children": {
+    "128": {
+      "result_sha256": "b6a799fd61b278925d003e351d1ff8e78c5f6883aad037bb76bc4702e955549c",
+      "source_pins_sha256": "fc90f234e222466912834f3d2c544bf55363561958f1a51f8b9e02997871710b"
+    },
+    "256": {
+      "result_sha256": "c3662ff14ce40631c04f10bde16f3c11a569c7ba66cf653ddaee0f4dd147be72",
+      "source_pins_sha256": "5ab582ec672a5f567de7d38d7fb81a1cbbbc00afd23c8db15da69a99e38d225c"
+    }
+  },
+  "same_elf_sha256": "4422e0562c951eebaec3593848d06c3e18fcd9bbf0b4c571a15fb69e814b5bea",
+  "raw_replay_api": "continue_supply_sdk.collect followed by check_supply_sdk.paired",
+  "m": 4,
+  "n_qkv": [2048, 1024, 1024],
+  "k": 2048,
+  "commands_per_width": 128,
+  "outputs_per_width": 16384,
+  "cycles128": {"region": 803294, "preparation": 57816, "admission": 4597, "execution": 740075},
+  "cycles256": {"region": 759604, "preparation": 52878, "admission": 4597, "execution": 701323},
+  "speedups": {"region": 1.0575168113911986, "preparation": 1.0933847724951775, "admission": 1.0, "execution": 1.0552555669784107},
+  "qbs_busy_cycles": {"128": 693319, "256": 656103},
+  "reader_r_beats": {"128": 404608, "256": 240768},
+  "weight_payload_bytes_per_width": 5259264,
+  "activation_payload_bytes_per_width": 1196032,
+  "dot_issue_count_per_width": 524288,
+  "initial_ten_percent_region_cycle_reduction_screen_pass": false,
+  "independent_protocol_checked": true,
+  "preparation_included": true,
+  "cold_weight_repack_included": false,
+  "matrix_dot_identical": true,
+  "performance_measured": true,
+  "whole_model": false,
+  "synthesis_run": false,
+  "area_measured": false,
+  "limits": [
+    "One reset trial per width; not a run-to-run distribution",
+    "Four real Prefill tokens with full QKV output N, not the entire prompt or model",
+    "Combined physical generic-RAM SoC width and native wide ingress; not unchanged-DDR scaling",
+    "Byte payload and arithmetic work are unchanged; fewer beats are not fewer model bytes",
+    "Decode and Prefill have different marginal benefits and their speedups are not multiplied"
+  ]
+}
