@@ -86,10 +86,58 @@ class BalancedSoc(unittest.TestCase):
                 artifact.write_text('changed\n')
                 with self.assertRaises(ValueError):
                     b.receipt(root, b.digest(path), b.STATES['seed'], {})
+                artifact.write_text('functional reference checked\n')
                 value['post_pins_match'] = False
                 path.write_text(json.dumps(value))
-                with self.assertRaises(ValueError):
+                with self.assertRaisesRegex(ValueError, 'Unaccepted prerequisite'):
                     b.receipt(root, b.digest(path), b.STATES['seed'], {})
+
+    def test_seed_requires_actual_compiled_local_sources_not_inherited_hashes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            worker, source = root / 'worker', root / 'source'
+            worker.mkdir()
+            source.mkdir()
+            expected, pins, argv = {}, {}, ['/tool/vcs']
+            for name in b.CLONES:
+                path = source / name
+                path.write_text('module ' + path.stem + '; endmodule\n')
+                expected[name] = pins[str(path)] = b.digest(path)
+                # These inherited copies deliberately retain every matching hash.
+                pins[str(root / 'inherited' / name)] = expected[name]
+                argv.append(str(path))
+            planned = dict(argv=argv, cwd=str(worker))
+            commands = [dict(planned, label='compile', returncode=0)]
+            def records():
+                for path, data in ((root / 'compile-command.json', planned),
+                                   (worker / 'commands.json', commands)):
+                    path.write_text(json.dumps(data))
+                    pins[str(path)] = b.digest(path)
+            records()
+            result = b.seed_sources(worker, pins, expected)
+            self.assertEqual(set(result), set(b.CLONES))
+            inherited_only = {p: sha for p, sha in pins.items() if not p.startswith(str(source) + '/')}
+            with self.assertRaisesRegex(ValueError, 'exact bound local module'):
+                b.seed_sources(worker, inherited_only, expected)
+            for field, bad in (('returncode', 1), ('cwd', '/foreign')):
+                original = commands[0][field]
+                commands[0][field] = bad
+                records()
+                with self.assertRaises(ValueError):
+                    b.seed_sources(worker, pins, expected)
+                commands[0][field] = original
+            records()
+            for changed in (argv[:-1], [*argv, argv[-1]],
+                            [*argv[:-1], str(root / 'inherited' / b.CLONES[-1])]):
+                planned['argv'] = commands[0]['argv'] = changed
+                records()
+                with self.assertRaises(ValueError):
+                    b.seed_sources(worker, pins, expected)
+            planned['argv'] = commands[0]['argv'] = argv
+            records()
+            (worker / 'commands.json').write_text('[]')
+            with self.assertRaisesRegex(ValueError, 'Unbound seed compiler record'):
+                b.seed_sources(worker, pins, expected)
 
 
 if __name__ == '__main__':

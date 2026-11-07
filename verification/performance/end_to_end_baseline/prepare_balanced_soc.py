@@ -100,6 +100,31 @@ def receipt(directory, expected, state, pins):
     return value
 
 
+def seed_sources(worker, pins, expected):
+    """Bind candidate modules to the executed seed compile, not inherited copies."""
+    commands_path = worker / 'commands.json'
+    planned_path = worker.parent / 'compile-command.json'
+    for path in (commands_path, planned_path):
+        require(pins.get(str(path)) == digest(path), 'Unbound seed compiler record: ' + str(path))
+    commands = json.loads(commands_path.read_text())
+    compiled = [row for row in commands if row['label'] == 'compile']
+    planned = json.loads(planned_path.read_text())
+    require(len(compiled) == 1 and compiled[0]['returncode'] == 0 and
+            compiled[0]['argv'] == planned['argv'] and
+            compiled[0]['cwd'] == planned['cwd'] == str(worker), 'Seed executed compiler recipe differs')
+    argv = compiled[0]['argv']
+    sources = [Path(arg) for arg in argv if arg.endswith('.sv')]
+    require(set(expected) == set(CLONES), 'Complete candidate module inventory required')
+    result = {}
+    for name, sha in expected.items():
+        local = worker.parent / 'source' / name
+        require([path for path in sources if path.name == name] == [local] and
+                local == local.resolve(strict=True) and pins.get(str(local)) == sha and digest(local) == sha,
+                'Seed did not compile the exact bound local module: ' + name)
+        result[name] = dict(path=str(local), sha256=sha)
+    return result
+
+
 def prepare(output, controller, controller_sha, seed, seed_sha):
     out = output.absolute()
     require(out == out.resolve() and out.is_relative_to(RUNS), 'Fresh sole-verification output')
@@ -120,7 +145,6 @@ def prepare(output, controller, controller_sha, seed, seed_sha):
         require(ctl['default_off_exact'] and ctl['original_and_candidate_read_work_equal'],
                 'Complete controller must retain original/off behavior and traffic')
         receipt(seed, seed_sha, STATES['seed'], pins)
-        seed_pins = json.loads((seed / 'source-pins.json').read_text())
         controller_pins = json.loads((controller / 'source-pins.json').read_text())
         receipt(COMPONENT, COMPONENT_SHA,
                 'BALANCED_COMPUTE_ORDER_FLAGS_WORK_DISABLED_AND_FAULTS_PASS', pins)
@@ -162,11 +186,13 @@ def prepare(output, controller, controller_sha, seed, seed_sha):
         addition = tree / ADDITION_REL
         addition.mkdir(parents=True)
         component_pins = json.loads((COMPONENT / 'source-pins.json').read_text())
+        seed_binding = seed_sources(seed, pins,
+            {name: component_pins[str(COMPONENT / 'source' / name)] for name in CLONES})
         for name in CLONES:
             source = COMPONENT / 'source' / name
             pin(source, component_pins[str(source)])
             require(digest(source) == controller_pins.get(str(controller / 'tree/balanced' / name)) and
-                    digest(source) in seed_pins.values(),
+                    digest(source) == seed_binding[name]['sha256'],
                     'Controller and seed gates must cover identical candidate modules: ' + name)
             target = addition / name
             shutil.copyfile(source, target)
@@ -188,9 +214,10 @@ def prepare(output, controller, controller_sha, seed, seed_sha):
         recipe = [arg.replace(str(old) + '/', str(tree) + '/') for arg in prior['recipe']]
         require(recipe.count('{filelist}') == 1 and recipe.count('-f') == 1 and
                 recipe[-2:] == ['-l', 'comp.vcs.log'], 'Inherited compiler recipe')
-        for name in ('selection.json', 'transforms.json'):
-            emit(out / name, selected if name == 'selection.json' else
-                 dict(vlsu=transform, controller=ctl_transform))
+        for name, value in (('selection.json', selected),
+                            ('transforms.json', dict(vlsu=transform, controller=ctl_transform)),
+                            ('seed-compiled-sources.json', seed_binding)):
+            emit(out / name, value)
             pin(out / name)
         verify_pins(pins)
         result.update(state='BALANCED_SOC_INPUTS_PREPARED', post_pins_match=True, source_root=str(tree),
