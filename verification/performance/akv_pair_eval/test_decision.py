@@ -13,6 +13,13 @@ spec.loader.exec_module(decision)
 
 
 class TestDecision(unittest.TestCase):
+    def test_json_schema_normalization_does_not_confuse_bools_and_counts(self):
+        self.assertEqual(decision.canonical({'shape': (1, 8, 1, 96, 0)}),
+                         decision.canonical({'shape': [1, 8, 1, 96, 0]}))
+        self.assertNotEqual(decision.canonical({'count': True}), decision.canonical({'count': 1}))
+        with self.assertRaises(ValueError):
+            decision.canonical({'cycles': float('nan')})
+
     def test_real_reduction_and_sample_spread(self):
         result = decision.effect([1000, 700, 710, 1010])
         self.assertAlmostEqual(result['speedup'], 1005/705)

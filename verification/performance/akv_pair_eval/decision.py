@@ -24,6 +24,10 @@ def sha(path):
     return h.hexdigest()
 
 
+def canonical(value):
+    return json.dumps(value, sort_keys=True, allow_nan=False, separators=(',', ':'))
+
+
 def effect(cycles):
     require(isinstance(cycles, list) and len(cycles) == 4 and
             all(type(x) is int and x > 0 for x in cycles), 'Four real full-call cycles required')
@@ -83,7 +87,7 @@ def checked_receipt(directory, kind):
     # Recompute from raw records: the terminal report cannot authenticate itself.
     fresh = checker.check_run(work/'run.vcs.log', Path(result['build']))
     vector = checker.check_vector_workcounts(work/'vector_trace.csv', Path(result['build']))
-    require(fresh == measured and vector == result['vector_command_work'],
+    require(canonical(fresh) == canonical(measured) and canonical(vector) == canonical(result['vector_command_work']),
             'Summary differs from independently recomputed numerical/cycle/work evidence')
     proof = json.loads(proofpath.read_text())
     require(proof['status'] == 'PASS' and proof['issues'] == [] and
