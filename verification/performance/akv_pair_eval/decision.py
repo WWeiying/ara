@@ -59,14 +59,33 @@ def checked_receipt(directory, kind):
     require(result['configuration'] == soc['configuration'] and
             result['image_sha256'] == sha(soc['simv']) and
             result['software_sha256'] == software['elf_sha256'], 'Image/software identity mismatch')
-    _, checker = owner.load_checker(kind)
-    work = directory/'work'
+    work, proofpath = directory/'work', directory/'work/uvm_result.json'
+    if result.get('evidence_kind') == 'POST_RUN_CHECKER_SEMANTICS_AUDIT':
+        spec = importlib.util.spec_from_file_location('decision_successor_audit',
+                Path(__file__).with_name('audit_successor.py'))
+        audit = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(audit)
+        original = Path(result['original_worker_report'])
+        require(sha(original) == result['original_worker_report_sha256'] and
+                result['original_worker_state'] == 'FAIL' and
+                result['original_worker_relabelled'] is False and result['new_rtl_execution'] is False,
+                'Original failed worker identity/scope changed')
+        audit.original_failure(json.loads(original.read_text()), kind)
+        work = Path(result['raw_work'])
+        require(work == original.parent/'work', 'Not the original raw execution')
+        proofpath = directory/'uvm_result.json'
+        path, checker = audit.load_checker(kind)
+        require(str(path) == result['checker_successor'] and sha(path) == result['checker_successor_sha256'],
+                'Successor checker identity mismatch')
+    else:
+        require('evidence_kind' not in result, 'Unknown audit scope')
+        _, checker = owner.load_checker(kind)
     # Recompute from raw records: the terminal report cannot authenticate itself.
     fresh = checker.check_run(work/'run.vcs.log', Path(result['build']))
     vector = checker.check_vector_workcounts(work/'vector_trace.csv', Path(result['build']))
     require(fresh == measured and vector == result['vector_command_work'],
             'Summary differs from independently recomputed numerical/cycle/work evidence')
-    proof = json.loads((work/'uvm_result.json').read_text())
+    proof = json.loads(proofpath.read_text())
     require(proof['status'] == 'PASS' and proof['issues'] == [] and
             proof['elf_sha256'] == software['elf_sha256'] and
             proof['log_sha256'] == sha(work/'run.vcs.log') and
