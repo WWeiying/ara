@@ -18,6 +18,8 @@ extern "C" {
 #define AKV_PREFILL_COMPUTE_TILE_TOKENS 2u
 /* Software numerical contract; this is not an ISA capability bit. */
 #define AKV_D256_ONLINE_FP16 1
+/* Call-local F16 scheduling; no descriptor or hardware ABI change. */
+#define AKV_NATIVE_AUTO_PAIR_POLICY 1
 
 typedef enum {
   AKV_STATUS_OK = 0,
@@ -226,6 +228,14 @@ void akv_v2_reference_release(akv_v2_reference_context_t *context);
 akv_status_t akv_attention_execute_native(const akv_attention_plan_t *plan);
 akv_status_t akv_attention_execute_v2_native(
     const akv_attention_plan_t *plan,
+    akv_attention_v2_workspace_t *workspace);
+/* Use capabilities already obtained by trap-safe platform admission. Select
+ * paired F16 heads before FULL when supported; otherwise retain the existing
+ * generic/specialized schedule. This entry does not read AKV_PAIR_HEADS.
+ * The caller still owns the context for the complete FULL..RELEASE lifetime.
+ */
+akv_status_t akv_attention_execute_v2_native_auto(
+    const akv_device_t *device, const akv_attention_plan_t *plan,
     akv_attention_v2_workspace_t *workspace);
 akv_status_t akv_attention_execute_v2_prefill_native(
     const akv_device_t *device,

@@ -41,6 +41,13 @@ float akv_attention_score_transform(float dot, float scale, uint16_t mask,
 akv_status_t akv_attention_execute_v2_with_features_native(
     const akv_attention_plan_t *plan, akv_attention_v2_workspace_t *workspace,
     const akv_attention_features_t *features);
+/* Auto-pair only after validation and normalization to plain scores. Features
+ * requiring the feature path retain its original generic/specialized schedule.
+ */
+akv_status_t akv_attention_execute_v2_with_features_native_auto(
+    const akv_device_t *device, const akv_attention_plan_t *plan,
+    akv_attention_v2_workspace_t *workspace,
+    const akv_attention_features_t *features);
 
 /* Mathematical F32 oracle. Unlike native execution, it does not round the
  * Value accumulator to F16 or approximate exp with the RVV polynomial.

@@ -104,6 +104,17 @@ extern void akv_v2_update_outputs_f16_d256_online(
 extern char *getenv(const char *name) __attribute__((weak));
 #include "../experimental/paired_heads/f32_pv/runtime.h"
 #include "../experimental/paired_heads/native_selection.h"
+#include "../experimental/paired_heads/auto_policy.h"
+
+static int auto_pair_enabled_for_plan(const akv_attention_plan_t *plan,
+                                      const akv_device_t *device,
+                                      unsigned plain_scores) {
+  if (!akv_pair_f16_auto_admitted(&plan->descriptor, device, 128u, plain_scores))
+    return 0;
+  uintptr_t vlenb;
+  __asm__ volatile("csrr %0, vlenb" : "=r"(vlenb));
+  return vlenb == 128u;
+}
 
 static int qk_panel4_enabled_for_plan(const akv_attention_plan_t *plan) {
   if (plan->descriptor.element_format != AKV_ELEMENT_FORMAT_F16 ||
@@ -570,10 +581,13 @@ static __attribute__((noinline)) akv_status_t execute_segmented_d256(
 }
 #endif
 
-akv_status_t akv_attention_execute_v2_with_features_native(
+static akv_status_t execute_v2_with_features_native_internal(
     const akv_attention_plan_t *plan,
     akv_attention_v2_workspace_t *workspace,
-    const akv_attention_features_t *features) {
+    const akv_attention_features_t *features,
+    const akv_device_t *auto_device, unsigned automatic) {
+  (void)auto_device;
+  (void)automatic;
   const int segmented_d256 =
       plan != NULL && plan->d_segment_count == 2u;
   if (workspace == NULL ||
@@ -611,7 +625,9 @@ akv_status_t akv_attention_execute_v2_with_features_native(
   const int overlap_refill = AKV_REFILL_OVERLAP &&
       akv_refill_workspace_disjoint(&plan->descriptor, workspace, sizeof(*workspace));
   const int qk_panel4 = qk_panel4_enabled_for_plan(plan);
-  const int paired_heads = akv_pair_candidate_enabled_for_plan(plan);
+  const int paired_heads = automatic
+      ? auto_pair_enabled_for_plan(plan, auto_device, features == NULL)
+      : akv_pair_candidate_enabled_for_plan(plan);
   void (*const compute_scores_d128_gqa6)(const uint16_t *, float *, uint32_t, size_t) =
       qk_panel4 ? akv_v2_compute_scores_f16_d128_gqa6_panel4
                 : akv_v2_compute_scores_f16_d128_gqa6;
@@ -665,6 +681,27 @@ akv_status_t akv_attention_execute_v2_with_features_native(
 #else
   return AKV_STATUS_RUNTIME_UNAVAILABLE;
 #endif
+}
+
+akv_status_t akv_attention_execute_v2_with_features_native(
+    const akv_attention_plan_t *plan,
+    akv_attention_v2_workspace_t *workspace,
+    const akv_attention_features_t *features) {
+  return execute_v2_with_features_native_internal(plan, workspace, features, NULL, 0u);
+}
+
+akv_status_t akv_attention_execute_v2_with_features_native_auto(
+    const akv_device_t *device, const akv_attention_plan_t *plan,
+    akv_attention_v2_workspace_t *workspace,
+    const akv_attention_features_t *features) {
+  if (device == NULL) return AKV_STATUS_BAD_ARGUMENT;
+  return execute_v2_with_features_native_internal(plan, workspace, features, device, 1u);
+}
+
+akv_status_t akv_attention_execute_v2_native_auto(
+    const akv_device_t *device, const akv_attention_plan_t *plan,
+    akv_attention_v2_workspace_t *workspace) {
+  return akv_attention_execute_v2_with_features_native_auto(device, plan, workspace, NULL);
 }
 
 akv_status_t akv_attention_execute_v2_native(
