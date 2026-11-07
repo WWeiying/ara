@@ -214,7 +214,7 @@ def main():
         save(out / 'build.json', result)
         status.update(state=result['state'], finished=datetime.now(timezone.utc).isoformat())
         save(status_path, status)
-        print(json.dumps(dict(state=result['state'], output=str(out)), flush=True))
+        print(json.dumps(dict(state=result['state'], output=str(out))), flush=True)
     except BaseException as exc:
         status.update(state='FAIL', error=repr(exc), child_pid=None,
                       finished=datetime.now(timezone.utc).isoformat())

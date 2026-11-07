@@ -1,4 +1,5 @@
 import importlib.util
+import ast
 from pathlib import Path
 import tempfile
 import unittest
@@ -9,6 +10,13 @@ spec.loader.exec_module(build)
 
 
 class TestFrozenGraph(unittest.TestCase):
+    def test_json_encoder_does_not_receive_print_options(self):
+        tree = ast.parse(Path(build.__file__).read_text())
+        calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call) and
+                 isinstance(node.func, ast.Attribute) and node.func.attr == 'dumps']
+        self.assertTrue(calls)
+        self.assertTrue(all(k.arg != 'flush' for call in calls for k in call.keywords))
+
     def test_freeze_and_configuration(self):
         with tempfile.TemporaryDirectory() as name:
             root = Path(name)
