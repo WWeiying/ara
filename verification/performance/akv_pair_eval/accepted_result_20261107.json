@@ -1,0 +1,81 @@
+{
+  "state": "PASS",
+  "goal_met": true,
+  "hardware_changed": false,
+  "whole_model_speedup_measured": false,
+  "ppa_measured": false,
+  "fpga_validated": false,
+  "initial_performance": {
+    "state": "EVIDENCE_RECHECKED",
+    "primary": {
+      "cycles": [
+        52899,
+        37522,
+        37478,
+        52297
+      ],
+      "generic_mean": 52598.0,
+      "paired_mean": 37500.0,
+      "speedup": 1.4026133333333333,
+      "cycle_reduction": 0.2870451347959998,
+      "largest_within_arm_spread": 602,
+      "improvement_exceeds_arm_spread": true,
+      "all_paired_samples_faster": true
+    },
+    "secondary": {
+      "cycles": [
+        15524,
+        14145,
+        14302,
+        14691
+      ],
+      "generic_mean": 15107.5,
+      "paired_mean": 14223.5,
+      "speedup": 1.062150666151088,
+      "cycle_reduction": 0.05851398312096645,
+      "largest_within_arm_spread": 833,
+      "improvement_exceeds_arm_spread": true,
+      "all_paired_samples_faster": true
+    },
+    "candidate_eligible_for_call_local_integration": true,
+    "production_default_changed": false,
+    "model_speedup_measured": false,
+    "evidence": {
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv_pair_qwen3_vcs_20261107_01/result.json": "e116d8fa37f51a2f7f906a5b4e63f2ff031a8242c48598ddfc8a99b6d1231ab9",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv_pair_smollm_audit_20261107_01/result.json": "de68227cf034921aecec4dfc30bdbc0f3f938dcb49483bc9f9d0f9ff0fab5e92",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/akv_pair_boundary_audit_20261107_01/result.json": "67d9dd8774108beccf1defab7e6ae0178e9102b2d98bb24b9cc39a4ad0bcc274"
+    },
+    "next_step": "Validate call-local SDK/GGML selection and fallback",
+    "decision_source_sha256": "c38f5d68205f425cfd7fddffab2cf4b4528aa519cf6f81dbb861d871ee71cef2",
+    "deployment_approved": false
+  },
+  "integrated_full_call_effect": {
+    "cycles": [
+      52677,
+      36203,
+      36579,
+      52121
+    ],
+    "generic_mean": 52399.0,
+    "paired_mean": 36391.0,
+    "speedup": 1.4398889835398863,
+    "cycle_reduction": 0.3055020133972023,
+    "largest_within_arm_spread": 556,
+    "improvement_exceeds_arm_spread": true,
+    "all_paired_samples_faster": true
+  },
+  "sdk_commit": "b7c9e6c3c1f8c5e469c130f46ec5bbfaf37a55d1",
+  "llama_commit": "03959acc0f649f9071668d5b72888284e4676d2b",
+  "current_rvv_qbs_reference_evidence": {
+    "chain_q6_integrity_vcs_20261107_01": {
+      "receipt_sha256": "40a531887cb7686fde5fbddbb8eb08ce10a645aba959b754a09a2a8d8b8eafbe",
+      "note": "Revalidated immutable representative evidence; unchanged implementation, not a new run"
+    },
+    "chain_profile_runs_20261107_01/smoke": {
+      "receipt_sha256": "01cf66555718c4275c9d10d9629cc9b05143ca5003a4392d16ffbc72d98c87cb",
+      "note": "Revalidated immutable representative evidence; unchanged implementation, not a new run"
+    }
+  },
+  "source_pins_sha256": "95b0062886c4eed4ed609e26948099785c4b65e667f7ffe4e060e7822062c903",
+  "scope": "Current-image SDK full-call performance plus new-API boundary/fallback and real GGML compilation; not model/board/PPA acceptance"
+}
