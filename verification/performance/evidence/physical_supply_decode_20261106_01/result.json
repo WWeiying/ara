@@ -1,0 +1,43 @@
+{
+  "state": "PHYSICAL_DECODE_PAIR_RAW_REPLAY_PASS",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_physical_supply_sdk_pair_20261106_01",
+  "accepted_children": {
+    "128": {
+      "result_sha256": "bf3e9037415b4e27f6c544ec5767144e2570e387e42d32116a0df8de8cfe5b57",
+      "source_pins_sha256": "70e5fd9e053456ed65a2a17f346c495a90e7e176614827c5dca85e17a8b6b8dc"
+    },
+    "256": {
+      "result_sha256": "6e8d20b1e61822062c1a6fe2f01f64c4dc953b4b91a876cbf8bda5010818588d",
+      "source_pins_sha256": "950298f102a4d7ec115e4211080d4d7f6627195b3a6b9e50d4c92e0cea9bce56"
+    }
+  },
+  "same_elf_sha256": "6f321585e2f25e9037269733a2fc0e3217c19c7d5345ed7cb6d45ab9b9a1256b",
+  "m": 1,
+  "n": 128,
+  "k": [2048, 2048, 2048, 2048, 2048, 6144, 2048],
+  "commands_per_width": 28,
+  "outputs_per_width": 896,
+  "checked_source_pins_per_width": 1532,
+  "raw_replay_api": "continue_supply_sdk.collect, followed by check_supply_sdk.paired",
+  "cycles128": {"region": 227810, "preparation": 68377, "admission": 11610, "execution": 145475},
+  "cycles256": {"region": 194611, "preparation": 65243, "admission": 11610, "execution": 115410},
+  "speedups": {"region": 1.17059159040342, "preparation": 1.0480358046073908, "admission": 1.0, "execution": 1.2605060220084914},
+  "qbs_busy_cycles": {"128": 130052, "256": 100071},
+  "reader_r_beats": {"128": 107012, "256": 55300},
+  "initial_ten_percent_region_cycle_reduction_screen_pass": true,
+  "independent_protocol_checked": true,
+  "preparation_included": true,
+  "cold_weight_repack_included": false,
+  "matrix_dot_identical": true,
+  "performance_measured": true,
+  "whole_model": false,
+  "synthesis_run": false,
+  "area_measured": false,
+  "limits": [
+    "Only immutable completed Decode children are accepted; the parent Prefill campaign remains active",
+    "One reset trial per width, not a run-to-run distribution",
+    "Combined physical SoC width and native wide ingress; not isolated QBS arithmetic or unchanged-DDR scaling",
+    "Full K and real model inputs, but only seven N128 output prefixes, not whole-model timing",
+    "Same-platform RVV, Prefill, translated access and resource-budget checks remain separate"
+  ]
+}

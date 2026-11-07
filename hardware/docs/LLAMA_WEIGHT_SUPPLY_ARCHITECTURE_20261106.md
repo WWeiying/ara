@@ -729,3 +729,29 @@ memory/handoff gate, replays the exact-ELF ISA evidence, and checks all output
 words/state plus independent protocol after VCS. It cannot declare an SDK ratio.
 No RVV job is silently added to the existing SDK queue; full-QKV RVV remains
 pending.
+
+### First Physical Decode Supply Result
+
+The actual 128/256-bit Decode pair passes the numerical, payload, context,
+CSR and independent protocol checks, followed by raw-log replay. It uses one
+unchanged ELF, 28 commands and 896 outputs with full K and N128 prefixes; both
+images retain the same matrix-dot arithmetic and 16 MiB physical memory capacity.
+
+| Measured SDK interval/activity | 128-bit | 256-bit | Time ratio |
+| --- | ---: | ---: | ---: |
+| Preparation | 68377 | 65243 | 1.04804x |
+| Admission | 11610 | 11610 | 1.00000x |
+| Execution | 145475 | 115410 | 1.26051x |
+| Complete measured region | 227810 | 194611 | 1.17059x |
+| QBS busy cycles | 130052 | 100071 | -- |
+| Shared-reader R beats | 107012 | 55300 | -- |
+
+The measured region falls by 14.5731%, exceeding the initial 10% cycle-reduction
+screen. The preparation change is also consistent with the fact that physical
+bus width affects ordinary RVV/scalar traffic, not only QBS. This pair therefore
+measures the combined physical-supply/native-ingress change, not an isolated
+assembler or wider arithmetic benefit. It does not establish an unchanged-DDR
+speedup or a whole-model gain. Same-platform RVV, Prefill, translated access
+and resource-budget checks remain necessary before production promotion. The
+Decode receipt is `verification/performance/evidence/physical_supply_decode_20261106_01/result.json`;
+the still-running Prefill pair is not included in that acceptance.

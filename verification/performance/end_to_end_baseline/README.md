@@ -673,3 +673,10 @@ complete-call ratio: the driver has extra timed CSR observations. Actual
 disassembly proves both drivers seed VCSR=5, not different initial values.
 Use directly owned systemd workers and distinct width-specific output directories;
 this helper does not alter the running SDK queue or launch synthesis.
+
+The physical Decode SDK pair has completed: 227810 -> 194611 cycles including
+preparation (1.17059x); its execution interval is 145475 -> 115410 (1.26051x).
+The same ELF retains all 28 commands, 896 outputs, production contexts and CSR
+checks on both images. See `evidence/physical_supply_decode_20261106_01/`.
+This is the combined bus/native-ingress experiment, not an isolated SRAM change
+or model speedup; the Prefill pair is a separately pending result.
