@@ -111,6 +111,15 @@ activity checks. All validation is outside the measured calls. Performance
 and production GGML integration are pending until the resulting evidence is
 accepted; the sum-only result is not relabeled as this candidate's gain.
 
+The vector-output build now passes its exact-ELF Spike check: 40,960 real-data
+outputs, the original 53+10 checks, and 155 new output cases. These include 110
+nonempty vector calls, five empty calls and 40 scalar overlap fallbacks; the
+cross-model output/state fingerprint is 1608777801. Actual VCS execution is
+running in the sole verification tree and has reached real vector handshakes.
+This is functional ISA evidence, not a target speedup. The frozen build and
+ISA log identities are recorded in
+`verification/performance/evidence/rms_vector_output_preparation_20261106_01/result.json`.
+
 The experiment tools are in
 `verification/performance/end_to_end_baseline/` (`prepare_rms_norm_data.py`,
 `build_rms_norm_native.py`, `build_rms_norm_completion.py`,
