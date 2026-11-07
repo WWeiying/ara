@@ -39,6 +39,14 @@ def spike_command(plugin, elf):
             '--device=spike_soc_ports', '--instructions=20000000', str(elf)]
 
 
+def plugin_command(source, plugin):
+    # Keep fesvr qualified through the repository root. A bare -I<root>/fesvr
+    # shadows the host <syscall.h> and breaks libstdc++'s Linux futex headers.
+    return ['/usr/bin/g++', '-std=c++20', '-O2', '-Wall', '-Wextra', '-Werror', '-fPIC', '-shared',
+            '-I'+str(SPIKE_ROOT), '-I'+str(SPIKE_ROOT / 'riscv'), '-I'+str(SPIKE_ROOT / 'build'),
+            str(source), '-o', str(plugin)]
+
+
 def main(output, execute):
     out = output.absolute()
     require(out == out.resolve() and out.is_relative_to(RUNS), 'Fresh sole-verification output')
@@ -82,9 +90,7 @@ def main(output, execute):
             memory_scope='Low 16 MiB data plus separate high 16 MiB stack region; no alias/translation proof')
         if execute:
             source = HERE / 'spike_soc_ports.cc'; plugin = out / 'spike_soc_ports.so'
-            compile_cmd = ['/usr/bin/g++', '-std=c++20', '-O2', '-Wall', '-Wextra', '-Werror', '-fPIC', '-shared',
-                '-I'+str(SPIKE_ROOT), '-I'+str(SPIKE_ROOT / 'riscv'), '-I'+str(SPIKE_ROOT / 'fesvr'),
-                '-I'+str(SPIKE_ROOT / 'build'), str(source), '-o', str(plugin)]
+            compile_cmd = plugin_command(source, plugin)
             text = run([*compile_cmd[:compile_cmd.index(str(source))], '-M', '-MT', 'object', str(source)], 'plugin-deps')
             for path in shlex.split(text.replace('\\\n', ' ').split(':',1)[1]): pin(path)
             run(compile_cmd, 'plugin-build'); pin(plugin)

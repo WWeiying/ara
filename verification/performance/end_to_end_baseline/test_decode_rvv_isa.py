@@ -1,10 +1,16 @@
 from pathlib import Path
 import unittest
 
-from run_decode_rvv_isa import libraries, spike_command, SPIKE
+from run_decode_rvv_isa import libraries, spike_command, plugin_command, SPIKE, SPIKE_ROOT
 
 
 class DecodeRVVISATests(unittest.TestCase):
+    def test_host_syscall_header_cannot_be_shadowed_by_fesvr(self):
+        argv = plugin_command('/source/ports.cc', '/output/ports.so')
+        self.assertIn('-I'+str(SPIKE_ROOT), argv)
+        self.assertNotIn('-I'+str(SPIKE_ROOT/'fesvr'), argv)
+        self.assertIn('-Werror', argv)
+
     def test_exact_elf_and_io_only_extlib_configuration(self):
         elf = Path('/immutable/input.elf'); plugin = Path('/isolated/ports.so')
         argv = spike_command(plugin, elf)
