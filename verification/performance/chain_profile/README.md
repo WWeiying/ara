@@ -91,7 +91,8 @@ non-package workload directories):
 
 ```sh
 python3 -B -m unittest discover -s verification/performance/chain_profile -p 'test_*.py' -v
-python3 -B -m unittest discover -s verification/performance/chain_profile/q6_decode -p 'test_*.py' -v
+Q6_INTEGRITY_BUILD=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/chain_q6_build_20261107_integrity02 \
+  python3 -B -m unittest discover -s verification/performance/chain_profile/q6_decode -p 'test_*.py' -v
 python3 -B -m unittest discover -s verification/performance/chain_profile/f16_decode/tests -p 'test_*.py' -v
 ```
 
