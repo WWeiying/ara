@@ -1,0 +1,38 @@
+{
+  "state": "RMS_GGML_SINGLE_MEMBER_LIBRARY_REVIEWED",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_rms_ggml_library_20261106_03",
+  "result_sha256": "5056fa1e9c42cfb4b5b71b21d933a7602de1cbf77a8ea62fdeee81aa8eb2e30f",
+  "source_pins_sha256": "5f4aeec4420672e6885a27c5e89288f5d8a0047a68f986fb156322ab388452f6",
+  "baseline_library_sha256": "d335a23205c19f0f4e4e8e77b4160812a925b3e848cb967b4479b0a6f4d29c5f",
+  "candidate_library_sha256": "874f2bbfeee8b3acc88976b4166556061a7c43c728edfd2027de603821184087",
+  "original_object_sha256": "297273cf9d004c829e1584852d25ee393a55cc157871058ace3892c4528d22a7",
+  "candidate_object_sha256": "6b5e75d66bffb12588dfc3aa95552b660586d179cbcc0204ea8567051691d899",
+  "member": "ops.cpp.o",
+  "members": 32,
+  "unchanged_other_members": 31,
+  "original_object_reproduced_exactly": true,
+  "public_exports_unchanged": true,
+  "baseline_already_auto_vectorizes": true,
+  "wrapper_tests": {
+    "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_rms_ggml_runtime_20261106_02",
+    "result_sha256": "895268bb6db8b51c8b206ac31a79910b2c1aabb520fec62089bf3e77b97b3430",
+    "source_pins_sha256": "b04b828b94c4a634fe1f7431a8ada2daf359453105f354cdec79e7bce244e499",
+    "width_rounding_cases": 90,
+    "alias_cases": 30,
+    "rejected_cases": 7,
+    "rounding_modes": 5,
+    "host_non_rvv_and_spike_pass": true
+  },
+  "llama_commit": "51027ec64",
+  "default_enabled": false,
+  "production_library_promoted": false,
+  "whole_model_functional_acceptance": false,
+  "performance_measured": false,
+  "rtl_changed": false,
+  "limitations": [
+    "Full-model paired execution is a separate pending gate",
+    "The isolated scalar-baseline Norm speedup is not the production-library speedup",
+    "Default-disabled RVV policy retains per-operator CSR capture; zero overhead is not claimed",
+    "Earlier failed build and fixture attempts remain archived"
+  ]
+}
