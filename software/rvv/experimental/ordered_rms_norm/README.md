@@ -69,6 +69,48 @@ the vector trace, the expected hardware configuration and an independent
 protocol PASS. Performance improvement is not a condition for functional PASS.
 No candidate is promoted on host replay, disassembly or launch alone.
 
+## Guarded fused output candidate
+
+The completed sum-only experiment preserves a remaining scalar loop in the
+production fused function: load input and weight, multiply twice, then `fsw`
+one output. The actual original object has two `fmul.s` instructions and an
+`fsw` in that loop; the unfused path's vector scale must not be mistaken for
+vectorization of the fused path. Sum-only complete-call speedups are about
+1.099x Decode and 1.108x Prefill. They do not establish that the remaining
+output loop is already efficient.
+
+`rms_output.h` is a separate candidate for that loop. It loads a strip of X and
+weights before writing, performs `vfmul.vf` followed by `vfmul.vv`, and stores
+only its active elements. It preserves `(x * scale) * weight`, including the
+two FP32 roundings; the square-sum, FP64 ordering, mean, epsilon and reciprocal
+are not changed. No fused operation or new RTL is introduced.
+
+The destination must be either exactly equal to, or wholly disjoint from,
+each input row separately. Exact X/Y/weight aliasing is permitted; shifted
+overlaps return false so the caller executes the original forward scalar loop.
+The test oracle must use that sequential overlap behavior, not copy inputs
+first. Alias checks use overflow-checked byte lengths and integer addresses,
+not ordering comparisons between unrelated C++ pointers. No `restrict` is
+introduced. An empty output helper is a no-op; it does not make zero-width
+RMSNorm a supported operation.
+
+The contract remains ordinary valid tensor memory, entry VSTART=0, and no
+observer of intermediate exception timing. VL/VTYPE may change under the RVV
+calling convention. Final FCSR/FRM/sticky flags, VCSR and VSTART are checked;
+the change does not preserve MMIO access order or arbitrary memory-fault order.
+
+`build_rms_output.py` reuses the checked data, original/strict original kernels,
+shape helper and runtime objects. It compiles only the two candidate objects,
+the completed caller and output boundary tests. The original 40,960 real-data
+outputs, 53 norm boundary cases and ten FP64 order-sensitive cases remain.
+Additional tests exercise exact/shifted aliases across strips and output IEEE
+conditions in all five legal rounding modes. `run_rms_output.py` first checks
+the exact ELF in Spike, then runs one bounded ABBA VCS experiment on the
+already accepted processor image, with independent protocol and actual vector
+activity checks. All validation is outside the measured calls. Performance
+and production GGML integration are pending until the resulting evidence is
+accepted; the sum-only result is not relabeled as this candidate's gain.
+
 The experiment tools are in
 `verification/performance/end_to_end_baseline/` (`prepare_rms_norm_data.py`,
 `build_rms_norm_native.py`, `build_rms_norm_completion.py`,
