@@ -1,0 +1,33 @@
+{
+  "state": "REAL_FUSED_RMS_VECTOR_OUTPUT_SCOPED_ACCEPTANCE_INDEPENDENTLY_REPLAYED",
+  "collector": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_rms_vector_output_collect_20261106_01/result.json",
+  "collector_sha256": "e1bb2b2711e2e2626fdd19f0e36be1f33d0e2587d7ca6460afc0489051f8b5d8",
+  "collector_pins_sha256": "dca3015c2e0d0699930913316366b97d5e72942e7e9fa4a72bdb0d18088e76e8",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_rms_vector_output_vcs_20261106_01",
+  "result_sha256": "8470bc66e5f1f0199b5d1fcd0e775a48dd2e0a38bccc368a0debba885c9b2127",
+  "source_pins_sha256": "a46ba7cd52c14377b5b4ee2462a252515d3ea4122f538f46b82be3a1ed7bb37f",
+  "elf_sha256": "dca9f7c24dc84463babc317c670165c243cfa2d6493f1f0c0b03ef9f02a32884",
+  "decode_baseline_cycles": [55591, 55405],
+  "decode_candidate_cycles": [23544, 23258],
+  "decode_call_speedup": 2.371608050937994,
+  "prefill4_baseline_cycles": [222325, 222231],
+  "prefill4_candidate_cycles": [87762, 87646],
+  "prefill4_call_speedup": 2.534411201313509,
+  "outputs_checked": 40960,
+  "output_boundary_cases": 155,
+  "boundary_cases": 53,
+  "order_sensitive_sum_cases": 10,
+  "ordered_widening_reduction_allocations": 288,
+  "vector_output_store_allocations": 458,
+  "timing_includes_csr_completion": true,
+  "independent_protocol_checked": true,
+  "whole_model": false,
+  "production_library_changed": false,
+  "rtl_changed": false,
+  "limits": [
+    "Complete fused first-layer norm calls at width2048, actual original/candidate same-ELF ABBA",
+    "Embedding-derived inputs and original captured-output agreement retained",
+    "Not a new GGML production deployment or a whole-model speedup",
+    "No RTL or physical implementation change; no new PPA measurement"
+  ]
+}
