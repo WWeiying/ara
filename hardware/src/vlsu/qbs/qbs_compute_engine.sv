@@ -5,10 +5,7 @@ module qbs_compute_engine
   import qbs_pkg::*;
   import fpnew_pkg::*;
 #(
-  parameter bit SeedRestoreEnable = 1'b0,
-  parameter bit WideMatrixDot = 1'b0,
-  parameter bit WideWeightIngress = 1'b0,
-  localparam int unsigned WeightDataWidth = WideWeightIngress ? 256 : 128
+  parameter bit SeedRestoreEnable = 1'b0
 )
 (
   input  logic                    clk_i,
@@ -47,8 +44,8 @@ module qbs_compute_engine
   input  logic                    weight_write_group_i,
   input  logic [1:0]              weight_write_row_i,
   input  logic [9:0]              weight_write_offset_i,
-  input  logic [WeightDataWidth-1:0] weight_write_data_i,
-  input  logic [WeightDataWidth/8-1:0] weight_write_strb_i,
+  input  logic [127:0]            weight_write_data_i,
+  input  logic [15:0]             weight_write_strb_i,
   input  logic                    activation_write_valid_i,
   input  logic [7:0]              activation_write_k_block_i,
   output logic                    activation_write_ready_o,
@@ -147,7 +144,7 @@ module qbs_compute_engine
   logic [2:0] next_row_count;
   logic active_weight_bank_q;
   logic write_weight_bank;
-  logic weight_write_fire, weight_write_admit;
+  logic weight_write_fire;
   logic current_weight_complete;
   logic load_weight_complete;
   logic integer_start_fire;
@@ -178,12 +175,6 @@ module qbs_compute_engine
   logic all_activation_complete_bank [2];
   logic all_activation_complete;
   logic [31:0] adapter_weight_bytes [2];
-  logic [1:0] legacy_weight_ready;
-  logic [3:0] legacy_weight_complete [2];
-  logic legacy_all_weight_complete [2];
-  logic [31:0] legacy_weight_bytes [2];
-  logic [127:0] legacy_weight_window [2][4][2];
-  logic [7:0] legacy_weight_side [2][4][20];
   logic [31:0] adapter_activation_bytes [2];
   logic [2:0] weight_bank_row_count_q [2];
   logic [2:0] bank0_row_count;
@@ -339,16 +330,14 @@ module qbs_compute_engine
                         QBS_START_WEIGHT, QBS_START_CONTEXT_WAVE})
       write_weight_bank = ~active_weight_bank_q;
 
-    // First-beat metadata must be visible before READY. Once a wide bank owns
-    // an epoch, however, a future stalled response cannot reconfigure it.
-    // A zero retained row count denotes an unowned bank after reset/clear.
+    // A response carries its own tile metadata. The live input is selected
+    // while a beat is presented so the first beat is mapped correctly; the
+    // retained value keeps completion detection stable between beats.
     bank0_row_count = weight_bank_row_count_q[0];
     bank1_row_count = weight_bank_row_count_q[1];
-    if (weight_write_valid_i && weight_write_bank_i == 1'b0 &&
-        (!WideWeightIngress || weight_bank_row_count_q[0] == 0))
+    if (weight_write_valid_i && weight_write_bank_i == 1'b0)
       bank0_row_count = weight_write_row_count_i;
-    if (weight_write_valid_i && weight_write_bank_i == 1'b1 &&
-        (!WideWeightIngress || weight_bank_row_count_q[1] == 0))
+    if (weight_write_valid_i && weight_write_bank_i == 1'b1)
       bank1_row_count = weight_write_row_count_i;
   end
 
@@ -404,37 +393,34 @@ module qbs_compute_engine
   assign clear_accumulator = state_q inside {QBS_INIT, QBS_FAULT_CLEAR};
 
   always_comb begin
-    weight_write_admit = 1'b0;
+    weight_write_ready_o = 1'b0;
     if (!fault_i && weight_write_row_count_i inside {[1:4]} &&
         !clear_weight[weight_write_bank_i] &&
-        (!WideWeightIngress || weight_bank_row_count_q[weight_write_bank_i] == 0 ||
-         weight_write_row_count_i == weight_bank_row_count_q[weight_write_bank_i])) begin
+        adapter_weight_ready[weight_write_bank_i]) begin
       unique case (state_q)
         QBS_LOAD_TILE: begin
           if (weight_write_bank_i == active_weight_bank_q)
-            weight_write_admit =
+            weight_write_ready_o =
                 !all_weight_complete[weight_write_bank_i];
           else if (next_row_available)
-            weight_write_admit =
+            weight_write_ready_o =
                 !all_weight_complete[weight_write_bank_i];
         end
         QBS_COMPUTE_TILE,
         QBS_WAIT_WEIGHT,
         QBS_START_CONTEXT_WAVE: begin
           if (weight_write_bank_i != active_weight_bank_q)
-            weight_write_admit =
+            weight_write_ready_o =
                 !all_weight_complete[weight_write_bank_i];
         end
         default: ;
       endcase
     end
   end
-  assign weight_write_ready_o = weight_write_admit && adapter_weight_ready[weight_write_bank_i];
   assign weight_write_fire = weight_write_valid_i && weight_write_ready_o;
 
   qbs_block_adapter #(
-    .ActivationContextBase (0), .NativeView(1'b0), .UniqueInputBytes(1'b1),
-    .EnableWeightStorage(!WideWeightIngress)
+    .ActivationContextBase (0), .NativeView(1'b0), .UniqueInputBytes(1'b1)
   ) i_block_adapter_bank0 (
     .clk_i,
     .rst_ni,
@@ -445,18 +431,18 @@ module qbs_compute_engine
     .weight_row_count_i           (bank0_row_count),
     .activation_layout_i          (activation_layout_q),
     .m_i                          (m_q),
-    .weight_write_ready_o         (legacy_weight_ready[0]),
+    .weight_write_ready_o         (adapter_weight_ready[0]),
     .activation_write_ready_o     (adapter_activation_ready[0]),
-    .weight_read_i                (!WideWeightIngress && buffer_read_valid && !active_weight_bank_q),
+    .weight_read_i                (buffer_read_valid && !active_weight_bank_q),
     .activation_read_i            (buffer_read_valid && !activation_read_bank),
     .read_k_i                     (buffer_read_k_base),
-    .weight_write_valid_i         (!WideWeightIngress && weight_write_fire &&
+    .weight_write_valid_i         (weight_write_fire &&
                                    weight_write_bank_i == 1'b0),
     .weight_write_group_i,
     .weight_write_row_i,
     .weight_write_offset_i,
-    .weight_write_data_i          (WideWeightIngress ? 128'b0 : weight_write_data_i[127:0]),
-    .weight_write_strb_i          (WideWeightIngress ? 16'b0 : weight_write_strb_i[15:0]),
+    .weight_write_data_i,
+    .weight_write_strb_i,
     .activation_write_valid_i     (activation_write_valid_i &&
                                    activation_write_ready_o &&
                                    (!activation_lookahead_q || !activation_write_bank)),
@@ -466,20 +452,19 @@ module qbs_compute_engine
     .activation_write_strb_i,
     .weight_block_o               (weight_block_bank0),
     .activation_block_o           (activation_block_bank0),
-    .weight_window_o(legacy_weight_window[0]), .activation_window_o(activation_window_bank[0]),
-    .weight_side_o(legacy_weight_side[0]), .activation_side_o(activation_side_bank[0]),
-    .weight_complete_o            (legacy_weight_complete[0]),
+    .weight_window_o(weight_window_bank[0]), .activation_window_o(activation_window_bank[0]),
+    .weight_side_o(weight_side_bank[0]), .activation_side_o(activation_side_bank[0]),
+    .weight_complete_o            (weight_complete[0]),
     .activation_complete_o        (activation_complete[0]),
-    .all_weight_complete_o        (legacy_all_weight_complete[0]),
+    .all_weight_complete_o        (all_weight_complete[0]),
     .all_activation_complete_o    (all_activation_complete_bank[0]),
-    .accepted_weight_bytes_o      (legacy_weight_bytes[0]),
+    .accepted_weight_bytes_o      (adapter_weight_bytes[0]),
     .accepted_activation_bytes_o  (adapter_activation_bytes[0])
   );
 
   qbs_block_adapter #(
     .ActivationContextBase (4), .NarrowActivationAlias(1'b1),
-    .NativeView(1'b0), .UniqueInputBytes(1'b1),
-    .EnableWeightStorage(!WideWeightIngress)
+    .NativeView(1'b0), .UniqueInputBytes(1'b1)
   ) i_block_adapter_bank1 (
     .clk_i,
     .rst_ni,
@@ -490,18 +475,18 @@ module qbs_compute_engine
     .weight_row_count_i           (bank1_row_count),
     .activation_layout_i          (activation_layout_q),
     .m_i                          (m_q),
-    .weight_write_ready_o         (legacy_weight_ready[1]),
+    .weight_write_ready_o         (adapter_weight_ready[1]),
     .activation_write_ready_o     (adapter_activation_ready[1]),
-    .weight_read_i                (!WideWeightIngress && buffer_read_valid && active_weight_bank_q),
+    .weight_read_i                (buffer_read_valid && active_weight_bank_q),
     .activation_read_i            (buffer_read_valid && activation_read_bank),
     .read_k_i                     (buffer_read_k_base),
-    .weight_write_valid_i         (!WideWeightIngress && weight_write_fire &&
+    .weight_write_valid_i         (weight_write_fire &&
                                    weight_write_bank_i == 1'b1),
     .weight_write_group_i,
     .weight_write_row_i,
     .weight_write_offset_i,
-    .weight_write_data_i          (WideWeightIngress ? 128'b0 : weight_write_data_i[127:0]),
-    .weight_write_strb_i          (WideWeightIngress ? 16'b0 : weight_write_strb_i[15:0]),
+    .weight_write_data_i,
+    .weight_write_strb_i,
     .activation_write_valid_i     (activation_write_valid_i &&
                                    activation_write_ready_o &&
                                    (activation_lookahead_q ? activation_write_bank : wide_command)),
@@ -511,52 +496,15 @@ module qbs_compute_engine
     .activation_write_strb_i,
     .weight_block_o               (weight_block_bank1),
     .activation_block_o           (activation_block_bank1),
-    .weight_window_o(legacy_weight_window[1]), .activation_window_o(activation_window_bank[1]),
-    .weight_side_o(legacy_weight_side[1]), .activation_side_o(activation_side_bank[1]),
-    .weight_complete_o            (legacy_weight_complete[1]),
+    .weight_window_o(weight_window_bank[1]), .activation_window_o(activation_window_bank[1]),
+    .weight_side_o(weight_side_bank[1]), .activation_side_o(activation_side_bank[1]),
+    .weight_complete_o            (weight_complete[1]),
     .activation_complete_o        (activation_complete[1]),
-    .all_weight_complete_o        (legacy_all_weight_complete[1]),
+    .all_weight_complete_o        (all_weight_complete[1]),
     .all_activation_complete_o    (all_activation_complete_bank[1]),
-    .accepted_weight_bytes_o      (legacy_weight_bytes[1]),
+    .accepted_weight_bytes_o      (adapter_weight_bytes[1]),
     .accepted_activation_bytes_o  (adapter_activation_bytes[1])
   );
-
-  for (genvar bank = 0; bank < 2; bank++) begin : gen_weight_storage
-    if (WideWeightIngress) begin : gen_wide
-      logic [10:0] committed_bytes;
-      logic read_ready, read_valid, pending;
-      qbs_weight_wide_bank i_weight_bank (
-        .clk_i, .rst_ni, .clear_i(clear_weight[bank]),
-        .profile_i(weight_profile_q),
-        .row_count_i(bank == 0 ? bank0_row_count : bank1_row_count),
-        .group_mode_i(weight_write_group_i), .row_i(weight_write_row_i),
-        .offset_i(weight_write_offset_i), .data_i(weight_write_data_i),
-        .strb_i(weight_write_strb_i),
-        .valid_i(weight_write_valid_i && weight_write_admit && weight_write_bank_i == 1'(bank)),
-        .ready_o(adapter_weight_ready[bank]), .write_enable_i(1'b1),
-        .read_i(buffer_read_valid && active_weight_bank_q == 1'(bank)),
-        .read_ready_o(read_ready), .read_valid_o(read_valid), .read_k_i(buffer_read_k_base),
-        .window_o(weight_window_bank[bank]), .side_o(weight_side_bank[bank]),
-        .row_complete_o(weight_complete[bank]), .all_complete_o(all_weight_complete[bank]),
-        .pending_o(pending), .accepted_bytes_o(), .committed_bytes_o(committed_bytes)
-      );
-      // The original adapter byte counter advances on storage commit, not on
-      // ingress admission. Preserve that meaning for command-level counters.
-      assign adapter_weight_bytes[bank] = {21'b0, committed_bytes};
-`ifndef SYNTHESIS
-      assert property (@(posedge clk_i) disable iff (!rst_ni || clear_weight[bank])
-          buffer_read_valid && active_weight_bank_q == 1'(bank) |-> read_ready && !pending)
-        else $fatal(1, "QBS compute read before wide weight storage drained");
-`endif
-    end else begin : gen_legacy
-      assign adapter_weight_ready[bank] = legacy_weight_ready[bank];
-      assign weight_complete[bank] = legacy_weight_complete[bank];
-      assign all_weight_complete[bank] = legacy_all_weight_complete[bank];
-      assign adapter_weight_bytes[bank] = legacy_weight_bytes[bank];
-      assign weight_window_bank[bank] = legacy_weight_window[bank];
-      assign weight_side_bank[bank] = legacy_weight_side[bank];
-    end
-  end
 
   always_comb begin
     for (int row = 0; row < 4; row++)
@@ -590,9 +538,7 @@ module qbs_compute_engine
   assign probe_weight_wait_active = state_q == QBS_WAIT_WEIGHT;
 `endif
 
-  qbs_profile_engine_int #(
-    .CompactRead(1'b1), .WideMatrixDot(WideMatrixDot)
-  ) i_profile_engine_int (
+  qbs_profile_engine_int #(.CompactRead(1'b1)) i_profile_engine_int (
     .clk_i,
     .rst_ni,
     .weight_block_i                (weight_block),

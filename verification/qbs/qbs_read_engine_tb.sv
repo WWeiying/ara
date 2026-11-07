@@ -105,8 +105,6 @@ module qbs_read_engine_tb;
     .range_tag_i               (range_tag),
     .range_cache_i             (range_cache),
     .range_prot_i              (range_prot),
-    // Deliberately different: the default configuration must ignore this port.
-    .range_size_i              (axi_pkg::size_t'(0)),
     .data_valid_o              (data_valid),
     .data_ready_i              (data_ready),
     .data_o                    (data),

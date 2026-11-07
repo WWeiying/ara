@@ -27,7 +27,8 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     // AXI Resp Delay [ps] for gate-level simulation
     parameter  int           unsigned AxiRespDelay = 200,
     // Main memory
-    parameter  int           unsigned L2NumWords   = (2**20) / (AxiDataWidth/8), // Fixed 1 MiB default.
+    //parameter  int           unsigned L2NumWords   = (2**22) / NrLanes,
+    parameter  int           unsigned L2NumWords   = (2**18) / NrLanes,
     // Dependant parameters. DO NOT CHANGE!
     localparam type                   axi_data_t   = logic [AxiDataWidth-1:0],
     localparam type                   axi_strb_t   = logic [AxiDataWidth/8-1:0],
@@ -264,49 +265,22 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     .rdata_o(l2_rdata                                                                   )
   );
 `else
-  // TARGET_SRAM_MC_BEGIN
-  localparam DRAMNumBanks = L2NumWords >= 8192 ? L2NumWords/8192 : 1;
-  localparam DRAMBankAddrWidth = DRAMNumBanks > 1 ? $clog2(DRAMNumBanks) : 1;
-  localparam DRAMByteOffset = $clog2(AxiDataWidth/8);
-  localparam DRAMNumColumns = (AxiDataWidth + 127)/128;
-  localparam DRAMMacroDataWidth = DRAMNumColumns * 128;
-  logic [DRAMBankAddrWidth-1:0] dram_bank_index;
+  localparam DRAMNumBanks = L2NumWords/8192;
+  localparam DRAM_ADDR = $clog2(DRAMNumBanks);
   logic [DRAMNumBanks-1:0] dram_bank_en;
   logic [DRAMNumBanks-1:0] dram_bank_ren;
-  logic [DRAMMacroDataWidth-1:0] dram_wdata;
-  logic [DRAMMacroDataWidth-1:0] dram_bweb;
-  logic [DRAMMacroDataWidth-1:0] dram_rdata_bank[DRAMNumBanks-1:0];
+  logic [AxiDataWidth-1:0] l2_be_o;
   logic [AxiDataWidth-1:0] l2_rdata_bank[DRAMNumBanks-1:0];
 
-  initial begin
-    if (AxiDataWidth < 8 || AxiDataWidth % 8 != 0 ||
-        (AxiDataWidth & (AxiDataWidth - 1)) != 0)
-      $fatal(1, "[ara_soc] TARGET_SRAM_MC needs a power-of-two byte data width.");
-    if (L2NumWords < 8192 || L2NumWords % 8192 != 0 ||
-        (L2NumWords & (L2NumWords - 1)) != 0)
-      $fatal(1, "[ara_soc] TARGET_SRAM_MC needs power-of-two depth in 8192-word banks.");
-  end
-
-  if (DRAMNumBanks == 1) begin: gen_single_dram_bank
-    assign dram_bank_index = '0;
-  end else begin: gen_multiple_dram_banks
-    assign dram_bank_index = l2_addr[DRAMByteOffset + 13 +: DRAMBankAddrWidth];
-  end
-
   always_comb begin
-    dram_wdata = '0;
-    dram_wdata[AxiDataWidth-1:0] = l2_wdata;
-    dram_bweb = '1;
     for(int i=0; i<(AxiDataWidth/8); i++) begin
-      dram_bweb[i*8 +: 8] = {8{!l2_be[i]}};
+      l2_be_o[i*8 +: 8] = {8{l2_be[i]}};
     end
   end
 
   generate
   for (genvar i = 0; i < DRAMNumBanks; i++) begin: gen_dram
-    assign dram_bank_en[i] = dram_bank_index == DRAMBankAddrWidth'(i);
-    assign l2_rdata_bank[i] = dram_rdata_bank[i][AxiDataWidth-1:0];
-    // Keep the original first-column hierarchy for default 128-bit consumers.
+    assign dram_bank_en[i] = (i == l2_addr[$clog2(L2NumWords)-1+$clog2(AxiDataWidth/8)-:$clog2(DRAMNumBanks)]);
     TS1N28HPCPSVTB8192X128M4SWBASO i_dram (
       .SLP  (1'b0),
       .SD   (1'b0),
@@ -316,41 +290,25 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
       .CEBM (1'b1),
       .WEBM (1'b1),
       .AWT  (1'b0),
-      .A    (l2_addr[DRAMByteOffset +: 13]),
-      .D    (dram_wdata[0 +: 128]),
-      .BWEB (dram_bweb[0 +: 128]),
+      .A    (l2_addr[$clog2(L2NumWords)-1+$clog2(AxiDataWidth/8)-$clog2(DRAMNumBanks):$clog2(AxiDataWidth/8)]),
+      .D    (l2_wdata),
+      .BWEB (~l2_be_o),
       .AM   ('0),
       .DM   ('0),
       .BWEBM(128'hffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff),
       .BIST (1'b0),
-      .Q    (dram_rdata_bank[i][0 +: 128]));
-    for (genvar column = 1; column < DRAMNumColumns; column++) begin: gen_columns
-      TS1N28HPCPSVTB8192X128M4SWBASO i_dram (
-        .SLP  (1'b0),
-        .SD   (1'b0),
-        .CLK  (clk_i),
-        .CEB  (!(l2_req && dram_bank_en[i])),
-        .WEB  (!(l2_we  && dram_bank_en[i])),
-        .CEBM (1'b1),
-        .WEBM (1'b1),
-        .AWT  (1'b0),
-        .A    (l2_addr[DRAMByteOffset +: 13]),
-        .D    (dram_wdata[column*128 +: 128]),
-        .BWEB (dram_bweb[column*128 +: 128]),
-        .AM   ('0),
-        .DM   ('0),
-        .BWEBM(128'hffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff),
-        .BIST (1'b0),
-        .Q    (dram_rdata_bank[i][column*128 +: 128]));
-    end
+      .Q    (l2_rdata_bank[i]));
     end
   endgenerate
 
-  always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni)
-      dram_bank_ren <= '0;
-    else if (l2_req && !l2_we)
-      dram_bank_ren <= dram_bank_en;
+  always_ff@(posedge clk_i) begin
+    for(int i = 0; i < DRAMNumBanks; i++) begin
+      if(l2_req && !l2_we) begin
+        dram_bank_ren[i] = l2_req && !l2_we && dram_bank_en[i];
+      end else begin
+        dram_bank_ren[i] = dram_bank_ren[i];
+      end
+    end
   end
 
   always_comb begin
@@ -361,7 +319,6 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
         end
     end
   end
-  // TARGET_SRAM_MC_END
 
 `endif
 `else

@@ -8,7 +8,6 @@
 // remain authoritative for every architectural VRF write.
 module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   import akv_pkg::*; #(
-    // Logical compacted reader width; physical AXI width may be larger.
     parameter int unsigned AxiDataWidth = 128,
     parameter int unsigned AxiAddrWidth = 64,
     parameter int unsigned VAddrWidth = 64,
@@ -521,7 +520,6 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     range_tag: {8'b0, read_range_tag},
     range_cache: cache_q,
     range_prot: prot_q,
-    range_size: axi_pkg::size_t'(4),
     data_ready: read_data_ready,
     completion_ready: read_completion_ready,
     fault_ready: read_fault_ready
@@ -1089,7 +1087,7 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       assert (VLEN == 1024)
         else $fatal(1, "AKV v1 requires VLEN=1024");
       assert (AxiDataWidth == 128)
-        else $fatal(1, "AKV requires a 128-bit logical reader interface");
+        else $fatal(1, "AKV v1 requires a 128-bit AXI read interface");
       assert (VAddrWidth == 64)
         else $fatal(1, "AKV v1 requires 64-bit virtual addresses");
       assert (AkvContextBytes % ContextBytesPerWord == 0);

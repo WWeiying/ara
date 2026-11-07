@@ -25,7 +25,6 @@ include $(ARA_DIR)/config/sram.mk
 mc ?= 0
 qbs ?= 0
 qbs_vrf_continuation ?= 0
-qbs_matrix_dot ?= 0
 akv ?= 0
 akv_v2 ?= 0
 qbs_perf ?= 0
@@ -130,17 +129,6 @@ endif
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
 ifeq ($(qbs),1)
 bender_defs += --define ARA_QBS_ENABLE=1
-endif
-ifneq ($(qbs_matrix_dot),0)
-ifneq ($(qbs_matrix_dot),1)
-$(error qbs_matrix_dot must be 0 or 1)
-endif
-endif
-ifeq ($(qbs_matrix_dot),1)
-ifneq ($(qbs),1)
-$(error qbs_matrix_dot=1 requires qbs=1)
-endif
-bender_defs += --define ARA_QBS_WIDE_MATRIX_DOT=1
 endif
 ifeq ($(qbs_vrf_continuation),1)
 ifneq ($(qbs),1)
@@ -286,7 +274,6 @@ compile: bender dpi ../Bender.yml
 		'vlen=$(vlen)' \
 		'qbs=$(qbs)' \
 		'qbs_vrf_continuation=$(qbs_vrf_continuation)' \
-		'qbs_matrix_dot=$(qbs_matrix_dot)' \
 		'akv=$(akv)' \
 		'akv_v2=$(akv_v2)' \
 		'qbs_enabled=$(qbs)' \

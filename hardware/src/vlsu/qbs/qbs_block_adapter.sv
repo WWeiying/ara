@@ -7,8 +7,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
   parameter bit NativeView = 1'b1,
   // The integrated range reader/replay writes each block byte once between
   // clears. Generic clients may rewrite bytes and retain bitmap tracking.
-  parameter bit UniqueInputBytes = 1'b0,
-  parameter bit EnableWeightStorage = 1'b1
+  parameter bit UniqueInputBytes = 1'b0
 ) (
   input  logic                    clk_i,
   input  logic                    rst_ni,
@@ -180,8 +179,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
 
   qbs_payload_buffer #(.NativeView(NativeView), .PredecodedWriteLocations(1'b1),
       .StreamWriteData(1'b1), .ActivationContextBase(ActivationContextBase),
-      .NarrowActivationAlias(NarrowActivationAlias),
-      .EnableWeightStorage(EnableWeightStorage)) i_payload_buffer (
+      .NarrowActivationAlias(NarrowActivationAlias)) i_payload_buffer (
     .clk_i, .rst_ni, .weight_profile_i, .activation_profile_i,
     .weight_valid_i(weight_source_valid), .activation_valid_i(activation_source_valid),
     .weight_mask_i(weight_mask), .activation_mask_i(activation_mask),

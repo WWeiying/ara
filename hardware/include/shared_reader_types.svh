@@ -10,7 +10,6 @@
     logic [15:0] range_tag; \
     axi_pkg::cache_t range_cache; \
     axi_pkg::prot_t range_prot; \
-    axi_pkg::size_t range_size; \
     logic data_ready; \
     logic completion_ready; \
     logic fault_ready; \
