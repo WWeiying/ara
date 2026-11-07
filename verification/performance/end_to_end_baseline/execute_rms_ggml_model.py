@@ -25,21 +25,35 @@ def admit(record):
     require(all(k in record and record[k] == v for k, v in required.items()), 'Complete sealed model preflight required')
 
 
+def verify_paths(identities):
+    for path, target in identities.items():
+        require(str(Path(path).resolve(strict=True)) == target, 'Symlink identity drift: '+path)
+
+
 def execute(preflight, expected, output):
     preflight = preflight.resolve(strict=True); out = output.absolute()
     require(preflight.is_relative_to(RUNS) and out == out.resolve() and out.is_relative_to(RUNS),
             'Sole-verification fresh output required')
     out.mkdir(parents=True, exist_ok=False)
-    pins = {}; commands = []
+    pins = {}; commands = []; identities = {}
     result = dict(state='PREPARING', child_pid=None, compiled_translation_units=0,
                   rtl_changed=False, performance_measured=False, model_library_promoted=False)
-    def pin(path, sha=None): bind(pins, path, sha)
+    def pin(path, sha=None):
+        lexical = str(Path(path).absolute()); target = str(Path(path).resolve(strict=True))
+        require(lexical not in identities or identities[lexical] == target, 'Path identity drift: '+lexical)
+        identities[lexical] = target; bind(pins, path, sha)
+    def verify():
+        verify_paths(identities); verify_pins(pins)
     def save(): (out/'status.json').write_text(json.dumps(result, indent=2)+'\n')
     try:
         pin(preflight/'result.json', expected); prepared = read(preflight/'result.json'); admit(prepared)
         pin(preflight/'source-pins.json', prepared['source_pins_sha256'])
         for entries in (read(preflight/'source-pins.json'), prepared['artifacts']):
             for path, sha in entries.items(): pin(path, sha)
+        inherited = read(preflight/'path-identities.json'); verify_paths(inherited)
+        for lexical, target in inherited.items():
+            require(lexical not in identities or identities[lexical] == target, 'Conflicting inherited path identity')
+            identities[lexical] = target
         require(not any(row['label'] == 'qemu' for row in read(preflight/'commands.json')),
                 'Preflight must not already contain a target run')
         init = next(Path(words[2]) for words in (line.split() for line in (preflight/'initramfs.list').read_text().splitlines())
@@ -57,7 +71,8 @@ def execute(preflight, expected, output):
             path = getattr(module, '__file__', None)
             if path and Path(path).is_file() and Path(path).resolve().is_relative_to(HERE): pin(path)
         pin(HERE/'test_rms_ggml_model.py'); pin(HERE/'test_execute_rms_ggml_model.py'); pin(Path(sys.executable))
-        verify_pins(pins); (out/'source-pins.json').write_text(json.dumps(pins, indent=2)+'\n')
+        verify(); (out/'source-pins.json').write_text(json.dumps(pins, indent=2)+'\n')
+        (out/'path-identities.json').write_text(json.dumps(identities, indent=2)+'\n')
         env = dict(PATH='/usr/bin:/bin', LC_ALL='C', HOME=str(out), PYTHONDONTWRITEBYTECODE='1')
         commands.append(dict(label='qemu', argv=argv, cwd=str(out), timeout_seconds=7200, environment=env))
         (out/'commands.json').write_text(json.dumps(commands, indent=2)+'\n')
@@ -75,11 +90,12 @@ def execute(preflight, expected, output):
                 child.kill(); child.wait(); raise
             finally: result['child_pid'] = None; save()
         commands[-1]['returncode'] = code; require(code == 0, 'Native model execution failed')
-        verify_pins(pins)
+        verify()
         result['measured'] = check((out/'qemu.log').read_text(), (MODEL/'qemu.log').read_text(), read(PRIOR/'projection-schema.json'))
         require(result['measured']['native'] == read(LATEST/'result.json')['measured'],
                 'Projection/Attention work differs from accepted production baseline')
-        verify_pins(pins); result.update(state='RMS_GGML_PREBUILT_MODEL_PAIR_FUNCTIONAL_PASS', post_pins_match=True,
+        verify(); result.update(state='RMS_GGML_PREBUILT_MODEL_PAIR_FUNCTIONAL_PASS', post_pins_match=True,
+            post_path_identities_match=True,
             log_sha256=digest(out/'qemu.log'), limits=[
                 'Full logits/token/CSR and actual native work; no QEMU-derived hardware timing',
                 'Norm row/node totals checked; fused distribution retained rather than assumed',

@@ -1,9 +1,19 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from execute_rms_ggml_model import admit, BASE_ELF
+from execute_rms_ggml_model import admit, verify_paths, BASE_ELF
 
 
 class PreparedGuest(unittest.TestCase):
+    def test_same_bytes_symlink_retarget_still_rejected(self):
+        with TemporaryDirectory() as root:
+            root = Path(root); first = root/'first'; second = root/'second'; alias = root/'alias'
+            first.write_bytes(b'identical'); second.write_bytes(first.read_bytes()); alias.symlink_to(first)
+            identities = {str(alias): str(first.resolve())}; verify_paths(identities)
+            alias.unlink(); alias.symlink_to(second)
+            with self.assertRaises(ValueError): verify_paths(identities)
+
     def test_only_complete_nonexecuted_preflight(self):
         record = dict(state='RMS_GGML_MODEL_PAIR_PREPARED_NOT_EXECUTED', performance_measured=False,
                       rtl_changed=False, production_library_promoted=False, compiled_translation_units=1,
