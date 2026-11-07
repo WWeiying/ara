@@ -17,7 +17,7 @@ ROOT = HERE.parents[3]
 OUT = ROOT.parent/'ara_dsa_signoff_integration/verification/out'
 LLAMA = Path('/home/wangwy/llama/llama.cpp')
 SDK = 'b7c9e6c3c1f8c5e469c130f46ec5bbfaf37a55d1'
-LLAMA_COMMIT = '06d046324e1dde07d3d6f8625843b2b8858a1a06'
+LLAMA_COMMIT = '03959acc0f649f9071668d5b72888284e4676d2b'
 HELPER = ROOT/'verification/akv/paired_heads/build_live_ggml_runtime.py'
 
 
