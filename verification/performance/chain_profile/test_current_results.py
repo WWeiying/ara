@@ -1,10 +1,12 @@
 import csv
 import copy
 import importlib.util
+import json
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent))
 spec = importlib.util.spec_from_file_location('chain_current_results', Path(__file__).with_name('current_results.py'))
@@ -86,7 +88,9 @@ class TestF16Accounting(unittest.TestCase):
             with self.assertRaises(ValueError): reporter.f16_summary(data)
 
     def test_command_envelope_keeps_required_gap_work_separate(self):
-        text = ''.join('[AKV_PERF] seq=%d command=%d busy_cycles=10\n' % (i+1, c)
+        counters = (' ar=0 r_beats=0 read_payload_bytes=0 store_wait_cycles=0 read_backpressure_cycles=0'
+                    ' replay_backpressure_cycles=0 v2_k_view_bank_cycles=0 v2_bank_conflict_cycles=0\n')
+        text = ''.join('[AKV_PERF] seq=%d command=%d busy_cycles=10' % (i+1, c) + counters
                        for i, c in enumerate((4, 6, 3)))
         events = [dict(fire=i*15, terminal=i*15+10, cycles=10) for i in range(3)]
         row = reporter.f16_engine_work(text, events, calls=1, per_call=3)[0]
@@ -144,6 +148,105 @@ class TestQ6Accounting(unittest.TestCase):
             data['trials'][0]['commands'][0][key] += 1
             with self.subTest(key=key), self.assertRaises(ValueError):
                 reporter.q6_summary(data)
+
+
+class TestPublication(unittest.TestCase):
+    def test_final_identity_failure_never_publishes_success(self):
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            q6, f16, out = root/'q6', root/'f16', root/'report'
+            for folder in (q6, f16):
+                folder.mkdir()
+                (folder/'result.json').write_text('{}')
+            report = dict(image_sha256='same', configuration={}, artifacts={})
+            q = dict(mean_complete_call_partition=dict(work=10), mean_total_cycles=10)
+            f = dict(mean_issue_side_partition=dict(work=20), profile_mean_cycles=20)
+            with mock.patch.object(reporter, 'OUT', root), \
+                 mock.patch.object(reporter, 'accepted', return_value=(report, {}, {}, {})), \
+                 mock.patch.object(reporter, 'q6_summary', return_value=q), \
+                 mock.patch.object(reporter, 'f16_summary', return_value=f), \
+                 mock.patch.object(reporter, 'verify', side_effect=ValueError('final pin drift')), \
+                 mock.patch.object(sys, 'argv', ['current_results.py', '--q6-run', str(q6),
+                                               '--f16-run', str(f16), '--output', str(out)]):
+                with self.assertRaisesRegex(ValueError, 'final pin drift'):
+                    reporter.main()
+            self.assertTrue((out/'call_partition.csv').is_file())
+            self.assertFalse((out/'result.json').exists())
+
+
+class TestOriginalPayloadIntegrity(unittest.TestCase):
+    def fixture(self, root):
+        build = root/'build'
+        data = build/'data'
+        data.mkdir(parents=True)
+        source = root/'q6_decode/input_integrity.c'
+        source.parent.mkdir()
+        source.write_text('unit-fixture-source')
+        obj, config = build/'input_integrity.o', build/'integrity_config.h'
+        obj.write_bytes(b'unit-fixture-object')
+        config.write_text('unit-fixture-config')
+        pins, payloads, lines = {}, {}, []
+        for tag, filename, size, symbol in (
+                ('activation', 'input_f32.bin', 8192, 'profile_input'),
+                ('weight', 'weights_r4.bin', 107520, 'profile_weights')):
+            path = data/filename
+            path.write_bytes(bytes(range(256))*(size//256))
+            payloads[tag] = dict(path=str(path), bytes=size, symbol=symbol,
+                                 expected_hash=reporter.fnv1a64(path.read_bytes()))
+            lines.append('CHAIN_Q6_INPUT_INTEGRITY tag=%s bytes=%d expected=%s actual=%s' %
+                         (tag, size, payloads[tag]['expected_hash'], payloads[tag]['expected_hash']))
+            pins[str(path)] = reporter.digest(path)
+        wrapper = {}
+        for key, path in (('source', source), ('object', obj), ('config', config)):
+            wrapper[key] = str(path)
+            wrapper[key+'_sha256'] = pins[str(path)] = reporter.digest(path)
+        contract = dict(method='fnv1a64-after-both-timed-calls-v1', entrypoint='main -> q6_profile_body',
+                        memory_checked_after_both_calls=True, payloads=payloads, wrapper=wrapper)
+        (build/'build.json').write_text(json.dumps(dict(input_integrity=contract)))
+        commands = [dict(label='compile-main', argv=['cc', '-Dmain=q6_profile_body', '-c', 'main.c']),
+                    dict(label='compile-wrapper', argv=['cc', '-c', str(source), '-o', str(obj)]),
+                    dict(label='link', argv=['cc', 'main.o', str(obj)])]
+        commandfile = build/'commands.json'
+        commandfile.write_text(json.dumps(commands))
+        pins[str(commandfile)] = reporter.digest(commandfile)
+        lines.append('CHAIN_Q6_INPUT_INTEGRITY_DONE errors=0')
+        return build, pins, '\n'.join(lines)+'\n'
+
+    def test_fnv_known_vectors(self):
+        self.assertEqual(reporter.fnv1a64(b''), 'cbf29ce484222325')
+        self.assertEqual(reporter.fnv1a64(b'hello'), 'a430d84680aabd0b')
+
+    def test_original_payloads_and_exact_entrypoint_are_checked(self):
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            build, pins, text = self.fixture(root)
+            with mock.patch.object(reporter, 'HERE', root):
+                result = reporter.original_payload_integrity(text, build, pins)
+                self.assertEqual(result['bytes_checked'], 115712)
+                bad = text.replace('actual=', 'actual=0', 1)
+                for modified in (bad, '', text+text, text.replace('errors=0', 'errors=1')):
+                    with self.assertRaises(ValueError):
+                        reporter.original_payload_integrity(modified, build, pins)
+
+    def test_repinning_bad_payload_or_missing_wrapper_is_not_enough(self):
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            build, pins, text = self.fixture(root)
+            path = build/'data/input_f32.bin'
+            path.write_bytes(b'x'*8192)
+            pins[str(path)] = reporter.digest(path)
+            with mock.patch.object(reporter, 'HERE', root), self.assertRaises(ValueError):
+                reporter.original_payload_integrity(text, build, pins)
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            build, pins, text = self.fixture(root)
+            path = build/'commands.json'
+            commands = json.loads(path.read_text())
+            commands[0]['argv'].remove('-Dmain=q6_profile_body')
+            path.write_text(json.dumps(commands))
+            pins[str(path)] = reporter.digest(path)
+            with mock.patch.object(reporter, 'HERE', root), self.assertRaises(ValueError):
+                reporter.original_payload_integrity(text, build, pins)
 
 
 if __name__ == '__main__':

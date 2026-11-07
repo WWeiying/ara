@@ -33,6 +33,9 @@ the same bitstream with different software, not no-QBS vs QBS hardware.
 The initial engineering report is
 `hardware/docs/INFERENCE_CHAIN_PROFILE_20261107.md`.
 
+The accepted current-SoC measurements, source attribution and next-step ordering
+are in `hardware/docs/INFERENCE_CHAIN_PROFILE_CURRENT_20261107.md`.
+
 ## Current Area-Baseline Measurement
 
 `hardware/docs/INFERENCE_CHAIN_PROFILE_EXECUTION_20261107.md` fixes the new
@@ -66,12 +69,19 @@ two `errors=2` footer is preserved as FAIL. The explicit Q6 CSR successor sample
 then requires QBS to preserve it. It neither clears CSR nor accepts the old log.
 Its C, builder, checker and tests are new files; the old sealed inputs stay intact.
 
+The final Q6 acceptance additionally requires target-side F32 activation and R4
+weight-payload signatures against independently hashed captured files. The input
+integrity successor links an outer `main()` around the unchanged profiling body;
+its reads and prints occur only after both timed calls. The original per-call
+CSR/numerical checker remains intact, and the reconciler independently requires
+the payload records, byte counts, signatures and actual compile/link identities.
+
 After both individually checked workers finish successfully, use a new report
 directory. Independent selection does not relabel the original failed campaign:
 
 ```sh
 python3 -B verification/performance/chain_profile/current_results.py \
-  --q6-run /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/chain_q6_csr_vcs_20261107_01 \
+  --q6-run /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/chain_q6_integrity_vcs_20261107_01 \
   --f16-run /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/chain_profile_runs_20261107_01/f16 \
   --output /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/chain_profile_reconciled_NEW
 ```

@@ -77,6 +77,7 @@ def q6_summary(measured):
             result_blocked_cycles=totals['probe_profile_result_blocked_cycles'],
             commit_blocked_cycles=totals['commit_backpressure_cycles']))
     return dict(scope=measured['scope'], trials=result,
+        original_payload_integrity=measured.get('original_payload_integrity'),
         mean_total_cycles=mean(result, 'total_cycles'),
         mean_complete_call_partition={k: statistics.mean(t['complete_call_partition'][k] for t in result)
                                       for k in result[0]['complete_call_partition']},
@@ -159,6 +160,7 @@ def prefix(path):
             counts[channel+'_transfer'] += int(row[channel+'_valid']) & int(row[channel+'_ready'])
         counts['front_present_not_ready'] += int(row['front_valid']) & (1-int(row['front_ready']))
     return dict(start_cycle=start, cycles=1000, signal_counts=dict(counts),
+        ar_r_signal_scope='QBS reader AXI only; these signals do not observe AKV or total SoC memory traffic',
         scope='First execution-command presentation only; not a full-call occupancy estimate. '
               'Front not-ready includes asynchronous command lifetime, not just admission stall.')
 
@@ -197,6 +199,9 @@ def root_window(text):
 def f16_engine_work(text, lifetimes, calls=4, per_call=1046):
     commands = []
     names = {2: 'value_row', 3: 'release', 4: 'full', 5: 'refill', 6: 'key_column'}
+    observed = ('ar', 'r_beats', 'read_payload_bytes', 'store_wait_cycles',
+                'read_backpressure_cycles', 'replay_backpressure_cycles',
+                'v2_k_view_bank_cycles', 'v2_bank_conflict_cycles')
     for line in text.splitlines():
         if line.startswith('[AKV_PERF] '):
             fields = {}
@@ -214,21 +219,91 @@ def f16_engine_work(text, lifetimes, calls=4, per_call=1046):
         selected = commands[trial*per_call:(trial+1)*per_call]
         events = lifetimes[trial*per_call:(trial+1)*per_call]
         counts, busy = Counter(), Counter()
+        activity = {name: Counter() for name in names.values()}
+        histogram = {name: Counter() for name in names.values()}
         for command, event in zip(selected, events):
             name = names[command['command']]
             require(command['busy_cycles'] == event['cycles'], 'AKV lifetime/cost mismatch')
             counts[name] += 1
             busy[name] += event['cycles']
+            histogram[name][str(event['cycles'])] += 1
+            for key in observed:
+                activity[name][key] += command[key]
         gaps = [b['fire']-a['terminal'] for a, b in zip(events, events[1:])]
         require(all(g >= 0 for g in gaps), 'Overlapping AKV commands')
         envelope = events[-1]['terminal']-events[0]['fire']
         require(sum(busy.values())+sum(gaps) == envelope, 'AKV envelope partition mismatch')
         result.append(dict(trial=trial, commands=dict(counts), busy_by_command_cycles=dict(busy),
+            busy_histogram_by_command={k: dict(v) for k, v in histogram.items()},
+            observed_activity_by_command={k: dict(v) for k, v in activity.items()},
             first_fire_to_last_terminal_cycles=envelope, intercommand_gap_cycles=sum(gaps),
             interpretation='Envelope is partitioned into engine lifetimes and inter-command gaps. '
                            'Gaps include required RVV/scalar work and dependencies, not all removable overhead. '
                            'Full-call preparation/output outside the envelope remains separate.'))
     return result
+
+
+def fnv1a64(data):
+    value = 14695981039346656037
+    for byte in data:
+        value = ((value ^ byte) * 1099511628211) & ((1 << 64)-1)
+    return format(value, '016x')
+
+
+def original_payload_integrity(text, build_dir, pins):
+    build = json.loads((build_dir/'build.json').read_text())
+    contract = build.get('input_integrity', {})
+    require(contract.get('method') == 'fnv1a64-after-both-timed-calls-v1' and
+            contract.get('entrypoint') == 'main -> q6_profile_body' and
+            contract.get('memory_checked_after_both_calls') is True,
+            'Original target input/weight integrity is not proved')
+    expected = {'activation': ('input_f32.bin', 8192, 'profile_input'),
+                'weight': ('weights_r4.bin', 107520, 'profile_weights')}
+    require(set(contract['payloads']) == set(expected), 'Missing/extra integrity payload')
+    for tag, (filename, size, symbol) in expected.items():
+        item = contract['payloads'][tag]
+        path = build_dir/'data'/filename
+        require(item['path'] == str(path) and item['bytes'] == path.stat().st_size == size and
+                item['symbol'] == symbol and item['expected_hash'] == fnv1a64(path.read_bytes()) and
+                pins.get(str(path)) == digest(path), 'Independent payload identity/hash mismatch')
+    wrapper = contract['wrapper']
+    require(Path(wrapper['source']) == HERE/'q6_decode/input_integrity.c', 'Unexpected integrity source')
+    for key in ('source', 'object', 'config'):
+        path = Path(wrapper[key])
+        require(path.is_file() and wrapper[key+'_sha256'] == digest(path) == pins.get(str(path)),
+                'Integrity wrapper/config/object pin mismatch')
+    command_file = build_dir/'commands.json'
+    require(pins.get(str(command_file)) == digest(command_file), 'Integrity compile/link command drift')
+    commands = json.loads(command_file.read_text())
+    main = [c['argv'] for c in commands if c['label'] == 'compile-main']
+    compiled = [c['argv'] for c in commands if '-c' in c['argv'] and
+                c['argv'][c['argv'].index('-c')+1] == wrapper['source']]
+    linked = [c['argv'] for c in commands if c['label'] == 'link']
+    require(len(main) == 1 and main[0].count('-Dmain=q6_profile_body') == 1 and
+            len(compiled) == 1 and not any(arg.startswith('-Dmain=') for arg in compiled[0]) and
+            '-o' in compiled[0] and compiled[0][compiled[0].index('-o')+1] == wrapper['object'] and
+            len(linked) == 1 and linked[0].count(wrapper['object']) == 1,
+            'No independently linked post-call input integrity wrapper')
+    pattern = re.compile(r'CHAIN_Q6_INPUT_INTEGRITY tag=(activation|weight) bytes=([0-9]+) '
+                         r'expected=([0-9a-f]{16}) actual=([0-9a-f]{16})')
+    observed, done = {}, False
+    for line in text.splitlines():
+        if line.startswith('CHAIN_Q6_INPUT_INTEGRITY_DONE'):
+            require(not done and set(observed) == set(expected) and
+                    line == 'CHAIN_Q6_INPUT_INTEGRITY_DONE errors=0', 'Incomplete/failed integrity footer')
+            done = True
+        elif line.startswith('CHAIN_Q6_INPUT_INTEGRITY'):
+            match = pattern.fullmatch(line)
+            require(match is not None and not done, 'Malformed/late integrity record')
+            tag, count, reference, actual = match.groups()
+            require(tag not in observed and int(count) == expected[tag][1] and
+                    reference == actual == contract['payloads'][tag]['expected_hash'],
+                    'Original target payload was changed or evidence was duplicated')
+            observed[tag] = dict(bytes=int(count), expected=reference, actual=actual)
+    require(done, 'Original target payload readback is missing')
+    return dict(state='PASS', method=contract['method'], payloads=observed,
+                bytes_checked=115712, after_both_timed_calls=True,
+                scope='Architecturally visible target payload signatures against independently hashed frozen input files')
 
 
 def accepted(directory, kind):
@@ -266,6 +341,9 @@ def accepted(directory, kind):
     spec.loader.exec_module(module)
     measured = module.check_run(log, Path(report['build']))
     require(measured == report['measured'], 'Replayed checker disagrees with accepted measurement')
+    if kind == 'q6':
+        measured['original_payload_integrity'] = original_payload_integrity(
+            log.read_text(), Path(report['build']), json.loads(inventory.read_text()))
     expected = {'qbs': [c['busy_cycles'] for t in measured['trials'] for c in t['commands']]} if kind == 'q6' else {}
     if kind == 'f16':
         expected['akv'] = [int(re.search(r'\bbusy_cycles=([0-9]+)', line)[1])
@@ -317,7 +395,6 @@ def main():
         selected_runs={kind: str(path) for kind, path in selected.items()},
         current_hardware_production_edits=False, interpretation='Two real-data full operator calls, not full layer/model performance.')
     out.mkdir()
-    save(out/'result.json', result)
     pins = dict(initial_pins)
     for kind in ('q6', 'f16'):
         p = selected[kind]/'result.json'
@@ -334,6 +411,7 @@ def main():
         for k, value in f['mean_issue_side_partition'].items():
             writer.writerow(['f16_decode', 'profile', k, value, value/f['profile_mean_cycles']])
     verify(pins)
+    save(out/'result.json', result)
     print(json.dumps(dict(state=result['state'], output=str(out))), flush=True)
 
 
