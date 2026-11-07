@@ -1,0 +1,33 @@
+{
+  "state": "SOC_SRAM_MC_PRELOAD_COMPONENT_REPLAY_PASS",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_soc_sram_mc_preload_20261106_01",
+  "result_sha256": "fa74a0b4fb6f452986f386d3bed01c89a9bcd76577299e51878f6480839ebc91",
+  "source_pins_sha256": "8bae56072f0b1b07bb1be0ae35e1b8567f1604459d8d90c532fdac048da2d2a9",
+  "source_pins_checked": 99,
+  "artifacts_checked": 68,
+  "host_tests_passed": 9,
+  "vcs_compiles": 1,
+  "vcs_functional_runs": 2,
+  "widths_tested": [128, 256],
+  "capacity_bytes_per_width": 1048576,
+  "checked_bytes_total": 4194400,
+  "actual_foundry_model_used": true,
+  "original_preload_task_used": true,
+  "real_elf_sha256": "a63841ff39b370d06dbe039273ab4dd339fbd43c201ad6515416fa7f45bcd087",
+  "real_elf_oracle": "Independent GNU objcopy flat binary, gap-filled and padded to physical capacity",
+  "boundary_fixture": "Synthetic nonzero bytes across all banks and columns, with final BSS bytes zero",
+  "rtl_block": "Actual ara_soc TARGET_SRAM_MC block and memory-valid register extracted unchanged",
+  "legacy_string_to_packed_filename_warnings_retained": 16,
+  "default_loader_changed": false,
+  "target_cpu_executed": false,
+  "full_soc_accepted": false,
+  "performance_measured": false,
+  "timing_accepted": false,
+  "synthesis_run": false,
+  "limits": [
+    "Explicit opt-in RTL-hierarchy loader; not connected to the dirty default testbench",
+    "Original foundry macro functional model with UNIT_DELAY and timing checks disabled",
+    "All capacity bytes read through memory ports in two configurations; no CPU instruction execution",
+    "Not gate-level hierarchy, Linux/MMU, FPGA, PPA or full-SoC boot acceptance"
+  ]
+}
