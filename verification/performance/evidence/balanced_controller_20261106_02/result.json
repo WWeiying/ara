@@ -1,0 +1,33 @@
+{
+  "state": "BALANCED_COMPLETE_CONTROLLER_RAW_REPLAY_PASS",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_balanced_engine_20261106_02",
+  "result_sha256": "121a3b8f15850f96dc1dd6b353563d51c8821dbfff82c83f9dc0f03f69ec7f8a",
+  "source_pins_sha256": "f573eca0a0700c79eb06f74a3f5f3e5fae039deff96cbc55a1be385588216ddf",
+  "measured_sha256": "7e7ae243e05d205faa3a5d38928ff195d29ddf5cf5c7ad294b9ef8d0a498bd11",
+  "paired_sha256": "971fa2d9014d9faeb3cea680a9a3392fc6548ae98b37978f63f2b204986942d5",
+  "pins_rehashed": 186,
+  "artifacts_rehashed": 26,
+  "raw_logs_replayed": 9,
+  "images": 3,
+  "direct_cases_per_image": 84,
+  "context_lifecycle_cases_per_image": 14,
+  "default_off_exact": true,
+  "unqualified_direct_cycles_unchanged": true,
+  "direct_cycle_sums": {
+    "matrix_gap0": {"baseline": 23148, "candidate": 20290, "improved": 15, "unchanged": 21, "regressed": 0},
+    "matrix_gap3": {"baseline": 37889, "candidate": 35642, "improved": 15, "unchanged": 21, "regressed": 0},
+    "contexts_gap0": {"baseline": 16796, "candidate": 15919, "improved": 5, "unchanged": 7, "regressed": 0}
+  },
+  "physical_bits": 256,
+  "matrix_dot": 1,
+  "production_source_changed": false,
+  "full_soc": false,
+  "whole_model": false,
+  "synthesis_run": false,
+  "limits": [
+    "Direct command cycle sums exclude SDK preparation and fault/lifecycle suite overhead",
+    "Synthetic AXI and MMU/PMA fixture, not real CVA6 MMU/PMP or Linux",
+    "Nonzero seed continuation and balanced-M4 AKV/RVV handoff are separate gates",
+    "No area, power, FPGA or whole-model speedup claim"
+  ]
+}
