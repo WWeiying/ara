@@ -1,0 +1,49 @@
+{
+  "state": "RMS_GGML_MODEL_SCOPED_RAW_AUDIT_PASS",
+  "collector": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_rms_ggml_model_collect_20261106_01/result.json",
+  "collector_sha256": "bc009e9f9419551eea9ddf0203c08691fbdc3a7ea30379b64c12d8eec1a34bc9",
+  "collector_pins_sha256": "bc24a0724ee3aba7a8b8791a1f3828a05f70de4736d2d1dffbd94f99562c33ae",
+  "run": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/e2e_rms_ggml_model_qemu_20261106_01",
+  "result_sha256": "3a4e79242c74f24d1e994722ac9bf88b567b1ff24473eec96451e7655be8a72e",
+  "worker_state": "RMS_GGML_PREBUILT_MODEL_PAIR_FUNCTIONAL_PASS",
+  "source_pins_sha256": "12a8f2c8a50d61ff450e63acb57d572b2e39ddfb1b2d8f8863270c050cc56b41",
+  "logits_compared": 607744,
+  "comparisons": 4,
+  "identical_full_logits": true,
+  "identical_native_work": true,
+  "identical_tokens_and_csr": true,
+  "norm_operators": 452,
+  "norm_rows": 59622,
+  "norm_nodes_per_step": 113,
+  "all_norm_nodes_fused": true,
+  "prefill_node_histogram": [
+    {"width": 128, "rows": 640, "nodes": 28},
+    {"width": 128, "rows": 320, "nodes": 28},
+    {"width": 2048, "rows": 40, "nodes": 55},
+    {"width": 2048, "rows": 1, "nodes": 2}
+  ],
+  "decode_node_histogram": [
+    {"width": 128, "rows": 16, "nodes": 28},
+    {"width": 128, "rows": 8, "nodes": 28},
+    {"width": 2048, "rows": 1, "nodes": 57}
+  ],
+  "selected_inputs": 57,
+  "worker_inventory_entries": 35622,
+  "selected_input_post_match": true,
+  "full_worker_pins_rehashed": false,
+  "qemu_source_tree_rehashed": false,
+  "upstream_complete_input_acceptance_referenced": true,
+  "actual_newc_elf_count": 4,
+  "only_changed_archive_member": "ops.cpp.o",
+  "unchanged_archive_members": 31,
+  "tests_passed": 15,
+  "performance_measured": false,
+  "production_library_promoted": false,
+  "limits": [
+    "Functional integration for this Qwen3 model/prompt and two quantized-KV configurations only; not default-F16 or general-model coverage",
+    "Full-logit bitwise comparisons are independently replayed driver verdicts, not exported logit arrays",
+    "Only 57 selected inputs were rehashed; complete input/path acceptance is referenced through the exact worker result SHA, not independently repeated for all 35622 inventory entries",
+    "Production baseline already auto-vectorizes ordered RMS; no production or whole-model speedup is measured or promised",
+    "Runtime selection remains opt-in; no production library promotion or new hardware acceptance"
+  ]
+}
