@@ -158,7 +158,9 @@ class TestPublication(unittest.TestCase):
             for folder in (q6, f16):
                 folder.mkdir()
                 (folder/'result.json').write_text('{}')
-            report = dict(image_sha256='same', configuration={}, artifacts={})
+                (folder/'source-pins.json').write_text('{}')
+            report = dict(image_sha256='same', configuration={}, artifacts={},
+                          source_pins_sha256=reporter.digest(q6/'source-pins.json'))
             q = dict(mean_complete_call_partition=dict(work=10), mean_total_cycles=10)
             f = dict(mean_issue_side_partition=dict(work=20), profile_mean_cycles=20)
             with mock.patch.object(reporter, 'OUT', root), \
@@ -185,7 +187,7 @@ class TestOriginalPayloadIntegrity(unittest.TestCase):
         obj, config = build/'input_integrity.o', build/'integrity_config.h'
         obj.write_bytes(b'unit-fixture-object')
         config.write_text('unit-fixture-config')
-        pins, payloads, lines = {}, {}, []
+        pins, payloads, lines = {}, {}, ['Q6_DECODE_DONE errors=0 trials=2 commands=4']
         for tag, filename, size, symbol in (
                 ('activation', 'input_f32.bin', 8192, 'profile_input'),
                 ('weight', 'weights_r4.bin', 107520, 'profile_weights')):
@@ -224,7 +226,8 @@ class TestOriginalPayloadIntegrity(unittest.TestCase):
                 result = reporter.original_payload_integrity(text, build, pins)
                 self.assertEqual(result['bytes_checked'], 115712)
                 bad = text.replace('actual=', 'actual=0', 1)
-                for modified in (bad, '', text+text, text.replace('errors=0', 'errors=1')):
+                for modified in (bad, '', text+text, text.replace('errors=0', 'errors=1'),
+                                 text.replace('Q6_DECODE_DONE errors=0 trials=2 commands=4\n', '')):
                     with self.assertRaises(ValueError):
                         reporter.original_payload_integrity(modified, build, pins)
 

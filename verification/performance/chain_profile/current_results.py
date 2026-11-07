@@ -286,15 +286,18 @@ def original_payload_integrity(text, build_dir, pins):
             'No independently linked post-call input integrity wrapper')
     pattern = re.compile(r'CHAIN_Q6_INPUT_INTEGRITY tag=(activation|weight) bytes=([0-9]+) '
                          r'expected=([0-9a-f]{16}) actual=([0-9a-f]{16})')
-    observed, done = {}, False
+    observed, done, body_done = {}, False, False
     for line in text.splitlines():
+        if line == 'Q6_DECODE_DONE errors=0 trials=2 commands=4':
+            require(not body_done, 'Duplicated profiling body footer')
+            body_done = True
         if line.startswith('CHAIN_Q6_INPUT_INTEGRITY_DONE'):
-            require(not done and set(observed) == set(expected) and
+            require(body_done and not done and set(observed) == set(expected) and
                     line == 'CHAIN_Q6_INPUT_INTEGRITY_DONE errors=0', 'Incomplete/failed integrity footer')
             done = True
         elif line.startswith('CHAIN_Q6_INPUT_INTEGRITY'):
             match = pattern.fullmatch(line)
-            require(match is not None and not done, 'Malformed/late integrity record')
+            require(body_done and match is not None and not done, 'Malformed/early/late integrity record')
             tag, count, reference, actual = match.groups()
             require(tag not in observed and int(count) == expected[tag][1] and
                     reference == actual == contract['payloads'][tag]['expected_hash'],
@@ -399,7 +402,13 @@ def main():
     for kind in ('q6', 'f16'):
         p = selected[kind]/'result.json'
         pins[str(p)] = digest(p)
-        pins.update(reports[kind]['artifacts'])
+        inventory = selected[kind]/'source-pins.json'
+        combined = dict(json.loads(inventory.read_text()))
+        combined[str(inventory)] = reports[kind]['source_pins_sha256']
+        combined.update(reports[kind]['artifacts'])
+        for path, sha in combined.items():
+            require(path not in pins or pins[path] == sha, 'Conflicting evidence identity: '+path)
+            pins[path] = sha
     save(out/'evidence-pins.json', pins)
     with (out/'call_partition.csv').open('x', newline='') as stream:
         writer = csv.writer(stream)
