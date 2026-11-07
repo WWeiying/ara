@@ -59,11 +59,20 @@ The corrected smoke was actually rerun successfully. The explicit F16
 `check_successor.py` permits only whole-line zero UVM severity summaries;
 it keeps its sealed predecessor's numerical/work/timing gates and original log.
 
-After the campaign finishes successfully, use a new report directory:
+The original Q6 firmware also assumed final `vcsr=0`, although the real llama
+quantizer deliberately executes `csrwi vxrm,1` for RNE narrowing. Its original
+two `errors=2` footer is preserved as FAIL. The explicit Q6 CSR successor samples
+`vcsr/vstart` after quantization, requires exactly `vcsr_quant=2` with no saturation,
+then requires QBS to preserve it. It neither clears CSR nor accepts the old log.
+Its C, builder, checker and tests are new files; the old sealed inputs stay intact.
+
+After both individually checked workers finish successfully, use a new report
+directory. Independent selection does not relabel the original failed campaign:
 
 ```sh
 python3 -B verification/performance/chain_profile/current_results.py \
-  --campaign /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/chain_profile_runs_20261107_01 \
+  --q6-run /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/chain_q6_csr_vcs_20261107_01 \
+  --f16-run /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/chain_profile_runs_20261107_01/f16 \
   --output /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/chain_profile_reconciled_NEW
 ```
 
@@ -80,3 +89,9 @@ python3 -B -m unittest discover -s verification/performance/chain_profile/f16_de
 phases, engine occupancy, issue-side timestamp intervals and bounded windows
 have different meanings. Never add occupancy/stall observations to the call
 partition or present these two operator slices as measured full-model cycles.
+
+The isolated Q6 SDK call includes device discovery and fresh quantization.
+The actual GGML backend already caches device capabilities, can reuse M1
+activation contexts across eligible neighboring graph operations, and amortizes
+planning/preparation over larger output dimensions. Do not label all of this
+slice's preparation/admission cost as a remaining whole-model runtime penalty.

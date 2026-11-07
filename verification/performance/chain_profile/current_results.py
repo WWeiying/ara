@@ -110,6 +110,7 @@ def f16_summary(measured):
         engine_busy_cycles_per_call=busy,
         engine_busy_fraction_per_call=[b/t for b, t in zip(busy, total)],
         hardware_work=measured['work'], observed_empty_probe_median_cycles=measured['empty_interval_median'],
+        reconciled_command_costs=measured.get('reconciled_command_costs'),
         interpretation='Issue-side intervals are exclusive CPU phase intervals, not exclusive engine or stall times. '
                        'AKV busy overlaps these intervals. Final drain is already inside outside_spans. '
                        'Signed ABBA delta is observed perturbation, not an exact correction to subtract.')
@@ -193,6 +194,43 @@ def root_window(text):
                 scope='One prefix window; global WAIT_WEIGHT counters are authoritative for the whole command.')
 
 
+def f16_engine_work(text, lifetimes, calls=4, per_call=1046):
+    commands = []
+    names = {2: 'value_row', 3: 'release', 4: 'full', 5: 'refill', 6: 'key_column'}
+    for line in text.splitlines():
+        if line.startswith('[AKV_PERF] '):
+            fields = {}
+            for token in line[len('[AKV_PERF] '):].split():
+                require(token.count('=') == 1, 'Malformed AKV field')
+                key, value = token.split('=')
+                require(key not in fields and value.isdecimal(), 'Invalid AKV field')
+                fields[key] = int(value)
+            require(fields['command'] in names and fields['seq'] == len(commands)+1,
+                    'Unexpected AKV command/order')
+            commands.append(fields)
+    require(len(commands) == len(lifetimes) == calls*per_call, 'Incomplete AKV command costs')
+    result = []
+    for trial in range(calls):
+        selected = commands[trial*per_call:(trial+1)*per_call]
+        events = lifetimes[trial*per_call:(trial+1)*per_call]
+        counts, busy = Counter(), Counter()
+        for command, event in zip(selected, events):
+            name = names[command['command']]
+            require(command['busy_cycles'] == event['cycles'], 'AKV lifetime/cost mismatch')
+            counts[name] += 1
+            busy[name] += event['cycles']
+        gaps = [b['fire']-a['terminal'] for a, b in zip(events, events[1:])]
+        require(all(g >= 0 for g in gaps), 'Overlapping AKV commands')
+        envelope = events[-1]['terminal']-events[0]['fire']
+        require(sum(busy.values())+sum(gaps) == envelope, 'AKV envelope partition mismatch')
+        result.append(dict(trial=trial, commands=dict(counts), busy_by_command_cycles=dict(busy),
+            first_fire_to_last_terminal_cycles=envelope, intercommand_gap_cycles=sum(gaps),
+            interpretation='Envelope is partitioned into engine lifetimes and inter-command gaps. '
+                           'Gaps include required RVV/scalar work and dependencies, not all removable overhead. '
+                           'Full-call preparation/output outside the envelope remains separate.'))
+    return result
+
+
 def accepted(directory, kind):
     receipt = directory / 'result.json'
     report = json.loads(receipt.read_text())
@@ -211,7 +249,17 @@ def accepted(directory, kind):
             proof['log_sha256'] == digest(log) and proof['elf_sha256'] == report['software_sha256'] and
             proof['vector_trace_sha256'] == digest(directory / 'work/vector_trace.csv'),
             'Protocol identity/check mismatch')
-    path = HERE / ('q6_decode/check.py' if kind == 'q6' else 'f16_decode/check_successor.py')
+    if kind == 'q6':
+        identity = report['measured'].get('checker_identity')
+        path = Path(identity['path']).resolve(strict=True) if identity else HERE / 'q6_decode/check.py'
+        require(path in (HERE/'q6_decode/check.py', HERE/'q6_decode/check_successor.py'),
+                'Unreviewed Q6 checker path')
+        if identity:
+            require(digest(path) == identity['sha256'] and
+                    json.loads(inventory.read_text()).get(str(path)) == identity['sha256'],
+                    'Q6 checker identity drift')
+    else:
+        path = HERE / 'f16_decode/check_successor.py'
     spec = importlib.util.spec_from_file_location('chain_reaudit_'+kind, path)
     module = importlib.util.module_from_spec(spec)
     sys.path.insert(0, str(path.parent))
@@ -224,37 +272,55 @@ def accepted(directory, kind):
                            for line in log.read_text().splitlines() if line.startswith('[AKV_PERF] ')]
         # Independent instruction-allocation counts supplement terminal work records.
         measured['vector_command_work'] = module._load_predecessor().check_vector_workcounts(directory / 'work/vector_trace.csv')
+    events = boundaries(log.read_text(), expected)
+    if kind == 'f16':
+        measured['reconciled_command_costs'] = f16_engine_work(log.read_text(), events['akv'])
     window = prefix(directory / 'work/boundary.csv')
     if kind == 'q6':
         window['reader_root'] = root_window(log.read_text())
-    return report, measured, boundaries(log.read_text(), expected), window
+    return report, measured, events, window
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
-    parser.add_argument('--campaign', type=Path, required=True)
+    selection = parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument('--campaign', type=Path)
+    selection.add_argument('--q6-run', type=Path)
+    parser.add_argument('--f16-run', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    campaign, out = args.campaign.resolve(strict=True), args.output.resolve()
+    out = args.output.resolve()
     require(not out.exists() and out.is_relative_to(OUT.resolve()), 'Fresh independent report required')
-    completed = json.loads((campaign / 'result.json').read_text())
-    require(completed['state'] == 'PROFILE_RUNS_CHECKED', 'Campaign not checked/completed')
-    verify(json.loads((campaign / 'source-pins.json').read_text()))
+    initial_pins = {str(Path(__file__)): digest(__file__)}
+    if args.campaign:
+        require(args.f16_run is None, 'Do not mix campaign and independent runs')
+        campaign = args.campaign.resolve(strict=True)
+        completed = json.loads((campaign / 'result.json').read_text())
+        require(completed['state'] == 'PROFILE_RUNS_CHECKED', 'Campaign not checked/completed')
+        verify(json.loads((campaign / 'source-pins.json').read_text()))
+        initial_pins.update({str(p): digest(p) for p in (campaign/'result.json', campaign/'source-pins.json')})
+        selected = {kind: campaign/kind for kind in ('q6', 'f16')}
+        mode = 'checked_campaign'
+    else:
+        require(args.f16_run is not None, 'Both independently accepted runs required')
+        selected = {'q6': args.q6_run.resolve(strict=True), 'f16': args.f16_run.resolve(strict=True)}
+        mode = 'explicit_checked_runs; no change to original campaign status'
     reports, measurements, windows, events = {}, {}, {}, {}
     for kind in ('q6', 'f16'):
-        reports[kind], measurements[kind], events[kind], windows[kind] = accepted(campaign/kind, kind)
+        reports[kind], measurements[kind], events[kind], windows[kind] = accepted(selected[kind], kind)
     require(reports['q6']['image_sha256'] == reports['f16']['image_sha256'] and
             reports['q6']['configuration'] == reports['f16']['configuration'], 'Image/config mismatch')
     result = dict(state='CURRENT_RUNS_RECONCILED', whole_model=False,
         image_sha256=reports['q6']['image_sha256'], configuration=reports['q6']['configuration'],
         q6=q6_summary(measurements['q6']), f16=f16_summary(measurements['f16']),
-        bounded_windows=windows, boundaries=events,
+        bounded_windows=windows, boundaries=events, collection_mode=mode,
+        selected_runs={kind: str(path) for kind, path in selected.items()},
         current_hardware_production_edits=False, interpretation='Two real-data full operator calls, not full layer/model performance.')
     out.mkdir()
     save(out/'result.json', result)
-    pins = {str(p): digest(p) for p in (Path(__file__), campaign/'result.json', campaign/'source-pins.json')}
+    pins = dict(initial_pins)
     for kind in ('q6', 'f16'):
-        p = campaign/kind/'result.json'
+        p = selected[kind]/'result.json'
         pins[str(p)] = digest(p)
         pins.update(reports[kind]['artifacts'])
     save(out/'evidence-pins.json', pins)

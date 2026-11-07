@@ -85,6 +85,24 @@ class TestF16Accounting(unittest.TestCase):
             data['phase'][0][key] = value
             with self.assertRaises(ValueError): reporter.f16_summary(data)
 
+    def test_command_envelope_keeps_required_gap_work_separate(self):
+        text = ''.join('[AKV_PERF] seq=%d command=%d busy_cycles=10\n' % (i+1, c)
+                       for i, c in enumerate((4, 6, 3)))
+        events = [dict(fire=i*15, terminal=i*15+10, cycles=10) for i in range(3)]
+        row = reporter.f16_engine_work(text, events, calls=1, per_call=3)[0]
+        self.assertEqual(row['first_fire_to_last_terminal_cycles'], 40)
+        self.assertEqual(sum(row['busy_by_command_cycles'].values()), 30)
+        self.assertEqual(row['intercommand_gap_cycles'], 10)
+        events[1]['cycles'] += 1
+        with self.assertRaises(ValueError): reporter.f16_engine_work(text, events, calls=1, per_call=3)
+
+    def test_failed_receipt_cannot_be_reaudited_as_pass(self):
+        with tempfile.TemporaryDirectory() as name:
+            import json
+            path = Path(name)
+            (path/'result.json').write_text(json.dumps(dict(state='FAIL', kind='f16')))
+            with self.assertRaises(ValueError): reporter.accepted(path, 'f16')
+
 
 class TestQ6Accounting(unittest.TestCase):
     def fixture(self):
