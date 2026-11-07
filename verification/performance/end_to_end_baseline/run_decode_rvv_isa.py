@@ -34,7 +34,7 @@ def libraries(text):
 
 
 def spike_command(plugin, elf):
-    return [str(SPIKE), '--isa=rv64gcv_zfh_zvfh_zvl1024b', '--priv=MSU', '--pmpregions=1',
+    return [str(SPIKE), '--isa=rv64gcv_zfh_zicntr_zvfh_zvl1024b', '--priv=MSU', '--pmpregions=1',
             '-m0x80000000:0x1000000,0xbf000000:0x1000000', '--extlib='+str(plugin),
             '--device=spike_soc_ports', '--instructions=20000000', str(elf)]
 

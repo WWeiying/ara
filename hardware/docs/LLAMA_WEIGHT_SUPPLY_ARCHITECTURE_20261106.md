@@ -702,15 +702,30 @@ The last producer remains FAIL because GCC names its internal Q6 implementation
 dispatcher target, then rechecks every other post-build gate without compiling
 again. Original failures are not rewritten.
 
-This closes build preparation, not numerical or timing acceptance. All 896
-output words and numerical-difference diagnostics are available after the timed
-region. The current driver uses the existing QBS C-reference outputs with the
-previous standalone RVV tolerance; it explicitly declares that an independent
-RVV oracle is not yet present. Before an RVV/QBS complete-call comparison,
-obtain independent RVV numerical evidence, check cross-width bitwise repeatability
-and protocol, and align or bound instrumentation/CSR-seed differences. The
-current RVV driver seeds VCSR=5 while the QBS driver seeds VCSR=3; both expect
-the original quantizer's post-state, but that is not an identical initial state.
-It also takes additional timed CSR observations. These differences cannot be
-silently folded into a clean complete-call speedup. No RVV performance jobs
-are dispatched by the existing SDK supply queue, and full-QKV RVV remains pending.
+The exact ELF now also passes the independent Spike ISA model: all 896 output
+words, four quantized payloads, guards and eleven preparation/part CSR records
+are retained. A host MMIO plugin only implements the existing UART, memory-map
+queries and exit register; it does not replace any guest arithmetic. Spike uses
+the unchanged instruction budget with explicitly enabled Zicntr. Without that
+extension, the first `rdcycle` at 0x8000056a is illegal; a bounded first-fault
+probe established that cause before changing the model configuration. The failed
+attempt is preserved, not mistaken for a slow matrix computation or repaired by
+increasing the budget. No ELF, Spike binary or RTL was changed for this fix.
+
+Q4 outputs match the embedded QBS C-reference bits. Q6 parts have 69/78/51
+different words, with maximum absolute errors 2.98023224e-8, 5.96046448e-8 and
+1.90734863e-6, respectively; none fails the existing absolute/relative tolerance.
+These are different software arithmetic paths, not an RTL result. Subsequent RVV
+RTL acceptance must match the independent ISA outputs and state records exactly,
+not just pass the embedded tolerance. Spike cycle values are not performance.
+The receipt is `verification/performance/evidence/decode_rvv_isa_20261106_01/result.json`.
+
+Both actual ELF disassemblies seed FCSR=8, VCSR=5 and VSTART=0; the earlier
+statement that the SDK starts at VCSR=3 was incorrect. VCSR=3 is its post-quantizer
+state. The RVV driver does make extra timed CSR observations. Align or bound
+that instrumentation before accepting a clean complete-call speedup. The new
+`run_decode_rvv_rtl.py` reuses the accepted physical images, requires the actual
+memory/handoff gate, replays the exact-ELF ISA evidence, and checks all output
+words/state plus independent protocol after VCS. It cannot declare an SDK ratio.
+No RVV job is silently added to the existing SDK queue; full-QKV RVV remains
+pending.

@@ -16,7 +16,7 @@ class DecodeRVVISATests(unittest.TestCase):
         argv = spike_command(plugin, elf)
         self.assertEqual(argv[0], str(SPIKE)); self.assertEqual(argv[-1], str(elf))
         self.assertIn('--pmpregions=1', argv)
-        self.assertIn('--isa=rv64gcv_zfh_zvfh_zvl1024b', argv)
+        self.assertIn('--isa=rv64gcv_zfh_zicntr_zvfh_zvl1024b', argv)
         self.assertIn('--instructions=20000000', argv)
         self.assertNotIn('--disable-dtb', argv)
         self.assertNotIn('--pmpregions=0', argv)

@@ -654,3 +654,22 @@ dispatch target and all unchanged build/admission checks. It neither modifies
 the failed producer nor recompiles the ELF. The accepted state ends in
 `BUILD_REAUDITED_NOT_EXECUTED`; runtime numerics/protocol, matched initial CSR
 state and timed-instrumentation accounting remain necessary before timing claims.
+
+The same ELF now has an independent functional reference from
+`run_decode_rvv_isa.py`: 896 exact output words and eleven CSR records, with
+the existing quantized payload/guard checks. `spike_soc_ports.cc` is an IO-only
+UART/memory-map/exit adapter, not a kernel emulation. The first `rdcycle` fault
+was traced before enabling Zicntr; the ELF, ISA binary and instruction budget
+were unchanged. Receipt: `evidence/decode_rvv_isa_20261106_01/result.json`.
+Never use the ISA model's cycle values as hardware timings.
+
+`run_decode_rvv_rtl.py --width 128|256 --output <fresh-verification-directory>`
+performs preflight without simulation. With `--execute-reviewed --timeout 10800`,
+it reuses the already built actual-memory SoC image and requires completed
+memory/handoff acceptance. All RVV outputs and CSR records must match Spike
+exactly, followed by independent protocol checks. It records RTL preparation,
+dispatch and execution cycles, but deliberately does not accept an SDK
+complete-call ratio: the driver has extra timed CSR observations. Actual
+disassembly proves both drivers seed VCSR=5, not different initial values.
+Use directly owned systemd workers and distinct width-specific output directories;
+this helper does not alter the running SDK queue or launch synthesis.
