@@ -468,6 +468,11 @@ module ara import ara_pkg::*; #(
   strb_t     [NrLanes-1:0]                     ldu_result_be;
   logic      [NrLanes-1:0]                     ldu_result_gnt;
   logic      [NrLanes-1:0]                     ldu_result_final_gnt;
+  logic pv_lease, pv_acquire, pv_start, pv_release, pv_commit;
+  logic pv_payload_seed, pv_payload_value;
+  logic [NrLanes-1:0] pv_abort, pv_done_ready, pv_owned, pv_ready;
+  logic [NrLanes-1:0] pv_result_valid, pv_done_valid, pv_done_error;
+  logic [NrLanes-1:0][4:0] pv_done_flags;
   // Slide Unit
   logic      [NrLanes-1:0]                     sldu_result_req;
   vid_t      [NrLanes-1:0]                     sldu_result_id;
@@ -540,6 +545,21 @@ module ara import ara_pkg::*; #(
       .ldu_result_be_i                 (ldu_result_be[lane]                 ),
       .ldu_result_gnt_o                (ldu_result_gnt[lane]                ),
       .ldu_result_final_gnt_o          (ldu_result_final_gnt[lane]          ),
+      .pv_lease_i                      (pv_lease                            ),
+      .pv_acquire_i                    (pv_acquire                          ),
+      .pv_start_i                      (pv_start                            ),
+      .pv_abort_i                      (pv_abort[lane]                      ),
+      .pv_release_i                    (pv_release                          ),
+      .pv_commit_i                     (pv_commit                           ),
+      .pv_payload_seed_i               (pv_payload_seed                     ),
+      .pv_payload_value_i              (pv_payload_value                    ),
+      .pv_owned_o                      (pv_owned[lane]                      ),
+      .pv_ready_o                      (pv_ready[lane]                      ),
+      .pv_result_valid_o               (pv_result_valid[lane]               ),
+      .pv_done_valid_o                 (pv_done_valid[lane]                 ),
+      .pv_done_error_o                 (pv_done_error[lane]                 ),
+      .pv_done_flags_o                 (pv_done_flags[lane]                 ),
+      .pv_done_ready_i                 (pv_done_ready[lane]                 ),
       // Interface with the store unit
       .stu_operand_o                   (stu_operand[lane]                   ),
       .stu_operand_valid_o             (stu_operand_valid[lane]             ),
@@ -702,6 +722,21 @@ module ara import ara_pkg::*; #(
     .ldu_result_be_o            (ldu_result_be                                         ),
     .ldu_result_gnt_i           (ldu_result_gnt                                        ),
     .ldu_result_final_gnt_i     (ldu_result_final_gnt                                  ),
+    .pv_lease_o                 (pv_lease),
+    .pv_acquire_o               (pv_acquire),
+    .pv_start_o                 (pv_start),
+    .pv_release_o               (pv_release),
+    .pv_commit_o                (pv_commit),
+    .pv_payload_seed_o          (pv_payload_seed),
+    .pv_payload_value_o         (pv_payload_value),
+    .pv_abort_o                 (pv_abort),
+    .pv_done_ready_o            (pv_done_ready),
+    .pv_owned_i                 (pv_owned),
+    .pv_ready_i                 (pv_ready),
+    .pv_result_valid_i          (pv_result_valid),
+    .pv_done_valid_i            (pv_done_valid),
+    .pv_done_error_i            (pv_done_error),
+    .pv_done_flags_i            (pv_done_flags),
     .qbs_fflags_o               (qbs_fflags                                            ),
     .qbs_fflags_valid_o         (qbs_fflags_valid                                      )
   );

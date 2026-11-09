@@ -51,6 +51,18 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     output exception_t                   fault_mmu_exception_o,
     output logic                         context_ready_o,
 
+    // Exclusive read lease for the opt-in resident arithmetic controller.
+    // Defaults preserve all existing standalone engine instantiations.
+    input logic resident_owner_i = 1'b0,
+    input logic resident_row_read_i = 1'b0,
+    input logic [5:0] resident_row_token_i = '0,
+    input logic [3:0] resident_row_word_i = '0,
+    output logic [255:0] resident_row_data_o,
+    output logic resident_lease_ready_o,
+    output logic resident_context_valid_o,
+    output logic [15:0] resident_context_dimension_o,
+    output logic [6:0] resident_context_tokens_o,
+
     output reader_req_t reader_req_o,
     input reader_rsp_t reader_rsp_i,
 
@@ -254,7 +266,7 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic active_command_is_v2;
   logic v2_column_start;
 
-  assign command_ready_o = state_q == AKV_ENGINE_IDLE;
+  assign command_ready_o = state_q == AKV_ENGINE_IDLE && !resident_owner_i;
   assign command_fire = command_valid_i && command_ready_o;
   assign busy_o = state_q != AKV_ENGINE_IDLE;
   assign success_valid_o = state_q == AKV_ENGINE_SUCCESS;
@@ -265,6 +277,12 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   assign fault_vaddr_o = fault_vaddr_q;
   assign fault_mmu_exception_o = fault_mmu_exception_q;
   assign context_ready_o = context_ready_q;
+  assign resident_lease_ready_o = state_q == AKV_ENGINE_IDLE &&
+      !context_write_busy && !read_busy && !v2_column_busy;
+  assign resident_context_valid_o = resident_lease_ready_o && context_ready_q && context_v2_q;
+  assign resident_context_dimension_o = context_head_dim_q;
+  assign resident_context_tokens_o = context_tile_count_q;
+  assign resident_row_data_o = v2_row_data;
   assign active_command_is_full = active_command_q inside {
       AKV_COMMAND_FULL, AKV_COMMAND_V2_FULL};
   assign active_command_is_v2 = active_command_q inside {
@@ -598,11 +616,12 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .v2_write_data_i(read_data),
     .v2_write_strb_i(read_data_strb),
     .v2_write_busy_o(v2_context_write_busy),
-    .v2_row_read_i(state_q == AKV_ENGINE_REPLAY_READ &&
-                          replay_use_v2_q && !replay_column_q),
-    .v2_row_stream_i(replay_stream_q),
-    .v2_row_token_i(replay_token_q),
-    .v2_row_word_i(replay_word_q),
+    .v2_row_read_i((state_q == AKV_ENGINE_REPLAY_READ &&
+                          replay_use_v2_q && !replay_column_q) ||
+                  (resident_owner_i && resident_row_read_i)),
+    .v2_row_stream_i(resident_owner_i ? AKV_STREAM_V : replay_stream_q),
+    .v2_row_token_i(resident_owner_i ? resident_row_token_i : replay_token_q),
+    .v2_row_word_i(resident_owner_i ? resident_row_word_i : replay_word_q),
     .v2_row_data_o(v2_row_data),
     .column_start_i(v2_column_start),
     .column_stream_i(command_selector_i[AkvV2ColumnSegmentBit]
@@ -1097,6 +1116,15 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   always_ff @(posedge clk_i) begin
     if (rst_ni) begin
+      if (resident_owner_i)
+        assert (state_q == AKV_ENGINE_IDLE && !command_fire &&
+                !read_busy && !context_write_busy && !v2_column_busy)
+          else $fatal(1,"Resident context lease overlaps ordinary AKV work");
+      if (resident_row_read_i)
+        assert (resident_owner_i && resident_context_valid_o &&
+                {1'b0,resident_row_token_i} < context_tile_count_q &&
+                {12'b0,resident_row_word_i} < (context_head_dim_q >> 4))
+          else $fatal(1,"Resident context read outside the admitted lease/range");
       if (state_q == AKV_ENGINE_PAYLOAD && read_range_valid) begin
         case (read_range_tag.role)
           AKV_RANGE_Q: assert (read_range_vaddr == context_q_base_q +

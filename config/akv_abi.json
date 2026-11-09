@@ -46,5 +46,29 @@
     "column_panel_width": 4,
     "column_panel_funct7": 1,
     "column_panel_capability_bit": 40
+  },
+  "resident_pv_profile": {
+    "version": 1,
+    "funct3": 7,
+    "funct7": 2,
+    "capability_index": 4,
+    "supported": false,
+    "control_bits": 9,
+    "token_bits": 6,
+    "heads_bit": 6,
+    "dimension_shift": 7,
+    "dimension_bits": 2,
+    "head_dim_codes": {"64": 0, "128": 1, "96": 2},
+    "nr_lanes": 4,
+    "vlen_bits": 1024,
+    "element_bits": 16,
+    "head_stride_elements": 128,
+    "source_registers": 6,
+    "source_reserved_registers": 8,
+    "source_elements": 384,
+    "source_lane_elements": 96,
+    "source_lane_words": 24,
+    "destination_registers": 4,
+    "destination_elements": 256
   }
 }

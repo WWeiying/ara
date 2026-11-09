@@ -80,6 +80,179 @@ def validate_spec(spec: dict) -> None:
             token["column_panel_funct7"] != 1 or
             token["column_panel_capability_bit"] != 40):
         raise ValueError("AKV-v2 panel profile is fixed at four columns")
+    if spec["resident_pv_profile"] != {
+        "version": 1, "funct3": 7, "funct7": 2, "capability_index": 4,
+        "supported": False, "control_bits": 9, "token_bits": 6,
+        "heads_bit": 6, "dimension_shift": 7, "dimension_bits": 2,
+        "head_dim_codes": {"64": 0, "128": 1, "96": 2},
+        "nr_lanes": 4, "vlen_bits": 1024, "element_bits": 16,
+        "head_stride_elements": 128, "source_registers": 6,
+        "source_reserved_registers": 8, "source_elements": 384,
+        "source_lane_elements": 96, "source_lane_words": 24,
+        "destination_registers": 4, "destination_elements": 256,
+    }:
+        raise ValueError("Resident PV stage-A ABI is fixed and not advertised")
+
+
+def resident_pv_constants(spec: dict) -> list[tuple[str, str, int]]:
+    pv = spec["resident_pv_profile"]
+    names = (
+        ("PROFILE_VERSION", "ProfileVersion", "version"),
+        ("FUNCT3", "Funct3", "funct3"), ("FUNCT7", "Funct7", "funct7"),
+        ("CAPABILITY_INDEX", "CapabilityIndex", "capability_index"),
+        ("CONTROL_BITS", "ControlBits", "control_bits"),
+        ("TOKEN_BITS", "TokenBits", "token_bits"),
+        ("HEADS_BIT", "HeadsBit", "heads_bit"),
+        ("DIM_SHIFT", "DimShift", "dimension_shift"),
+        ("DIM_BITS", "DimBits", "dimension_bits"),
+        ("NR_LANES", "NrLanes", "nr_lanes"),
+        ("VLEN_BITS", "VlenBits", "vlen_bits"),
+        ("ELEMENT_BITS", "ElementBits", "element_bits"),
+        ("HEAD_STRIDE_ELEMENTS", "HeadStrideElements", "head_stride_elements"),
+        ("SOURCE_REGISTERS", "SourceRegisters", "source_registers"),
+        ("SOURCE_RESERVED_REGISTERS", "SourceReservedRegisters", "source_reserved_registers"),
+        ("SOURCE_ELEMENTS", "SourceElements", "source_elements"),
+        ("SOURCE_LANE_ELEMENTS", "SourceLaneElements", "source_lane_elements"),
+        ("SOURCE_LANE_WORDS", "SourceLaneWords", "source_lane_words"),
+        ("DESTINATION_REGISTERS", "DestinationRegisters", "destination_registers"),
+        ("DESTINATION_ELEMENTS", "DestinationElements", "destination_elements"),
+    )
+    return [(c, sv, pv[key]) for c, sv, key in names]
+
+
+def resident_pv_c_helpers() -> str:
+    return """/* Field validity does not imply runtime or hardware availability. */
+static inline uint32_t akv_resident_pv_tokens(uint64_t control) {
+  return (uint32_t)(control & ((UINT64_C(1) << AKV_RESIDENT_PV_TOKEN_BITS) - 1u)) + 1u;
+}
+
+static inline uint32_t akv_resident_pv_heads(uint64_t control) {
+  return (uint32_t)((control >> AKV_RESIDENT_PV_HEADS_BIT) & 1u) + 1u;
+}
+
+static inline uint32_t akv_resident_pv_head_dim(uint64_t control) {
+  const uint32_t code = (uint32_t)((control >> AKV_RESIDENT_PV_DIM_SHIFT) &
+      ((1u << AKV_RESIDENT_PV_DIM_BITS) - 1u));
+  if (code == AKV_HEAD_DIM_CODE_64) return AKV_HEAD_DIM_64;
+  if (code == AKV_HEAD_DIM_CODE_128) return AKV_HEAD_DIM_128;
+  if (code == AKV_HEAD_DIM_CODE_96) return AKV_HEAD_DIM_96;
+  return 0u;
+}
+
+static inline uint64_t akv_resident_pv_control(uint32_t tokens, uint32_t heads,
+                                            uint32_t head_dim) {
+  const uint32_t code = akv_head_dim_code(head_dim);
+  if (tokens == 0u || tokens > (1u << AKV_RESIDENT_PV_TOKEN_BITS) ||
+      heads == 0u || heads > 2u || code == AKV_HEAD_DIM_CODE_INVALID)
+    return UINT64_MAX;
+  return (uint64_t)(tokens - 1u) |
+         ((uint64_t)(heads - 1u) << AKV_RESIDENT_PV_HEADS_BIT) |
+         ((uint64_t)code << AKV_RESIDENT_PV_DIM_SHIFT);
+}
+
+static inline int akv_resident_pv_registers_are_valid(uint32_t vd, uint32_t vs2) {
+  return vd <= 32u - AKV_RESIDENT_PV_DESTINATION_REGISTERS &&
+         vs2 <= 32u - AKV_RESIDENT_PV_SOURCE_RESERVED_REGISTERS &&
+         (vd & (AKV_RESIDENT_PV_DESTINATION_REGISTERS - 1u)) == 0u &&
+         (vs2 & (AKV_RESIDENT_PV_SOURCE_RESERVED_REGISTERS - 1u)) == 0u &&
+         (vd + AKV_RESIDENT_PV_DESTINATION_REGISTERS <= vs2 ||
+          vs2 + AKV_RESIDENT_PV_SOURCE_RESERVED_REGISTERS <= vd);
+}
+
+static inline int akv_resident_pv_command_is_valid(uint64_t control,
+                                                uint32_t vd, uint32_t vs2) {
+  return (control >> AKV_RESIDENT_PV_CONTROL_BITS) == 0u &&
+         akv_resident_pv_head_dim(control) != 0u &&
+         akv_resident_pv_registers_are_valid(vd, vs2);
+}
+
+static inline uint32_t akv_encode_resident_pv(uint32_t vd, uint32_t control_rs1,
+                                           uint32_t vs2) {
+  if (control_rs1 >= 32u || !akv_resident_pv_registers_are_valid(vd, vs2))
+    return UINT32_MAX;
+  return akv_encode_r(AKV_RESIDENT_PV_FUNCT3, AKV_RESIDENT_PV_FUNCT7,
+                      vd, control_rs1, vs2);
+}
+
+/* Stage A: neither compilation nor field validity advertises execution support. */
+static inline int akv_resident_pv_is_supported(void) {
+  return AKV_RESIDENT_PV_SUPPORTED;
+}
+
+static inline uint64_t akv_resident_pv_capability_word(uint64_t index,
+                                                   int enabled) {
+  (void)index;
+  (void)enabled;
+  return UINT64_C(0);
+}
+"""
+
+
+def resident_pv_sv_helpers() -> str:
+    return """  // Widen before +1 so encoded T=63 produces 64, not zero.
+  function automatic logic [6:0] akv_resident_pv_tokens(input logic [63:0] control);
+    return {1'b0, control[AkvResidentPvTokenBits-1:0]} + 7'd1;
+  endfunction : akv_resident_pv_tokens
+
+  function automatic logic [1:0] akv_resident_pv_heads(input logic [63:0] control);
+    return {1'b0, control[AkvResidentPvHeadsBit]} + 2'd1;
+  endfunction : akv_resident_pv_heads
+
+  function automatic int unsigned akv_resident_pv_head_dim(input logic [63:0] control);
+    unique case (control[AkvResidentPvDimShift +: AkvResidentPvDimBits])
+      AkvResidentPvDimBits'(AkvHeadDimCode64): return AkvHeadDim64;
+      AkvResidentPvDimBits'(AkvHeadDimCode128): return AkvHeadDim128;
+      AkvResidentPvDimBits'(AkvHeadDimCode96): return AkvHeadDim96;
+      default: return 0;
+    endcase
+  endfunction : akv_resident_pv_head_dim
+
+  function automatic logic [63:0] akv_resident_pv_control(
+      input int unsigned tokens, heads, head_dim
+  );
+    automatic logic [7:0] code = akv_head_dim_code(head_dim);
+    if (tokens == 0 || tokens > (1 << AkvResidentPvTokenBits) ||
+        heads == 0 || heads > 2 || code == 8'hff) return '1;
+    return 64'(tokens - 1) | (64'(heads - 1) << AkvResidentPvHeadsBit) |
+           (64'(code) << AkvResidentPvDimShift);
+  endfunction : akv_resident_pv_control
+
+  function automatic logic akv_resident_pv_registers_are_valid(
+      input int unsigned vd, vs2
+  );
+    return vd <= 32 - AkvResidentPvDestinationRegisters &&
+           vs2 <= 32 - AkvResidentPvSourceReservedRegisters &&
+           (vd & (AkvResidentPvDestinationRegisters - 1)) == 0 &&
+           (vs2 & (AkvResidentPvSourceReservedRegisters - 1)) == 0 &&
+           (vd + AkvResidentPvDestinationRegisters <= vs2 ||
+            vs2 + AkvResidentPvSourceReservedRegisters <= vd);
+  endfunction : akv_resident_pv_registers_are_valid
+
+  function automatic logic akv_resident_pv_command_is_valid(
+      input logic [63:0] control, input int unsigned vd, vs2
+  );
+    return (control >> AkvResidentPvControlBits) == 0 &&
+           akv_resident_pv_head_dim(control) != 0 &&
+           akv_resident_pv_registers_are_valid(vd, vs2);
+  endfunction : akv_resident_pv_command_is_valid
+
+  function automatic logic [31:0] akv_encode_resident_pv(
+      input int unsigned vd, control_rs1, vs2
+  );
+    if (control_rs1 >= 32 || !akv_resident_pv_registers_are_valid(vd, vs2))
+      return '1;
+    return (32'(AkvResidentPvFunct7) << 25) | (32'(vs2) << 20) |
+           (32'(control_rs1) << 15) | (32'(AkvResidentPvFunct3) << 12) |
+           (32'(vd) << 7) | 32'(AkvOpcodeCustom2);
+  endfunction : akv_encode_resident_pv
+
+  // Stage A stays unadvertised even when experimental admission is compiled in.
+  function automatic logic [63:0] akv_resident_pv_capability_word(
+      input logic [63:0] index, input bit enabled
+  );
+    return '0;
+  endfunction : akv_resident_pv_capability_word
+"""
 
 
 def c_header(spec: dict) -> str:
@@ -88,6 +261,9 @@ def c_header(spec: dict) -> str:
     limits = spec["limits"]
     token = spec["token_axis_profile"]
     opcode = int(insn["opcode"], 0)
+    pv = spec["resident_pv_profile"]
+    pv_constants = "\n".join(f"#define AKV_RESIDENT_PV_{c} {value}u"
+                             for c, _, value in resident_pv_constants(spec))
     return f"""/* Generated by scripts/gen_akv_abi.py. Do not edit. */
 #ifndef AKV_ABI_H
 #define AKV_ABI_H
@@ -118,9 +294,9 @@ def c_header(spec: dict) -> str:
 #define AKV_HEAD_DIM_96 96u
 #define AKV_HEAD_DIM_128 128u
 #define AKV_HEAD_DIM_256 256u
-#define AKV_HEAD_DIM_CODE_64 0u
-#define AKV_HEAD_DIM_CODE_128 1u
-#define AKV_HEAD_DIM_CODE_96 2u
+#define AKV_HEAD_DIM_CODE_64 {pv['head_dim_codes']['64']}u
+#define AKV_HEAD_DIM_CODE_128 {pv['head_dim_codes']['128']}u
+#define AKV_HEAD_DIM_CODE_96 {pv['head_dim_codes']['96']}u
 #define AKV_HEAD_DIM_CODE_INVALID 0xffu
 #define AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT 38u
 #define AKV_V2_D256_SEGMENTED_CAPABILITY_BIT 39u
@@ -129,6 +305,9 @@ def c_header(spec: dict) -> str:
 #define AKV_V2_COLUMN_PANEL_WIDTH {token['column_panel_width']}u
 #define AKV_V2_COLUMN_SINGLE_FUNCT7 0u
 #define AKV_V2_COLUMN_PANEL_FUNCT7 {token['column_panel_funct7']}u
+
+{pv_constants}
+#define AKV_RESIDENT_PV_SUPPORTED {int(pv['supported'])}u
 
 typedef enum {{
   AKV_ELEMENT_FORMAT_INVALID = 0,
@@ -442,6 +621,7 @@ static inline uint32_t akv_encode_v2_column_panel_load(
                       dimension_rs1, 0u);
 }}
 
+{resident_pv_c_helpers()}
 #endif
 """
 
@@ -452,6 +632,9 @@ def sv_package(spec: dict) -> str:
     limits = spec["limits"]
     token = spec["token_axis_profile"]
     opcode = int(insn["opcode"], 0)
+    pv = spec["resident_pv_profile"]
+    pv_constants = "\n".join(f"  localparam int unsigned AkvResidentPv{sv} = {value};"
+                             for _, sv, value in resident_pv_constants(spec))
     return f"""// Generated by scripts/gen_akv_abi.py. Do not edit.
 package akv_pkg;
 
@@ -465,6 +648,12 @@ package akv_pkg;
   localparam bit AkvV2Enable = 1'b1;
 `else
   localparam bit AkvV2Enable = 1'b0;
+`endif
+
+`ifdef ARA_AKV_RESIDENT_PV_ENABLE
+  localparam bit AkvResidentPvEnable = 1'b1;
+`else
+  localparam bit AkvResidentPvEnable = 1'b0;
 `endif
 
   localparam int unsigned AkvArchitectureVersion = {spec['architecture_version']};
@@ -488,9 +677,9 @@ package akv_pkg;
   localparam int unsigned AkvHeadDim96 = 96;
   localparam int unsigned AkvHeadDim128 = 128;
   localparam int unsigned AkvHeadDim256 = 256;
-  localparam logic [6:0] AkvHeadDimCode64 = 7'd0;
-  localparam logic [6:0] AkvHeadDimCode128 = 7'd1;
-  localparam logic [6:0] AkvHeadDimCode96 = 7'd2;
+  localparam logic [6:0] AkvHeadDimCode64 = 7'd{pv['head_dim_codes']['64']};
+  localparam logic [6:0] AkvHeadDimCode128 = 7'd{pv['head_dim_codes']['128']};
+  localparam logic [6:0] AkvHeadDimCode96 = 7'd{pv['head_dim_codes']['96']};
   localparam int unsigned AkvV2DAxisTailCapabilityBit = 38;
   localparam int unsigned AkvV2D256SegmentedCapabilityBit = 39;
   localparam int unsigned AkvV2ColumnPanelCapabilityBit =
@@ -509,6 +698,9 @@ package akv_pkg;
       (AkvMaxQRows + 2 * AkvTileTokens) * AkvMaxHeadDim * 2;
   localparam int unsigned AkvV2ContextBytes =
       (AkvMaxQRows + 2 * AkvV2TileTokens) * AkvMaxHeadDim * 2;
+
+{pv_constants}
+  localparam bit AkvResidentPvSupported = 1'b{int(pv['supported'])};
 
   typedef enum logic [7:0] {{
     AKV_ELEMENT_FORMAT_INVALID = 8'd0,
@@ -632,6 +824,7 @@ package akv_pkg;
     endcase
   endfunction : akv_v2_capability_word
 
+{resident_pv_sv_helpers()}
 endpackage : akv_pkg
 """
 

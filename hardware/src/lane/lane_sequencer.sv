@@ -346,7 +346,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
         end
         VFU_LoadUnit: begin
           pe_req_ready = (!operand_request_valid_o[MaskM] || operand_request_ready_i[MaskM]) &&
-                         (!(qbs_pkg::QbsVrfContinuationEnable && pe_req.op == VQBEXEC && pe_req.use_vs1) ||
+                         (!((qbs_pkg::QbsVrfContinuationEnable && pe_req.op == VQBEXEC && pe_req.use_vs1) ||
+                            pe_req.op == VAKVPV) ||
                           !operand_request_valid_o[StA] || operand_request_ready_i[StA]) &&
                          (!(pe_req.op == VLXE) || (!operand_request_valid_o[SlideAddrGenA] || operand_request_ready_i[SlideAddrGenA]));
         end
@@ -419,6 +420,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
         vfu_operation_d.scalar_op     = '0;
       end
       vfu_operation_valid_d = (vfu_operation_d.vfu != VFU_None) ? 1'b1 : 1'b0;
+      // PV uses StA and the private owner; it is not a native lane instruction.
+      if (pe_req.op == VAKVPV) vfu_operation_valid_d = 1'b0;
 
       if (pe_req.op inside {[VRGATHER:VCOMPRESS]}) begin
         vrgat_source_hazard_d = pe_req.hazard_vs2;
@@ -668,6 +671,25 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
               vl: vfu_operation_d.vl,
               vstart: vfu_operation_d.vstart,
               hazard: pe_req.hazard_vs1 | pe_req.hazard_vd,
+              target_fu: ALU_SLDU,
+              cvt_resize: CVT_SAME,
+              default: '0
+            };
+            operand_request_push[StA] = 1'b1;
+          end
+
+          // Six EW16 registers: 384 elements / four lanes, not destination VL.
+          if (pe_req.op == VAKVPV && pe_req.use_vs2) begin
+            operand_request[StA] = '{
+              id: pe_req.id,
+              vs: pe_req.vs2,
+              eew: EW16,
+              conv: OpQueueConversionNone,
+              scale_vl: 1'b0,
+              vtype: pe_req.vtype,
+              vl: vlen_t'(96),
+              vstart: '0,
+              hazard: pe_req.hazard_vs2 | pe_req.hazard_vd,
               target_fu: ALU_SLDU,
               cvt_resize: CVT_SAME,
               default: '0

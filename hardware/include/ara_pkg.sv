@@ -227,13 +227,15 @@ package ara_pkg;
     // Attention/KV resident-context commands
     VAKVFILL, VAKVLOAD, VAKVRELEASE,
     // Store instructions
-    VSE, VSSE, VSXE
+    VSE, VSSE, VSXE,
+    // Experimental resident PV; append to retain every existing operation ID.
+    VAKVPV
   } ara_op_e;
 
   // Return true if op is a load operation
   function automatic logic is_load(ara_op_e op);
     is_load = op inside {
-      [VLE:VLXE], VQBEXEC, VAKVFILL, VAKVLOAD, VAKVRELEASE
+      [VLE:VLXE], VQBEXEC, VAKVFILL, VAKVLOAD, VAKVRELEASE, VAKVPV
     };
   endfunction : is_load
 

@@ -54,7 +54,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     input  logic                            addrgen_fof_exception_i,
     // Interface with the store unit
     input  logic                            lsu_current_burst_exception_i,
-    // Terminal status from a blocking QBS command
+    // Terminal command-local status from VLSU (QBS or resident PV)
     input  logic                      [4:0] qbs_fflags_i,
     input  logic                            qbs_fflags_valid_i
   );
@@ -324,7 +324,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       [VADD:VWREDSUM]      : vfu = VFU_Alu;
       [VMUL:VFWREDOSUM]    : vfu = VFU_MFpu;
       [VMFEQ:VCOMPRESS]    : vfu = VFU_MaskUnit;
-      [VLE:VLXE], VQBEXEC, VAKVFILL, VAKVLOAD, VAKVRELEASE:
+      [VLE:VLXE], VQBEXEC, VAKVFILL, VAKVLOAD, VAKVRELEASE, VAKVPV:
           vfu = VFU_LoadUnit;
       [VSE:VSXE]           : vfu = VFU_StoreUnit;
       [VSLIDEUP:VSLIDEDOWN]: vfu = VFU_SlideUnit;
@@ -363,7 +363,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       [VMFEQ:VMFGE]:
         for (int i = 0; i < NrVFUs; i++)
           if (i == VFU_MFpu || i == VFU_MaskUnit) target_vfus[i] = 1'b1;
-      [VLE:VLXE], VQBEXEC, VAKVFILL, VAKVLOAD, VAKVRELEASE:
+      [VLE:VLXE], VQBEXEC, VAKVFILL, VAKVLOAD, VAKVRELEASE, VAKVPV:
         for (int i = 0; i < NrVFUs; i++)
           if (i == VFU_LoadUnit) target_vfus[i] = 1'b1;
       [VSE:VSXE]:
@@ -419,6 +419,13 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       ara_req_t req, vew_e source_eew, logic first_source
   );
     automatic int unsigned count;
+
+    // PV reserves eight source registers but imports only the first six.
+    // Its four-register destination EMUL must not bound source hazards.
+    if (!first_source && req.op == VAKVPV) begin
+      source_register_count = 8;
+      return source_register_count;
+    end
 
     // Indexed memory operands use EMUL = LMUL * EEW_index / SEW even
     // though the load destination or store data group keeps data LMUL.
@@ -667,7 +674,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
                       write_list_d[ara_req_i.vs2 + i].vid] |=
                       write_list_d[ara_req_i.vs2 + i].valid;
                   if (write_list_d[ara_req_i.vs2 + i].valid &&
-                      (ara_req_i.op inside {VRGATHER, VRGATHEREI16, VCOMPRESS} ||
+                      (ara_req_i.op inside {VRGATHER, VRGATHEREI16, VCOMPRESS, VAKVPV} ||
                        write_list_d[ara_req_i.vs2 + i].wait_complete ||
                        write_list_d[ara_req_i.vs2 + i].group_offset != i[2:0])) begin
                     wait_complete_vec[
@@ -726,7 +733,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
                       write_list_d[ara_req_i.vd + i].valid;
                   // MASKU's VIOTA/VID writes are not paced by older lane results.
                   if (write_list_d[ara_req_i.vd + i].valid &&
-                      (ara_req_i.op inside {VIOTA, VID, VCOMPRESS} ||
+                      (ara_req_i.op inside {VIOTA, VID, VCOMPRESS, VAKVPV} ||
                        write_list_d[ara_req_i.vd + i].wait_complete ||
                        write_list_d[ara_req_i.vd + i].group_offset != i[2:0])) begin
                     wait_complete_vec[
@@ -925,8 +932,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
                     source_register_count(ara_req_i, ara_req_i.eew_vs1, 1'b1);
                 automatic int unsigned vs2_regs =
                     source_register_count(ara_req_i, ara_req_i.eew_vs2, 1'b0);
+                // Private PV progress is not paced by native lane result writes.
                 automatic logic ordered_access_wait_complete =
-                    ara_req_i.op inside {VSLIDEUP, VSLIDEDOWN};
+                    ara_req_i.op inside {VSLIDEUP, VSLIDEDOWN, VAKVPV};
                 // VCOMPRESS emits a data-dependent number of destination
                 // words. It cannot participate in result-paced WAW chaining
                 // with either an older or a younger writer.
@@ -1060,6 +1068,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             (addrgen_acked_q || addrgen_ack_i) &&
             (&memory_lane_accepted_d) && memory_mask_accepted_d &&
             (!is_load(pe_req_o.op) || !addrgen_exception_d.valid || memory_load_completed_d) &&
+            (pe_req_o.op != VAKVPV || memory_load_completed_d) &&
             (!refill_wait || refill_older_drained) &&
             (!WaitForStoreB || !is_store(pe_req_o.op) || memory_store_completed_d)) begin
           // The address generator acknowledges indexed operations only after
@@ -1080,7 +1089,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
           ara_resp_o.fof_exception = addrgen_ack_i
                                    ? addrgen_fof_exception_i
                                    : addrgen_fof_exception_q;
-          if (pe_req_o.op == VQBEXEC) begin
+          if (pe_req_o.op inside {VQBEXEC, VAKVPV}) begin
             ara_resp_o.fflags = qbs_fflags_i;
             ara_resp_o.fflags_valid = qbs_fflags_valid_i;
           end

@@ -4905,6 +4905,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
             automatic logic is_akvrelease;
             automatic logic is_akv2fill;
             automatic logic is_akv2column;
+            automatic logic is_akvresidentpv;
             automatic logic [6:0] qbs_funct7;
             automatic logic [6:0] akv_funct7;
             automatic int unsigned qbs_m;
@@ -4914,6 +4915,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
             automatic logic akv_wide_destination;
             automatic logic akv_implementation_supported;
             automatic logic akv_v2_implementation_supported;
+            automatic logic akv_resident_pv_implementation_supported;
             automatic logic akv_fill_is_full;
             automatic logic akv_fill_is_refill;
             automatic logic akv_column_is_single;
@@ -4926,7 +4928,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
             is_akvinfo = instr.rtype.funct3 == AkvInfoFunct3;
             is_akvrelease = instr.rtype.funct3 == AkvReleaseFunct3;
             is_akv2fill = instr.rtype.funct3 == AkvV2FillFunct3;
-            is_akv2column = instr.rtype.funct3 == AkvV2ColumnLoadFunct3;
+            is_akvresidentpv = instr.rtype.funct3 == AkvResidentPvFunct3 &&
+                              7'(instr.rtype.funct7) == AkvResidentPvFunct7;
+            is_akv2column = instr.rtype.funct3 == AkvV2ColumnLoadFunct3 &&
+                            !is_akvresidentpv;
             qbs_funct7 = 7'(instr.rtype.funct7);
             qbs_accumulate = qbs_funct7[QbsQbaccFunct7Bit];
             akv_funct7 = 7'(instr.rtype.funct7);
@@ -4946,6 +4951,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                 AkvEnable && NrLanes == 4 && VLEN == 1024;
             akv_v2_implementation_supported =
                 akv_implementation_supported && AkvV2Enable;
+            akv_resident_pv_implementation_supported =
+                akv_v2_implementation_supported && AkvResidentPvEnable && RVVH(FPUSupport);
             akv_fill_is_full = akv_funct7 == 7'(AKV_FILL_FULL);
             akv_fill_is_refill = akv_funct7 == 7'(AKV_FILL_REFILL);
             akv_column_is_single =
@@ -5053,7 +5060,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               acc_resp_o.result = xlen_t'(akv_capability_word(
                   64'(acc_req_i.rs1), akv_implementation_supported) |
                   akv_v2_capability_word(
-                      64'(acc_req_i.rs1), akv_v2_implementation_supported));
+                      64'(acc_req_i.rs1), akv_v2_implementation_supported) |
+                  akv_resident_pv_capability_word(
+                      64'(acc_req_i.rs1), akv_resident_pv_implementation_supported));
               if (akv_funct7 != '0 || instr.rtype.rs2 != '0)
                 illegal_insn = 1'b1;
             end else if (is_akvfill) begin
@@ -5180,6 +5189,63 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                 acc_resp_o.req_ready = 1'b1;
                 acc_resp_o.resp_valid = 1'b1;
                 acc_resp_o.exception = ara_resp.exception;
+              end
+            end else if (is_akvresidentpv) begin
+              // Keep the original CPU request/trans_id resident through source
+              // maintenance, private execution, final writes and terminal response.
+              acc_resp_o.req_ready = 1'b0;
+              acc_resp_o.resp_valid = 1'b0;
+              is_vload = 1'b1;
+              ignore_zero_vl_check = 1'b1;
+              ara_req_valid = 1'b1;
+              ara_req.op = VAKVPV;
+              ara_req.scalar_op = acc_req_i.rs1;
+              ara_req.use_scalar_op = 1'b0;
+              ara_req.vs2 = instr.rtype.rs2;
+              ara_req.use_vs2 = 1'b1;
+              ara_req.eew_vs2 = EW16;
+              ara_req.old_eew_vs2 = EW16;
+              lmul_vs2 = LMUL_8;
+              ara_req.vd = instr.rtype.rd;
+              ara_req.use_vd = 1'b1;
+              ara_req.vm = 1'b1;
+              ara_req.vtype = '{vill: 1'b0, vma: 1'b1, vta: 1'b1,
+                                vsew: EW16, vlmul: LMUL_4};
+              ara_req.eew_vd_op = EW16;
+              ara_req.vstart = '0;
+              ara_req.vl = vlen_t'(AkvResidentPvDestinationElements);
+              ara_req.emul = LMUL_4;
+              ara_req.fp_rm = acc_req_i.frm;
+              ara_req.akv_v2 = 1'b1;
+
+              if (!akv_resident_pv_implementation_supported ||
+                  !akv_resident_pv_command_is_valid(64'(acc_req_i.rs1),
+                      unsigned'(instr.rtype.rd), unsigned'(instr.rtype.rs2)) ||
+                  csr_vstart_q != '0 || unsigned'(acc_req_i.frm) > 4 ||
+                  !acc_req_i.acc_cons_en)
+                illegal_insn = 1'b1;
+
+              if (!ara_idle_i) begin
+                ara_req_valid = 1'b0;
+                acc_resp_o.req_ready = 1'b0;
+                state_d = WAIT_IDLE;
+              end
+
+              if (ara_resp_valid && !illegal_insn) begin
+                ara_req_valid = 1'b0;
+                acc_resp_o.req_ready = 1'b1;
+                acc_resp_o.resp_valid = 1'b1;
+                acc_resp_o.exception = ara_resp.exception;
+                acc_resp_o.fflags |= ara_resp.fflags;
+                acc_resp_o.fflags_valid |= ara_resp.fflags_valid;
+                // Whole-four-register clobberable result: no destination
+                // preservation or retag is allowed before successful terminal.
+                if (!ara_resp.exception.valid) begin
+                  for (int unsigned i = 0; i < AkvResidentPvDestinationRegisters; i++) begin
+                    eew_d[instr.rtype.rd + i] = EW16;
+                    eew_valid_d[instr.rtype.rd + i] = 1'b1;
+                  end
+                end
               end
             end else if (is_akv2column) begin
               acc_resp_o.req_ready = 1'b0;
@@ -5351,6 +5417,12 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               ? ara_req.vtype.vsew : ara_req.eew_vs2;
       vs2_reshuffle_vstart = ara_req.vstart;
       vs2_reshuffle_vl = ara_req.vl;
+      if (ara_req.op == VAKVPV) begin
+        // Reserve eight, but normalize/read only the first six registers.
+        // Destination VL256 must not truncate this independent source interval.
+        vs2_reshuffle_vstart = '0;
+        vs2_reshuffle_vl = vlen_t'(AkvResidentPvSourceElements);
+      end
       if (ara_req.op == VSLIDEDOWN) begin
         vs2_reshuffle_vstart = slidedown_source_start(
             ara_req.vstart, ara_req.stride, lmul_vs2, vs2_reshuffle_eew);
@@ -5405,8 +5477,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                        ara_req.vs2, lmul_vs2, vs2_reshuffle_eew,
                        vs2_reshuffle_vstart, vs2_reshuffle_vl)) &&
             (in_lane_op || ara_req.op == VCOMPRESS ||
+             ara_req.op == VAKVPV ||
              indexed_mixed_vs2_layout || indexed_load_groups_overlap),
-          ara_req.use_vd && ara_req.op != VQBEXEC &&
+          ara_req.use_vd && !(ara_req.op inside {VQBEXEC, VAKVPV}) &&
             (is_segment_mem_op && is_vload
                 ? register_span_needs_reshuffle(
                     ara_req.vd,
@@ -5978,7 +6051,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     // Complete prefix/tail registers are not rewritten and must retain both
     // their physical layout and their per-register EEW metadata.
     if (ara_req_valid_d && ara_req_d.use_vd && ara_req_ready_i &&
-        layout_req.op != VQBEXEC &&
+        !(layout_req.op inside {VQBEXEC, VAKVPV}) &&
         state_q != OVERLAP_PREFIX_FIXUP) begin
       automatic vlmul_e destination_lmul = single_register_result(layout_req.op)
           ? LMUL_1 : layout_req.emul;
@@ -6097,6 +6170,14 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
           ara_resp.exception.valid) begin
         assert (eew_d == eew_q && eew_valid_d == eew_valid_q)
           else $error("faulting QBS changed VRF layout metadata without committing data");
+      end
+      if (is_decoding && !illegal_insn && ara_req.op == VAKVPV && ara_resp_valid &&
+          ara_resp.exception.valid) begin
+        for (int unsigned i = 0; i < AkvResidentPvDestinationRegisters; i++) begin
+          assert (eew_d[instr.rtype.rd + i] == eew_q[instr.rtype.rd + i] &&
+                  eew_valid_d[instr.rtype.rd + i] == eew_valid_q[instr.rtype.rd + i])
+            else $error("faulting resident PV changed destination layout metadata");
+        end
       end
       for (int unsigned i = 0; i < 32; i++) begin
         if (eew_valid_q[i]) begin
