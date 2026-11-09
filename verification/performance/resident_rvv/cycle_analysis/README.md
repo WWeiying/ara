@@ -169,6 +169,32 @@ single/paired heads, full/tail tiles and relevant CSR/ownership boundaries.
 If the evidence rejects the benefit hypothesis, retain the measurements rather
 than force an area-increasing mechanism into the design.
 
+### Register-control review and successor acceptance
+
+The software control is committed as `95551112a`. Its ELF SHA256 is
+`b807a0427b961fdbd180172293126a4238e0d92600fc6e2302fa82693b9e9abf`;
+build directory: `resident_pv_rotation_build_20261108_02`, run directory:
+`resident_pv_rotation_vcs_20261108_02`. These are not performance results until
+the original runner and the successor acceptance audit both pass.
+
+Independent static review found no arithmetic/register/ABI defect in this
+control. It did identify two limits that must not be hidden:
+
+1. The candidate combines register rotation with a two-row loop. The baseline
+   wrapper also has a different branch path. Their full-call timing is a valid
+   implementation comparison, but it does not isolate the causal cycle cost of
+   register rotation alone. Use instruction lifetimes to identify which waits
+   changed; do not attribute every saved cycle to WAR removal.
+2. The original CSV checker did not reject duplicate column names. The actual
+   emitted header was inspected and has the expected unique columns. The
+   successor `../rotation/acceptance_audit.py` adds an exact-schema check and
+   repeats the original numerical/work checks against hashed accepted files.
+   It writes a separate audit receipt and never relabels or rewrites the
+   original run. The frozen worker remains unchanged while running.
+
+This first control checks RNE and D128/H2/T137. D64/D96 code presence is not
+verification evidence for those shapes or for other rounding modes.
+
 ## Commands
 
 Run the local checker tests without a simulator:
