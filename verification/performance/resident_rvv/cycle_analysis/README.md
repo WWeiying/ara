@@ -174,8 +174,38 @@ than force an area-increasing mechanism into the design.
 The software control is committed as `95551112a`. Its ELF SHA256 is
 `b807a0427b961fdbd180172293126a4238e0d92600fc6e2302fa82693b9e9abf`;
 build directory: `resident_pv_rotation_build_20261108_02`, run directory:
-`resident_pv_rotation_vcs_20261108_02`. These are not performance results until
-the original runner and the successor acceptance audit both pass.
+`resident_pv_rotation_vcs_20261108_02`. The original runner and successor audit
+both passed. Simulation completed in 1103.85 seconds. Lifetime attribution is
+`verification/out/resident_pv_rotation_attribution_20261108_02.json` in the
+signoff worktree; the four calls are auto, rotating, rotating, auto.
+
+| Complete-call cycles | Trial 0 | Trial 1 | Trial 2 | Trial 3 |
+| --- | ---: | ---: | ---: | ---: |
+| Measured | 37157 | 34048 | 34379 | 36409 |
+
+| Mean cycles | Native auto | Rotation and loop layout |
+| --- | ---: | ---: |
+| QK helpers | 9900.5 | 9901.5 |
+| PV helpers | 6623.5 | 4411.0 |
+| Remaining call | 20259.0 | 19901.0 |
+| Full call | 36783.0 | 34213.5 |
+
+All outputs, flags/CSR guards, inputs and native command work passed; the 948
+AKV commands succeeded and protocol checks found no orphan response. The
+full-call implementation speedup is **1.07510x**, not new-hardware or model
+speedup. PV helper time decreased 33.40%. The candidate overlaps the next row
+with the previous row's final FMA in 132/134 intra-tile transitions per call;
+the baseline does so in 0/134. Reuse of the *same* source register group still
+follows its prior reader completion. Candidate replay lifetimes are 26..36
+cycles, not shorter than the baseline's fixed 26: more overlap, not an illegally
+early write, explains the changed scheduling.
+
+Using this stronger baseline, replacing all 4411 PV cycles with its 2192
+necessary FMA issue beats would give at most 1.06936x complete-call speedup,
+even before coefficient/seed import, completion and packing overheads. This
+conditional bound keeps all non-PV work fixed. It motivates only a small
+isolated controller gate first, not an unconditional SoC integration. QK
+remains a larger separate opportunity and must not be charged to PV results.
 
 Independent static review found no arithmetic/register/ABI defect in this
 control. It did identify two limits that must not be hidden:

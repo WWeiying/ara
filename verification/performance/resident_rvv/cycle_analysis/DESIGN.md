@@ -1,8 +1,8 @@
 # Bounded resident execution: implementation decision record
 
-Status: architectural preparation, not implemented RTL or an accepted new ISA.
-The measured baseline and decision gates are in `README.md`. The running PV
-register-rotation control must finish before choosing a datapath modification.
+Status: isolated lane-controller prototype; no production wiring or accepted ISA.
+The measured baseline and decision gates are in `README.md`. The PV
+register-rotation control and independent lifetime audit have passed.
 Keep existing bus widths, memory timing, lane count and arithmetic resources.
 
 ## What the command would replace
@@ -49,6 +49,15 @@ Completion needs the reverse: all resident arithmetic returned, final VRF
 writes granted, flags published, then owner released. Context refill/release
 must not occur while the owner is active.
 
+Global commit is not merely four independent lane completions. The parent must
+hold all external write-valid signals until every active lane is ready to commit
+successfully. A peer error cancels the other lanes' still-private work and
+drains accepted FMA returns. Once an external write becomes irrevocable (which
+can precede its final acknowledgment when buffering exists), the parent must
+lock out abort. The component's first-final-ack guard alone is insufficient
+to establish that SoC boundary. Native result/flag consumers remain gated while
+the service owns the FPU; service flag data is zero outside qualified completion.
+
 Existing AKV row/column commands already early-acknowledge and overlap following
 FMAs. Their behavior must remain unchanged. Do not remove the multiple-reader
 WAR gate to make the new experiment faster.
@@ -74,6 +83,40 @@ different, explicit read/write geometries. This is an **uncommitted transport
 proposal**, not a finalized instruction format. Packing, conversions, register
 pressure and all 768 B of import work belong in the complete-call comparison.
 Do not assume that the current QBACC request geometry implements this layout.
+
+The selected preparation candidate is ordinary vector narrowing, not a scalar
+load/convert/store loop. Load the two probability rows under `e32,m2` into
+`v16:v17` and `v18:v19`; narrow under `e16,m1` into `v8` and `v9`, with VL equal
+to the actual tile length. Load and rescale the old sums directly in
+`v10:v11` and `v12:v13`. Then reserve `v8:v15`, consume the six-register source
+footprint, and commit final sums into `v0:v3`. Narrowing itself must not use
+LMUL8: its wide source would require an illegal EMUL16. If old sums remain in
+`v0:v3`, two aligned `vmv2r.v` copies are an alternative cost; a four-register
+move to v10 is misaligned.
+
+For a short tile, convert only its active probabilities. Importing the fixed
+source footprint is permissible only if unused coefficient entries are never
+consumed or included in arithmetic flags. The central collector must undo the
+native EW16 permutation and pair corresponding entries from the two head-major
+registers. Those are explicit collector operations, not a free prepacked input.
+
+Against the measured rotation control, PV occupies 4411 of 34213.5 cycles.
+For its 64+64+9 tokens, 2192 FMA issue beats plus 137 coefficient-consumption
+cycles are the controller's optimistic arithmetic/packet floor. Adding 72
+fixed-footprint import beats, 48 seed-multiply beats and 48 commit beats gives
+2497 service cycles, before preparation loads/conversions, instruction supply,
+ownership transitions and stalls. That leaves 1914 cycles before break-even,
+not 1914 measured saved cycles. A private two-cycle read/deliver schedule is
+structurally compatible with the existing one-port, latency-one context SRAM;
+the present architectural replay has three-cycle pacing and is not silently
+changed by this estimate. Keeping that pacing leaves a much smaller margin.
+
+Vector preparation across those tiles reads 1096 useful F32 bytes (70 aligned
+128-bit AXI data beats), consumes 36 narrowing input beats on the busiest lane,
+and writes 18 narrowed words per lane. Optional seed copies add 48 words per
+lane. These are service counts, not additive measured latency: some stages can
+overlap, while cache response, queueing and drains cost additional cycles.
+Full-call RTL timing must decide whether the private mode justifies integration.
 
 V ingress may need one or two words per lane to hold data until both head
 operands are accepted. That is 32 or 64 B in addition to coefficient and
@@ -117,6 +160,11 @@ This narrow prototype is not the final coverage claim. Before runtime selection,
 cover D64/D96/D128, single and paired heads, and short/full/tail tiles. Keep
 software grouping/segmentation and ordinary native-auto/RVV fallback for other
 shapes. Do not claim direct D256 or other numeric formats.
+
+The isolated controller in `../pv_unit` tests up to 32 FP16 elements per lane,
+one or two heads, and 1..64 tokens. Its arithmetic interface deliberately has
+no internal multiplier. Passing this component does not implement the parent
+owner, instruction decoder, central coefficient source or context transport.
 
 All context, register-range, alignment and FP-mode checks precede architectural
 destination mutation. Snapshot the active rounding mode for the command, or
