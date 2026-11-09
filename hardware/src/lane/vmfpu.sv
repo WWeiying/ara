@@ -15,6 +15,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     // Support for floating-point data types
     parameter  fpu_support_e          FPUSupport      = FPUSupportHalfSingleDouble,
     parameter  bit                    SharedFma       = EnableSharedFma,
+    parameter  bit                    EnableResidentPv = 1'b0,
     // External support for vfrec7, vfrsqrt7, rounding-toward-odd
     parameter  fpext_support_e        FPExtSupport    = FPExtSupportEnable,
     // Support for fixed-point data types
@@ -69,11 +70,38 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     input  logic                         mask_operand_ready_i,
     input  strb_t                        mask_i,
     input  logic                         mask_valid_i,
-    output logic                         mask_ready_o
+    output logic                         mask_ready_o,
+    // Exclusive, lane-local borrowing of the existing FP16 SIMD FMA.
+    // The parent drains upstream queues before acquisition and publishes private
+    // flags/architectural results before release. Neither handshake flushes FPnew.
+    input  logic                         resident_acquire_i,
+    output logic                         resident_acquire_ready_o,
+    output logic                         resident_owned_o,
+    input  logic                         resident_release_i,
+    output logic                         resident_release_ready_o,
+    input  logic                         resident_valid_i,
+    output logic                         resident_ready_o,
+    // Four physical halfwords: operands[0] * operands[1] + operands[2].
+    // Mask bits follow those halfwords; only static rounding modes 0..4 are accepted.
+    input  elen_t          [2:0]         resident_operands_i,
+    input  logic           [3:0]         resident_tag_i,
+    input  logic           [3:0]         resident_mask_i,
+    input  logic           [2:0]         resident_rm_i,
+    output logic                         resident_result_valid_o,
+    input  logic                         resident_result_ready_i,
+    output elen_t                        resident_result_o,
+    output logic           [3:0]         resident_result_tag_o,
+    output logic           [4:0]         resident_result_flags_o
   );
 
   // Power gating registers
   `include "common_cells/registers.svh"
+
+  logic resident_owned_q;
+  logic resident_native_offer;
+  assign resident_owned_o = resident_owned_q;
+  assign resident_native_offer = vfu_operation_valid_i &&
+      (vfu_operation_i.vfu == VFU_MFpu || vfu_operation_i.op inside {[VMFEQ:VMFGE]});
 
   ////////////////////////////////
   //  Vector instruction queue  //
@@ -687,13 +715,15 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   // but does has negligible impact on long vectors
   elen_t sldu_operand_q;
   logic  sldu_mfpu_valid_q, sldu_mfpu_ready_d;
+  logic  sldu_mfpu_input_ready;
+  assign sldu_mfpu_ready_o = !resident_owned_q && sldu_mfpu_input_ready;
   spill_register #(
     .T(elen_t)
   ) i_mfpu_reduction_spill_register (
     .clk_i  (clk_i           ),
     .rst_ni (rst_ni          ),
-    .valid_i(sldu_mfpu_valid_i),
-    .ready_o(sldu_mfpu_ready_o),
+    .valid_i(sldu_mfpu_valid_i && !resident_owned_q),
+    .ready_o(sldu_mfpu_input_ready),
     .data_i (sldu_operand_i  ),
     .valid_o(sldu_mfpu_valid_q),
     .ready_i(sldu_mfpu_ready_d),
@@ -1055,6 +1085,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     fp_format_e fp_src_fmt, fp_dst_fmt;
     int_format_e fp_int_fmt;
     roundmode_e fp_rm;
+    logic [4:0] reduction_fflags_d, reduction_fflags_q;
     // FPU preprocessing stage
     always_comb begin: fpu_operand_preprocessing_p
       // Default rounding-mode from fcsr.rm
@@ -1310,6 +1341,105 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       control:   vfpu_control_in
     };
 
+    elen_t bulk_result;
+    status_t bulk_status;
+    vfpu_tag_t bulk_tag_in, bulk_tag_out;
+    fpu_mask_t resident_simd_mask;
+    logic bulk_in_ready, bulk_out_valid;
+    logic resident_rm_legal;
+    assign resident_rm_legal = resident_rm_i <= 3'd4;
+    for (genvar b = 0; b < FPULanes; b++) begin : gen_resident_simd_mask
+      // FPnew samples every second mask bit when FP8 is also enabled.
+      assign resident_simd_mask[b] = resident_mask_i[(4*b)/FPULanes];
+    end
+
+    always_comb begin
+      bulk_tag_in = vfpu_tag_in;
+      if (resident_owned_q) begin
+        bulk_tag_in = '0;
+        // operand_a is pruned by SharedFma; control survives both implementations.
+        bulk_tag_in.control = strb_t'(resident_tag_i);
+        bulk_tag_in.flag_mask = strb_t'(resident_simd_mask);
+      end
+    end
+
+    // Keep private returns away from native processing, estimates and masks.
+    assign vfpu_in_ready   = !resident_owned_q && bulk_in_ready;
+    assign vfpu_out_valid  = !resident_owned_q && bulk_out_valid;
+    assign vfpu_result     = resident_owned_q ? '0 : bulk_result;
+    assign vfpu_ex_flag_fn = resident_owned_q ? '0 : bulk_status;
+    assign vfpu_tag_out    = resident_owned_q ? '0 : bulk_tag_out;
+
+    if (EnableResidentPv && RVVH(FPUSupport)) begin : gen_resident_pv
+      logic native_quiescent;
+      // Occupancy, not ready or stale per-instruction element counters, owns
+      // native work. The divider's ready denotes ISSUE_IDLE, unlike FPnew ready.
+      assign native_quiescent =
+          vinsn_queue_q.issue_cnt == '0 &&
+          vinsn_queue_q.processing_cnt == '0 &&
+          vinsn_queue_q.commit_cnt == '0 &&
+          mfpu_state_q == NO_REDUCTION &&
+          result_queue_cnt_q == '0 && !(|result_queue_valid_q) &&
+          !mfpu_result_req_o && !mfpu_result_gnt_i &&
+          !(|mfpu_operand_valid_i) && !mask_valid_i &&
+          !mask_operand_valid_o && !sldu_mfpu_valid_i && !sldu_mfpu_valid_q &&
+          !mfpu_red_valid_o && !fpu_red_complete_o &&
+          !vmul_in_valid && !(|vmul_simd_in_valid_q) && !(|vmul_simd_out_valid) &&
+          !vdiv_in_valid && vdiv_in_ready && !vdiv_out_valid &&
+          !vfpu_in_valid && !vfpu_busy && !vfpu_busy_q && !bulk_out_valid &&
+          !fflags_ex_valid_q && !fflags_ex_valid_d && reduction_fflags_q == '0;
+
+      // A simultaneous native offer wins even before it enters the queue.
+      assign resident_acquire_ready_o = rst_ni && !resident_owned_q &&
+          !resident_native_offer && native_quiescent;
+      assign resident_release_ready_o = rst_ni && resident_owned_q &&
+          !resident_valid_i && !vfpu_busy && !vfpu_busy_q && !bulk_out_valid;
+      assign resident_ready_o = resident_owned_q && resident_rm_legal && bulk_in_ready;
+      assign resident_result_valid_o = resident_owned_q && bulk_out_valid;
+      assign resident_result_o = resident_result_valid_o ? bulk_result : '0;
+      assign resident_result_tag_o = resident_result_valid_o ? bulk_tag_out.control[3:0] : '0;
+      assign resident_result_flags_o = resident_result_valid_o ? bulk_status : '0;
+
+      always_ff @(posedge clk_i or negedge rst_ni) begin
+        if (!rst_ni) resident_owned_q <= 1'b0;
+        else if (resident_acquire_i && resident_acquire_ready_o) resident_owned_q <= 1'b1;
+        else if (resident_release_i && resident_release_ready_o) resident_owned_q <= 1'b0;
+      end
+
+`ifndef SYNTHESIS
+      always_ff @(posedge clk_i) if (rst_ni) begin
+        assert (!(resident_acquire_ready_o && resident_release_ready_o))
+          else $error("VMFPU resident ownership handshakes overlap");
+        assert (!(resident_result_valid_o && vfpu_out_valid))
+          else $error("VMFPU resident/native return overlap");
+        if (resident_owned_q) begin
+          assert (vinsn_queue_q.issue_cnt == '0 && vinsn_queue_q.processing_cnt == '0 &&
+                  vinsn_queue_q.commit_cnt == '0 && mfpu_state_q == NO_REDUCTION &&
+                  result_queue_cnt_q == '0 && !(|result_queue_valid_q))
+            else $error("VMFPU native work survived resident acquisition");
+          assert (!mfpu_ready_o && !vfpu_in_valid && !vfpu_in_ready &&
+                  !vmul_in_valid && !vdiv_in_valid && !(|mfpu_operand_ready_o) &&
+                  !mask_ready_o && !sldu_mfpu_ready_o && !mfpu_red_valid_o &&
+                  !mask_operand_valid_o && !mfpu_result_req_o && !(|mfpu_vinsn_done_o) &&
+                  !fflags_ex_valid_o && fflags_ex_o == '0)
+            else $error("VMFPU resident operation reached a native consumer");
+        end
+        if (resident_release_i && resident_release_ready_o)
+          assert (!resident_valid_i && !bulk_out_valid && !vfpu_busy && !vfpu_busy_q)
+            else $error("VMFPU resident release before FPU drain");
+      end
+`endif
+    end else begin : gen_no_resident_pv
+      assign resident_owned_q = 1'b0;
+      assign resident_acquire_ready_o = 1'b0;
+      assign resident_release_ready_o = 1'b0;
+      assign resident_ready_o = 1'b0;
+      assign resident_result_valid_o = 1'b0;
+      assign resident_result_o = '0;
+      assign resident_result_tag_o = '0;
+      assign resident_result_flags_o = '0;
+    end
+
     simd_fpnew #(
       .Features      (FPUFeatures      ),
       .Implementation(FPUImplementation),
@@ -1325,23 +1455,23 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       .rst_ni        (rst_ni         ),
       .hart_id_i     ('0             ),
       .flush_i       (1'b0           ),
-      .rnd_mode_i    (fp_rm          ),
-      .op_i          (fp_op          ),
-      .op_mod_i      (fp_opmod       ),
+      .rnd_mode_i    (resident_owned_q ? roundmode_e'(resident_rm_i) : fp_rm),
+      .op_i          (resident_owned_q ? FMADD : fp_op),
+      .op_mod_i      (resident_owned_q ? 1'b0 : fp_opmod),
       .vectorial_op_i(1'b1           ),
-      .operands_i    (vfpu_operands  ),
-      .tag_i         (vfpu_tag_in    ),
-      .simd_mask_i   (vfpu_simd_mask ),
-      .src_fmt_i     (fp_src_fmt     ),
-      .dst_fmt_i     (fp_dst_fmt     ),
-      .int_fmt_i     (fp_int_fmt     ),
-      .in_valid_i    (vfpu_in_valid  ),
-      .in_ready_o    (vfpu_in_ready  ),
-      .result_o      (vfpu_result    ),
-      .status_o      (vfpu_ex_flag_fn),
-      .tag_o         (vfpu_tag_out   ),
-      .out_valid_o   (vfpu_out_valid ),
-      .out_ready_i   (vfpu_out_ready ),
+      .operands_i    (resident_owned_q ? resident_operands_i : vfpu_operands),
+      .tag_i         (bulk_tag_in    ),
+      .simd_mask_i   (resident_owned_q ? resident_simd_mask : vfpu_simd_mask),
+      .src_fmt_i     (resident_owned_q ? FP16 : fp_src_fmt),
+      .dst_fmt_i     (resident_owned_q ? FP16 : fp_dst_fmt),
+      .int_fmt_i     (resident_owned_q ? INT16 : fp_int_fmt),
+      .in_valid_i    (resident_owned_q ? (resident_valid_i && resident_rm_legal) : vfpu_in_valid),
+      .in_ready_o    (bulk_in_ready  ),
+      .result_o      (bulk_result    ),
+      .status_o      (bulk_status    ),
+      .tag_o         (bulk_tag_out   ),
+      .out_valid_o   (bulk_out_valid ),
+      .out_ready_i   (resident_owned_q ? resident_result_ready_i : vfpu_out_ready),
       .busy_o        (vfpu_busy      )
     );
 
@@ -1634,7 +1764,6 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     // The seed can raise an exception before another lane sees an active source.
     // Retain unordered-tree flags until all lanes have completed the tree: an
     // empty reduction copies the seed without exceptions, even for an sNaN.
-    logic [4:0] reduction_fflags_d, reduction_fflags_q;
     always_comb begin
       reduction_fflags_d = reduction_fflags_q;
       fflags_ex_d = vfpu_ex_flag;
@@ -1659,12 +1788,24 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         fflags_ex_valid_d = 1'b1;
         reduction_fflags_d = '0;
       end
+      if (resident_owned_q) begin
+        fflags_ex_d = '0;
+        fflags_ex_valid_d = 1'b0;
+      end
     end
     always_ff @(posedge clk_i or negedge rst_ni) begin
       if (!rst_ni) reduction_fflags_q <= '0;
       else reduction_fflags_q <= reduction_fflags_d;
     end
   end else begin : no_fpu_gen // The FPU is disabled
+    assign resident_owned_q = 1'b0;
+    assign resident_acquire_ready_o = 1'b0;
+    assign resident_release_ready_o = 1'b0;
+    assign resident_ready_o = 1'b0;
+    assign resident_result_valid_o = 1'b0;
+    assign resident_result_o = '0;
+    assign resident_result_tag_o = '0;
+    assign resident_result_flags_o = '0;
     assign vfpu_in_ready     = 1'b0;
     assign vfpu_result       = '0;
     assign vfpu_ex_flag      = '0;
@@ -1675,8 +1816,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     assign fflags_ex_valid_d = 1'b0;
   end : no_fpu_gen
 
-  assign fflags_ex_o       = fflags_ex_q;
-  assign fflags_ex_valid_o = fflags_ex_valid_q;
+  assign fflags_ex_o       = resident_owned_q ? '0 : fflags_ex_q;
+  assign fflags_ex_valid_o = !resident_owned_q && fflags_ex_valid_q;
 
 
   ///////////////
@@ -1747,7 +1888,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     narrowing_select_out_d = narrowing_select_out_q;
 
     // Inform our status to the lane controller
-    mfpu_ready_o      = !vinsn_queue_full;
+    mfpu_ready_o      = !resident_owned_q && !vinsn_queue_full;
     mfpu_vinsn_done_o = '0;
 
     // Do not acknowledge any operands
@@ -2720,7 +2861,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
     // Received a grant from the VRF, or the mask unit ate the result.
     // Deactivate the request.
-    if (mfpu_result_gnt_i || mask_operand_gnt) begin
+    if (!resident_owned_q && (mfpu_result_gnt_i || mask_operand_gnt)) begin
       // How many elements are we committing?
       automatic logic [3:0] commit_element_cnt =
         (1 << (int'(EW64) - int'(vinsn_commit.vtype.vsew)));
@@ -2793,7 +2934,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     //  Accept new instruction  //
     //////////////////////////////
 
-    if (!vinsn_queue_full && vfu_operation_valid_i &&
+    if (!resident_owned_q && !vinsn_queue_full && vfu_operation_valid_i &&
       (vfu_operation_i.vfu == VFU_MFpu || vfu_operation_i.op inside {[VMFEQ:VMFGE]})) begin
       vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt]    = vfu_operation_i;
       // Masks are handled in the MASKU directly for comparisons
