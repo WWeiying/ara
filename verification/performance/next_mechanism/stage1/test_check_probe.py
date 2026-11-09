@@ -5,7 +5,9 @@ import struct
 import tempfile
 import unittest
 
-from check_probe import check,node_phase
+from check_probe import check,node_phase,qbs_census
+
+CENSUS='GGML_RISCV_QBS_EXEC type=Q4_K native_qbexec=2 emulated_commands=0 dot_elements=256 command_dot_elements=256 '+ ' '.join(f'commands_m{i}={2 if i==1 else 0}' for i in range(1,9))+'\n'
 
 
 def node(active=True, phase_id=0):
@@ -23,6 +25,13 @@ def node(active=True, phase_id=0):
 
 
 class ProbeCheckTest(unittest.TestCase):
+    def test_census_rejects_emulation_and_missing_work(self):
+        self.assertEqual(qbs_census(CENSUS)['Q4_K']['native_qbexec'],2)
+        for invalid in ('',CENSUS+CENSUS,CENSUS.replace('emulated_commands=0','emulated_commands=1'),
+                        CENSUS.replace('commands_m1=2','commands_m1=1')):
+            with self.assertRaises(ValueError):
+                qbs_census(invalid)
+
     def test_fused_time_counted_once(self):
         path,categories=node_phase(node(),0,True)
         self.assertEqual(len(path),2)
@@ -59,6 +68,7 @@ class ProbeCheckTest(unittest.TestCase):
         (directory/'inputs.json').write_text(json.dumps(inputs))
         (directory/'metrics.json').write_text(json.dumps(metrics))
         (directory/'exit_code').write_text('0\n')
+        (directory/'stderr.log').write_text(CENSUS)
         (directory/'stdout.log').write_text('STAGE1_PROGRESS prefill tokens=1 ns=1000\n'
             'STAGE1_PROGRESS decode=1/1 ns=1000\nSTAGE1_MODEL_COMPLETED\n')
         with (directory/'logits.bin').open('wb') as f:

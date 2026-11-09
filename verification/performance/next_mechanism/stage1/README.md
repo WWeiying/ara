@@ -16,7 +16,7 @@ Build outputs are outside the main worktree:
 
 ```text
 /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/
-  stage1_node_build_20261109_01/
+  stage1_node_build_20261109_02/
 ```
 
 `result.json` and `commands.json` record the independent cross-build. The
@@ -28,7 +28,7 @@ The probe collector is compiled with auto-vectorization disabled.
 | Program | SHA256 |
 | --- | --- |
 | stage1-plain | f71742f4d5f726908305aced5bb7b41edab15e4e4a338e0e2a6d92dc2b5180ea |
-| stage1-probe | ce82c1b2e0d0062741b56f96b4f1b7d5f50b8943df97fd426fe4757423fc35d5 |
+| stage1-probe | 1505993020fbef60c200c3251f880f39072f2efb83f5aa4330f61292b76bf30a |
 
 These identities are not a model acceptance or evidence of performance.
 
@@ -48,12 +48,20 @@ Suggested order: plain, metadata, timed, plain. Each executable loads the model
 afresh; loading is separately timed, not included in compute totals.
 
 This is a new measurement ELF, not the accepted application's binary. All three
-modes disable trace printing. This differs from the earlier trace-enabled
-campaign and must be retained in reports, not described as an identical rerun.
-AKV leaf wrappers still count completed paths. QBS aggregate trace counters are
-not available with TRACE=0; do not invent their values or infer hardware service
-time from a CPU node name. Any additional native-work census needs its own
-qualified, non-printing collection before declaring that gate closed.
+modes enable QBS aggregate counters, while disabling per-call, tensor and
+lifetime printing. In the pinned `qbs.cpp`, `record_command` updates counters
+after callback completion and `print_trace_summary` runs through `atexit`.
+These are software witnesses, not an independent hardware PMU. The checker
+requires equal per-format native commands, M-distribution, context activity and
+dot work across the three modes, with zero emulation.
+
+AKV TRACE remains disabled because the pinned backend prints individual
+Prefill/Decode executions and fallbacks inside calls. AKV leaf wrappers still
+count completed paths. This differs from the earlier trace-enabled campaign
+and must be retained in reports, not described as an identical rerun. No hardware
+service time is inferred from a CPU node name. The earlier `_01` build/package
+is preserved but superseded for this measurement; do not mix its ELF with the
+new QBS-TRACE-enabled launcher.
 
 ## Board handoff, not automatic deployment
 
@@ -86,6 +94,7 @@ Run only on the board configuration for which those checks were established.
   and fused spans. Hash agreement is a quick check, not the only check.
 - Identical actual route/work under the current runtime selection; timing a
   fallback accidentally is not evidence for the selected accelerator path.
+  QBS exit counters must be present and consistent, not simply omitted.
 - Valid probe reports with no overflow, unsupported mode or clock error.
 - Only the first member of a fused unit owns elapsed time. Followers have null
   elapsed time and must never be counted a second time.
@@ -101,6 +110,20 @@ Run only on the board configuration for which those checks were established.
 Collection stores complete JSON records after each synchronized call, not in
 the node loop. Copy results only after completion. Do not include transfer,
 logits export, or model loading as a node's execution time.
+
+After collecting four complete directories:
+
+```sh
+python3 verification/performance/next_mechanism/stage1/check_probe.py \
+  --trials /results/plain_a /results/metadata /results/timed /results/plain_b \
+  --output /new/check_output
+```
+
+The checker validates raw progress, full binary logits, actual fused-member
+paths, completed-work counters and time accounting. It groups a fused operation
+sequence as one category, never assigning its full time to each member.
+`LOCAL_DATA_CHECKED_EXTERNAL_IDENTITY_PENDING` deliberately does not mean board
+acceptance: model/bitstream/ELF/environment identity needs independent evidence.
 
 ## Local tests
 

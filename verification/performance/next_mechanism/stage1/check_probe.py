@@ -10,6 +10,30 @@ import struct
 from audit import phases, read, require, sha
 
 
+def qbs_census(text):
+    result={}
+    for line in text.splitlines():
+        if not line.startswith('GGML_RISCV_QBS_EXEC '):
+            continue
+        pairs=[part.split('=',1) for part in line.split()[1:]]
+        require(all(len(p)==2 for p in pairs), 'Malformed QBS census')
+        fields=dict(pairs)
+        require(len(fields)==len(pairs), 'Duplicate QBS field')
+        fmt=fields.pop('type')
+        require(fmt not in result, 'Duplicate QBS format report')
+        require(all(v.isdecimal() for v in fields.values()), 'Invalid QBS counter')
+        counters={k:int(v) for k,v in fields.items()}
+        require(counters['native_qbexec']>0 and counters['emulated_commands']==0,
+                'QBS native path not established')
+        require(sum(counters[f'commands_m{i}'] for i in range(1,9))==counters['native_qbexec'],
+                'QBS command count mismatch')
+        require(counters['command_dot_elements']==counters['dot_elements']>0,
+                'QBS work count mismatch')
+        result[fmt]=counters
+    require(result, 'Missing QBS exit census')
+    return result
+
+
 def node_phase(r, phase_id, active):
     require(r['schema']=='stage1-node-ns-v1' and r['valid'] is True and r['errors']==0,
             'Invalid probe report')
@@ -98,7 +122,8 @@ def trial(directory, mode):
         require(m['node_metadata_capture'] is True and m['node_timing_active']==(mode=='timed') and
                 m['inference_window_includes_probe_export'] is True, 'Wrong probe metadata')
         nodes=[node_phase(read(directory/f'nodes_{j}.jsonl'),j,mode=='timed') for j in range(count)]
-    return dict(metrics=m,inputs=i,logits_sha256=digest,nodes=nodes)
+    return dict(metrics=m,inputs=i,logits_sha256=digest,nodes=nodes,
+                qbs_census=qbs_census((directory/'stderr.log').read_text()))
 
 
 def check(directories):
@@ -110,6 +135,7 @@ def check(directories):
                 'Input or complete logits changed')
         require([p['paths'] for p in t['metrics']['phases']]==[p['paths'] for p in base['metrics']['phases']],
                 'AKV completed path counts changed')
+        require(t['qbs_census']==base['qbs_census'], 'QBS completed work changed')
     require([p for p,_ in trials[1]['nodes']]==[p for p,_ in trials[2]['nodes']],
             'Metadata and timed execution/fusion paths differ')
     overhead={}
@@ -124,11 +150,11 @@ def check(directories):
                         for r in overhead.values())
     return dict(state='LOCAL_DATA_CHECKED_EXTERNAL_IDENTITY_PENDING',
                 bitwise_logits_equal=True,probe_paths_equal=True,akv_leaf_counts_equal=True,
+                qbs_software_native_work_equal=True,qbs_census=base['qbs_census'],
                 perturbation_within_target=perturbation_ok,overhead=overhead,
                 timed_categories_per_phase=[c for _,c in trials[2]['nodes']],
                 units='software node elapsed nanoseconds; fused groups not split',
                 open_gates=['Independent board/bitstream/model/ELF/environment identity',
-                            'Native QBS work census (TRACE=0 disables aggregate trace counters)',
                             'Representative model attribution and final mechanism selection'],
                 measurement_accepted=False,
                 evidence={str(p):sha(p) for d in directories for p in d.iterdir() if p.is_file()})

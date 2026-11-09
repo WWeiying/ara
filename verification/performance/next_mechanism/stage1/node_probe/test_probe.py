@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -50,6 +51,11 @@ class ProbeTest(unittest.TestCase):
         self.assertEqual(r['unit_ns'],0)
         self.assertEqual(r['units'],0)
         self.assertEqual(r['members'],0)
+
+    def test_exit_only_qbs_census_allowed(self):
+        env=dict(os.environ,GGML_RISCV_QBS_TRACE='1')
+        r=json.loads(subprocess.check_output([str(self.binary),'on'],text=True,env=env))
+        self.assertTrue(r['valid'])
 
 
 if __name__=='__main__':

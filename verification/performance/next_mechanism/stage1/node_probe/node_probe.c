@@ -69,8 +69,10 @@ static uint64_t clock_ns(void) {
 }
 
 static int quiet(void) {
+    /* Pinned QBS_TRACE only prints aggregate counters at exit. Per-call,
+     * tensor and lifecycle logs remain forbidden inside measured phases. */
     const char *names[] = {"GGML_RISCV_MODEL_TRACE", "GGML_RISCV_MODEL_DIGEST",
-        "GGML_RISCV_MODEL_DUMP_F32", "GGML_RISCV_QBS_TRACE", "GGML_RISCV_QBS_TRACE_CALLS",
+        "GGML_RISCV_MODEL_DUMP_F32", "GGML_RISCV_QBS_TRACE_TENSORS", "GGML_RISCV_QBS_TRACE_CALLS",
         "GGML_RISCV_QBS_TRACE_LIFETIME", "GGML_RISCV_QBS_TRACE_M4_PREPARE", "GGML_RISCV_AKV_TRACE"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
         const char *value = getenv(names[i]);
