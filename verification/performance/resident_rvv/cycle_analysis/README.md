@@ -195,6 +195,13 @@ control. It did identify two limits that must not be hidden:
 This first control checks RNE and D128/H2/T137. D64/D96 code presence is not
 verification evidence for those shapes or for other rounding modes.
 
+After acceptance, `../rotation/attribution.py` joins the four trial markers to
+retirement and complete vector lifetimes. It includes the wrapper-to-original
+tail jump in the baseline PV interval, checks the actual source register for
+each FMA, and separates next-row overlap from reuse of the **same** source
+group. Its row intervals are scheduling observations, not physical FPU
+utilization. The output is independent of the frozen worker directory.
+
 ## Commands
 
 Run the local checker tests without a simulator:

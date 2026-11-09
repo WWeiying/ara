@@ -87,6 +87,28 @@ must remain stable under FPU input/output backpressure. Advance token/word/head
 positions only on the corresponding accepted transaction, not a fixed latency
 guess. A pending accumulator slot cannot be read before its preceding result.
 
+For the central-store option, one possible ordering is a coefficient packet
+followed by the V words of that token, all over the same existing payload wires.
+Each lane needs only the current two FP16 coefficients, not the whole table.
+The coefficient packet is accepted only after all FMA inputs still using the
+previous coefficients have handshaken. In-flight arithmetic results may remain,
+but a pending accumulator slot must still prevent reuse of a stale sum.
+One extra coefficient beat per token is a real throughput cost. Independent
+lane backpressure must not let a coefficient update overtake old V operands.
+
+Because ownership is exclusive and drained at both transitions, a service
+could reuse the preserved `control` tag bits as an accumulator-slot index,
+instead of enlarging every FPU pipeline tag. This is valid only if native
+processing is completely gated out during service ownership, and owner release
+waits for every service output. An explicit owner-tag extension is the safer
+alternative if that quiescence property cannot be proved. Neither approach may
+use the pruned `operand_a` tag or simulation-only identity fields.
+
+No throughput claim assumes a fixed three-cycle or four-cycle return: normal
+ready/valid backpressure can extend it, and the optional shared-FMA
+implementation has a different latency configuration. Per-slot pending state
+and result identity must govern accumulator readiness in either configuration.
+
 ## Admission and fallback
 
 First prototype: four lanes, VLEN1024, D128, paired heads, a bounded nonempty
