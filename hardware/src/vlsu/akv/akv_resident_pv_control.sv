@@ -205,7 +205,7 @@ module akv_resident_pv_control
   end
 
   // synthesis translate_off
-  longint unsigned probe_clock_q=0, probe_begin_q=0, probe_sequence_q=0;
+  longint unsigned probe_clock_q, probe_begin_q, probe_sequence_q;
   logic [8:0] probe_control_q;
   int probe_source_q, probe_seed_q, probe_coefficient_q, probe_value_q;
   int probe_result_q, probe_ack_q, probe_reads_q;
