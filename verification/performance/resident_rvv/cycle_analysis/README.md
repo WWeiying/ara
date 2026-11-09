@@ -78,6 +78,59 @@ and masks before being used as useful-operation throughput.
 
 ## Selecting a bounded implementation
 
+### Accepted cycle-level results
+
+The passive replay completed with `PASSIVE_REPLAY_PASS`: the four complete-call
+timings and outputs matched the reference, all native work and independent
+protocol checks passed, and the frozen inputs still matched. Its simulation
+took 1154.69 seconds. Analysis is recorded in
+`verification/out/resident_cycle_attribution_20261108_01.json` in the signoff
+worktree. The sampled first auto call lasts 36203 cycles.
+
+| Measurement | QK helpers | PV helpers | Remaining call work |
+| --- | ---: | ---: | ---: |
+| Cycles | 9901 | 6574 | 19728 |
+| FMA input acceptance / lane-cycle | 44.60% | 33.34% | 0.52% |
+| All floating-point input acceptance / lane-cycle | 44.60% | 34.07% | 3.89% |
+| FMA instructions | 768 | 274 | 18 |
+| Useful FMA elements, all lanes | 35072 | 35072 | 822 |
+| Resident replay commands | 96 | 137 | 0 |
+| Replay words completed | 1152 | 1096 | 0 |
+| Cycles with a denied replay write request | 0 | 0 | 0 |
+| Context bank-conflict cycles | 0 | 0 | 0 |
+| AXI read requests during the interval | 0 | 0 | 295 |
+
+The remaining work includes descriptor/fill/refill/release, preparation,
+softmax and output handling; it is not synonymous with memory stall. Its 18
+FMAs belong to softmax polynomial evaluation, not PV. Arithmetic counts were
+checked against every instruction's VL across all four lanes, rather than
+inferred from a valid signal. Reduction merge handshakes remain real work even
+after their source-element count reaches zero.
+
+Per lane, QK spends 3829 cycles waiting for operands; PV spends 2201. For PV,
+2200 cycles have the V operand unavailable and 275 have the accumulator
+unavailable. These conditions overlap. PV also has 1996 cycles without an
+instruction at the MFPU issue position; this does not establish that the entire
+processor is idle. The replay engine records 1096 cycles waiting for final VRF
+confirmation in PV, despite no initial request denial or bank conflict.
+The row read/request/final-confirmation sequence takes three cycles per 32-byte
+word. The first head therefore initially receives V words at that cadence;
+the second head can read the now-resident VRF values more densely.
+
+This evidence supports investigating local replay and register turnover, not
+increasing the external bus. It does not justify bypassing architectural WAR,
+RAW or final-write ownership checks.
+
+For scale, the existing datapath accepts 4416 QK FMA beats and 2192 PV FMA beats
+per lane in this call, including tail effects. If those beats could be accepted
+consecutively with zero phase overhead, while the other 19728 cycles stayed
+unchanged, the resulting call would still take 26336 cycles: only a **1.375x
+optimistic bound**, not a prediction or measurement of a new implementation.
+PV alone under that same assumption gives about 1.138x. Real conversion,
+initialization, dependent accumulation, writeback and control costs reduce the
+gain. A new controller must beat the register-rotation control on complete-call
+time; local arithmetic utilization alone is not sufficient.
+
 Do not add a new command merely because replay uses VRF. First distinguish:
 
 | Candidate | Question it answers | Main limit |

@@ -1,5 +1,7 @@
 import unittest
-from analyze import advance, akv_observations, is_fma, lane_observations, phase_at, validate_fma_work
+import tempfile
+from pathlib import Path
+from analyze import advance, akv_observations, fma_contracts, is_fma, lane_observations, phase_at, validate_fma_work
 
 
 def lane_row(**extra):
@@ -60,6 +62,26 @@ class CycleTests(unittest.TestCase):
             validate_fma_work(contracts, {1: 8, 2: 129})
         with self.assertRaises(ValueError):
             validate_fma_work(contracts, {1: 9})
+
+    def test_reduction_merge_after_source_exhausted(self):
+        # Accepted trace cycle 140851: VFREDMAX is merging partials, not idle.
+        counts = lane_observations(lane_row(issue_remaining=0, state=5),
+                                   {3: dict(insn=0x1E011557, vstart=0)})
+        self.assertEqual(counts["fp_input_handshakes"], 1)
+        self.assertEqual(counts["fma_input_handshakes"], 0)
+        self.assertEqual(counts["no_instruction_to_issue_cycles"], 0)
+        self.assertEqual(counts["reduction_state_cycles"], 1)
+
+    def test_softmax_fma_is_not_pv(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "vector.csv"
+            path.write_text("cycle,event,insn,arch_seq,vl,vstart\n"
+                            "5,alloc,b2805057,1,64,0\n"
+                            "15,alloc,b2805057,2,128,0\n")
+            contracts = fma_contracts(path, 0, 30, [
+                dict(begin=10, end=20, helper="akv_experimental_pv_f16_pair")])
+            self.assertEqual(contracts[1]["kind"], "other_call_work")
+            self.assertEqual(contracts[2]["kind"], "pv")
 
     def test_final_ack_not_bank_conflict(self):
         counts = akv_observations(akv_row())

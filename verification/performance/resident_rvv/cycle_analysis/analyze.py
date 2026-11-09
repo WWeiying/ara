@@ -59,7 +59,7 @@ def advance(active, events, index, cycle):
     return index
 
 
-def fma_contracts(path, begin, end):
+def fma_contracts(path, begin, end, spans):
     contracts = {}
     with path.open() as stream:
         for row in csv.DictReader(stream):
@@ -70,8 +70,10 @@ def fma_contracts(path, begin, end):
                 seq = int(row["arch_seq"])
                 require(seq not in contracts and int(row["vstart"]) == 0,
                         "Duplicate or restarted FMA allocation")
-                contracts[seq] = dict(vl=int(row["vl"]),
-                                      kind="qk" if insn >> 26 == 0x3C else "pv")
+                # Softmax's polynomial also uses vfmacc.vf. Format/opcode alone
+                # cannot identify PV; use the audited helper interval.
+                kind = phase_at(int(row["cycle"]), spans, begin, end)
+                contracts[seq] = dict(vl=int(row["vl"]), kind=kind)
     require(contracts, "No FMA allocations in the complete call")
     return contracts
 
@@ -92,7 +94,9 @@ def lane_observations(row, active):
     fire = bool(row["fp_valid"] and row["fp_ready"])
     c["fp_input_handshakes"] = int(fire)
     c["fp_output_handshakes"] = int(row["fp_out_valid"] and row["fp_out_ready"])
-    c["no_instruction_to_issue_cycles"] = int(not issue)
+    c["no_instruction_to_issue_cycles"] = int(not row["issue_valid"])
+    c["instruction_without_body_elements_cycles"] = int(row["issue_valid"] and not row["issue_remaining"])
+    c["reduction_state_cycles"] = int(row["state"] != 0)
     c["instruction_waiting_operands_cycles"] = int(issue and not row["operands_valid"])
     c["latency_gated_cycles"] = int(issue and row["latency_stall"])
     c["fp_input_backpressure_cycles"] = int(row["fp_valid"] and not row["fp_ready"])
@@ -104,10 +108,13 @@ def lane_observations(row, active):
     for channel in range(3):
         c[f"instruction_missing_operand_{channel}_cycles"] = int(issue and bool(missing & (1 << channel)))
     if fire:
-        require(issue and row["issue_id"] in active, "FPU acceptance lacks live instruction")
+        # Reductions merge partial results after the source-element counter is
+        # exhausted. They still have a live instruction and real FP handshakes.
+        require(row["issue_valid"] and row["issue_id"] in active,
+                "FPU acceptance lacks live instruction")
         instruction = active[row["issue_id"]]
         if is_fma(instruction["insn"]):
-            require(instruction["vstart"] == 0 and row["vm"] == 1 and row["state"] == 0,
+            require(issue and instruction["vstart"] == 0 and row["vm"] == 1 and row["state"] == 0,
                     "Unreviewed masked/restarted/reduction FMA in profiling window")
             require(row["sew"] in (1, 2) and row["issue_be"] < 256,
                     "Unreviewed FMA destination width")
@@ -193,10 +200,11 @@ def analyze(profile, accepted, build):
                     observed_fmas[active[row["issue_id"]]["seq"]] += counts[
                         "fma_destination_byte_enable_elements"]
         lane_results[str(lane)] = dict(phases)
-    contracts = fma_contracts(paths[0], trial["trace_begin"], trial["trace_end"])
+    contracts = fma_contracts(paths[0], trial["trace_begin"], trial["trace_end"], trial["helpers"])
     work = validate_fma_work(contracts, observed_fmas)
     require(work == {"qk": dict(instructions=768, useful_fmas=35072),
-                     "pv": dict(instructions=274, useful_fmas=35072)},
+                     "pv": dict(instructions=274, useful_fmas=35072),
+                     "other_call_work": dict(instructions=18, useful_fmas=822)},
             "FMA work differs from the frozen D128/H2/T137 mathematical contract")
     engine = defaultdict(Counter)
     for row in numeric_rows(paths[1], first, end):
