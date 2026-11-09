@@ -46,6 +46,19 @@ lease if this keeps ownership simple, but start/commit only active controllers.
 An inactive controller must not wait for a nonexistent first result. The group
 barrier uses an explicit active-lane mask, and release still drains every owner.
 
+A K packet contains 16 tokens, four F16 values per lane. Keep the existing EW16
+shuffle: lane `l` receives offsets `{l,l+8,l+4,l+12}`. Widen physical halfwords
+`{0,2}` first, then `{1,3}`, as native `OpQueueConversionWideFP2` does; widening
+the low/high 32-bit halves directly would exchange tokens 4 and 8. One packet
+therefore updates two FP32 score words per head, subject to each lane's tail.
+
+The final packet need not reach every otherwise active lane. At T17, lane 0
+needs two raw packets but lanes 1..3 need one. Qualify each packet's fanout mask
+with `16*packet + lane < T`, and give each lane its own `ceil(n_l/4)` raw-packet
+count. Otherwise an inactive final packet or the next coefficient can strand
+the per-lane parser. The geometry tests bind both shuffles to the current RTL
+constant tables and enumerate every T1..T64 output location.
+
 ## Query Identity Must Be Explicit
 
 An AKV context may contain up to eight query rows. A QK command that always

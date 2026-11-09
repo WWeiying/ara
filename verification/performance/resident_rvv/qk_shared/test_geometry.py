@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Host contract tests only; no claim of QK RTL execution or acceptance."""
 from collections import Counter
+from pathlib import Path
+import re
 import unittest
 
-from geometry import control, fpnew_sample, layout, private_mask, scalar_locations
+from geometry import (control, fpnew_sample, layout, private_mask, raw_packets,
+                      scalar_locations, widening_halfwords)
 
 
 class QKGeometry(unittest.TestCase):
@@ -34,6 +37,42 @@ class QKGeometry(unittest.TestCase):
         self.assertEqual([l['active'] for l in lanes], [True, False, False, False])
         self.assertEqual(lanes[0]['writes'][0]['byte_enable'], 0x0f)
         self.assertTrue(all(not l['writes'] for l in lanes[1:]))
+
+    def test_each_lane_receives_only_its_required_raw_packets(self):
+        for t in range(1, 65):
+            packets = raw_packets(t)
+            self.assertTrue(all(p['active'] for p in packets))
+            for lane in layout(t, 1):
+                received = sum(bool(p['active'] & (1 << lane['lane'])) for p in packets)
+                self.assertEqual(received, (lane['elements']+3)//4)
+        self.assertEqual([p['active'] for p in raw_packets(17)], [15, 1])
+
+    def test_widening_matches_current_ew16_and_ew32_shuffle_tables(self):
+        root = Path(__file__).resolve().parents[4]
+        text = (root/'hardware/include/ara_pkg.sv').read_text()
+        four = text.split('4: unique case (ew)', 1)[1].split('8: unique case (ew)', 1)[0]
+        def table(ew):
+            body = four.split('rvv_pkg::'+ew+': begin', 1)[1].split('return idx[', 1)[0]
+            values = {int(i): int(v) for i, v in re.findall(r'idx\[(\d+)\]\s*=\s*(\d+)', body)}
+            self.assertEqual(set(values), set(range(32)))
+            return values
+        half, single = table('EW16'), table('EW32')
+        for t in range(1, 65):
+            for packet in raw_packets(t):
+                lanes = [[None]*4 for _ in range(4)]
+                for token in range(16):
+                    physical = half[2*token]
+                    lanes[physical//8][(physical%8)//2] = 16*packet['packet']+token
+                for lane in layout(t, 1):
+                    for subword in (0, 1):
+                        values = [lanes[lane['lane']][h] for h in widening_halfwords(subword)]
+                        for element, value in enumerate(values):
+                            token = 16*packet['packet']+8*subword+4*element+lane['lane']
+                            self.assertEqual(value, token)
+                            if token < t:
+                                physical = single[4*(token%8)]
+                                self.assertEqual((physical//8, (physical%8)//4),
+                                                 (lane['lane'], element))
 
     def test_fpnew_stride_for_both_formats(self):
         for elements in (2, 4):

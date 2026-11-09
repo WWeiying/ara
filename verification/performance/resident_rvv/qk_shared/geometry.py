@@ -56,3 +56,14 @@ def scalar_locations(tokens, heads, vd=0):
                 require(token < tokens, 'Internal inactive output mapping')
                 locations[lane['lane'], w['address'], 4*half] = (w['head'], token)
     return locations
+
+
+def raw_packets(tokens):
+    require(tokens in range(1, 65), 'Invalid token count')
+    return [dict(packet=p, active=sum((16*p+l < tokens) << l for l in range(4)))
+            for p in range((tokens+15)//16)]
+
+
+def widening_halfwords(subword):
+    require(subword in (0, 1), 'Invalid FP32 subword')
+    return (subword, subword+2)
