@@ -84,3 +84,20 @@ test-native probes, synthetic final acknowledgments and no CPU custom instructio
 Preparation, conversion/interleaving, source maintenance/import, ownership,
 architectural writes and CPU completion still require complete-call VCS timing.
 No new runtime capability, SoC acceptance, QK result or end-to-end gain is claimed.
+
+## Independent audit
+
+A second reader reconstructed the original-body mapping and verified 711 source
+pins, 45 image pins, 12 completed artifacts, both admissions, before/after
+inventories and raw-log/report equality. These are 63 supported regrouped
+executions plus three replays, not 66 distinct original workloads. All executed
+private masks are `0xf`; observed private flags are limited to zero, NX and
+UF|NX. The native signaling-NaN probes do not substitute for private exceptional
+input coverage.
+
+The exact issue cadence above is an observation of this pinned run. The runner
+checks diagnostic ordering and span arithmetic, not a fixed cadence regression
+threshold. Changing a diagnostic timestamp alone can pass that limited parser;
+such a change would fail the recorded artifact hash. Future performance gates
+must compare independently collected complete-call cycles, not rely on this
+numerical PASS as proof of an unchanged latency.
