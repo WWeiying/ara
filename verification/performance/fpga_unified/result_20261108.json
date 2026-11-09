@@ -1,0 +1,33 @@
+{
+  "state": "HOST_QUALIFIED_BOARD_UNTESTED",
+  "llama_base_commit": "da56aa750559c180d631b466de983ff2bb5d54d9",
+  "sdk_commit": "b7c9e6c3c1f8c5e469c130f46ec5bbfaf37a55d1",
+  "qbs_sdk_tree_equivalent_to": "130730b5bb25eeba375a5b04eefb67d9e8635f34",
+  "patches": {
+    "akv_auto.patch": "bc2ec835cd91fd91034232c5dfeab318dd700add81a3c8b72ffb6a0883f247ec",
+    "qbs_trace_context.patch": "308ad1ce11ffd899f9835cbf23b243d681b740cbf13996e690a491d743c6e83e"
+  },
+  "qualification_result": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/fpga_unified_20261108_03/result.json",
+  "source_pins_sha256": "5ce3fcae563482528adf02c3d24fcfee439b1cb9e38d7cdf73b40f9a0c71d471",
+  "board_bundle": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/fpga_unified_20261108_03/board_bundle",
+  "binaries": {
+    "llama-f16-unified": "dd558d625f007216f09fca96ec8fe5cbf5271f5cc52f0d43d6412e953e2a1123",
+    "llama-f16-accepted": "d0a1bbfd9a23cf1d90e4c5c6d5b30e619a97d76bc99a3d0174d5ce20a849b570"
+  },
+  "host_tests": {
+    "unit_tests": 10,
+    "trace_variants": 4,
+    "qbs_sdk_suites": ["gcc", "clang-address-undefined"],
+    "akv_routing_variants": 6,
+    "auto_policy_decisions": 185760
+  },
+  "compiled_objects": 218,
+  "per_source_isa_abi_matched": 280,
+  "rtl_modified": false,
+  "delivery_assembly_modified": false,
+  "model_executed": false,
+  "board_executed": false,
+  "new_end_to_end_speedup": null,
+  "original_failed_workers_retained": true,
+  "dirty_sources_excluded_from_build": true
+}
