@@ -126,6 +126,15 @@ use the existing FPU conversion path with explicit accounting. Inactive K tails
 and unused heads must not raise NV. Existing native VFWMACC behavior is not
 assumed correct merely because it provides a convenient conversion function.
 
+The preferred first implementation is internal widening that preserves NaN
+class: use the existing finite/subnormal re-encoding, but map a NaN mantissa as
+`{f16.m,13'b0}` instead of canonicalizing it. The existing FP32 FMA then observes
+sNaN and produces NV itself under its real active-element mask. This is not an
+architectural conversion instruction whose NaN result must be exposed. Do not
+just clear the quiet bit of the helper's canonical NaN: its remaining payload
+is zero, which would turn it into infinity. Test this option against independent
+SoftFloat cast-plus-FMA results/flags before choosing it over explicit NV carry.
+
 Use `ordered_reference.py:OrderedReference.qk`, backed by independent Spike
 SoftFloat, for final FP32 bits and flags. Cover subnormals, signed zero,
 infinities, qNaN/sNaN, all admitted rounding modes and prior sticky flags.
