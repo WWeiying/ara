@@ -98,6 +98,14 @@ The private VMFPU endpoint currently hardcodes FP16. FP32 requires a held format
 selector, two active SIMD elements, FP32 accumulator word masks and matching
 result writes. Format cannot change with outstanding private results.
 
+FPnew's parallel-format slice samples mask bits at a format-dependent stride.
+With four physical mask positions, the FP32 unit consumes positions 0 and 2,
+not positions 0 and 1. Expand two QK element-mask bits to `{m1,m1,m0,m0}` before
+the existing interface (and use the corresponding stride when FP8 is enabled).
+Passing `0011` for two active FP32 elements would disable the second element;
+tail-mask mistakes can also raise exceptions from inactive values. The host
+geometry contract in this directory tests this explicit sampling rule.
+
 `ara_pkg::fp32_from_fp16` quiets NaNs without returning exception flags. Reusing
 only that bit conversion would lose signaling-NaN NV. Preserve active-input
 signaling information and accrue NV on the corresponding accepted operation, or
