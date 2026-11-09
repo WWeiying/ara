@@ -687,7 +687,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
               conv: OpQueueConversionNone,
               scale_vl: 1'b0,
               vtype: pe_req.vtype,
-              vl: vlen_t'(96),
+              vl: 96,
               vstart: '0,
               hazard: pe_req.hazard_vs2 | pe_req.hazard_vd,
               target_fu: ALU_SLDU,

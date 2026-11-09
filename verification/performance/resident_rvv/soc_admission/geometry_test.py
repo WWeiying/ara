@@ -84,7 +84,7 @@ def pv_source_contract(sequencer, lane):
         fields[key] = value.strip()
     expected = dict(id="pe_req.id", vs="pe_req.vs2", eew="EW16",
                     conv="OpQueueConversionNone", scale_vl="1'b0", vtype="pe_req.vtype",
-                    vl="vlen_t'(96)", vstart="'0",
+                    vl="96", vstart="'0",
                     hazard="pe_req.hazard_vs2 | pe_req.hazard_vd", target_fu="ALU_SLDU",
                     cvt_resize="CVT_SAME", default="'0")
     require(fields == expected, "Wrong independent PV source request")
