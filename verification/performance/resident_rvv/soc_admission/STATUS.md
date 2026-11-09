@@ -77,6 +77,31 @@ host script reports 2919 property assertions, including 297 assertions binding
 the requester-idle regression to real source. These counts are not independent
 RTL test cases. All passed; SoC RTL execution remains pending.
 
+## SoC Build Checkpoint
+
+`resident_pv_soc_build_20261109_03` built successfully from the explicit frozen
+closure. Independent `soc_eval/experiment.py:checked_soc` rechecked 1177 input,
+image and artifact pins. Image SHA-256:
+`70fe9cae0fd260e15894f38d2bf5461948723ab445051e402a1ea2bbde183ab4`.
+The receipt is `RESIDENT_PV_SOC_BUILT_NOT_EXECUTED`, not functional acceptance.
+VCS reported 171.747 CPU seconds for compilation, 4.006 for elaboration and
+2.865 for linking; those are not kernel or simulation execution times.
+
+The first two attempts remain archived. Attempt 01 rejected an undeclared
+`vlen_t` cast in the lane sequencer; the source length now uses the containing
+request field's width. Attempt 02 rejected declaration initializers plus
+`always_ff` reset drivers on three simulation-only counters. Removing the
+initializers leaves a single reset driver. Neither fix weakens compiler checks
+or changes the planned arithmetic, source layout, or synthesized controller.
+
+The real-data smoke ELF is `resident_pv_soc_eval_smoke_20261109_01/resident_pv.elf`,
+SHA-256 `800112e29ca917d7039be7b6608ac95ae91f66bd2bdf4492fc391a7801a2e865`.
+Its independent preflight passed; the directly owned run is
+`resident_pv_soc_smoke_vcs_20261109_01`. See `../soc_eval/RUN.md` for the sealed
+execution/checking contract. A launched run is not a passing result, and this
+smoke has no paired performance claim. ABBA firmware is prepared separately but
+must not execute before the smoke is accepted.
+
 ## Next Acceptance Gates
 
 1. Build from the accepted frozen dependency/testbench closure plus the explicit
