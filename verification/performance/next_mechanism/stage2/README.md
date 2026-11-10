@@ -127,6 +127,29 @@ context1占用的等待从1,680降至384；每命令1,024项结果入队/出队�
 启动发生在旧结果尚在队列时，支持“释放上下文并重叠下一个tile”的归因。
 这些仍是引擎结果；不能替代尚待执行的完整SDK调用、特殊scale补充门或SoC验收。
 
+## 后台完整调用任务
+
+固定RTL提交：`bcc2e0082`；服务：`ara-stage2-soc-20261109-01.service`。
+总目录：
+`/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage2_soc_campaign_20261109_01`。
+启动时已确认两份实际VCS编译进程，后续由同一长驻服务直接托管。
+
+流程为同提交的协同关闭/开启两份SoC构建、两侧QBS异常恢复和普通RVV/AKV交接
+烟测，然后八组完整调用：两种投影、M4/M8两种程序、关闭/开启两种硬件。程序
+各自从复位执行首次与重复两次调用，最多四路并行，每条仿真上限三小时。首个失败
+停止派发后续阶段并保留原证据；不会自动改RTL、放宽检查或增加资源。
+
+总状态可查看：
+
+```bash
+jq . /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage2_soc_campaign_20261109_01/status.json
+```
+
+`PAIRED_SOC_BUILDS`不是测试通过；`SOC_SMOKE_QUALIFICATION`不是性能完成。
+`PAIRED_CALLS_CHECKED`表示配对检查完成，另以`performance_target_met`判断代表点
+完整调用的20%目标是否达到。每个worker的源文件、输入、镜像和输出身份独立核查。
+所有结论仍以相应最终回执为准，不把本段启动记录视为完成验收。
+
 ## 运行方法
 
 所有结果写入唯一主验证工作树的 `verification/out`，每次使用新目录名。
