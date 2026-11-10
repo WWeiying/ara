@@ -96,15 +96,15 @@ Attention Q：M8/K2048/N64，FFN gate：M8/K2048/N128。只缩减输出通道，
 设备查询/规划、SDK执行及末尾fence。冷权重repack不在调用ROI；这仍是投影切片，
 不是模型整个输出维度或端到端推理。
 
-固件准备在 `stage2_qwen3_{attn,ffn}_{m4,m8}_build_20261109_04`，尚未代表RTL
-执行。更早的01/02/03目录是开发阶段构建记录，不用于新验收。当前host预检查
+正式固件在 `stage2_qwen3_{attn,ffn}_{m4,m8}_build_20261109_04`，已用于下述
+完整SoC配对。更早的01/02/03目录是开发阶段构建记录，不用于新验收。host预检查
 实际调用SDK planner/cursor，覆盖8种规划、40条命令，核对每个输出坐标恰好一次；
 并区分通用`command_n=32`与M8的`wide_command_n=16`。
 
 首次调用清零flags验证新NX产生，重复调用预置DZ（位3）验证sticky保留；独立
 oracle的NX不能被预置NX掩盖。checker的反例包括漏NX和丢DZ，不能仅检查程序退出。
 `soc_loan_monitor.sv` 直接核对真实VMFPU内部乘法接受/完成，而不以引擎fixture替代。
-SoC构建和调用验收尚未完成，不应将固件已编译写成已经提速。
+完整调用数值、协议及借用计数的结果见下方最终表，不以固件已编译代替验收。
 
 为处理已测得的FP入口阻塞，后继候选增加协同路径专用的16项整数结果暂存，条目
 140位、共280字节原始数据位，复用现有`fifo_v3`。它不扩大激活/权重SRAM，也
@@ -125,7 +125,7 @@ SoC构建和调用验收尚未完成，不应将固件已编译写成已经提�
 使用该队列，周期不变。单条M8的下一tile等待从2,112降至816周期，其中仅剩
 context1占用的等待从1,680降至384；每命令1,024项结果入队/出队相等，24次
 启动发生在旧结果尚在队列时，支持“释放上下文并重叠下一个tile”的归因。
-这些仍是引擎结果；不能替代尚待执行的完整SDK调用、特殊scale补充门或SoC验收。
+这些仍是引擎结果；完整SDK调用、特殊scale补充门及SoC验收分别列在下方。
 
 ## 后台完整调用任务
 
@@ -163,7 +163,7 @@ jq . /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage
 `stage2_soc_campaign_20261109_01_{baseline,candidate}_smokes/report.json`。
 包括QBS异常后的恢复、普通RVV/QBS/AKV2交接、精确异常指令匹配，以及独立
 CVXIF/VID/AXI协议检查。这些烟测不是性能验收，也不替代完整指令退休状态对比。
-八组完整软件调用由后台服务继续执行；实际周期以最终配对报告为准。
+八组完整软件调用现已执行并通过；实际周期及保留结论见下一节。
 
 GGML已有 `GGML_RISCV_QBS_WIDE_M` 环境开关。打开后，
 `ggml_riscv_qbs_plan_activations()` 调用SDK的 `qbs_recommend_activation_storage()`，
@@ -171,6 +171,65 @@ GGML已有 `GGML_RISCV_QBS_WIDE_M` 环境开关。打开后，
 本轮RTL不改变该选择或QBS指令契约；关闭软件开关仍使用原M4/小行数路径。
 协同开启也只将Q4_K/M8映射到并行两组行，其余命令沿用原实现。当前完整调用测试
 显式比较M4/M8，不能据此宣称整模型每个投影均已自动命中新路径。
+
+## 完整调用最终结果与保留决定
+
+`stage2_soc_campaign_20261109_01/report.json` 已为 `PAIRED_CALLS_CHECKED`，八组
+worker均为PASS，`post_pins_match=true`。两份SoC使用同一份提交`bcc2e0082`的
+source archive，仅协同开关不同；同一M4或M8程序在两个硬件上使用完全相同ELF。
+各组均包括首次、重复两次调用，所有输出逐位正确，Q8及边界检查无错误；flags
+分别为0x01/0x09，独立协议检查通过。四条实际Lane在Attention/FFN的M8程序中
+分别各接收并返回32,768/65,536个借用beat；M4借用beat为零。
+
+下表周期包含量化、packing、查询/规划、SDK执行和末尾fence，不含首次权重repack。
+两类样本均为M8/K2048，Attention N64、FFN N128；不是完整模型输出宽度。
+
+| 真实数据切片 | 调用 | 原M4（也是协同开启后的M4） | 原M8 | 协同M8 | 相对最快原调度减少 |
+|---|---|---:|---:|---:|---:|
+| Attention Q | 首次 | 171,793 | 176,124 | 162,520 | 5.40% |
+| Attention Q | 重复 | 170,361 | 174,676 | 161,072 | 5.45% |
+| FFN gate | 首次 | 210,577 | 219,767 | 192,559 | 8.56% |
+| FFN gate | 重复 | 208,733 | 218,445 | 191,237 | 8.38% |
+
+同一M8程序关闭/开启协同，Attention每次少13,604周期、FFN每次少27,208周期。
+减少量全部落在执行阶段并等于engine busy的减少；量化、packing、规划、fence
+及执行中的软件余量不变。M4各阶段周期也完全不变，支持收益来自硬件协同而非
+减少工作或更换软件。这不意味着engine内部各phase分配不变。
+
+相对原M8的重复调用周期分别减少7.79%/12.46%，但原M4更快，因此最终收益应
+采用表中的5.45%/8.38%。Attention协同M8的准备工作占重复调用81.24%，FFN为
+68.98%；加快整数计算不能消除这些软件开销。**代表性完整调用减少20%的保留
+目标未达到**，最终报告的`performance_target_met=false`必须保留。
+
+决定是保留已验证RTL和显式开关作为候选，不默认开启，不据此替换板上验收位流。
+不扩大SRAM、外部总线或算术阵列以追逐目标。固件使用真实llama的逐行RVV量化
+再单独packing，不等于GGML的原生M4 interleaved量化或prepared reuse成本；因此
+该表是完整SDK微基准，不是GGML算子、全宽投影或端到端推理的实测加速比。
+
+## 真实GGML选择及回退功能门
+
+`stage2_ggml_functional_20261110_02/report.json` 已通过，固定llama源码为
+`03959acc0`、SDK为`c2b7db195`，不使用当前脏工作区。用真实Attention激活和
+原始Q4_K权重构建单个 `ggml_mul_mat` 小图；GGML自行选择trait、repack、量化、
+规划和执行。四臂各为独立进程、单worker，不加载完整模型。
+
+| 配置 | M/N/K | 实际QBS命令 | 检查 |
+|---|---|---:|---|
+| QBS开启、wide开启 | 8/64/2048 | 4条M8/N16 | M8选择、完整量化、输出及flags |
+| QBS开启、wide关闭 | 8/64/2048 | 4条M4/N32 | 默认M4、完整量化、输出及flags |
+| QBS开启、wide开启、小形状 | 4/64/2048 | 2条M4/N32 | 形状回退、完整量化、输出及flags |
+| QBS关闭 | 8/64/2048 | 0 | 原RVV trait、完整量化、预定数值容差 |
+
+每臂全部量化字节与独立host准备按对应布局匹配，不能将M4/M8不同布局的原始
+字节串说成相同。三条QBS路径的每个输出及flags均精确核对；普通RVV按预先固定
+的绝对/相对容差2e-4/2e-5检查。host算术oracle与QEMU共享冻结`qbs_ref`，所以
+这是GGML选择、准备和native ABI的功能闭环，不是独立算术模型或RTL性能证据。
+
+首次`_01`在standalone CMake配置中因冻结源码没有`ggml.pc.in`失败，未启动
+QEMU，原记录保留。`_02`使用测试侧父CMake将GGML按正常embedded模式构建，
+未改生产源码或原检查器，只编译一次库；21项host检查和四臂实际QEMU执行通过。
+既有QEMU与新SDK的header仅差可选QBACC编码/能力定义，兼容审计逐项核对；本门
+只执行普通QBEXEC并确认QBACC能力为零，不据此声称可选QBACC已验证。
 
 ## 运行方法
 

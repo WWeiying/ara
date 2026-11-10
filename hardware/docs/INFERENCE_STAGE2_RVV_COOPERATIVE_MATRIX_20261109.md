@@ -2,7 +2,7 @@
 
 ## Status and Baseline
 
-This is an implementation and validation plan, not a measured speedup claim.
+This document records the design, validation plan, and scoped measured results.
 The frozen starting commit is `b0156f8ab`. It preserves the accepted QBS,
 AKV, ordinary RVV, and runtime fallback paths. The previous fixed-capacity
 activation-replay proposal remains an optional supporting optimization; it is
@@ -148,6 +148,69 @@ The complete-call gate uses separate reset-first M4 and M8 programs with
 first/repeat trials, real RVV quantization, packing, SDK planning, native
 execution and final fence included. Attention Q uses N64 and FFN gate N128,
 both at M8/K2048. These are bounded output-channel slices, not complete
-model projections. Their software-call cycle reductions remain unmeasured;
-the engine-level result must not be advertised as a model speedup or as
-meeting the complete-call retention target.
+model projections. Their measured software-call results follow below; the
+engine-level result must not be advertised as a model speedup.
+
+## Complete-Call Disposition
+
+The paired SoC campaign `stage2_soc_campaign_20261109_01/report.json` is
+`PAIRED_CALLS_CHECKED`. Both smoke arms and all eight projection workers pass
+their output, exception, protocol, image and input-identity checks. Both SoC
+images use the same `bcc2e0082` source archive, differing only in the
+cooperation flag. The same-mode ELF is identical between hardware arms.
+
+| Projection slice | Trial | Original M4 | Original M8 | Cooperative M8 | Reduction vs. fastest original |
+|---|---|---:|---:|---:|---:|
+| Attention Q, N64 | First | 171,793 | 176,124 | 162,520 | 5.40% |
+| Attention Q, N64 | Repeat | 170,361 | 174,676 | 161,072 | 5.45% |
+| FFN gate, N128 | First | 210,577 | 219,767 | 192,559 | 8.56% |
+| FFN gate, N128 | Repeat | 208,733 | 218,445 | 191,237 | 8.38% |
+
+M4 cycles, including every software timing segment, are unchanged with
+cooperation enabled. For an identical M8 ELF, Attention saves 13,604 cycles
+per invocation and FFN saves 27,208. Each saving is entirely in execution
+and equals the reduction in engine busy cycles; quantization, packing,
+planning, fencing and software execution remainder are unchanged. The four
+actual lane multipliers each accept and return 32,768 beats in the two
+Attention trials and 65,536 in the two FFN trials. M4 borrowed work is zero.
+Special-scale checks also pass using the original numerical/flag checker
+with a separately audited final-output canonical-NaN adapter; details and
+the inherited half-sNaN limitation are in `MATRIX_SPECIAL_GATE.md`.
+
+The **20 percent complete-call retention target was not met**. Preparation
+occupies 81.24 percent of the cooperative Attention repeat call and 68.98
+percent of the FFN repeat call. The mechanism is retained as an explicit,
+default-disabled candidate, not promoted to the validated FPGA delivery.
+No extra SRAM, external bandwidth or replicated arithmetic array is added
+to chase the target.
+
+These are complete SDK microbenchmark calls using genuine model inputs and
+the real llama RVV quantizer, not full GGML operators. The firmware performs
+row-wise quantization followed by packing; GGML can instead use direct M4
+interleaved preparation or prepared reuse. Consequently, the table is not
+a measurement of GGML preparation costs, a full-width projection, or model
+inference speed. Runtime selection still requires the existing explicit
+wide-M option and capability/shape admission; the new RTL does not silently
+enable it or alter fallback selection.
+
+## Runtime Functional Closure
+
+`stage2_ggml_functional_20261110_02/report.json` passes a real single-worker
+GGML `mul_mat` graph using the captured raw Qwen3 Attention tensors. Frozen
+llama `03959acc0` and SDK `c2b7db195` are built privately, without live dirty
+sources. The four independent native-QEMU processes exercise wide M8,
+default M4, shape fallback to M4 and ordinary RVV. Actual QBS command counts
+are respectively 4, 4, 2 and 0. Every prepared activation byte is checked
+against the corresponding layout oracle; QBS outputs/flags are exact and
+RVV is checked against a predetermined numerical tolerance. The host
+arithmetic oracle and QEMU share the pinned QBS reference, so this proves
+GGML preparation/selection and native ABI behavior, not independent
+arithmetic correctness or new RTL speed.
+
+The original standalone-configure failure is preserved. Its successor uses
+a test-side parent CMake project to build the unmodified frozen GGML in
+its normal embedded mode, avoiding the absent standalone package template.
+No production source or numerical checker is changed. Optional QBACC is
+excluded after an exact ABI-extension compatibility audit; ordinary QBEXEC
+alone is exercised. The functional gate and the paired VCS measurements
+are separate evidence sets and must remain separate in later reporting.
