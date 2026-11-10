@@ -109,6 +109,29 @@ and the paired RTL comparison remain required. In particular, Arm A must bind th
 accepted rotating-PV implementation; the pairing environment switch alone does
 not establish that strong baseline.
 
+### Target-Library Oracle Checkpoint
+
+`stage4_resident_features_target_20261110_02/result.json` is
+`ORACLE_PROBES_PASS_FIRMWARE_PENDING`: 9 explicitly identified case definitions,
+27 GNU-newlib libm samples, 7 executed scalar-transform checks and 11 host
+checker tests. Parent and independent review verified176 pins,150 artifacts
+and all6 source files. Samples SHA256 is
+`b778db430da0579430716f318ceb6759d6f73a35a3a901a334df1fcadd095112`;
+source-pin SHA256 is
+`f41ad4dda44ec1419af00f31ed8a069298b63462a2125c7d84d975b1ebb17889`.
+This checkpoint has not executed native Attention or measured performance.
+The later firmware must use the same pinned target libm and keep query
+conversion outside the ROI, as specified in its build contract.
+
+Attempt01 remains FAIL: a conservative error interval could not prove an
+exact F32 halfway reduction. Its positive common-grid integer sum occupies
+only27 bits, so every F64 reduction tree is exact. Attempt02 uses zero error
+only under the proven <=53-bit exactness condition and retains the previous
+bound otherwise. The tie regression checks0x403771ba and NX from clear flags.
+Both probe ELFs, requests and complete Spike traces are byte-identical across
+attempts; no target arithmetic, inputs or tolerance changed. CSR restore uses
+an early-clobber output constraint and is checked in disassembly and at runtime.
+
 ## Screened Or Deferred Work
 
 | Candidate | Disposition and existing evidence |
