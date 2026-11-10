@@ -303,3 +303,27 @@ archive and restore all missing tracked inputs in one explicit manifest,
 instead of repeating single-file additions. Variant01, BUILD04 and their
 receipts remain preserved. The completed static libraries remain independent
 of this source-packaging failure.
+
+## Complete Dtc Restoration And Fifth Build
+
+The fixed dtc archive contains310 tracked files. Variant01 retains116 identical
+files and lacks194; no existing file differs in content. The successor restores
+all194, including11 executable files, and records Git blob IDs, archive modes,
+canonical modes and existing-file modes separately. The archive's group-write
+bit is not confused with a content or execute-bit difference. The failed first
+host check and its source snapshot are preserved; host02 passes12 tests.
+
+A finite QEMU API review also finds one definite compile error before build:
+the transport declares the obsolete `CharBackend` type. The new copy changes
+that one declaration to `CharFrontend`, matching the fixed QEMU chardev API.
+This is a separately recorded adapter patch, not a dtc change or an arithmetic
+change. Original helpers and previous variants remain unchanged.
+
+Variant02 preparation passes, SHA256:
+`79d8477622dd33b24d9dd25a0cfc56ca55b01e6ef7c72ba13a80bd0d095bc210`.
+Final helper identity:
+`59d2e885689b0ba061bce9f7237633bdba288d16d70f0c59185965b1fc4654a3`.
+The authorized direct worker launches exactly once as
+`stage5-qemu-build-20261110-05.service`, with8GiB host memory, four build jobs
+and a3,000-second service bound. This is a launch record, not successful
+compilation, native instruction acceptance or model-regression evidence.
