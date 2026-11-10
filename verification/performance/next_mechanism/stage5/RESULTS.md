@@ -59,3 +59,28 @@ execution never began. The failed preparation and diagnostics are preserved.
 Before a successor preparation, enumerate unsafe links and review explicit safe
 handling; do not disable the archive security filter or overwrite this attempt.
 The accepted QBS source/build and all previous RTL/model evidence are untouched.
+
+## Frozen Model Inputs And Held Harness
+
+`stage5_models_prepare_20261110_04/result.json` is `PREPARED_HELD`, SHA256
+`ae27251276ba052d232cf2bb3388f628069717fade303ec91e8bfa345ad662b2`.
+Parent verified all2162 input pins with no drift. Eleven host checks and five
+GNU syntax-only checks pass; missing-selector compilation is rejected.
+Source-pin SHA256:
+`9cb49d8f979d9dc99dba3dc8e2707dfd1928b787f3f0c225337b0c7f9440ebfe`.
+
+Four pinned real models supply five OFF/ON pairs: Smol F16 boundary contexts,
+Qwen3 F16 multi-tile contexts, two Qwen2.5 quantized-KV cases and Gemma D256
+fallback. Model weights, disk contents, tokenizer assets and exact tokens are
+bound. The matched host tokenizer only prepares vocabulary inputs; guest
+re-tokenization remains mandatory. Neither its reported revision nor the held
+commands establish a composed guest library or inference result.
+
+Attempts01/02 retain tokenizer failures and ABI-mismatch evidence;03 remains
+held with the earlier source-reference limitation. Models04 archives da56 and
+an unapplied native-auto reference separately. Runtime reconciliation, selector,
+instruction model, executable and execution-counter bindings remain required.
+No inference or QEMU launch occurred. The future reviewed launcher must allow
+emulator overhead above4GiB guest RAM (a6-8GiB host ceiling), rather than blindly
+using the draft4GiB host limit. This is a successor binding change, not mutation
+of the frozen preparation or a model-input change.
