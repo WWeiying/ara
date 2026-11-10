@@ -20,6 +20,11 @@ retains ownership through the last acknowledged architectural write, including
 uncancellable reads and error drains. Ordinary RVV, QBS and resident arithmetic
 cannot overwrite each other's in-flight work.
 
+The custom command preserves architectural VL/VTYPE; its assembly leaf also
+uses ordinary RVV setup and stores, which can change VL/VTYPE. Do not confuse
+the instruction contract with the scalar-ABI helper's clobber contract.
+Existing sticky flags survive and active arithmetic can add flags.
+
 Software keeps FULL/REFILL/RELEASE, scale/mask, online softmax, cross-tile
 rescaling and final normalization. Query-base selection is local to the current
 FULL-loaded group. Up to two heads execute per leaf; further heads use local

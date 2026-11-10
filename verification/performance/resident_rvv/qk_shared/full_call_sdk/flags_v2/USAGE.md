@@ -26,9 +26,10 @@ python3 -B verification/performance/resident_rvv/qk_shared/full_call_sdk/flags_v
 The checker must import this directory's `fixture.py`, not a cached historical
 module. It deliberately returns `protocol_checked=false`: the runner must also
 pass the strict independent zero-exception protocol checker and post-run source/
-image identity checks. Current F requires only a reviewed prepare of the existing
-firmware; no new build is needed. `build_flags_v2.py` in the parent directory
-records the explicit predecessor-to-successor transformation. The copied
+image identity checks. The existing firmware needs no new build, but reviewed
+preparation alone does not close gate F: actual SDK execution and all terminal
+checks must pass. `build_flags_v2.py` in the parent directory records the
+explicit predecessor-to-successor transformation. The copied
 `flags-v2-contract.json` retains its original absolute provenance paths on purpose.
 
 ## Contracts And Evidence

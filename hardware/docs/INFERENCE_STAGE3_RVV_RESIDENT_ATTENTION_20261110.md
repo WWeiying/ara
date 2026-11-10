@@ -1,7 +1,7 @@
 # Stage 3: Shared RVV Execution for Resident Attention
 
 Status: architectural and paired complete-call gates pass; actual SDK execution
-and final delivery remain in progress. No new FPGA or physical acceptance is
+is running and final delivery remains in progress. No new FPGA or physical acceptance is
 claimed.
 Starting commit: `7543bbec0` on `ara_dsa`. Stage 2 remains an opt-in candidate;
 this stage does not silently enable its integer multiplier borrowing.
@@ -102,7 +102,10 @@ measurement is not whole-model speedup or acceptance of the new SDK entry.
 Runtime admission and tile mapping have host tests. An experimental SDK entry
 now shares the existing native v2 execution loop and selects the resident QK/PV
 leaves only after admission; default-OFF object equivalence and host helper
-checks pass, but actual SDK whole-call execution is still pending. Capability
+checks pass. Actual SDK whole-call execution is running, with terminal acceptance
+still pending. Capability
 remains zero and existing entry points retain native selection.
 Detailed receipts and limitations are recorded in
 `verification/performance/resident_rvv/qk_shared/RESULTS.md`.
+The version composition and gate ledger are in
+`hardware/docs/INFERENCE_STAGE3_DELIVERY_20261110.md`.

@@ -179,8 +179,9 @@ audit plus the original execution, not by relabeling that worker or rerunning it
 `resident_qk_boundary_build_20261110_01/build.json` records the separately
 frozen QK firmware, with 30 passing host tests bound to its actual GNU-built
 ELF. Independent review checked all 165 source pins and 158 artifacts. This
-is 23 scenarios, 35 direct attempts plus one helper call: the expected totals
-are 24 successful QK retirements and 12 real traps, not executed results yet.
+is 23 scenarios, 35 direct attempts plus one helper call. At firmware-build
+time, 24 successful QK retirements and 12 real traps were expectations only;
+the later terminal QK worker below verifies those executed totals.
 The query-bound case uses base6/H2 against seven loaded rows, followed by
 base5/H2 recovery in the same context. It therefore distinguishes runtime
 context rejection from the separate architectural eight-row limit.
@@ -248,7 +249,8 @@ The shared live dependency checkout was deliberately not edited. Existing
 simulator snapshots remain immutable; future dependency reconstruction must
 use the registered bundle rather than treating an older already-patched
 checkout as the new delivery. This registration closes reproducible delivery
-of the CPU fix, not the pending QK or complete-Attention acceptance.
+of the CPU fix; it does not itself prove QK or complete-Attention acceptance.
+Those later terminal receipts are recorded separately above.
 
 ## Runtime Selection Preparation
 
@@ -271,9 +273,9 @@ injected for host tests, not discovered from current production capability.
 
 These are preflight/mapping helpers, not an Attention executor or an integrated
 GGML path by themselves. The opt-in SDK executor described below now consumes
-them. No default selection, capability or sealed assembly was changed; actual
-SDK execution, the measured retention decision and version delivery remain
-required by gate F.
+them. No default selection, capability or sealed assembly was changed. The
+paired measurement supports experimental retention; actual SDK terminal
+acceptance and final version delivery remain required by gate F.
 
 ## Generic SDK PV Leaf Preparation
 
@@ -340,7 +342,8 @@ object hash. Its SHA256 is
 `07501a97d0ff385dac1ddfdae38ca280f2cfb409c658137900e2e5abb0775794`.
 Actual SDK firmware is built at `stage3_attention_sdk_build_20261110_02`,
 ELF SHA256 `d8c413799646ddf3286347d0c18a76eaaadce27a2840fc3bf4f46f3d7d1de17c`.
-Eighteen host checks pass; target execution is still pending. The three calls
+Eighteen host checks pass; target execution is running and terminal acceptance
+is pending. The three calls
 are requested-OFF and ON original D128/H2/T137, plus an explicitly derived D96,
 two-KV-group, H3-per-group/T65 case. Both OFF and ON enter the same enabled SDK
 executor through the real Decode group callback. Actual entry PCs, commands,
