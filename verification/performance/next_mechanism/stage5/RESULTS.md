@@ -101,3 +101,27 @@ No compiler/configure or guest ran. Before another preparation, preflight all
 inherited entries, link destinations/content identities and integration anchors
 against this already extracted tree. Any successor must avoid writing through
 symlinks, preserve safe matching links, and reject escaping/conflicting content.
+
+## GGML Overlay Control And Build Handoff
+
+`stage5_ggml_overlay_host_20261110_09/result.json` is
+`HOST_GNU_CONTROL_PASS_NO_NATIVE`, SHA256
+`0a682a093837859d5cc43a2dd04e9859239827a839f4fedc4f9a76a838618f9c`.
+Seven tests pass. Parent verifies3567 pins and3663 artifacts with no drift;
+the independent review clears this control/build handoff, not native execution.
+Source-pin SHA256:
+`e1303ccc956a7ae3de2cd09f3a2915d3992c8207e0acb64db73ffc1fc449dc17`.
+
+The frozen nine-file overlay reconstructs da56 plus reviewed auto-pair behavior
+without copying the dirty runtime. Default/OFF object identity is preserved.
+The ON build compiles seven real CMake objects and the native SDK leaves, while
+the host control fixture stubs arithmetic/conversion execution. No complete
+linked GGML library, native provider or numerical/model result is accepted.
+
+Admission is explicit and default-deny before INFO. Legacy native, Prefill and
+quantized-KV permissions are separately registered, not inferred from resident
+profiles. All groups are preflighted before execution; whole-call ownership,
+CSR handling, fallback and no-retry semantics are checked. Model counters are
+control-path evidence only and must later match real instruction-model traces.
+Stage4's preflight producer and feature-bearing resident variant are not promoted.
+Attempts01..08 remain retained diagnostics; only host09 is this frozen checkpoint.
