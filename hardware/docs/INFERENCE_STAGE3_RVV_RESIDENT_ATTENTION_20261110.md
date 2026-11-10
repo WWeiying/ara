@@ -64,3 +64,26 @@ Unresolved points at entry: the original PV boundary firmware has reported
 failures; the QK lane file is only an uncompiled draft; the production reader,
 central controller, VMFPU format selector and architectural QK path are not yet
 implemented. No gate is marked complete until its evidence has been inspected.
+
+## Current Checkpoint
+
+The shared QK/PV RTL and ABI are implemented at `9af19508d`. Actual lane-FPU,
+synchronous-reader, central-control and decoder checks have passed within their
+documented scopes. A fresh four-lane/VLEN1024 SoC image has built successfully;
+the stage-two integer borrower stays disabled in that image.
+
+The original PV boundary replay has completed with zero firmware errors and a
+passing independent protocol report. Its original overall FAIL is preserved:
+the old work checker incorrectly assumes that all layout-maintenance uops are
+globally serial. The actual mixed-layout trace uses distinct live VIDs and
+drains maintenance before final PV execution. A separately tested per-VID audit
+is required before closing gate A; successful firmware output alone is not the
+acceptance criterion.
+
+QK architectural firmware and complete-Attention smoke/ABBA firmware are built.
+The independent QK architectural worker is now executing on the checked SoC
+image; its result and complete-Attention performance remain unverified.
+Runtime admission and tile mapping have host tests; they are not yet a native
+Attention executor or a promoted runtime capability. Capability remains zero.
+Detailed receipts and limitations are recorded in
+`verification/performance/resident_rvv/qk_shared/RESULTS.md`.

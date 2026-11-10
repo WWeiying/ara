@@ -81,9 +81,24 @@ PV build, excluding two approved duplicate-file warnings removed from its
 file list. No new compile error or fatal was observed.
 
 The original PV firmware is now assigned to
-`stage3_pv_boundary_20261110_01`. Its simulator was confirmed executing under
-the direct-owned service. Its original ELF and numerical/protocol checkers are
-unchanged. No PASS is claimed while the worker is pending.
+`stage3_pv_boundary_20261110_01`. Execution has finished: the unchanged firmware
+reports 21 successful cases, 12 expected rejections and zero errors, and the
+independent protocol report passes. The original overall result remains FAIL:
+the sealed work checker requires globally serial backend micro-operations.
+The mixed-layout case instead allocates independent maintenance operations to
+different VIDs before either completes.
+
+At architectural sequence 926, v8/VID0 is allocated at cycle 3,088,673 and
+v9/VID1 at 3,088,674; their completions occur at 3,088,688 and 3,088,696.
+The following v10/v11 and v12/v13 pairs likewise overlap. All six maintenance
+operations write the expected source bits through SLDU. The final PV allocates
+at 3,088,748, after the last maintenance completion at 3,088,746. Independent
+read-only review finds no live-VID reuse, unowned write or missing completion.
+The original numerical and architectural checks also pass in a diagnostic
+replay that splits by live VID allocation generation instead of one global
+live slot. This diagnostic is not a replacement for the original worker result.
+A separate successor audit with negative tests is being prepared; no new RTL
+change or simulator rerun is justified by this parser failure.
 
 `resident_qk_boundary_build_20261110_01/build.json` records the separately
 frozen QK firmware, with 30 passing host tests bound to its actual GNU-built
@@ -117,7 +132,13 @@ dynamic library resolution without executing the simulator.
 pass, and independent review verifies 912 pins and 44 frozen inputs. Inventory
 SHA256 is `bbb07a73d743732f5c530c0e9e938ad38d660c9fcdb1aedb209772c52e1bbc92`.
 The expected exception counts remain ten accelerator rejections and two
-CPU-only FS/VS-Off rejections. No QK simulation or hardware PASS is claimed.
+CPU-only FS/VS-Off rejections. The prepared successor has now been launched:
+its direct-owned service is
+`resident-qk-boundary-v2-stage3_qk_boundary_v2_20261110_01.service` and the actual
+`stage3_soc_20261110_02/sim/simv` was confirmed executing the frozen QK ELF.
+This independent boundary run proceeds while the separate PV parser audit is
+finalized; it does not promote gate A or bypass its acceptance requirement.
+No QK hardware PASS is claimed while its worker is pending.
 
 ## CPU Patch Delivery Preparation
 
