@@ -102,6 +102,13 @@ gain is below the approximately5% screen. No conditional GGML integration is
 required for this rejected promotion. Do not repeat/tune this experiment merely
 to cross the threshold, or report the preparation ratio as a model speedup.
 
+Independent final review reconstructed all32768 FP32 outputs from the raw
+source4 VRF writes, checked the equal-work command/commit stream, and confirmed
+39664 matched protocol requests/responses with zero exceptions, errors or
+outstanding work. All2420 input pins,1437 firmware-build artifacts,68 run
+artifacts and52 image files match. The reviewer agrees with the performance
+promotion rejection and the absence of a conditional GGML integration task.
+
 ## B: Feature-Bearing Resident Decode
 
 The versioned experimental entry extends only feature-bearing F16 Decode.

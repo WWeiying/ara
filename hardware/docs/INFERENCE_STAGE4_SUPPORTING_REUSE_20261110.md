@@ -1,9 +1,11 @@
 # Stage 4: Supporting Reuse And Applicable-Shape Coverage
 
-Status: source-grounded selection and initial implementation checks are complete;
-native numerical/performance evaluation remains pending. This is not a new
-measured speedup, default promotion or Stage5
-model/runtime acceptance.
+Status: the projection complete-call RTL pair passes with1.020137x speedup,
+below the approximately5% promotion screen; retain its experimental helper,
+not a new GGML selection/default. Feature-bearing Attention performance and
+functional RTL jobs are executing. Stage4 remains open; this is not Stage5
+model/runtime acceptance. Current evidence and dispositions are in
+`verification/performance/next_mechanism/stage4/RESULTS.md`.
 
 Baseline: `d3d92ad72a3cabb91e8c333186160ae422f0866b`, tag
 `stage3-resident-attention-20261110`, on `ara_dsa`. Preserve its experimental
