@@ -386,3 +386,33 @@ outside the seeded ROI, makes state/release syscall-free, and retains actual
 OS/task/affinity/mapping admission with incoming-state checks and scalar CSR
 restoration around acquire. Static/link/host review is not model acceptance;
 the actual model launch still requires the same four successful native gates.
+
+## First Native Runs Identify Checker And Transport Issues
+
+The BUILD06 QBS guest actually executes and exits0. Its original aggregate
+remains FAIL because the new checker incorrectly requires opcode-valued mtval
+for every illegal-instruction trap. Independent raw/source review finds190
+native instruction attempts and69 traps with matching order, PCs and causes:
+46 helper illegal traps report0,3 decoder illegal traps report the opcode,
+and20 access traps report their precise addresses. QEMU's state restoration
+overwrites the helper's earlier bins assignment. The original firmware already
+accepts the ISA-permitted illegal mtval alternatives. A separate source-stage
+checker correction verifies exact values per case, not an unrestricted union;
+the original failed worker is never relabeled PASS. This audit is BUILD06-only.
+
+The first BUILD06 directed AKV run times out after case44 output. The next
+case is the unaligned FULL negative test: the model returns an opcode-valued
+front-admission fault, but the adapter loses that value during CPU restoration.
+The fatal handler then uses a32-bit EOC store, while the new transport accepts
+only64-bit accesses, producing repeated nested faults instead of exiting.
+This is not evidence of a new RTL arithmetic failure or a passing full suite.
+
+The V10 copied successor restores precise CPU state before applying the model's
+illegal tval, then raises without a second restore. Its transport accepts the
+additional32-bit EOC write only at offset0, preserving other access policies
+and full64-bit nonzero failure values. The QBS helper and every original ELF
+and numerical oracle remain unchanged. Finite compiler checks and10 host tests
+pass; final source identity is
+`256fe96bb36cf229734d5b0427e77b360ea812a63128f38e3eef43b382389231`.
+The next image must execute all required gates itself; BUILD06 QBS evidence
+cannot be mixed into a different-image acceptance aggregate.
