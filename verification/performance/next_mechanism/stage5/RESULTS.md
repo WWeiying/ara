@@ -267,3 +267,30 @@ empty generated file from source changes, including after the next configure.
 V7 host checks pass10 tests; its asset audit02 remains FAIL at the structured
 reference-count check. No QEMU C compilation or native guest execution has yet
 been accepted; the count discrepancy must be explained before retrying.
+
+## Complete Static Libraries And Fourth QEMU Build
+
+Library build01 completes in326.23 seconds with222 translation units, four
+static archives,776 recorded compiler dependencies, a successful static RISC-V
+link-only probe and unchanged source/tool pins. Receipt SHA256:
+`f47864d88068b2aec18b7f63c9578d2bfeabd9e59f3fde5c5b0b386ece3b21fd`.
+The probe was not executed; both platform providers remain weak/default-NULL.
+This closes the library compile/link prerequisite, not native model acceptance.
+
+The QEMU reference-count failure is a census error, not another missing asset.
+Normalizing relative paths across all eleven introspection files yields3,119
+references:3,111 unchanged,7 reviewed overlay changes and the one known missing
+template. The former2,941 assumption was not reproducible. The revised V7 host
+checks pass12 tests; asset audit03 passes and compares all3,119 references.
+The pre-correction V7 source snapshot and failed audits remain separate evidence.
+
+Copied variant01 is PREPARED_NOT_BUILT, preserving all original source/input
+bytes and link targets without hardlinks; only the Git-pinned dtc template is
+added, and the generated empty lock is excluded from the copied source inputs.
+Preparation receipt SHA256:
+`34f60faabc1b8d3cdd9e261ac1dceb87bfedbce95cfa385f47cdd839d9986bcc`.
+Parent launches `stage5-qemu-build-20261110-04.service` using final helper
+identity `0b1ea7542c5e201525ac6605f7eaa9d66551aada5405cee17facd7aee675cd09`.
+The worker retains four build jobs, offline/internal-FDT configuration and
+before/after pin checks; only the exact empty Meson lock is admitted as generated
+metadata. Actual QEMU compilation and subsequent native gates remain pending.
