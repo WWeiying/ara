@@ -203,3 +203,20 @@ worker and explicit Python/Ninja, bounds900/1800 seconds and four compiler jobs.
 Launch is not compilation or binary acceptance; confirm actual process/log
 progress and wait for terminal evidence before native guest execution. All
 source03/V4 inputs remain sealed while this service consumes them.
+
+## Internal FDT Selection And Third Build
+
+BUILD02 remains FAIL at Meson configuration, after successful Python/offline
+bootstrap. Both the old accepted and new build lack system `-lfdt`; the old
+build used the internal dtc subproject. New `--disable-download` selects
+`wrap_mode=nodownload`; meson.build2072-2097 then maps auto FDT to disabled even
+when the internal sources exist. The missing-metadata hypothesis was checked
+and rejected: the matching dtc Meson files are already present in prepared03.
+
+The v5 build-only variant adds exactly `--enable-fdt=internal`, keeping download
+disabled, prepared03, toolenv02, source code and all other options unchanged.
+Eight host checks and independent final review pass. Source review identity:
+`c715107e529d0ee04ce5aabdda0d3c03f479e627701d0489085067447a2aff97`.
+Parent launched `stage5-qemu-build-20261110-03.service`, output
+`stage5_qemu_build_20261110_03`, using the direct-owned v5 worker. This is a
+launch milestone only; binary and guest acceptance require terminal evidence.
