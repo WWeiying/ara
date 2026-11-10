@@ -451,14 +451,15 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic [63:0] qbs_mul_a, qbs_mul_b;
   logic [127:0] qbs_mul_product;
 
-  assign qbs_mul_requested = EnableQbsLaneMul && qbs_mul_lease_i;
+  localparam bit QbsLaneMulEnabled = EnableQbsLaneMul && QbsLaneMulLatencySupported;
+  assign qbs_mul_requested = QbsLaneMulEnabled && qbs_mul_lease_i;
   assign qbs_mul_owned_o = qbs_mul_owned;
   // A presented native/PV request wins until QBS has actually acquired ownership.
   assign qbs_mul_quiescent =
       native_drained && !resident_owned_q &&
       !resident_native_offer && !(resident_acquire_i === 1'b1) && clkgate_en_q;
 
-  if (EnableQbsLaneMul) begin : gen_qbs_mul_borrow
+  if (QbsLaneMulEnabled) begin : gen_qbs_mul_borrow
     qbs_lane_mul_borrow i_borrow (
       .clk_i, .rst_ni,
       .lease_i(qbs_mul_requested), .native_quiescent_i(qbs_mul_quiescent),
@@ -578,7 +579,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       if (vmul_simd_in_valid_q[s]) shared_mul_sew = 2'(s);
     if (qbs_mul_owned) shared_mul_sew = 2'(EW8);
   end
-  simd_mul_shared #(.FixPtSupport(FixPtSupport)) i_shared_mul (
+  simd_mul_shared #(.FixPtSupport(FixPtSupport), .Bypass8(1'b1)) i_shared_mul (
     .clk_i(clk_i_gated), .rst_ni,
     .operand_a_i(qbs_mul_owned ? qbs_mul_a : vmul_simd_op_a_q),
     .operand_b_i(qbs_mul_owned ? qbs_mul_b : vmul_simd_op_b_q),
@@ -1877,7 +1878,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       !vdiv_in_valid && !vdiv_out_valid && native_fp_drained;
 
 `ifndef SYNTHESIS
-  if (EnableQbsLaneMul) begin : gen_qbs_mul_checks
+  if (QbsLaneMulEnabled) begin : gen_qbs_mul_checks
     always_ff @(posedge clk_i) if (rst_ni && qbs_mul_owned) begin
       assert (vinsn_queue_q.issue_cnt == '0 && vinsn_queue_q.processing_cnt == '0 &&
               vinsn_queue_q.commit_cnt == '0 && result_queue_cnt_q == '0 &&

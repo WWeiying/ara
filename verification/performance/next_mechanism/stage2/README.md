@@ -19,6 +19,10 @@
   分组能匹配现有两路修正；不能直接将这一吞吐结论外推给16元素分组格式。
 - 顶层 `ARA_QBS_LANE_MUL_ENABLE` 默认未定义，显式开启后也仅支持当前四Lane、
   VLEN1024的组合。尚未验收的新路径不能自动替换板上正式交付。
+- 借用返回固定为三拍，不是任意延迟的弹性接口。普通EW8内部流水必须为零；
+  `QbsLaneMulLatencySupported`在顶层、VLSU调度和VMFPU三处同时门控。若普通
+  EW8改为非零流水，整体退回原QBS调度，而不是只关闭Lane入口导致引擎等待。
+  共享乘法器在VMFPU实例处显式固定`Bypass8=1`，不再依赖模块默认值。
 
 ## 已完成的实际 VMFPU 检查
 
@@ -172,6 +176,12 @@ GGML已有 `GGML_RISCV_QBS_WIDE_M` 环境开关。打开后，
 协同开启也只将Q4_K/M8映射到并行两组行，其余命令沿用原实现。当前完整调用测试
 显式比较M4/M8，不能据此宣称整模型每个投影均已自动命中新路径。
 
+RTL协同开关和软件wide-M开关是两个独立条件。关闭协同或配置不兼容时，已准入
+的M8命令仍合法，只是使用原串行两波调度。设备能执行M8并不表示M8一定更快：
+当前SDK推荐器只估算输入payload，不计量化、packing和prepared cache的成本。
+本阶段不修改生产选择器、不默认开启wide-M，也不增加新的ISA或能力位。
+上述fallback是在执行前按类型/形状选择；native执行中出错不能描述为自动RVV重试。
+
 ## 完整调用最终结果与保留决定
 
 `stage2_soc_campaign_20261109_01/report.json` 已为 `PAIRED_CALLS_CHECKED`，八组
@@ -233,6 +243,32 @@ QEMU，原记录保留。`_02`使用测试侧父CMake将GGML按正常embedded模
 
 ## 运行方法
 
+### 配置保护补充验收
+
+`stage2_vmfpu_config_20261110_01/report.json`为PASS，四套新VCS镜像均完成源文件
+及镜像前后核对。零内部延迟的普通/共享配置复用原full-FP检查器，每侧5条普通FP、
+2次PV返回、24次借用返回通过；另将测试副本的普通EW8内部延迟分别设为1和2，
+每侧8条跨全部位宽的VMUL/VMULH正常写回/完成，持续lease和借用valid均被忽略，
+借用接收/返回为零。顶层及VLSU采用静态连线检查，没有重新执行全SoC。
+
+```bash
+python3 -B verification/performance/next_mechanism/stage2/run_vmfpu_config.py \
+  /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage2_vmfpu_config_NEW
+
+systemd-run --user --unit=stage2-vmfpu-config-NEW \
+  python3 -B /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage2_vmfpu_config_NEW/inputs/run_vmfpu_config.py \
+  /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage2_vmfpu_config_NEW --execute
+```
+
+SDK宿主机回归另存于`stage2_sdk_host_closeout_20261110_01/host-tests.log`，生产SDK
+与`c2b7db195`一致。格式转换56组合、分段执行1530形状、storage view 1809形状、
+context准入7187468种规划均通过；这些是软件检查数量，不能计为RTL回归条数。
+
+旧`test_check_matrix_v2.test_full_offline_pin_audit`绑定原运行时的live源码身份，
+新的配置保护修改后应拒绝该旧身份。旧报告及冻结输入不变，不能修改旧pins使之通过，
+也不能将旧SoC周期直接改标成新源码实测。本轮其余63项host检查通过（2个prepared
+检查类需单独指定证据目录）；queue和special的prepared检查各12项另行通过。
+
 所有结果写入唯一主验证工作树的 `verification/out`，每次使用新目录名。
 禁止覆盖旧失败目录，禁止在worker运行时修改其 `source-pins.json` 所列文件。
 
@@ -255,8 +291,9 @@ python3 -B /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out
 Qwen3-1.7B-Q4_K_M 模型。在真实GGML图的第一层 Attention 和 FFN 投影输入处，
 各收集八个不同token的归一化激活；只截取输出通道，不截短K维。
 
-QEMU仅产生这些功能输入，不提供硬件性能数据。捕获首四行Attention激活必须
-与旧四行样本逐位相同。新数据仍需在VCS中与原路径完成配对后，才能报告周期收益。
+QEMU仅产生这些功能输入，不提供硬件性能数据。捕获首四行Attention激活已与旧
+四行样本逐位核对；上述VCS引擎和SoC配对给出周期证据，不能用捕获程序的运行
+时间代替硬件周期。后续新输入仍须另做相同工作量的VCS配对。
 
 完整矩阵比较必须同时包含原M8和等工作量的原M4对照，覆盖全部输入装载、整数
 修正、FP累加、排空和结果提交。原有M8权重复用不是新收益；阵列乘积率也不能

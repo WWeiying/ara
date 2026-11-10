@@ -214,3 +214,57 @@ No production source or numerical checker is changed. Optional QBACC is
 excluded after an exact ABI-extension compatibility audit; ordinary QBEXEC
 alone is exercised. The functional gate and the paired VCS measurements
 are separate evidence sets and must remain separate in later reporting.
+
+## Configuration and Deployment Contract
+
+The borrower is a fixed-latency transport, not an independently stalled
+multiplier queue. A beat admitted by all four lanes returns three cycles
+later. The normal EW8 core must therefore have zero internal pipeline stages.
+`QbsLaneMulLatencySupported` now gates the top-level selection, the VLSU
+cooperative scheduler and the VMFPU borrower together. With a retimed normal
+EW8 core, the design selects the original QBS schedule instead of issuing
+work into an incompatible borrower. The shared multiplier explicitly pins
+`Bypass8=1`, rather than depending on the module's default parameter. Existing
+ownership rules still drain its ordinary pipeline before the bypass is used.
+This is configuration protection, not support for variable return latency.
+
+| Hardware selection | Software selection | Execution |
+|---|---|---|
+| Cooperation off or unsupported | Wide-M off | Original M4 or smaller-row schedule |
+| Cooperation off or unsupported | Wide-M admitted | Original serial M8 schedule; still a legal command |
+| Cooperation supported and on | Wide-M off | Original M4 or smaller-row schedule; no borrowed products |
+| Cooperation supported and on | Q4_K/M8 admitted | Concurrent input-row waves and the 16-entry integer-result FIFO |
+| Cooperation supported and on | Other profile or M other than 8 | Original schedule |
+
+Wide-M admission requires the existing explicit `GGML_RISCV_QBS_WIDE_M`
+option as well as shape, layout and device checks. The SDK's recommendation
+estimates input payload reduction; it does not model preparation latency or
+prepared-data reuse, and it does not report the new RTL switch. In particular,
+M8 capability is not a promise that M8 is faster than an optimized M4 caller.
+There is no new ISA field or capability bit in this stage. Both the hardware
+cooperation and software wide-M option remain off by default. Shape/type
+fallback is selected before execution; a fault after native execution starts
+is not automatically retried as ordinary RVV.
+
+The complete-call results above remain tied to source revision `bcc2e0082`.
+The later configuration guard does not change the enabled expressions in
+those measured standard/shared latency-zero configurations. Its directed
+validation is separate from that earlier SoC measurement; it must not be
+reported as a new whole-SoC performance run.
+
+`stage2_vmfpu_config_20261110_01/report.json` passes all four fresh VCS
+configurations, with source and image hashes checked before and after use.
+The unchanged full-FP checker passes for standard/shared latency-zero cores:
+each retires five native FP operations, two PV returns and 24 borrowed
+results, including held requests, delayed VRF grants, flags and SLDU drain.
+With the ordinary EW8 latency changed to one or two in isolated test inputs,
+each actual VMFPU retires eight native VMUL/VMULH instructions across all
+four EEWs while a persistent lease/borrow offer is ignored. Neither negative
+configuration accepts or returns a borrowed beat. Top/VLSU selection is
+checked structurally; these tests execute the lane, not a new whole SoC.
+
+The unchanged SDK also passes `make -C software/qbs check`, using a separate
+build directory `stage2_sdk_host_closeout_20261110_01`. This includes layout
+capability fallback, 56 format-conversion combinations, 1,530 segmented
+address/execution shapes, 1,809 storage-view shapes and 7,187,468 context
+admission plans. These counts describe host software checks, not RTL tests.

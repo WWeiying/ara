@@ -135,6 +135,14 @@ package ara_pkg;
   localparam int unsigned LatMultiplierEW16 = 1;
   localparam int unsigned LatMultiplierEW8  = 0;
 
+  // The QBS return tags assume a combinational EW8 core. VMFPU explicitly
+  // pins the shared multiplier's EW8 bypass; the ordinary bank may be retimed.
+`ifdef ARA_SHARED_SIMD_MUL
+  localparam bit QbsLaneMulLatencySupported = 1'b1;
+`else
+  localparam bit QbsLaneMulLatencySupported = LatMultiplierEW8 == 0;
+`endif
+
   // FPU latencies.
   localparam int unsigned LatFCompEW64    = 'd5;
   // Experimental lane ADDMUL sharing; retain the accepted implementation by default.

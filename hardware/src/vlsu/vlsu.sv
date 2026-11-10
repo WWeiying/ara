@@ -468,7 +468,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic [NrLanes-1:0] qbs_ldu_result_final_gnt;
 
   logic qbs_busy;
-  localparam bit QbsLaneMulSupported = EnableQbsLaneMul && NrLanes == 4 && VLEN == 1024;
+  localparam bit QbsLaneMulSupported = EnableQbsLaneMul && NrLanes == 4 &&
+      VLEN == 1024 && QbsLaneMulLatencySupported;
   logic qbs_loan_valid;
   logic [3:0] qbs_loan_ready, qbs_loan_result_valid;
   logic [15:0] qbs_loan_weight [4];
