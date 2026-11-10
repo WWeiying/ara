@@ -59,10 +59,50 @@ accepted/returned FMA count, output byte-enable and architectural write.
 
 ## Still Required
 
-1. Compile the committed production snapshot with accepted dependencies and the
-   separately recorded CPU patch; no live dirty dependencies enter the build.
-2. Re-run the exact original PV boundary ELF, then QK architectural boundaries.
-3. Pass complete-call smoke before paired ABBA measurements. Report full-call
+1. Re-run the exact original PV boundary ELF, then QK architectural boundaries.
+   The fresh image described below has built successfully; build completion is
+   not functional acceptance.
+2. Pass complete-call smoke before paired ABBA measurements. Report full-call
    cycles separately from resident-engine cycles; do not infer model speedup.
-4. Make a measured retention decision and complete applicable runtime/fallback
+3. Make a measured retention decision and complete applicable runtime/fallback
    integration and version delivery. No FPGA or physical acceptance is implied.
+
+## SoC Build and Architectural Firmware Checkpoint
+
+`stage3_soc_20261110_02/build.json` records a successful VCS build from
+`9af19508de139641ea561ccdbd3114eba4007c6e` plus the reviewed CPU retirement
+overlay. The 52-file simulator image includes nine shared libraries. Its 380
+dependency files match the accepted closure except for that exact CPU overlay;
+no live dirty dependency files were compiled. Configuration remains four lanes,
+VLEN1024, 16 MiB simulation L2, shared integer multiplier enabled, shared FMA
+and stage-two borrowing disabled, resident QK/PV enabled, capability zero.
+The 17 builder host tests pass. The 127 compile warnings match the earlier
+PV build, excluding two approved duplicate-file warnings removed from its
+file list. No new compile error or fatal was observed.
+
+The original PV firmware is now assigned to
+`stage3_pv_boundary_20261110_01`. Its simulator was confirmed executing under
+the direct-owned service. Its original ELF and numerical/protocol checkers are
+unchanged. No PASS is claimed while the worker is pending.
+
+`resident_qk_boundary_build_20261110_01/build.json` records the separately
+frozen QK firmware, with 30 passing host tests bound to its actual GNU-built
+ELF. Independent review checked all 165 source pins and 158 artifacts. This
+is 23 scenarios, 35 direct attempts plus one helper call: the expected totals
+are 24 successful QK retirements and 12 real traps, not executed results yet.
+The query-bound case uses base6/H2 against seven loaded rows, followed by
+base5/H2 recovery in the same context. It therefore distinguishes runtime
+context rejection from the separate architectural eight-row limit.
+
+```text
+QK build receipt: f660436c74629b8cc2055ea3387e362538b530f76a4884cec98dfbedda515af2
+QK ELF:          d7823dca2c700174223629df36a7dc65de1828ee313e7219d57a059c0b5bc7fa
+```
+
+The first QK runner preparation stopped before simulator launch because it
+expected `configuration.cpu_retirement_overlay`, while the checked SoC receipt
+stores `cpu_overlay` at its top level. The failure is preserved in
+`resident_qk_boundary_vcs_20261110_01/PREPARE_FAILURE.md`. The frozen firmware,
+original runner and numerical checks are preserved; a separately reviewed
+successor must use the actual stage-three build contract. This preparation
+failure is not an RTL failure or architectural acceptance.
