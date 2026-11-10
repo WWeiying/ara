@@ -134,3 +134,27 @@ base revisions, unrelated deltas and a noncanonical concatenated patch.
 The registry and shared dependency checkout remain unchanged at this checkpoint.
 Formal registration waits for the original PV SoC regression. These checks
 prove reproducible patch delivery, not the pending architectural result.
+
+## Runtime Selection Preparation
+
+The new experimental `admission.h` and `dispatch.h` use the existing SDK plan,
+descriptor and device types. Zeroed options preserve the original native
+selection. Shared execution requires explicit validated availability and
+platform/context ownership, F16 Decode head rows for exactly one query token,
+D64/D96/D128, VLEN1024, RNE and zero vstart. Prefill, segmented D256, active
+score features and refill overlap remain on their original routes. No new
+capability is advertised, no CSR is modified, and no failure after execution
+starts permits a replay through another path.
+
+`stage3_resident_policy_host_20261110_01/report.json` records optimized Clang
+and Clang UBSan passes. Each independently checks 1,618 tile maps and 4,051
+head pairs, including rows1..8, tile lengths1..64, 64/64/9 context tiling,
+odd-head tails, local query-base reset between groups, rejected inputs and
+unchanged output on failed mapping. Control-word expectations are constructed
+independently from the ABI bit layout. Device availability is deliberately
+injected for host tests, not discovered from current production capability.
+
+These are preflight/mapping helpers, not an Attention executor or an integrated
+GGML path. No production native source, build wiring, or sealed assembly was
+changed. A measured complete-call retention decision and applicable runtime
+integration are still required by gate F.
