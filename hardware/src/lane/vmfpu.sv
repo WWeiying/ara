@@ -109,6 +109,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic resident_owned_q;
   logic resident_native_offer;
   logic qbs_mul_requested, qbs_mul_owned, qbs_mul_quiescent;
+  logic native_drained, native_fp_drained;
   assign resident_owned_o = resident_owned_q;
   assign resident_native_offer = vfu_operation_valid_i &&
       (vfu_operation_i.vfu == VFU_MFpu || vfu_operation_i.op inside {[VMFEQ:VMFGE]});
@@ -452,11 +453,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
   assign qbs_mul_requested = EnableQbsLaneMul && qbs_mul_lease_i;
   assign qbs_mul_owned_o = qbs_mul_owned;
+  // A presented native/PV request wins until QBS has actually acquired ownership.
   assign qbs_mul_quiescent =
-      vinsn_queue_q.issue_cnt == '0 && vinsn_queue_q.processing_cnt == '0 &&
-      vinsn_queue_q.commit_cnt == '0 && result_queue_cnt_q == '0 &&
-      !(|result_queue_valid_q) && !(|vmul_simd_in_valid_q) &&
-      !(|vmul_simd_out_valid) && !resident_owned_q &&
+      native_drained && !resident_owned_q &&
       !resident_native_offer && !(resident_acquire_i === 1'b1) && clkgate_en_q;
 
   if (EnableQbsLaneMul) begin : gen_qbs_mul_borrow
@@ -470,13 +469,6 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       .mul_product_i(qbs_mul_product), .mul_ready_o(qbs_mul_return_ready),
       .result_valid_o(qbs_mul_result_valid_o), .result_pair_o(qbs_mul_result_pair_o)
     );
-`ifndef SYNTHESIS
-    always_ff @(posedge clk_i) if (rst_ni && qbs_mul_owned) begin
-      assert (vinsn_queue_q.commit_cnt == '0 && result_queue_cnt_q == '0 &&
-              !resident_owned_q && !(|vmul_simd_in_valid_q))
-        else $fatal(1, "QBS multiplier borrower overlapped native lane work");
-    end
-`endif
   end else begin : gen_no_qbs_mul_borrow
     assign qbs_mul_owned = 1'b0;
     assign qbs_mul_ready_o = 1'b0;
@@ -1437,30 +1429,15 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     assign vfpu_result     = resident_owned_q ? '0 : bulk_result;
     assign vfpu_ex_flag_fn = resident_owned_q ? '0 : bulk_status;
     assign vfpu_tag_out    = resident_owned_q ? '0 : bulk_tag_out;
+    assign native_fp_drained =
+        !vfpu_in_valid && !vfpu_busy && !vfpu_busy_q && !bulk_out_valid &&
+        !fflags_ex_valid_q && !fflags_ex_valid_d && reduction_fflags_q == '0;
 
     if (EnableResidentPv && RVVH(FPUSupport)) begin : gen_resident_pv
-      logic native_quiescent;
-      // Occupancy, not ready or stale per-instruction element counters, owns
-      // native work. The divider's ready denotes ISSUE_IDLE, unlike FPnew ready.
-      assign native_quiescent =
-          vinsn_queue_q.issue_cnt == '0 &&
-          vinsn_queue_q.processing_cnt == '0 &&
-          vinsn_queue_q.commit_cnt == '0 &&
-          mfpu_state_q == NO_REDUCTION &&
-          result_queue_cnt_q == '0 && !(|result_queue_valid_q) &&
-          !mfpu_result_req_o && !mfpu_result_gnt_i &&
-          !(|mfpu_operand_valid_i) && !mask_valid_i &&
-          !mask_operand_valid_o && !sldu_mfpu_valid_i && !sldu_mfpu_valid_q &&
-          !mfpu_red_valid_o && !fpu_red_complete_o &&
-          !vmul_in_valid && !(|vmul_simd_in_valid_q) && !(|vmul_simd_out_valid) &&
-          !vdiv_in_valid && vdiv_in_ready && !vdiv_out_valid &&
-          !vfpu_in_valid && !vfpu_busy && !vfpu_busy_q && !bulk_out_valid &&
-          !fflags_ex_valid_q && !fflags_ex_valid_d && reduction_fflags_q == '0;
-
       // A simultaneous native offer wins even before it enters the queue.
+      // Preserve PV's existing ISSUE_IDLE check for this specific divider.
       assign resident_acquire_ready_o = rst_ni && !resident_owned_q &&
-          !qbs_mul_owned && !qbs_mul_requested &&
-          !resident_native_offer && native_quiescent;
+          !qbs_mul_owned && !resident_native_offer && native_drained && vdiv_in_ready;
       assign resident_release_ready_o = rst_ni && resident_owned_q &&
           !resident_valid_i && !vfpu_busy && !vfpu_busy_q && !bulk_out_valid;
       assign resident_ready_o = resident_owned_q && resident_rm_legal && bulk_in_ready;
@@ -1883,7 +1860,35 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     assign vfpu_busy         = 1'b0;
     assign fflags_ex_d       = '0;
     assign fflags_ex_valid_d = 1'b0;
+    assign native_fp_drained = 1'b1;
   end : no_fpu_gen
+
+  // Queue occupancy covers integer division through its return handshake;
+  // ready is not an idle/busy indication. Include independent FP/SLDU/flag tails.
+  assign native_drained =
+      vinsn_queue_q.issue_cnt == '0 && vinsn_queue_q.processing_cnt == '0 &&
+      vinsn_queue_q.commit_cnt == '0 && mfpu_state_q == NO_REDUCTION &&
+      result_queue_cnt_q == '0 && !(|result_queue_valid_q) &&
+      !mfpu_result_req_o && !mfpu_result_gnt_i &&
+      !(|mfpu_operand_valid_i) && !mask_valid_i && !mask_operand_valid_o &&
+      !sldu_mfpu_valid_i && !sldu_mfpu_valid_q &&
+      !mfpu_red_valid_o && !fpu_red_complete_o &&
+      !vmul_in_valid && !(|vmul_simd_in_valid_q) && !(|vmul_simd_out_valid) &&
+      !vdiv_in_valid && !vdiv_out_valid && native_fp_drained;
+
+`ifndef SYNTHESIS
+  if (EnableQbsLaneMul) begin : gen_qbs_mul_checks
+    always_ff @(posedge clk_i) if (rst_ni && qbs_mul_owned) begin
+      assert (vinsn_queue_q.issue_cnt == '0 && vinsn_queue_q.processing_cnt == '0 &&
+              vinsn_queue_q.commit_cnt == '0 && result_queue_cnt_q == '0 &&
+              !(|result_queue_valid_q) && mfpu_state_q == NO_REDUCTION &&
+              native_fp_drained && !resident_owned_q && !(|vmul_simd_in_valid_q) &&
+              !vdiv_in_valid && !vdiv_out_valid && !mfpu_result_req_o &&
+              !mask_operand_valid_o && !mfpu_red_valid_o && !fpu_red_complete_o)
+        else $fatal(1, "QBS multiplier borrower overlapped native lane work");
+    end
+  end
+`endif
 
   assign fflags_ex_o       = resident_owned_q ? '0 : fflags_ex_q;
   assign fflags_ex_valid_o = !resident_owned_q && fflags_ex_valid_q;
@@ -1958,7 +1963,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
     // Inform our status to the lane controller
     mfpu_ready_o      = !resident_owned_q && !qbs_mul_owned &&
-                        !qbs_mul_requested && !vinsn_queue_full;
+                        !vinsn_queue_full;
     mfpu_vinsn_done_o = '0;
 
     // Do not acknowledge any operands
@@ -3004,7 +3009,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     //  Accept new instruction  //
     //////////////////////////////
 
-    if (!resident_owned_q && !qbs_mul_owned && !qbs_mul_requested &&
+    if (!resident_owned_q && !qbs_mul_owned &&
       !vinsn_queue_full && vfu_operation_valid_i &&
       (vfu_operation_i.vfu == VFU_MFpu || vfu_operation_i.op inside {[VMFEQ:VMFGE]})) begin
       vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt]    = vfu_operation_i;
