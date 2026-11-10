@@ -145,3 +145,19 @@ failed tree are expected; the actual complete plan is validated before copying.
 The sole unsafe archive member remains explicitly excluded, not followed.
 Independent prepared-inventory review and direct-service compilation are next;
 this receipt is not a binary or guest-execution acceptance.
+
+## First Build Configuration And Tool Preflight
+
+Prepared03 independently passes78470 pins and84776 exact tree entries. The
+parent launched `stage5-qemu-build-20261110-01.service` with the frozen v3 worker.
+`stage5_qemu_build_20261110_01/build.json` is FAIL: configure chose system
+Python3.9.21, which has no usable `tomli` in the minimal environment. Configure
+exited after1.6s; no C compilation or guest execution began. The direct-service
+failure/logs remain preserved, and prepared03 is not modified or re-extracted.
+
+Parent prerequisite checks find Python3.11.13 with built-in tomllib, venv and
+ensurepip; the pinned source contains Meson1.9.0 and pycotap1.3.1 wheels.
+System pkg-config reports GLib2.68.4, pixman0.40.0 and zlib1.2.11. A reviewed
+build-only successor must bind its interpreter/offline dependencies explicitly
+while preserving environment isolation and the already accepted source tree.
+Do not count service launch or a configure failure as an executing compiler.
