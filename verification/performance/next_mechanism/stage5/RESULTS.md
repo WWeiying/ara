@@ -44,3 +44,18 @@ It does not establish numerical acceptance, complete toolchain closure or native
 QEMU execution. The successor adapter/build must bind these model bytes and
 host02 evidence, then execute real SoftFloat/native gates and unchanged Stage4
 ELFs. Preserve host01 and its diagnostics; no old model is overwritten.
+
+## QEMU Adapter And Source Preparation
+
+Adapter/decode/SoftFloat glue and fresh-build recipe are committed at
+`cdbf7c90d`. The reviewed source03 identity is
+`1b190a2502865f4f91c8a06c23ab93a498474a43c917474707ce3414430efabe`;
+11 source-only checks pass. This establishes neither compilation nor execution.
+
+`stage5_qemu_prepare_20261110_01` failed during safe extraction of the official
+hash-matched archive: `roms/edk2/EmulatorPkg/Unix/Host/X11IncludeHack` is an
+absolute symbolic link rejected by Python's data filter. Configure/compiler
+execution never began. The failed preparation and diagnostics are preserved.
+Before a successor preparation, enumerate unsafe links and review explicit safe
+handling; do not disable the archive security filter or overwrite this attempt.
+The accepted QBS source/build and all previous RTL/model evidence are untouched.
