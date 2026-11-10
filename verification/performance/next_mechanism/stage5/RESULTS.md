@@ -220,3 +220,23 @@ Eight host checks and independent final review pass. Source review identity:
 Parent launched `stage5-qemu-build-20261110-03.service`, output
 `stage5_qemu_build_20261110_03`, using the direct-owned v5 worker. This is a
 launch milestone only; binary and guest acceptance require terminal evidence.
+
+## Build03 Metadata Closure And Parallel Library Preparation
+
+BUILD03 correctly enters the internal dtc project but stops before C compilation:
+`subprojects/dtc/version_gen.h.in` is absent. This proves the previous declared
+source-file integrity gate was not a complete build-asset closure. Parent reads
+all accepted Meson introspection JSON, finding2941 existing source references
+and exactly one absent reference in prepared03: that template. Old dtc Git
+revision is `b6910bec11614980a21e46fbccc35934b671bd81`. A successor must bind
+all required build assets and preserve prepared03, not add one unchecked live
+file then retry. Ninja1.10.2 does not support `-t inputs`; that failed read-only
+query is not counted as graph evidence.
+
+In parallel, the complete static-library recipe passes12 host checks and source
+review, but `stage5_libraries_prepare_20261110_01` fails a tool query before
+configure/compilation. GCC's `-print-file-name=liblto_plugin.so` returns a basename;
+`-print-prog-name` correctly locates the installed host compiler plugin. Its
+configured GCC14.3.0 supports plugins/LTO; this is a query-category error, not a
+missing target runtime. Preserve the failure and pin the correctly identified
+compiler component rather than dropping the check or installing another toolchain.
