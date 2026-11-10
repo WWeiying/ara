@@ -1,7 +1,8 @@
 # Stage 4: Supporting Reuse And Applicable-Shape Coverage
 
-Status: source-grounded selection is complete; implementation and evaluation
-are starting. This is not an existing speedup, default promotion or Stage5
+Status: source-grounded selection and initial implementation checks are complete;
+native numerical/performance evaluation remains pending. This is not a new
+measured speedup, default promotion or Stage5
 model/runtime acceptance.
 
 Baseline: `d3d92ad72a3cabb91e8c333186160ae422f0866b`, tag
@@ -165,8 +166,12 @@ Stage3 `admission.h`, `executor.h`, dispatch and assembly leaves remain unchange
 existing `AKV_EXPERIMENTAL_RESIDENT_ATTENTION=1` resource/leaf build opt-in.
 Only the new entry receives the new policy. Its versioned options describe
 native software score order, one Decode query token and group-local head rows;
-they have no `plain_scores` field. Copy device/options/features before entering
-the shared core. Check the feature-row count against the group's descriptor,
+they have no `plain_scores` field. After trap-safe platform admission, read
+entry CSR eligibility before any potentially vectorized snapshot libc call;
+an ineligible entry cannot become resident after a copy clears vstart. Copy
+device/options/features, including inline per-head arrays, before entering
+the shared core, which rechecks actual CSRs. Check plan alignment before any
+descriptor field read and the feature-row count against the group's descriptor,
 and use existing feature validation, including absolute key-position overflow.
 The caller slices per-head arrays and owns immutable inputs across all groups.
 Unknown ABI/policy or inconsistent group metadata is a pre-execution error;
@@ -176,9 +181,10 @@ native policy. Both requested and effective refill overlap prevent selection.
 No mid-loop route selection, CSR write or post-start fallback is introduced.
 
 The existing software transform, sink initialization and online recurrence are
-not edited. Schedule geometry can be factored inside the native C file without
-changing Stage3 admission. Host gates compare GNU whole objects for baseline,
-default and explicit-OFF builds, and also check the old resident-enabled build
+not edited. Keep the original Stage3 preflight body exactly intact; the new
+flag-only preflight repeats its small geometry block to preserve old codegen.
+Host gates compare GNU whole objects against archived Stage3 SDK `ca772ef909`
+for default and explicit-OFF builds, and also check the old resident-enabled build
 with the new feature flag OFF. Host leaf stubs prove routing only, not target
 arithmetic. GNU checks inspect the actual enabled native object and build guards.
 
@@ -203,35 +209,148 @@ masks are explicit derived controls, not captured model behavior. Cropped
 D64/D96 or tail cases, and any repeated-row longer context, must have a separate
 derivation receipt and cannot be called a new captured shape or model gain.
 
-Arm A calls `akv_attention_execute_v2_with_features_native` with
-`AKV_PAIR_HEADS=1`, VLEN1024 and the existing panel4 capability. That switch
-selects paired panel4 QK but does NOT select the accepted rotating PV baseline.
+Both arms call `akv_experimental_attention_execute_features_v2_native` with
+`automatic=0`: Arm A uses `requested=0`, Arm B uses `requested=1`. The only
+enabled environment option is `AKV_PAIR_HEADS=1`, with VLEN1024 and the existing
+panel4 capability. That switch selects paired panel4 QK but does NOT select
+the accepted rotating PV baseline.
 Arm A must additionally link the accepted
 `verification/performance/resident_rvv/rotation/pv_rotation.S` wrapper through
 `--wrap=akv_experimental_pv_f16_pair`, following the Stage3 strong-control
 binding. Require final-ELF call-target/disassembly proof and actual entry evidence
 for the rotation body, not merely linked symbols or an environment setting.
-Performance bindings are parent-owned and independently audited. Arm B calls
-the new feature entry with `automatic=0`. Both use the same validated group-local
+Performance bindings are parent-owned and independently audited. Arm B must
+bypass the wrapper. Both use the same validated group-local
 feature object, masks, layout, tile64, libm, RNE, initial flags and no refill
 overlap. Do not use native-auto's generic feature fallback as the performance
 baseline, or the Stage3 plain golden as a feature golden. A same-image bounded
 ABBA must include entry/admission, FULL/REFILL/RELEASE, software transforms,
-preparation, output normalization and final drain. Native target cases and a
-runner are deferred until core freeze and independent parent review.
+preparation, output normalization and final drain. Require per-call legacy
+command counts 237 for A and 4 for B, with 6 resident commands for B, plus
+actual retired wrapper/entry and useful-work checks. Native target cases and
+a runner are deferred until core freeze and independent parent review.
+
+The performance controls use nonzero absolute query/key positions, distinct
+per-head linear position slopes and sinks, and a bounded window with excluded
+and included positions. Keep `softcap=0` in this pair so a new tanhf cost does
+not dominate the comparison. Choose/freeze exact controls only after confirming
+they exercise a nonzero alpha-expf argument, without selecting them for speed.
+Proposed initial controls for that independent check are key base4096,
+query position4232, window left100/right0 (include local tokens36..136),
+position slopes `{0x1p-7f, 0x1p-6f}`, sinks `{-2.0f, -1.0f}`, mask scaling
+disabled and captured masks unchanged. These are a review proposal, not a
+generated/frozen target fixture. Preserve all three QK/PV tiles, including
+excluded positions. Separate tiny functional fixtures should exercise softcap
+2, an entirely excluded tile with/without sinks, both inclusive window edges,
+mask-before-scale versus window-after-scale exceptions and group-local array
+slicing/querybase reset. Do not use these small fixtures for performance claims.
 
 Before target-case coding, the oracle contract is: independently reconstruct
 ordered QK/PV and scalar feature operations with SoftFloat plus the unchanged
-RVV softmax polynomial/reduction order. For every nontrivial target `expf` and
-`tanhf`, capture input bits, output bits and newly raised flags using a separately
-checked scalar harness linked to the identical pinned GNU target libm. Restore
-the harness CSR state around each probe; do not instrument CSR writes into the
+RVV softmax polynomial/reduction order. Model the actual C branches in
+`akv_attention_score_transform`, not the header's window-last prose: mask
+`0xfc00` returns before dot*scale; otherwise dot*scale executes before window
+exclusion, which returns before softcap, position bias and additive mask
+scaling. Preserve each branch's flags and do not skip QK/PV work. Derive tile
+maxima independently of expf, then collect every required alpha-expf sample
+using a bounded target-newlib Spike probe. Small separate functional cases
+cover nonzero softcap, sinks and both window boundaries; their tanhf samples
+must be probed before deriving the resulting maxima/expf samples. For every
+nontrivial target `expf` and `tanhf`, capture input bits, output bits and newly
+raised flags using a separately checked scalar harness linked to the identical
+pinned GNU target libm. Restore the harness CSR state around each probe;
+do not instrument CSR writes into the
 measured attention call. Require complete sample coverage and matching target
 library/ELF identity; host glibc values are not substitutes. Cover mask early
 return, absolute window boundaries, feature-local head indexing and sinks with
 independent directed expectations. The mathematical F32 reference is a
 tolerance cross-check only. Component/native pair equality alone is insufficient
 to claim independent feature arithmetic acceptance.
+
+Reuse only the ordered arithmetic foundation from the Stage3 `flags_v2/`
+fixture in a new successor oracle, never edit that sealed fixture or retain
+its host-libm assumption for new samples. Initialize sink maximum/sum exactly
+as native (sink/1), keep the F64 reduction-to-F32 proof, and attribute alpha
+conversion, seed rescale and probability conversions to `PV_PREP`, distinct
+from resident PV MAC flags. Pin probe source/compiler/libm/ELF and exact sample
+sets before generating expected output/FCSR; reject missing or extra samples.
+Probe execution and target-case implementation still need parent approval.
+
+### Candidate B Host Freeze And Attempt History
+
+The five owned implementation/test files are frozen for review after
+`stage4_resident_features_host_20261110_05/result.json` reported
+`HOST_GNU_PASS_NOT_EXECUTED`: 16 checks, optimized and UBSan runs each covering
+15,360 maps / 76,800 leaf-stub calls / 32 feature combinations. Native target
+execution, target-libm validation and performance measurement are all false.
+The final source-pins inventory matches all live owned sources and archived
+inputs. Stage3 sealed helper sources and dirty assembly were not edited.
+
+All attempts remain under the signoff OUT root; no FAIL is relabeled:
+
+| Attempt | Cause | Scoped fix/disposition |
+|---|---|---|
+| `host_20261110_01` | New C test signed/unsigned comparison rejected by `-Werror` | Test-only unsigned literals; no production change or warning suppression |
+| `host_20261110_02` | New public header unnecessarily included sealed dispatch header; C++ `-Werror` exposed its aggregate-init warning | Include only existing admission header; sealed header and warning gate unchanged |
+| `host_20261110_03` | Factored native preflight changed Stage3-enabled GNU object, 23216 to23224 bytes; `.text` 11926 to11936; core frame720 to736 with descriptor spill/reload | Restore original Stage3 function exactly; geometry duplication only under new flag. A production codegen/identity regression, not demonstrated numeric failure |
+| `host_20261110_04` | All host/GNU, object-identity and entry-CSR gates passed; final Python source-range check had tuple-unpacking typo | Harness-only direct pair assignment, same comparison; production sources unchanged for05 |
+| `host_20261110_05` | All16 gates pass | Freeze; no checker relaxation |
+
+The static03 object diff was inspected before04. The new entry also captures
+actual vlenb/frm/vstart before its first snapshot/libc call: GNU04/05 show CSR
+reads at2bae/2bb2/2bb6 and memcpy relocation at2bc0. This guard affects only the
+new API. Optimized/UBSan checks explicitly cover mask-before-scale and
+window-after-scale flag behavior, and misaligned-plan rejection before reads.
+
+GNU comparisons archive SDK revision `ca772ef9096899be4749335581eb45077d5377e8`
+directly; the only SDK delta to Stage4 baseline is the resident README. Both
+default and explicit all-OFF objects have SHA256
+`2158b0f23c3683927701c09ecfce56ee1ae5d6f3f55eef8366b88345db7c4d3f`.
+Both Stage3-enabled / FEATURES_V2 absent-or-zero objects have SHA256
+`490601fcca1ee1566233af3f709967ff7c5675229dcfdea3a5781f570d08313e`.
+These are whole-object identity checks, not extracted text comparisons.
+
+Final05 result SHA256:
+`0f4d6fdb914e083d61667eb52c7c5af80c6c186ebef2216bdbe1ca9d9994d29e`.
+Final05 source-pins SHA256:
+`ef65fc5fe3c4ee16d79b57bcd074625a98b5649db39503e2b30da4818454ec5d`.
+The inventory includes full hashes for all five owned files; native core is
+`c00286e036ccbce817cc3ac0a250ce2373881b9b33713db10c0a722691b68e84`.
+
+Exact completed command from the Ara repository root:
+
+```sh
+python3 -B verification/performance/next_mechanism/stage4/resident_features/test_features.py --output /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage4_resident_features_host_20261110_05
+```
+
+This output directory is immutable; any independently authorized reproduction
+requires a fresh suffix. `commands.json` retains every compiler/run command and
+per-command logs. No target probe, VCS, SoC build, RTL change or commit was run.
+
+### Defensive Entry Follow-Up
+
+The05 checkpoint above is historical. Independent review identified that
+capturing a nonzero actual VSTART then disabling only resident selection did
+not establish safe fallback through potentially vectorized snapshot libc.
+The current new entry returns RUNTIME_UNAVAILABLE immediately after capture,
+before copying or calling, and leaves VSTART unchanged. This rejection applies
+also when requested=0; valid-ABI optional misses still keep native fallback.
+Existing entries and old/new-feature-OFF whole objects remain unchanged.
+
+`stage4_resident_features_host_20261110_06/result.json` passes18 gates. A bounded
+Spike guard links the actual native object without numerical stubs, calls both
+requested states with deliberately poisoned arguments, observes status2 and
+unchanged VSTART1, then clears VSTART in assembly. Its148 instructions contain
+no inner calls, custom or vector instructions. This is actual entry-rejection
+evidence, not native Attention or target-libm arithmetic acceptance.
+Current native C SHA256 is
+`69832cfc9bfcc20aa17b6c57085041fc03ceae77020dd4bc81901590c10d1dfd`.
+The06 result SHA256 is
+`221c3d05a86f9a143a426bce0f494c3ebe1c833aa909c3e8061406dd6c47af0b`;
+pins SHA256 is
+`5c3d8f3c95f3313a14f6da91b7e6d53cac1f3bfc119531402c361698d084fee6`.
+Independent read-only review finds no remaining implementation-review blocker;
+target math and paired VCS acceptance are still pending.
 
 ## 5. Screened Candidate C: Quantized Prefill Register-PV
 

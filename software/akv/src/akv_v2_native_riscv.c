@@ -13,6 +13,18 @@
 #if AKV_EXPERIMENTAL_RESIDENT_ATTENTION != 0 && AKV_EXPERIMENTAL_RESIDENT_ATTENTION != 1
 #error "AKV_EXPERIMENTAL_RESIDENT_ATTENTION must be 0 or 1"
 #endif
+#ifndef AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2
+#define AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2 0
+#endif
+#if AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2 != 0 && AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2 != 1
+#error "AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2 must be 0 or 1"
+#endif
+#if AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2 && !AKV_EXPERIMENTAL_RESIDENT_ATTENTION
+#error "Resident features v2 requires the resident Attention resource/leaf opt-in"
+#endif
+#if AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2
+#include "../experimental/resident_attention/features_v2/executor.h"
+#endif
 #if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
 #include "../experimental/resident_attention/executor.h"
 #include "../experimental/resident_attention/dispatch.h"
@@ -47,6 +59,32 @@ static inline int prepare_resident_schedule(
   *schedule = selected;
   return 1;
 }
+
+#if AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2
+static inline int prepare_resident_features_v2_schedule(
+    const akv_device_t *device, const akv_attention_plan_t *plan,
+    const akv_resident_features_v2_options_t *options,
+    const akv_attention_features_t *features, unsigned overlap_refill,
+    resident_schedule_t *schedule) {
+  if (overlap_refill != 0u ||
+      akv_resident_features_v2_select(device, plan, features, options, 0u) !=
+          AKV_RESIDENT_USE_SHARED)
+    return 0;
+  // Keep Stage3's original function intact, including its disabled-build codegen.
+  resident_schedule_t selected;
+  const uint32_t last = (plan->descriptor.kv_length - 1u) /
+      AKV_V2_TILE_TOKENS * AKV_V2_TILE_TOKENS;
+  if (akv_resident_attention_dispatch_plan(AKV_RESIDENT_USE_SHARED,
+          &plan->descriptor, 0u, &selected.full) != AKV_STATUS_OK)
+    return 0;
+  selected.tail = selected.full;
+  if (last != 0u && akv_resident_attention_dispatch_plan(AKV_RESIDENT_USE_SHARED,
+          &plan->descriptor, last, &selected.tail) != AKV_STATUS_OK)
+    return 0;
+  *schedule = selected;
+  return 1;
+}
+#endif
 
 static inline int resident_state_matches(uintptr_t vlenb, uintptr_t frm,
                                          uintptr_t vstart) {
@@ -656,11 +694,17 @@ static akv_status_t execute_v2_with_features_native_internal(
 #if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
     , const akv_resident_attention_options_t *resident_options
 #endif
+#if AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2
+    , const akv_resident_features_v2_options_t *feature_options
+#endif
     ) {
   (void)auto_device;
   (void)automatic;
 #if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
   (void)resident_options;
+#endif
+#if AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2
+  (void)feature_options;
 #endif
   const int segmented_d256 =
       plan != NULL && plan->d_segment_count == 2u;
@@ -700,7 +744,14 @@ static akv_status_t execute_v2_with_features_native_internal(
       akv_refill_workspace_disjoint(&plan->descriptor, workspace, sizeof(*workspace));
 #if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
   resident_schedule_t resident_schedule;
-  int resident = prepare_resident_schedule(auto_device, plan, resident_options,
+  int resident =
+#if AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2
+      feature_options != NULL
+      ? prepare_resident_features_v2_schedule(auto_device, plan, feature_options,
+          features, overlap_refill, &resident_schedule)
+      :
+#endif
+      prepare_resident_schedule(auto_device, plan, resident_options,
       features, overlap_refill, &resident_schedule);
   if (resident) {
     uintptr_t vlenb, frm, vstart;
@@ -791,6 +842,9 @@ akv_status_t akv_attention_execute_v2_with_features_native(
 #if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
       , NULL
 #endif
+#if AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2
+      , NULL
+#endif
       );
 }
 
@@ -801,6 +855,9 @@ akv_status_t akv_attention_execute_v2_with_features_native_auto(
   if (device == NULL) return AKV_STATUS_BAD_ARGUMENT;
   return execute_v2_with_features_native_internal(plan, workspace, features, device, 1u
 #if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
+      , NULL
+#endif
+#if AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2
       , NULL
 #endif
       );
@@ -831,7 +888,49 @@ akv_status_t akv_experimental_attention_execute_v2_native(
   const akv_device_t selected_device = *device;
   const akv_resident_attention_options_t selected_options = *options;
   return execute_v2_with_features_native_internal(plan, workspace, features,
-      &selected_device, automatic, &selected_options);
+      &selected_device, automatic, &selected_options
+#if AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2
+      , NULL
+#endif
+      );
+}
+#endif
+
+#if AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2
+akv_status_t akv_experimental_attention_execute_features_v2_native(
+    const akv_device_t *device, const akv_attention_plan_t *plan,
+    akv_attention_v2_workspace_t *workspace,
+    const akv_attention_features_t *features,
+    const akv_resident_features_v2_options_t *options, unsigned automatic) {
+  if (device == NULL || options == NULL || automatic > 1u ||
+      options->abi_version != AKV_RESIDENT_FEATURES_V2_ABI_VERSION ||
+      options->struct_bytes != sizeof(*options))
+    return AKV_STATUS_BAD_ARGUMENT;
+  if (options->platform_admitted != 1u || options->whole_call_owned != 1u)
+    return AKV_STATUS_RUNTIME_UNAVAILABLE;
+#if defined(__riscv) && __riscv_xlen == 64 && defined(__riscv_vector) && \
+    defined(__riscv_zvfh) && !defined(SPIKE)
+  // A snapshot copy can call vectorized libc. Preserve entry eligibility first.
+  uintptr_t entry_vlenb, entry_frm, entry_vstart;
+  __asm__ volatile("csrr %0, vlenb\ncsrr %1, frm\ncsrr %2, vstart"
+                   : "=r"(entry_vlenb), "=r"(entry_frm), "=r"(entry_vstart) : : "memory");
+  if (entry_vstart != 0u)
+    return AKV_STATUS_RUNTIME_UNAVAILABLE;
+#endif
+  const akv_device_t selected_device = *device;
+  akv_resident_features_v2_options_t selected_options = *options;
+#if defined(__riscv) && __riscv_xlen == 64 && defined(__riscv_vector) && \
+    defined(__riscv_zvfh) && !defined(SPIKE)
+  if (!resident_state_matches(entry_vlenb, entry_frm, entry_vstart))
+    selected_options.requested = 0u;
+#endif
+  const akv_attention_features_t selected_features = features != NULL
+      ? *features : (akv_attention_features_t){0};
+  const akv_attention_features_t *selected = features != NULL ? &selected_features : NULL;
+  const akv_status_t status = akv_resident_features_v2_contract(plan, selected, &selected_options);
+  if (status != AKV_STATUS_OK) return status;
+  return execute_v2_with_features_native_internal(plan, workspace, selected,
+      &selected_device, automatic, NULL, &selected_options);
 }
 #endif
 
