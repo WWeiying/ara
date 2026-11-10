@@ -1,0 +1,95 @@
+# Stage 2: QBS and RVV Integer Matrix Coexecution
+
+## Status and Baseline
+
+This is an implementation and validation plan, not a measured speedup claim.
+The frozen starting commit is `b0156f8ab`. It preserves the accepted QBS,
+AKV, ordinary RVV, and runtime fallback paths. The previous fixed-capacity
+activation-replay proposal remains an optional supporting optimization; it is
+not the main performance mechanism in this stage.
+
+The active goal is to accelerate complete Prefill projection calls by using
+the existing lane integer multipliers alongside the QBS dot array. No larger
+SRAM, wider external bus, or replicated large multiplier array is authorized.
+No synthesis or new board campaign is required for this stage.
+
+## Mechanism and Numerical Contract
+
+The current QBS array produces at most 32 signed INT8 products per cycle.
+The lane integer multipliers are separate hardware. The candidate sends one
+decoded weight tile to both resources and assigns independent activation
+rows to them. A representative M8 tile assigns rows 0 through 3 to QBS and
+rows 4 through 7 to the lane multipliers.
+
+The existing M8 implementation already reuses weights, but time-multiplexes
+two activation waves through one dot array. The proposed benefit is concurrent
+execution of those waves, not a new claim for the existing weight reuse.
+
+The lane interface must export complete 16-bit INT8 products; the truncated
+8-bit result of a standard VMUL is insufficient. Signed products use both
+operands' signed interpretation. Each output retains the original subgroup
+boundaries, integer correction, scale operations, K order, FP32 rounding,
+exception flags, and atomic command completion. No floating-point partial
+sums from independent K ranges are reassociated.
+
+## Constraints Checked Before Integration
+
+1. Reuse the existing two activation banks for the two input-row groups.
+   This does not require the complete K dimension to fit in the activation
+   context. DIRECT remains available for larger working sets.
+2. Keep the existing 128 result accumulators. M8 therefore uses N at most 16;
+   comparisons against M4/N32 must cover the same total output coordinates.
+3. The two integer tile contexts currently hold 16 streams each. Assess
+   reusing them for the concurrent waves before adding more subtotal state.
+   Doing so reduces the context capacity available to overlap later tiles.
+4. With M4 per wave, a 32-element subgroup lasts 16 issue cycles. Two waves
+   produce 32 correction requests, matching the existing two-per-cycle
+   correction capacity. A 16-element subgroup lasts only eight issue cycles
+   and would require four corrections per cycle. The first candidate targets
+   Q4_K; shorter-subgroup formats keep the original path unless an explicit
+   safe throttling policy is validated.
+5. The single FP arithmetic issue path and 16-entry request table may become
+   limiting even when integer products double. Measure complete calls,
+   including integer drain, FP drain, memory service, and commit.
+6. Lane borrowing needs explicit ownership, registered transport, response
+   accounting, backpressure, reset, and fault drain. A custom command must not
+   consume or overwrite ordinary RVV operations or architectural results.
+7. Both the conventional and shared lane multiplier configurations must keep
+   their normal instruction semantics. New interfaces remain inactive by
+   default until the composed integration is validated.
+
+## Implementation Milestones
+
+| Milestone | Deliverable | Acceptance |
+|---|---|---|
+| A | Full-product interface on existing multipliers | Independent arithmetic checks, all EEWs, signedness, stalls, reset, original result interface |
+| B | Exclusive lane multiplier borrowing and registered return | No duplicated multiplier array; ordinary execution and owner transitions correct |
+| C | Concurrent Q4_K activation-wave scheduler | Correct subgroup/result tags; no overwrite, loss, duplicate completion, or fault leak |
+| D | Composed engine and SoC tests on real model inputs | Same output coordinates, result bits/flags, total work, full K and complete-call accounting |
+| E | Runtime selection and delivery | Keep fallback, validate different projections/shapes, pin RTL/SDK/input/image versions |
+
+## Experiments and Stop Conditions
+
+Use VCS on the host. Run the necessary independent component checks in
+parallel, then a small composed test before spending time on SoC simulation.
+Use real distinct activation rows, not copies of a single token. Include at
+least an Attention projection and an FFN projection, with different K/N
+shapes. Qwen3 samples are preferred when complete provenance is available;
+older Qwen2.5 samples may supplement debugging but must be labeled as such.
+
+Compare both the original M8 schedule and an equal-work pair of original M4
+calls. Include all input loads, setup, correction, accumulation, and result
+commit in the corresponding measurement scope. Engine-only, SoC, and model
+times are different measurements and must not be substituted for one another.
+
+A 20 percent cycle reduction on representative complete projection calls is
+the candidate retention target, not an existing result or an unconditional
+promise. If shared delivery, correction, or FP accumulation prevents useful
+net gains, retain first-failure and performance evidence and revise the
+mechanism before expanding hardware. Do not enlarge SRAM or advertise a
+model-level speedup to hide a failed hypothesis.
+
+Long runs use independent service-owned output directories. Confirm actual
+simulator execution once, then avoid polling simulations expected to take
+more than ten minutes. Preserve unrelated working-tree changes and never
+alter sealed inputs of an active worker.

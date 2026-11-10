@@ -15,6 +15,7 @@ module simd_mul_shared import ara_pkg::*; import rvv_pkg::*; #(
   input logic ready_i,
   output logic valid_o,
   output elen_t result_o,
+  output logic [127:0] product_o,
   output logic [7:0] mask_o,
   output vxsat_t vxsat_o,
   output logic [1:0] sew_o
@@ -84,6 +85,7 @@ module simd_mul_shared import ara_pkg::*; import rvv_pkg::*; #(
   assign mask_o = out_data.mask;
   assign vxsat_o = out_data.sat;
   assign sew_o = out_data.sew;
+  assign product_o = out_data.product;
   logic [63:0] lo [4], hi [4], fractional [4], sat_value [4];
   logic [7:0] round_inc [4];
   for (genvar s=0; s<4; s++) begin : gen_route

@@ -16,6 +16,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     parameter  fpu_support_e          FPUSupport      = FPUSupportHalfSingleDouble,
     parameter  bit                    SharedFma       = EnableSharedFma,
     parameter  bit                    EnableResidentPv = 1'b0,
+    parameter  bit                    EnableQbsLaneMul = 1'b0,
     // External support for vfrec7, vfrsqrt7, rounding-toward-odd
     parameter  fpext_support_e        FPExtSupport    = FPExtSupportEnable,
     // Support for fixed-point data types
@@ -91,7 +92,15 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     input  logic                         resident_result_ready_i,
     output elen_t                        resident_result_o,
     output logic           [3:0]         resident_result_tag_o,
-    output logic           [4:0]         resident_result_flags_o
+    output logic           [4:0]         resident_result_flags_o,
+    input  logic                         qbs_mul_lease_i = 1'b0,
+    input  logic                         qbs_mul_valid_i = 1'b0,
+    input  logic [15:0]                  qbs_mul_weight_i = '0,
+    input  logic [63:0]                  qbs_mul_activation_i = '0,
+    output logic                         qbs_mul_owned_o,
+    output logic                         qbs_mul_ready_o,
+    output logic                         qbs_mul_result_valid_o,
+    output logic signed [16:0]          qbs_mul_result_pair_o [4]
   );
 
   // Power gating registers
@@ -99,6 +108,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
   logic resident_owned_q;
   logic resident_native_offer;
+  logic qbs_mul_requested, qbs_mul_owned, qbs_mul_quiescent;
   assign resident_owned_o = resident_owned_q;
   assign resident_native_offer = vfu_operation_valid_i &&
       (vfu_operation_i.vfu == VFU_MFpu || vfu_operation_i.op inside {[VMFEQ:VMFGE]});
@@ -404,7 +414,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     .clk_o     (clk_i_gated )
   );
 
-  assign clkgate_en_d = vinsn_processing_d_valid & (vinsn_processing_d.op inside {[VMUL:VSMUL]});
+  assign clkgate_en_d = (vinsn_processing_d_valid &
+      (vinsn_processing_d.op inside {[VMUL:VSMUL]})) || qbs_mul_requested || qbs_mul_owned;
 
   elen_t [3:0] vmul_simd_result;
   logic  [3:0] vmul_simd_in_valid;
@@ -434,6 +445,48 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   ara_op_e [3:0] vmul_simd_op_q_gated;
   logic [3:0] vmul_simd_in_valid_q;
   logic gate_ff_en, gate_ff_clr;
+  logic qbs_mul_issue, qbs_mul_core_ready, qbs_mul_core_valid;
+  logic qbs_mul_return_ready;
+  logic [63:0] qbs_mul_a, qbs_mul_b;
+  logic [127:0] qbs_mul_product;
+
+  assign qbs_mul_requested = EnableQbsLaneMul && qbs_mul_lease_i;
+  assign qbs_mul_owned_o = qbs_mul_owned;
+  assign qbs_mul_quiescent =
+      vinsn_queue_q.issue_cnt == '0 && vinsn_queue_q.processing_cnt == '0 &&
+      vinsn_queue_q.commit_cnt == '0 && result_queue_cnt_q == '0 &&
+      !(|result_queue_valid_q) && !(|vmul_simd_in_valid_q) &&
+      !(|vmul_simd_out_valid) && !resident_owned_q &&
+      !resident_native_offer && !(resident_acquire_i === 1'b1) && clkgate_en_q;
+
+  if (EnableQbsLaneMul) begin : gen_qbs_mul_borrow
+    qbs_lane_mul_borrow i_borrow (
+      .clk_i, .rst_ni,
+      .lease_i(qbs_mul_requested), .native_quiescent_i(qbs_mul_quiescent),
+      .owned_o(qbs_mul_owned), .valid_i(qbs_mul_valid_i), .ready_o(qbs_mul_ready_o),
+      .weight_i(qbs_mul_weight_i), .activation_i(qbs_mul_activation_i),
+      .mul_valid_o(qbs_mul_issue), .mul_a_o(qbs_mul_a), .mul_b_o(qbs_mul_b),
+      .mul_ready_i(qbs_mul_core_ready), .mul_valid_i(qbs_mul_core_valid),
+      .mul_product_i(qbs_mul_product), .mul_ready_o(qbs_mul_return_ready),
+      .result_valid_o(qbs_mul_result_valid_o), .result_pair_o(qbs_mul_result_pair_o)
+    );
+`ifndef SYNTHESIS
+    always_ff @(posedge clk_i) if (rst_ni && qbs_mul_owned) begin
+      assert (vinsn_queue_q.commit_cnt == '0 && result_queue_cnt_q == '0 &&
+              !resident_owned_q && !(|vmul_simd_in_valid_q))
+        else $fatal(1, "QBS multiplier borrower overlapped native lane work");
+    end
+`endif
+  end else begin : gen_no_qbs_mul_borrow
+    assign qbs_mul_owned = 1'b0;
+    assign qbs_mul_ready_o = 1'b0;
+    assign qbs_mul_result_valid_o = 1'b0;
+    assign qbs_mul_result_pair_o = '{default:'0};
+    assign qbs_mul_issue = 1'b0;
+    assign qbs_mul_a = '0;
+    assign qbs_mul_b = '0;
+    assign qbs_mul_return_ready = 1'b0;
+  end
 
   // Enable if the next stage is ready
   assign gate_ff_en  = vmul_simd_in_ready[vinsn_processing_q.vtype.vsew];
@@ -524,28 +577,37 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic [1:0] shared_mul_out_sew;
   logic shared_mul_ready, shared_mul_valid;
   elen_t shared_mul_result;
+  logic [127:0] shared_mul_product;
   strb_t shared_mul_mask;
   vxsat_t shared_mul_sat;
   always_comb begin
     shared_mul_sew = 2'b00;
     for (int s = 0; s < 4; s++)
       if (vmul_simd_in_valid_q[s]) shared_mul_sew = 2'(s);
+    if (qbs_mul_owned) shared_mul_sew = 2'(EW8);
   end
   simd_mul_shared #(.FixPtSupport(FixPtSupport)) i_shared_mul (
     .clk_i(clk_i_gated), .rst_ni,
-    .operand_a_i(vmul_simd_op_a_q), .operand_b_i(vmul_simd_op_b_q),
-    .operand_c_i(vmul_simd_op_c_q), .mask_i(vmul_simd_mask_q),
-    .op_i(vmul_simd_op_q), .vxrm_i(mfpu_vxrm_i),
+    .operand_a_i(qbs_mul_owned ? qbs_mul_a : vmul_simd_op_a_q),
+    .operand_b_i(qbs_mul_owned ? qbs_mul_b : vmul_simd_op_b_q),
+    .operand_c_i(qbs_mul_owned ? '0 : vmul_simd_op_c_q),
+    .mask_i(qbs_mul_owned ? '1 : vmul_simd_mask_q),
+    .op_i(qbs_mul_owned ? VMULH : vmul_simd_op_q), .vxrm_i(mfpu_vxrm_i),
     .sew_i(shared_mul_sew),
-    .valid_i(|vmul_simd_in_valid_q), .ready_o(shared_mul_ready),
-    .ready_i(vmul_simd_out_ready[shared_mul_out_sew]),
+    .valid_i(qbs_mul_owned ? qbs_mul_issue : |vmul_simd_in_valid_q),
+    .ready_o(shared_mul_ready),
+    .ready_i(qbs_mul_owned ? qbs_mul_return_ready : vmul_simd_out_ready[shared_mul_out_sew]),
     .valid_o(shared_mul_valid), .result_o(shared_mul_result),
-    .mask_o(shared_mul_mask), .vxsat_o(shared_mul_sat), .sew_o(shared_mul_out_sew)
+    .mask_o(shared_mul_mask), .vxsat_o(shared_mul_sat), .sew_o(shared_mul_out_sew),
+    .product_o(shared_mul_product)
   );
+  assign qbs_mul_core_ready = shared_mul_ready;
+  assign qbs_mul_core_valid = qbs_mul_owned && shared_mul_valid;
+  assign qbs_mul_product = shared_mul_product;
   always_comb begin
-    vmul_simd_in_ready = {4{shared_mul_ready}};
+    vmul_simd_in_ready = {4{shared_mul_ready && !qbs_mul_owned}};
     vmul_simd_out_valid = '0;
-    vmul_simd_out_valid[shared_mul_out_sew] = shared_mul_valid;
+    vmul_simd_out_valid[shared_mul_out_sew] = shared_mul_valid && !qbs_mul_owned;
     for (int s=0; s<4; s++) begin
       vmul_simd_result[s] = shared_mul_result;
       vmul_simd_mask[s] = shared_mul_mask;
@@ -555,6 +617,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `else
   localparam bit SharedMul = 1'b0;
   wire [127:0] shared_mul_product = '0;
+  logic mul8_ready, mul8_valid;
+  assign vmul_simd_in_ready[EW8] = mul8_ready && !qbs_mul_owned;
+  assign vmul_simd_out_valid[EW8] = mul8_valid && !qbs_mul_owned;
+  assign qbs_mul_core_ready = mul8_ready;
+  assign qbs_mul_core_valid = qbs_mul_owned && mul8_valid;
 
   simd_mul #(
     .ExternalProduct(SharedMul),
@@ -635,21 +702,22 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     .ElementWidth(EW8             )
   ) i_simd_mul_ew8 (
     .product_i  (shared_mul_product),
+    .product_o  (qbs_mul_product),
     .clk_i      (clk_i_gated                   ),
     .rst_ni     (rst_ni                        ),
-    .operand_a_i(vmul_simd_op_a_q_gated[EW8]   ),
-    .operand_b_i(vmul_simd_op_b_q_gated[EW8]   ),
-    .operand_c_i(vmul_simd_op_c_q_gated[EW8]   ),
-    .mask_i     (vmul_simd_mask_q_gated[EW8]   ),
-    .op_i       (vmul_simd_op_q_gated[EW8]     ),
+    .operand_a_i(qbs_mul_owned ? qbs_mul_a : vmul_simd_op_a_q_gated[EW8]),
+    .operand_b_i(qbs_mul_owned ? qbs_mul_b : vmul_simd_op_b_q_gated[EW8]),
+    .operand_c_i(qbs_mul_owned ? '0 : vmul_simd_op_c_q_gated[EW8]),
+    .mask_i     (qbs_mul_owned ? '1 : vmul_simd_mask_q_gated[EW8]),
+    .op_i       (qbs_mul_owned ? VMULH : vmul_simd_op_q_gated[EW8]),
     .vxsat_o    (mfpu_vxsat[EW8]               ),
     .vxrm_i     (mfpu_vxrm_i                   ),
     .result_o   (vmul_simd_result[EW8]         ),
     .mask_o     (vmul_simd_mask[EW8]           ),
-    .valid_i    (vmul_simd_in_valid_q[EW8]     ),
-    .ready_o    (vmul_simd_in_ready[EW8]       ),
-    .ready_i    (vmul_simd_out_ready[EW8]      ),
-    .valid_o    (vmul_simd_out_valid[EW8]      )
+    .valid_i    (qbs_mul_owned ? qbs_mul_issue : vmul_simd_in_valid_q[EW8]),
+    .ready_o    (mul8_ready),
+    .ready_i    (qbs_mul_owned ? qbs_mul_return_ready : vmul_simd_out_ready[EW8]),
+    .valid_o    (mul8_valid)
   );
 
 `endif
@@ -1391,6 +1459,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
       // A simultaneous native offer wins even before it enters the queue.
       assign resident_acquire_ready_o = rst_ni && !resident_owned_q &&
+          !qbs_mul_owned && !qbs_mul_requested &&
           !resident_native_offer && native_quiescent;
       assign resident_release_ready_o = rst_ni && resident_owned_q &&
           !resident_valid_i && !vfpu_busy && !vfpu_busy_q && !bulk_out_valid;
@@ -1888,7 +1957,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     narrowing_select_out_d = narrowing_select_out_q;
 
     // Inform our status to the lane controller
-    mfpu_ready_o      = !resident_owned_q && !vinsn_queue_full;
+    mfpu_ready_o      = !resident_owned_q && !qbs_mul_owned &&
+                        !qbs_mul_requested && !vinsn_queue_full;
     mfpu_vinsn_done_o = '0;
 
     // Do not acknowledge any operands
@@ -2934,7 +3004,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     //  Accept new instruction  //
     //////////////////////////////
 
-    if (!resident_owned_q && !vinsn_queue_full && vfu_operation_valid_i &&
+    if (!resident_owned_q && !qbs_mul_owned && !qbs_mul_requested &&
+      !vinsn_queue_full && vfu_operation_valid_i &&
       (vfu_operation_i.vfu == VFU_MFpu || vfu_operation_i.op inside {[VMFEQ:VMFGE]})) begin
       vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt]    = vfu_operation_i;
       // Masks are handled in the MASKU directly for comparisons

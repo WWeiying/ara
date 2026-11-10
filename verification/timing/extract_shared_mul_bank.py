@@ -26,6 +26,13 @@ header = """module extracted_shared_mul_bank import ara_pkg::*; import rvv_pkg::
   output logic [3:0][7:0] vmul_simd_mask, mfpu_vxsat
 );
   localparam fixpt_support_e FixPtSupport = FixedPointEnable;
+  // This historical gate exercises the native bank with borrowing disabled.
+  wire qbs_mul_owned = 1'b0;
+  wire qbs_mul_issue = 1'b0;
+  wire qbs_mul_return_ready = 1'b0;
+  wire [63:0] qbs_mul_a = '0, qbs_mul_b = '0;
+  wire qbs_mul_core_ready, qbs_mul_core_valid;
+  wire [127:0] qbs_mul_product;
   typedef logic [7:0] strb_t;
   elen_t [3:0] vmul_simd_op_a_q_gated, vmul_simd_op_b_q_gated, vmul_simd_op_c_q_gated;
   logic [3:0][7:0] vmul_simd_mask_q_gated;

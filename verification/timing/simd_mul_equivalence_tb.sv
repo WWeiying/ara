@@ -40,11 +40,11 @@ module simd_mul_equivalence_case import ara_pkg::*; import rvv_pkg::*; #(
 `endif
 `ifdef TEST_FULL_SHARED_SIMD_MUL
   simd_mul_shared #(.NumPipeRegs(Pipes), .Bypass8(0),
-    .FixPtSupport(fixpt_support_e'(Fixed))) dut (.sew_i(2'(Sew)), .sew_o(), .*);
+    .FixPtSupport(fixpt_support_e'(Fixed))) dut (.sew_i(2'(Sew)), .sew_o(), .product_o(), .*);
 `else
   simd_mul #(.ElementWidth(vew_e'(Sew)), .NumPipeRegs(Pipes),
              .ExternalProduct(SharedProduct),
-             .FixPtSupport(fixpt_support_e'(Fixed))) dut (.*);
+             .FixPtSupport(fixpt_support_e'(Fixed))) dut (.product_o(), .*);
 `endif
   simd_mul_reference #(.ElementWidth(vew_e'(Sew)), .NumPipeRegs(Pipes),
              .FixPtSupport(fixpt_support_e'(Fixed))) reference (

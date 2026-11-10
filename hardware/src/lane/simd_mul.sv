@@ -30,6 +30,7 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
     input  strb_t      mask_i,
     input  ara_op_e    op_i,
     output elen_t      result_o,
+    output logic [127:0] product_o,
     output strb_t      mask_o,
     output vxsat_t     vxsat_o,
     input  vxrm_t      vxrm_i,
@@ -154,6 +155,9 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
   // Output stage: bind last stage outputs to the pipeline output. Directly connects to input if no
   // regs.
   assign mul_res = product_d[NumPipeRegs];
+  // Full products share the original valid/ready pipeline. Native RVV still
+  // selects its low/high/rounded result below; no multiplier is duplicated.
+  assign product_o = mul_res;
   assign opc     = opc_d[NumPipeRegs];
   assign op      = op_d[NumPipeRegs];
   assign mask_o  = mask_d[NumPipeRegs];

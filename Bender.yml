@@ -53,6 +53,7 @@ sources:
     - hardware/src/lane/simd_fpnew.sv
     - hardware/src/lane/simd_div.sv
     - hardware/src/lane/simd_mul.sv
+    - hardware/src/lane/qbs_lane_mul_borrow.sv
     - hardware/src/lane/simd_mul_shared_product.sv
     - hardware/src/lane/simd_mul_partition_add.sv
     - hardware/src/lane/simd_mul_shared.sv
