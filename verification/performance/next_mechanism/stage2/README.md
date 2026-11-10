@@ -1,5 +1,8 @@
 # 第二阶段：QBS 与 RVV 整数乘法器协同
 
+状态：本阶段限定范围的实现与评估已收尾，作为默认关闭的候选保留。完整调用减少
+20%的性能目标未达到，不等于正式FPGA交付、全设计签核或其他格式都已加速。
+
 目标是用现有 Lane 乘法器参与 Prefill 的量化矩阵计算，不增大 SRAM、不修改外部
 总线、不再复制一套大型乘法阵列。起点提交为 `b0156f8ab`。设计和验收标准见
 `hardware/docs/INFERENCE_STAGE2_RVV_COOPERATIVE_MATRIX_20261109.md`。
@@ -241,7 +244,40 @@ QEMU，原记录保留。`_02`使用测试侧父CMake将GGML按正常embedded模
 既有QEMU与新SDK的header仅差可选QBACC编码/能力定义，兼容审计逐项核对；本门
 只执行普通QBEXEC并确认QBACC能力为零，不据此声称可选QBACC已验证。
 
+## 带初值续算补充检查与阶段收尾
+
+`stage2_seeded_coop_vcs_20261110_04/report.json`通过8条引擎命令：6次成功、1次读
+故障、1次非空结果FIFO复位。四个真实乘法器共完成6272组借用发射/返回，源文件
+和镜像的前后哈希一致，18项host检查通过；这是组件测试，不是新SoC或QBACC指令
+级验收，也不增加新的性能数据。
+
+- 初值来自上一命令真正接受的写回数据，不是直接灌入参考答案；连续续算与原
+  `qbs_ref`一次执行K块数1/3/5/7的结果逐位一致。
+- N5尾块只检查活跃列的异常标志，非活跃初值注入sNaN。104次seed阶段flags清零
+  检查通过，其中72次发生在旧命令产生NX之后；不能把旧命令异常误算入新命令。
+- 下一请求在旧FIFO非空时保持344周期；复位取消1项队列数据，之后恢复通过。
+- 本次读故障发生时FIFO已经排空，只证明此前队列工作后的原子失败及恢复；非空
+  FIFO故障排空由此前queue门单独覆盖，不能把两项合称本测试覆盖了同一交叉场景。
+- 01仅准备未运行；02/03是测试夹具编译失败，保留原报告。04只修复夹具声明顺序、
+  reset所属变量的初始化冲突和采样边沿竞争，没有放宽结果/flags检查或修改生产RTL。
+
+后续编号不变：阶段3完善共享RVV浮点资源的驻留QK/PV，先关闭原PV边界问题；
+阶段4按净收益选择固定容量重放、准备复用、长K/尾块及量化KV/多query等补充；
+阶段5完成真实GGML选路、代表性模型回归和统一版本交付。阶段2收尾不自动启动
+这些任务，不扩SRAM或总线，也不启动综合或新板测。
+
 ## 运行方法
+
+带初值续算使用最终后继脚本，输出目录必须是新的直接子目录：
+
+```bash
+python3 -B verification/performance/next_mechanism/stage2/run_seeded_coop_reset_owned.py \
+  --output /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage2_seeded_NEW
+
+systemd-run --user --unit=stage2-seeded-NEW \
+  python3 -B /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage2_seeded_NEW/inputs/verification/performance/next_mechanism/stage2/run_seeded_coop_reset_owned.py \
+  --output /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage2_seeded_NEW --execute
+```
 
 ### 配置保护补充验收
 

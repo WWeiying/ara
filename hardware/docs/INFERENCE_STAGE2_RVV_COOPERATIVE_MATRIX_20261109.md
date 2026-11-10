@@ -2,13 +2,17 @@
 
 ## Status and Baseline
 
+Status: the scoped implementation and evaluation are complete. The candidate
+remains default-disabled: the complete-call performance target was not met.
+This is not a new FPGA delivery or whole-design signoff.
+
 This document records the design, validation plan, and scoped measured results.
 The frozen starting commit is `b0156f8ab`. It preserves the accepted QBS,
 AKV, ordinary RVV, and runtime fallback paths. The previous fixed-capacity
 activation-replay proposal remains an optional supporting optimization; it is
 not the main performance mechanism in this stage.
 
-The active goal is to accelerate complete Prefill projection calls by using
+The stage evaluates accelerating complete Prefill projection calls by using
 the existing lane integer multipliers alongside the QBS dot array. No larger
 SRAM, wider external bus, or replicated large multiplier array is authorized.
 No synthesis or new board campaign is required for this stage.
@@ -268,3 +272,47 @@ build directory `stage2_sdk_host_closeout_20261110_01`. This includes layout
 capability fallback, 56 format-conversion combinations, 1,530 segmented
 address/execution shapes, 1,809 storage-view shapes and 7,187,468 context
 admission plans. These counts describe host software checks, not RTL tests.
+
+## Seeded Continuation and Final Disposition
+
+`stage2_seeded_coop_vcs_20261110_04/report.json` passes eight directed engine
+commands: six successful commands, one read fault and one reset with a nonempty
+integer-result FIFO. Four actual lane multipliers provide 6,272 paired lender
+issues and returns. The seed source models the lane interface; this is not a
+new ISA-level QBACC or whole-SoC test.
+
+The test captures accepted architectural writes and uses those nonzero values
+as the next command's seed. Ordered continuations match the unchanged reference
+executing monolithic K-block counts of 1, 3, 5 and 7. The N5 tail uses only active
+columns; poisoned inactive seed slots cannot introduce flags. Per-command flags
+exclude earlier prefix work, and 104 seed-clear checks include 72 following a
+previous NX result. A next request remains held for 344 cycles while the old
+FIFO contains work; reset cancels one queued entry and recovery passes.
+
+The read fault occurs after the FIFO has drained. It proves atomic fault and
+recovery following earlier queued work, not fault drain with a nonempty FIFO.
+The latter has separate evidence in the earlier queue gate. The final worker
+checks source and image hashes before and after execution, and its 18 host
+checks pass. Attempt 01 was prepared but not executed; 02 and 03 failed during
+testbench compilation and are retained. The successor fixes only testbench
+declaration ordering, reset-owned initializers and a sampling-edge counter race;
+it does not relax the numerical or exception checker or modify production RTL.
+
+Milestones A through D now have the scoped component, lane and paired-SoC
+evidence described above. Milestone E closes selection and source-version
+control for an opt-in candidate, not default deployment. The unchanged default
+paths, Q4_K/M8-only acceleration, four-lane/VLEN1024 geometry and fixed-latency
+borrowing limits remain explicit. Area, timing, power, new-bitstream acceptance,
+other-format acceleration and model-level speedup are not claimed.
+
+The stage numbers remain stable:
+
+| Stage | Remaining work | Exit evidence |
+|---|---|---|
+| 3 | Complete resident QK/PV using the existing lane FPU and shared private accumulator storage; close the earlier PV boundary failures first | Ordered results/flags, tails and ownership recovery; complete Attention calls versus the optimized RVV path |
+| 4 | Select measured supporting improvements: fixed-capacity activation replay, preparation/reuse, N tiling, long K, tails, quantized KV and multi-query shapes | Net complete-call benefit on applicable shapes, correct fallback elsewhere; no automatic SRAM growth |
+| 5 | Integrate retained candidates into actual GGML selection and deliver a unified version | Representative model/format/context regressions and pinned RTL, SDK, runtime and build inputs; board acceptance remains separate |
+
+Stages 3 through 5 are not started by closing stage 2. The 20 percent target
+failure is a result of this evaluation, not an unfinished measurement to be
+hidden or an authorization to expand hardware until it disappears.
