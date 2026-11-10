@@ -240,3 +240,30 @@ configure/compilation. GCC's `-print-file-name=liblto_plugin.so` returns a basen
 configured GCC14.3.0 supports plugins/LTO; this is a query-category error, not a
 missing target runtime. Preserve the failure and pin the correctly identified
 compiler component rather than dropping the check or installing another toolchain.
+
+## Static Libraries Enter Compilation; Generated Source Lock Is Identified
+
+The compiler-program successor passes7 host checks and its complete metadata
+audit. Preparation02 reuses authenticated preparation01 inputs without changing
+the historical FAIL receipt. Parent independently verifies all7,585 source/tool
+pins and reviews the worker patch. Preparation receipt SHA256:
+`d702e1f46de9eddf1e516cd3f711f77c6c4faad43f526df73c94f6eb38ab8a22`.
+
+Parent launches `stage5-libraries-build-20261110-01.service`, output
+`stage5_libraries_build_20261110_01`, using the frozen preparation02 runner.
+Configuration completes; the service CGroup contains CMake/Make and actual
+RISC-V GCC compilation processes. This is compilation progress, not archive,
+link, instruction-model or model-regression acceptance. The GGML configuration
+prints commit label45e28f45c; source identity remains the separately authenticated
+da56+overlay09 tree, not that automatically discovered label.
+
+V6 host checks pass11 tests, but asset audit01 stops on source membership.
+Independent review proves all78,470 original pins still match, with no original
+file/link changes or missing entries. The sole addition is the empty generated
+`subprojects/.wraplock`, created during BUILD03 configuration. Meson opens the
+lock with `w+` and closes/unlocks it without deleting it. The original preparation
+and failed audits remain preserved. A successor must distinguish this exact
+empty generated file from source changes, including after the next configure.
+V7 host checks pass10 tests; its asset audit02 remains FAIL at the structured
+reference-count check. No QEMU C compilation or native guest execution has yet
+been accepted; the count discrepancy must be explained before retrying.
