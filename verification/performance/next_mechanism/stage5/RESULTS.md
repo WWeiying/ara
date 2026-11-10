@@ -359,3 +359,30 @@ Variant03 passes preparation, receipt SHA256:
 The authorized direct worker launches once as
 `stage5-qemu-build-20261110-06.service`, retaining8GiB/four jobs/3,000 seconds.
 No successful executable or guest/model acceptance is claimed from launch.
+
+## QEMU Build06 Completes; Real Linux CSR Behavior Is Measured
+
+BUILD06 completes all1,694 Ninja steps and links successfully. Both configure
+and build commands return0; the directly owned service exits0. The receipt
+records unchanged post-build pins. Parent and independent review verify the
+executable SHA256:
+`1deb41c75cc507030994765971d5a3d91f17e958c195bf60b4fb5563eb880a6f`.
+Build receipt SHA256:
+`93506639dda6fc22dc66733ca2160c5ba7b799787e8fb8f5e4d067ed37d3c3d6`.
+This closes the native-emulator compile/link prerequisite. Directed instruction,
+ROM-negative, unchanged-ELF, QBS and model execution gates remain independent.
+
+A separate standard-RVV probe boots the actual pinned Linux Image once under
+the old accepted QBS-only emulator; it does not execute AKV or a model. Six
+raw samples show that getpid clears nonzero VSTART and resets VL/VTYPE, whereas
+FCSR/VCSR remain unchanged. No-syscall controls preserve all sampled state.
+The child exits0. Parent independently rehashes all138 probe input pins with
+zero differences; result receipt SHA256:
+`4951e7f36a1ee7b2df074721ddda9ddf6954fa3b6a08a91f41acb6b24a57a1ad`.
+
+Consequently the initial model provider must not issue a syscall before its
+VSTART-first check. The execution_v2 successor performs OS preauthorization
+outside the seeded ROI, makes state/release syscall-free, and retains actual
+OS/task/affinity/mapping admission with incoming-state checks and scalar CSR
+restoration around acquire. Static/link/host review is not model acceptance;
+the actual model launch still requires the same four successful native gates.
