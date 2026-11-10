@@ -1,7 +1,8 @@
 # Stage 3: Shared RVV Execution for Resident Attention
 
-Status: architectural gates pass; paired complete-call performance and runtime
-delivery remain in progress. No new FPGA or physical acceptance is claimed.
+Status: architectural and paired complete-call gates pass; actual SDK execution
+and final delivery remain in progress. No new FPGA or physical acceptance is
+claimed.
 Starting commit: `7543bbec0` on `ara_dsa`. Stage 2 remains an opt-in candidate;
 this stage does not silently enable its integer multiplier borrowing.
 
@@ -92,9 +93,16 @@ The complete-Attention smoke passes all 256 bitwise output checks, flags,
 memory guards and independent protocol checks; its single candidate call is
 29,725 cycles. ABBA preparation initially stopped on JSON integer-versus-string
 lane-key comparison, with all actual evidence otherwise matching. A separately
-reviewed successor preserves the original evidence and passes 19 host checks;
-the paired ABBA worker is now launched. Its result remains pending.
-Runtime admission and tile mapping have host tests; they are not yet a native
-Attention executor or a promoted runtime capability. Capability remains zero.
+reviewed successor preserves the original evidence and passes 19 host checks.
+The paired ABBA result now passes: baseline cycles are 35,049/34,341 and resident
+cycles are 28,796/28,626. Mean complete-call cycles fall from 34,695 to 28,711,
+a 17.2474 percent reduction and 1.20842x speedup. All 1,024 output values,
+flags, guards, protocol and source/image identities pass. This scoped prototype
+measurement is not whole-model speedup or acceptance of the new SDK entry.
+Runtime admission and tile mapping have host tests. An experimental SDK entry
+now shares the existing native v2 execution loop and selects the resident QK/PV
+leaves only after admission; default-OFF object equivalence and host helper
+checks pass, but actual SDK whole-call execution is still pending. Capability
+remains zero and existing entry points retain native selection.
 Detailed receipts and limitations are recorded in
 `verification/performance/resident_rvv/qk_shared/RESULTS.md`.

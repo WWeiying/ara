@@ -7,6 +7,73 @@
 #include <stdint.h>
 #include <string.h>
 
+#ifndef AKV_EXPERIMENTAL_RESIDENT_ATTENTION
+#define AKV_EXPERIMENTAL_RESIDENT_ATTENTION 0
+#endif
+#if AKV_EXPERIMENTAL_RESIDENT_ATTENTION != 0 && AKV_EXPERIMENTAL_RESIDENT_ATTENTION != 1
+#error "AKV_EXPERIMENTAL_RESIDENT_ATTENTION must be 0 or 1"
+#endif
+#if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
+#include "../experimental/resident_attention/executor.h"
+#include "../experimental/resident_attention/dispatch.h"
+#include "../experimental/resident_attention/qk.h"
+#include "../experimental/resident_attention/pv.h"
+
+typedef struct {
+  akv_resident_attention_tile_t full;
+  akv_resident_attention_tile_t tail;
+} resident_schedule_t;
+
+static inline int prepare_resident_schedule(
+    const akv_device_t *device, const akv_attention_plan_t *plan,
+    const akv_resident_attention_options_t *options,
+    const akv_attention_features_t *features, unsigned overlap_refill,
+    resident_schedule_t *schedule) {
+  if (features != NULL || overlap_refill != 0u ||
+      akv_resident_attention_select(device, plan, options, 0u) !=
+          AKV_RESIDENT_USE_SHARED)
+    return 0;
+  resident_schedule_t selected;
+  const uint32_t last = (plan->descriptor.kv_length - 1u) /
+      AKV_V2_TILE_TOKENS * AKV_V2_TILE_TOKENS;
+  if (akv_resident_attention_dispatch_plan(AKV_RESIDENT_USE_SHARED,
+          &plan->descriptor, 0u, &selected.full) != AKV_STATUS_OK)
+    return 0;
+  selected.tail = selected.full;
+  // All middle tiles have identical geometry; only the final token count varies.
+  if (last != 0u && akv_resident_attention_dispatch_plan(AKV_RESIDENT_USE_SHARED,
+          &plan->descriptor, last, &selected.tail) != AKV_STATUS_OK)
+    return 0;
+  *schedule = selected;
+  return 1;
+}
+
+static inline int resident_state_matches(uintptr_t vlenb, uintptr_t frm,
+                                         uintptr_t vstart) {
+  return vlenb == AKV_RESIDENT_QK_VLEN_BITS / 8u && frm == 0u && vstart == 0u;
+}
+
+static inline void resident_qk_tile(const akv_resident_attention_tile_t *tile,
+                                   akv_attention_v2_workspace_t *workspace) {
+  for (uint32_t i = 0u; i < tile->pair_count; ++i) {
+    const akv_resident_attention_pair_t *pair = &tile->pairs[i];
+    akv_experimental_resident_qk(workspace->score[pair->query_base],
+        tile->tokens, pair->heads, tile->head_dim, pair->query_base);
+  }
+}
+
+static inline void resident_pv_tile(const akv_resident_attention_tile_t *tile,
+                                   akv_attention_v2_workspace_t *workspace) {
+  for (uint32_t i = 0u; i < tile->pair_count; ++i) {
+    const akv_resident_attention_pair_t *pair = &tile->pairs[i];
+    akv_experimental_resident_pv(workspace->score[pair->query_base],
+        workspace->accumulator[pair->query_base],
+        &workspace->old_scale[pair->query_base], tile->tokens,
+        tile->head_dim, pair->heads);
+  }
+}
+#endif
+
 /* Enable only in paired evaluation until the real Attention gate passes. */
 #ifndef AKV_REFILL_OVERLAP
 #define AKV_REFILL_OVERLAP 0
@@ -585,9 +652,16 @@ static akv_status_t execute_v2_with_features_native_internal(
     const akv_attention_plan_t *plan,
     akv_attention_v2_workspace_t *workspace,
     const akv_attention_features_t *features,
-    const akv_device_t *auto_device, unsigned automatic) {
+    const akv_device_t *auto_device, unsigned automatic
+#if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
+    , const akv_resident_attention_options_t *resident_options
+#endif
+    ) {
   (void)auto_device;
   (void)automatic;
+#if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
+  (void)resident_options;
+#endif
   const int segmented_d256 =
       plan != NULL && plan->d_segment_count == 2u;
   if (workspace == NULL ||
@@ -624,6 +698,17 @@ static akv_status_t execute_v2_with_features_native_internal(
 
   const int overlap_refill = AKV_REFILL_OVERLAP &&
       akv_refill_workspace_disjoint(&plan->descriptor, workspace, sizeof(*workspace));
+#if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
+  resident_schedule_t resident_schedule;
+  int resident = prepare_resident_schedule(auto_device, plan, resident_options,
+      features, overlap_refill, &resident_schedule);
+  if (resident) {
+    uintptr_t vlenb, frm, vstart;
+    __asm__ volatile("csrr %0, vlenb\ncsrr %1, frm\ncsrr %2, vstart"
+                     : "=r"(vlenb), "=r"(frm), "=r"(vstart) : : "memory");
+    resident = resident_state_matches(vlenb, frm, vstart);
+  }
+#endif
   const int qk_panel4 = qk_panel4_enabled_for_plan(plan);
   const int paired_heads = automatic
       ? auto_pair_enabled_for_plan(plan, auto_device, features == NULL)
@@ -642,11 +727,21 @@ static akv_status_t execute_v2_with_features_native_internal(
        tile_start += AKV_V2_TILE_TOKENS) {
     const uint32_t tile_tokens =
         akv_v2_tile_length(kv_length, tile_start);
+#if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
+    const akv_resident_attention_tile_t *resident_tile = resident
+        ? (tile_tokens == resident_schedule.full.tokens
+            ? &resident_schedule.full : &resident_schedule.tail) : NULL;
+#endif
     if (tile_start == 0u)
       issue_full(&plan->descriptor, 0u);
     else if (!overlap_refill)
       issue_refill(tile_start);
 
+#if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
+    if (resident) {
+      resident_qk_tile(resident_tile, workspace);
+    } else
+#endif
     if (q_rows == AKV_ATTENTION_KERNEL_Q_ROWS &&
         head_dim == AKV_HEAD_DIM_128) {
       compute_scores_d128_gqa6(
@@ -659,6 +754,11 @@ static akv_status_t execute_v2_with_features_native_internal(
     }
     apply_scale_mask_and_softmax(mask_bits, scale, workspace, tile_start,
                                  tile_tokens, q_rows, features);
+#if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
+    if (resident) {
+      resident_pv_tile(resident_tile, workspace);
+    } else
+#endif
     if (q_rows == AKV_ATTENTION_KERNEL_Q_ROWS &&
         head_dim == AKV_HEAD_DIM_128) {
       if (overlap_refill && kv_length - tile_start > AKV_V2_TILE_TOKENS)
@@ -687,7 +787,11 @@ akv_status_t akv_attention_execute_v2_with_features_native(
     const akv_attention_plan_t *plan,
     akv_attention_v2_workspace_t *workspace,
     const akv_attention_features_t *features) {
-  return execute_v2_with_features_native_internal(plan, workspace, features, NULL, 0u);
+  return execute_v2_with_features_native_internal(plan, workspace, features, NULL, 0u
+#if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
+      , NULL
+#endif
+      );
 }
 
 akv_status_t akv_attention_execute_v2_with_features_native_auto(
@@ -695,7 +799,11 @@ akv_status_t akv_attention_execute_v2_with_features_native_auto(
     akv_attention_v2_workspace_t *workspace,
     const akv_attention_features_t *features) {
   if (device == NULL) return AKV_STATUS_BAD_ARGUMENT;
-  return execute_v2_with_features_native_internal(plan, workspace, features, device, 1u);
+  return execute_v2_with_features_native_internal(plan, workspace, features, device, 1u
+#if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
+      , NULL
+#endif
+      );
 }
 
 akv_status_t akv_attention_execute_v2_native_auto(
@@ -709,6 +817,23 @@ akv_status_t akv_attention_execute_v2_native(
     akv_attention_v2_workspace_t *workspace) {
   return akv_attention_execute_v2_with_features_native(plan, workspace, NULL);
 }
+
+#if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
+akv_status_t akv_experimental_attention_execute_v2_native(
+    const akv_device_t *device, const akv_attention_plan_t *plan,
+    akv_attention_v2_workspace_t *workspace,
+    const akv_attention_features_t *features,
+    const akv_resident_attention_options_t *options, unsigned automatic) {
+  if (device == NULL || options == NULL || automatic > 1u)
+    return AKV_STATUS_BAD_ARGUMENT;
+  if (options->platform_admitted != 1u || options->whole_call_owned != 1u)
+    return AKV_STATUS_RUNTIME_UNAVAILABLE;
+  const akv_device_t selected_device = *device;
+  const akv_resident_attention_options_t selected_options = *options;
+  return execute_v2_with_features_native_internal(plan, workspace, features,
+      &selected_device, automatic, &selected_options);
+}
+#endif
 
 akv_status_t akv_attention_execute_v2_prefill_native(
     const akv_device_t *device,

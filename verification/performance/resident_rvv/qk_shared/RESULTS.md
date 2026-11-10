@@ -88,16 +88,43 @@ The ABBA worker `stage3_attention_vcs_abba_20261110_01` has been launched with
 inventory SHA256 `ceadb494a1a4aaf6570263f4e4b15d02af985d45372f10fe52d29dcd3429de2f`.
 Its original host loop still runs only the original tests; successor tests are
 recorded separately before preparation, not claimed as new worker tests.
-ABBA performance is pending; the single-arm smoke does not establish speedup.
+The ABBA worker now passes at
+`stage3_attention_vcs_abba_20261110_01/result.json`, SHA256
+`0093d24b0de42a40c37193e1db1ba58129ea05416fbdc47adf346450b23a36a5`.
+
+| Call order | Path | Complete-call cycles | Final drain cycles |
+|---|---|---:|---:|
+| A0 | Panel4 RVV QK + rotating-register PV | 35,049 | 46 |
+| B1 | Resident QK + resident PV | 28,796 | 38 |
+| B2 | Resident QK + resident PV | 28,626 | 46 |
+| A3 | Panel4 RVV QK + rotating-register PV | 34,341 | 46 |
+| Mean A | Optimized baseline | 34,695 | Included above |
+| Mean B | Resident candidate | 28,711 | Included above |
+
+The mean reduction is 5,984 cycles, or 17.2474 percent; the speedup is
+1.20842x. These are complete calls including preparation and final drain on
+one frozen ELF/SoC image, not isolated FPU service or whole-model inference.
+All four calls match the independent tile64 golden bitwise (1,024 output
+values), each has FCSR=3, and guards, input readback, expected work, independent
+protocol and pre/post identities pass. The 482 context-path records partition
+as 237/4/4/237; the two B calls also execute twelve resident commands in total.
+No arithmetic array, external bandwidth or storage capacity is changed between
+arms. Simulation wall time was about 1,169 seconds.
+
+The worker deliberately leaves `performance_acceptance=false`: it records the
+measurement, not a runtime/deployment promotion. The measured positive benefit
+supports retaining this opt-in candidate for the scoped SDK follow-up. Actual
+new-entry SDK validation remains pending, and no cross-shape speedup or complete
+llama.cpp model acceleration is inferred from this one captured shape.
 
 ## Still Required
 
 1. Preserve the completed PV and QK architectural evidence. PV closes through
    its separate strict audit; the original worker's serial-splitter FAIL remains
    unchanged. QK now passes the original architectural/numerical/protocol suite.
-2. Complete the running paired ABBA measurement after the passed smoke and
-   architectural boundaries. Report full-call cycles separately from resident
-   engine cycles; do not infer model speedup.
+2. Preserve the passed paired ABBA result and close the actual SDK whole-call
+   regression. Report the prototype's full-call result separately from new SDK
+   diagnostic cycles and resident-engine cycles; do not infer model speedup.
 3. Make a measured retention decision and complete applicable runtime/fallback
    integration and version delivery. No FPGA or physical acceptance is implied.
 
@@ -237,9 +264,10 @@ independently from the ABI bit layout. Device availability is deliberately
 injected for host tests, not discovered from current production capability.
 
 These are preflight/mapping helpers, not an Attention executor or an integrated
-GGML path. No production native source, build wiring, or sealed assembly was
-changed. A measured complete-call retention decision and applicable runtime
-integration are still required by gate F.
+GGML path by themselves. The opt-in SDK executor described below now consumes
+them. No default selection, capability or sealed assembly was changed; actual
+SDK execution, the measured retention decision and version delivery remain
+required by gate F.
 
 ## Generic SDK PV Leaf Preparation
 
@@ -261,4 +289,51 @@ attempt is preserved: its checker expected decimal shift immediate 6 while
 GNU objdump prints 0x6; the assembly leaf did not change. These are static
 checks, not numerical execution, complete-call acceptance or runtime wiring.
 The default SDK build/selection, capability and sealed prior assembly remain
-unchanged. Actual SDK executor integration and its RTL regression are pending.
+unchanged. The new leaf's actual SDK whole-call RTL regression remains pending.
+
+## Opt-In SDK Executor
+
+The experimental entry
+`akv_experimental_attention_execute_v2_native` is compiled only with
+`AKV_EXPERIMENTAL_RESIDENT_ATTENTION=1`. It enters the existing native v2 core;
+there is no copied Attention loop or linker wrapping. Existing public entries
+pass no resident options and keep their original explicit/automatic selection.
+The new entry requires explicit platform admission and whole-call ownership.
+Shape/type/availability rejection otherwise retains the selected native policy.
+Features and effective refill overlap are checked after their normal handling;
+actual VLEN/FRM/VSTART are read only after trap-safe admission. No CSR is written.
+
+Full and tail geometry are preflighted before workspace initialization or FULL.
+Identical middle-tile geometry reuses that map, rather than adding a context-
+length-dependent planning loop. Each tile executes all local QK pairs, the
+unchanged scale/mask/online-softmax code, then all local PV pairs. FULL/REFILL,
+cross-tile scaling, RELEASE and final normalization remain in the same core.
+The route is fixed before execution and no failure causes a native replay.
+Prefill, segmented D256, non-F16 data and active unsupported score features
+do not enter this path. The experimental build links `qk.S` and `pv.S`; the
+latter includes its preparation source and must not be linked with a duplicate
+preparation object.
+
+`stage3_resident_executor_host_20261110_02/result.json` passes eight host/GNU
+checks: OFF/ON host builds, Clang UBSan, 196 maps and 976 stub leaf calls,
+enabled entry/leaf references, overlap-policy compilation, invalid macro
+rejection and static ordering/no-retry/no-CSR-write checks. In the tested GNU
+configuration, predecessor, macro-unset and macro-zero whole objects are
+byte-identical (SHA256
+`2158b0f23c3683927701c09ecfce56ee1ae5d6f3f55eef8366b88345db7c4d3f`).
+Host execution uses stubs and a non-RISC-V unavailable path; it is not native
+Attention or arithmetic validation. The original missing GCC UBSan runtime
+failure is retained; the passing successor uses installed Clang UBSan.
+
+The test harness's predecessor lookup is now fixed to
+`8dc915db8689d801af991676c25b75093bec9a4b`, rather than HEAD, so committing the
+new core cannot invalidate later reruns. The fresh
+`stage3_resident_executor_host_20261110_03/result.json` repeats all eight checks
+successfully, with matching live inputs and the same unchanged default/OFF
+object hash. Its SHA256 is
+`07501a97d0ff385dac1ddfdae38ca280f2cfb409c658137900e2e5abb0775794`.
+Actual SDK firmware is being prepared separately: requested-OFF and ON original
+D128/H2/T137, plus an explicitly derived D96, two-KV-group, H3-per-group/T65
+case. This is a functional fallback/head/tail/group regression, not a substitute
+for the paired strong-baseline performance experiment. No GGML or deployment
+promotion is implied by these preliminary checks.
