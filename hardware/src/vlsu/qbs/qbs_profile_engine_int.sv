@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: SHL-0.51
 
 module qbs_profile_engine_int import qbs_pkg::*; #(
-  parameter bit CompactRead = 1'b0
+  parameter bit CompactRead = 1'b0,
+  parameter bit CooperativeWaves = 1'b0
 ) (
   input  logic                clk_i,
   input  logic                rst_ni,
@@ -12,6 +13,9 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
   input logic [127:0] weight_window_i [4][2],
   input logic [255:0] activation_window_i [4],
   input logic [7:0] weight_side_i [4][20], activation_side_i [4][36],
+  input logic [7:0] activation_hi_block_i [4][QbsMaxActivationBlockBytes],
+  input logic [255:0] activation_hi_window_i [4],
+  input logic [7:0] activation_hi_side_i [4][36],
   output logic                buffer_read_valid_o,
   output logic [7:0]          buffer_read_k_base_o,
 
@@ -24,6 +28,14 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
   input  logic [2:0]          start_row_count_i,
   input  logic [5:0]          start_row_base_i,
   input  logic                start_first_block_i,
+  input  logic                start_cooperative_i = 1'b0,
+
+  output logic                loan_valid_o,
+  input  logic [3:0]          loan_ready_i = '0,
+  output logic [15:0]         loan_weight_o [4],
+  output logic [63:0]         loan_activation_o,
+  input  logic [3:0]          loan_result_valid_i = '0,
+  input  logic signed [16:0]  loan_result_pair_i [4][4],
 
   output logic                busy_o,
   output logic                done_o,
@@ -91,6 +103,8 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
 
   logic start_context;
   logic start_fire;
+  logic cooperative_start, cooperative_q;
+  logic s0_ready, issue_fire, dot_issue, loan_dot_valid;
   logic tail_wave_requires_correction_drain;
   logic compute_pipeline_empty;
   logic correction_pipeline_busy;
@@ -109,6 +123,11 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
   logic [15:0] decoder_weight_d [4];
   logic [15:0] decoder_weight_dmin [4];
   logic [31:0] decoder_activation_d [4];
+  logic signed [7:0] decoder_activation_hi_quant [4][8];
+  logic signed [15:0] decoder_hi_aux [16];
+  logic [31:0] decoder_activation_hi_d [4];
+  logic [3:0] decoder_hi_k_per, decoder_hi_group_index;
+  logic decoder_hi_group_end;
 
   logic [3:0] meta_group_index_q;
   logic meta_group_end_q;
@@ -127,6 +146,7 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
   } dot_metadata_t;
   dot_metadata_t dot_metadata_q [DotLatency];
   logic [DotLatency-1:0] dot_metadata_valid_q;
+  logic [3:0][15:0] loan_aux_q [DotLatency];
   logic [15:0] context_weight_d_q [NumContexts][4];
   logic [15:0] context_weight_dmin_q [NumContexts][4];
   logic [31:0] context_activation_d_q [NumContexts][4];
@@ -262,22 +282,35 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
   assign tail_wave_requires_correction_drain =
       start_context_base_i == 3'd4 && start_m_i inside {[1:2]} &&
       qbs_weight_subgroup_elements(start_profile_i) == 16;
-  assign start_ready_o = !compute_active_q && !context_valid_q[start_context] &&
-      (!tail_wave_requires_correction_drain ||
-       correction_drain_empty);
+  assign cooperative_start = CooperativeWaves && start_cooperative_i &&
+      start_profile_i == QBS_WEIGHT_PROFILE_Q4_K && start_m_i == 3'd4 &&
+      start_context_base_i == 3'd0;
+  assign start_ready_o = !compute_active_q && (cooperative_start
+      ? !(|context_valid_q) && correction_drain_empty
+      : !context_valid_q[start_context] &&
+        (!tail_wave_requires_correction_drain || correction_drain_empty));
   assign start_fire = start_valid_i && start_ready_o;
+  // All four borrowers accept the same beat. Hold the synchronous SRAM view
+  // in s0 until that atomic transfer also enters the native dot pipeline.
+  assign s0_ready = !cooperative_q || !s0_valid_q || (&loan_ready_i);
+  assign issue_fire = compute_active_q && issue_active_q && s0_ready;
+  assign dot_issue = s0_valid_q && (!cooperative_q || (&loan_ready_i));
+  assign loan_valid_o = cooperative_q && dot_issue;
+  assign loan_dot_valid = cooperative_q && (&loan_result_valid_i);
   // The last registered dot is consumed on this edge. No decoder input or
   // younger dot remains; keep the draining context valid for correction.
   logic compute_pipeline_retiring;
   assign compute_pipeline_retiring = !issue_active_q && !s0_valid_q &&
       dot_valid && dot_metadata_valid_q[DotLatency-1] &&
       !(|dot_metadata_valid_q[DotLatency-2:0]) &&
-      dot_context_q == compute_context_q;
+      dot_context_q == compute_context_q &&
+      (!cooperative_q || loan_dot_valid);
   assign compute_pipeline_empty = !issue_active_q && !s0_valid_q &&
-      !(|dot_metadata_valid_q) && !dot_valid;
+      !(|dot_metadata_valid_q) && !dot_valid &&
+      (!cooperative_q || !(|loan_result_valid_i));
   // Read SRAM on the edge that registers s0_k_base_q. Its data reaches the
   // decoder with the existing s0 stage, without adding a dot-product stage.
-  assign buffer_read_valid_o = compute_active_q && issue_active_q;
+  assign buffer_read_valid_o = issue_fire;
   assign buffer_read_k_base_o = k_cursor_q;
 
   qbs_profile_decoder #(.CompactRead(CompactRead)) i_profile_decoder (
@@ -303,10 +336,46 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
     .activation_d_o        (decoder_activation_d)
   );
 
+  if (CooperativeWaves) begin : gen_cooperative_decoder
+    // Only activation outputs are used here; weight decode/scale/min remain
+    // shared with the native half of the paired tile.
+    qbs_profile_decoder #(.CompactRead(CompactRead)) i_activation_hi_decoder (
+      .profile_i(profile_q), .activation_profile_i(activation_profile_q),
+      .m_i(3'd4), .row_count_i(row_count_q), .k_base_i(s0_k_base_q),
+      .weight_block_i, .activation_block_i(activation_hi_block_i),
+      .weight_window_i, .activation_window_i(activation_hi_window_i),
+      .weight_side_i, .activation_side_i(activation_hi_side_i),
+      .k_per_context_o(decoder_hi_k_per), .group_index_o(decoder_hi_group_index),
+      .group_end_o(decoder_hi_group_end), .stream_valid_o(), .weight_quant_o(),
+      .activation_quant_o(decoder_activation_hi_quant), .group_scale_o(),
+      .group_min_o(), .group_aux_o(decoder_hi_aux), .weight_d_o(),
+      .weight_dmin_o(), .activation_d_o(decoder_activation_hi_d)
+    );
+  end else begin : gen_no_cooperative_decoder
+    assign decoder_activation_hi_quant = '{default:'{default:'0}};
+    assign decoder_hi_aux = '{default:'0};
+    assign decoder_activation_hi_d = '{default:'0};
+    assign decoder_hi_k_per = '0;
+    assign decoder_hi_group_index = '0;
+    assign decoder_hi_group_end = 1'b0;
+  end
+
+  always_comb begin
+    loan_weight_o = '{default:'0};
+    loan_activation_o = '0;
+    if (cooperative_q) begin
+      for (int row = 0; row < 4; row++)
+        loan_weight_o[row] = {decoder_weight_quant[row][1], decoder_weight_quant[row][0]};
+      for (int ctx = 0; ctx < 4; ctx++)
+        loan_activation_o[16*ctx +: 16] =
+            {decoder_activation_hi_quant[ctx][1], decoder_activation_hi_quant[ctx][0]};
+    end
+  end
+
   qbs_dot_array i_dot_array (
     .clk_i                 (clk_i),
     .rst_ni                (rst_ni),
-    .valid_i               (s0_valid_q),
+    .valid_i               (dot_issue),
     .m_i                   (m_q),
     .row_count_i           (row_count_q),
     .stream_valid_i        (decoder_stream_valid),
@@ -317,7 +386,7 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
     .stream_sum_o          (dot_stream_sum)
   );
 
-  assign decode_valid_o = s0_valid_q;
+  assign decode_valid_o = dot_issue;
   assign decode_k_base_o = s0_k_base_q;
   assign decode_k_per_context_o = decoder_k_per;
   assign decode_stream_valid_o = decoder_stream_valid;
@@ -484,14 +553,17 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
       row_count_q <= '0;
       compute_context_q <= 1'b0;
       compute_active_q <= 1'b0;
+      cooperative_q <= 1'b0;
       issue_active_q <= 1'b0;
       k_cursor_q <= '0;
       s0_valid_q <= 1'b0;
       s0_context_q <= 1'b0;
       s0_k_base_q <= '0;
       dot_metadata_valid_q <= '0;
-      for (int stage = 0; stage < DotLatency; stage++)
+      for (int stage = 0; stage < DotLatency; stage++) begin
         dot_metadata_q[stage] <= '0;
+        loan_aux_q[stage] <= '0;
+      end
       for (int lane = 0; lane < 2; lane++) begin
         correction_operand_q[lane] <= '0;
         correction_product_q[lane] <= '0;
@@ -545,11 +617,13 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
     end else begin
       done_o <= 1'b0;
       group_valid_o <= '0;
-      s0_valid_q <= 1'b0;
-      dot_metadata_valid_q <= {dot_metadata_valid_q[DotLatency-2:0], s0_valid_q};
+      if (s0_ready) s0_valid_q <= 1'b0;
+      dot_metadata_valid_q <= {dot_metadata_valid_q[DotLatency-2:0], dot_issue};
       for (int stage = 1; stage < DotLatency; stage++) begin
-        if (dot_metadata_valid_q[stage-1])
+        if (dot_metadata_valid_q[stage-1]) begin
           dot_metadata_q[stage] <= dot_metadata_q[stage-1];
+          if (cooperative_q) loan_aux_q[stage] <= loan_aux_q[stage-1];
+        end
       end
 
       if (start_fire) begin
@@ -560,50 +634,60 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
         row_count_q <= start_row_count_i;
         compute_context_q <= start_context;
         compute_active_q <= 1'b1;
+        cooperative_q <= cooperative_start;
         issue_active_q <= 1'b1;
         k_cursor_q <= '0;
-        context_valid_q[start_context] <= 1'b1;
-        context_profile_q[start_context] <= start_profile_i;
-        context_affine_q[start_context] <=
-            qbs_weight_correction_mode(start_profile_i) ==
-                QBS_CORRECTION_AFFINE_MIN;
-        context_subgroup_count_q[start_context] <=
-            5'(qbs_weight_subgroup_count(start_profile_i));
-        context_active_stream_count_q[start_context] <=
-            start_m_i * start_row_count_i;
-        context_emitted_count_q[start_context] <= '0;
-        context_row_base_q[start_context] <= start_row_base_i;
-        context_base_q[start_context] <= start_context_base_i;
-        context_row_count_q[start_context] <= start_row_count_i;
-        context_first_block_q[start_context] <= start_first_block_i;
-        slot_valid_q[start_context] <= '0;
-        result_pending_q[start_context] <= '0;
+        for (int ctx = 0; ctx < NumContexts; ctx++) begin
+          if (cooperative_start || start_context == 1'(ctx)) begin
+            context_valid_q[ctx] <= 1'b1;
+            context_profile_q[ctx] <= start_profile_i;
+            context_affine_q[ctx] <=
+                qbs_weight_correction_mode(start_profile_i) == QBS_CORRECTION_AFFINE_MIN;
+            context_subgroup_count_q[ctx] <= 5'(qbs_weight_subgroup_count(start_profile_i));
+            context_active_stream_count_q[ctx] <= start_m_i * start_row_count_i;
+            context_emitted_count_q[ctx] <= '0;
+            context_row_base_q[ctx] <= start_row_base_i;
+            context_base_q[ctx] <= cooperative_start ? 3'(4*ctx) : start_context_base_i;
+            context_row_count_q[ctx] <= start_row_count_i;
+            context_first_block_q[ctx] <= start_first_block_i;
+            slot_valid_q[ctx] <= '0;
+            result_pending_q[ctx] <= '0;
+            for (int stream = 0; stream < NumStreams; stream++) begin
+              group_partial_q[ctx][stream] <= '0;
+              subtotal_dot_q[ctx][stream] <= '0;
+              subtotal_aux_q[ctx][stream] <= '0;
+            end
+          end
+        end
         useful_pairs_o <= '0;
         pair_capacity_o <= '0;
         dot_active_cycles_o <= '0;
-        for (int stream = 0; stream < NumStreams; stream++) begin
-          group_partial_q[start_context][stream] <= '0;
-          subtotal_dot_q[start_context][stream] <= '0;
-          subtotal_aux_q[start_context][stream] <= '0;
-        end
       end
 
-      if (compute_active_q && issue_active_q) begin
+      if (issue_fire) begin
         automatic int unsigned k_per;
         k_per = m_q == 1 ? 8 : (m_q == 2 ? 4 : 2);
         s0_valid_q <= 1'b1;
         s0_context_q <= compute_context_q;
         s0_k_base_q <= k_cursor_q;
-        useful_pairs_o <= useful_pairs_o + row_count_q * m_q * k_per;
-        pair_capacity_o <= pair_capacity_o + row_count_q * 8;
-        dot_active_cycles_o <= dot_active_cycles_o + 1'b1;
+        if (!cooperative_q) begin
+          useful_pairs_o <= useful_pairs_o + row_count_q * m_q * k_per;
+          pair_capacity_o <= pair_capacity_o + row_count_q * 8;
+          dot_active_cycles_o <= dot_active_cycles_o + 1'b1;
+        end
         if (unsigned'(k_cursor_q) + k_per == block_elements_q)
           issue_active_q <= 1'b0;
         else
           k_cursor_q <= k_cursor_q + 8'(k_per);
       end
 
-      if (s0_valid_q) begin
+      if (cooperative_q && dot_issue) begin
+        useful_pairs_o <= useful_pairs_o + row_count_q * 16;
+        pair_capacity_o <= pair_capacity_o + row_count_q * 16;
+        dot_active_cycles_o <= dot_active_cycles_o + 1'b1;
+      end
+
+      if (dot_issue) begin
         dot_metadata_q[0].context_id <= s0_context_q;
         dot_metadata_q[0].group_index <= decoder_group_index;
         dot_metadata_q[0].group_end <= decoder_group_end;
@@ -611,10 +695,16 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
           dot_metadata_q[0].row_scale[index] <= decoder_scale[4 * index];
           dot_metadata_q[0].row_min[index] <= decoder_min[4 * index][5:0];
           dot_metadata_q[0].context_aux[index] <= decoder_aux[index];
+          if (cooperative_q) loan_aux_q[0][index] <= decoder_hi_aux[index];
           if (s0_k_base_q == 0) begin
             context_weight_d_q[s0_context_q][index] <= decoder_weight_d[index];
             context_weight_dmin_q[s0_context_q][index] <= decoder_weight_dmin[index];
             context_activation_d_q[s0_context_q][index] <= decoder_activation_d[index];
+            if (cooperative_q) begin
+              context_weight_d_q[1][index] <= decoder_weight_d[index];
+              context_weight_dmin_q[1][index] <= decoder_weight_dmin[index];
+              context_activation_d_q[1][index] <= decoder_activation_hi_d[index];
+            end
           end
         end
       end
@@ -666,43 +756,52 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
         end
       end
 
-      if (dot_valid) begin
-        if (meta_group_end_q && |dot_stream_valid) begin
-          for (int index = 0; index < 4; index++) begin
-            slot_aux_q[dot_context_q][index] <= meta_context_aux_q[index];
-            slot_scale_q[dot_context_q][index] <= meta_row_scale_q[index];
-            slot_min_q[dot_context_q][index] <= meta_row_min_q[index];
-          end
-          slot_last_q[dot_context_q] <= unsigned'(meta_group_index_q) + 1 ==
-              context_subgroup_count_q[dot_context_q];
-`ifndef SYNTHESIS
-          assert ((slot_valid_q[dot_context_q] &
-                   ~correction_consume[dot_context_q]) == '0)
-            else $fatal(1, "QBS shared subgroup metadata overwritten before consumption");
-`endif
-        end
-        for (int stream = 0; stream < NumStreams; stream++) begin
-          if (dot_stream_valid[stream]) begin
-            automatic logic signed [21:0] group_total;
-            group_total = group_partial_q[dot_context_q][stream] +
-                dot_stream_sum[stream];
-            if (meta_group_end_q) begin
-              group_partial_q[dot_context_q][stream] <= '0;
-              slot_valid_q[dot_context_q][stream] <= 1'b1;
-              slot_dot_q[dot_context_q][stream] <= group_total[20:0];
-              group_valid_o[stream] <= 1'b1;
-              group_index_o[stream] <= meta_group_index_q;
-              group_dot_o[stream] <= group_total;
-              group_aux_o[stream] <= meta_context_aux_q[stream % 4];
-              group_scale_o[stream] <= meta_row_scale_q[stream / 4];
-              group_min_o[stream] <= {2'b0, meta_row_min_q[stream / 4]};
-            end else begin
-              group_partial_q[dot_context_q][stream] <= group_total[20:0];
+      for (int ctx = 0; ctx < NumContexts; ctx++) begin
+        if ((dot_valid && dot_context_q == 1'(ctx)) ||
+            (loan_dot_valid && ctx == 1)) begin
+          if (meta_group_end_q && |dot_stream_valid) begin
+            for (int index = 0; index < 4; index++) begin
+              slot_aux_q[ctx][index] <= cooperative_q && ctx == 1
+                  ? $signed(loan_aux_q[DotLatency-1][index]) : meta_context_aux_q[index];
+              slot_scale_q[ctx][index] <= meta_row_scale_q[index];
+              slot_min_q[ctx][index] <= meta_row_min_q[index];
             end
+            slot_last_q[ctx] <= unsigned'(meta_group_index_q) + 1 ==
+                context_subgroup_count_q[ctx];
 `ifndef SYNTHESIS
-            assert (group_total[21] == group_total[20])
-              else $fatal(1, "QBS unscaled group overflow");
+            assert ((slot_valid_q[ctx] & ~correction_consume[ctx]) == '0)
+              else $fatal(1, "QBS shared subgroup metadata overwritten before consumption");
 `endif
+          end
+          for (int stream = 0; stream < NumStreams; stream++) begin
+            if (dot_stream_valid[stream]) begin
+              automatic logic signed [18:0] stream_sum;
+              automatic logic signed [21:0] group_total;
+              stream_sum = cooperative_q && ctx == 1
+                  ? 19'($signed(loan_result_pair_i[stream / 4][stream % 4]))
+                  : dot_stream_sum[stream];
+              group_total = group_partial_q[ctx][stream] + stream_sum;
+              if (meta_group_end_q) begin
+                group_partial_q[ctx][stream] <= '0;
+                slot_valid_q[ctx][stream] <= 1'b1;
+                slot_dot_q[ctx][stream] <= group_total[20:0];
+                // The legacy diagnostic port describes the native half only.
+                if (dot_context_q == 1'(ctx)) begin
+                  group_valid_o[stream] <= 1'b1;
+                  group_index_o[stream] <= meta_group_index_q;
+                  group_dot_o[stream] <= group_total;
+                  group_aux_o[stream] <= meta_context_aux_q[stream % 4];
+                  group_scale_o[stream] <= meta_row_scale_q[stream / 4];
+                  group_min_o[stream] <= {2'b0, meta_row_min_q[stream / 4]};
+                end
+              end else begin
+                group_partial_q[ctx][stream] <= group_total[20:0];
+              end
+`ifndef SYNTHESIS
+              assert (group_total[21] == group_total[20])
+                else $fatal(1, "QBS unscaled group overflow");
+`endif
+            end
           end
         end
       end
@@ -737,6 +836,9 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
         assert (start_row_count_i inside {[1:4]});
         assert (!context_valid_q[start_context])
           else $fatal(1, "QBS reused a live integer tile context");
+        if (cooperative_start)
+          assert (context_valid_q == '0 && correction_drain_empty)
+            else $fatal(1, "QBS cooperative wave reused a live context or correction");
       end
       for (int lane = 0; lane < 2; lane++) begin
         if (correction_product_q[lane].valid) begin
@@ -757,6 +859,17 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
       end
       assert (dot_valid == dot_metadata_valid_q[DotLatency-1])
         else $fatal(1, "QBS dot data and metadata pipeline lost alignment");
+      if (cooperative_q) begin
+        assert (loan_result_valid_i === {4{dot_metadata_valid_q[DotLatency-1]}})
+          else $fatal(1, "QBS borrowed dot violated its fixed three-cycle response");
+        if (dot_issue) begin
+          assert ((&loan_ready_i) && s0_context_q == 1'b0 &&
+                  decoder_hi_k_per == decoder_k_per &&
+                  decoder_hi_group_index == decoder_group_index &&
+                  decoder_hi_group_end == decoder_group_end)
+            else $fatal(1, "QBS cooperative wave lost atomic issue or decoder alignment");
+        end
+      end
       if (correction_product_q[0].valid && correction_product_q[1].valid)
         assert ({correction_product_q[0].context_id, correction_product_q[0].stream} !=
                 {correction_product_q[1].context_id, correction_product_q[1].stream})
@@ -764,8 +877,9 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
       for (int context_index = 0; context_index < NumContexts;
            context_index++) begin
         for (int stream = 0; stream < NumStreams; stream++) begin
-          if (dot_valid && dot_stream_valid[stream] && meta_group_end_q &&
-              dot_context_q == context_index) begin
+          if (dot_stream_valid[stream] && meta_group_end_q &&
+              ((dot_valid && dot_context_q == context_index) ||
+               (loan_dot_valid && context_index == 1))) begin
             assert (!slot_valid_q[context_index][stream] ||
                     correction_consume[context_index][stream])
               else $fatal(1,
@@ -774,10 +888,14 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
           end
         end
       end
-      if (s0_valid_q) begin
-        if (s0_k_base_q == 0)
+      if (dot_issue) begin
+        if (s0_k_base_q == 0) begin
           assert (result_pending_q[s0_context_q] == '0)
             else $fatal(1, "QBS metadata overwritten before result drain");
+          if (cooperative_q)
+            assert (result_pending_q[1] == '0)
+              else $fatal(1, "QBS borrowed metadata overwritten before result drain");
+        end
         for (int stream = 0; stream < NumStreams; stream++) begin
           if (decoder_stream_valid[stream]) begin
             assert (decoder_scale[stream] == decoder_scale[4 * (stream / 4)] &&

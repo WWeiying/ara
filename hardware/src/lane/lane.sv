@@ -19,6 +19,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     parameter  fpext_support_e        FPExtSupport          = FPExtSupportEnable,
     // Support for fixed-point data types
     parameter  fixpt_support_e        FixPtSupport          = FixedPointEnable,
+    parameter  bit                   EnableQbsLaneMul      = 1'b0,
     // To please Verilator
     parameter  int           unsigned pe_req_t_bits         = 0,
     parameter  int           unsigned pe_resp_t_bits        = 0,
@@ -126,7 +127,15 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     output logic                                           pv_result_valid_o,
     output logic                                           pv_done_valid_o,
     output logic                                           pv_done_error_o,
-    output logic [4:0]                                     pv_done_flags_o
+    output logic [4:0]                                     pv_done_flags_o,
+    input  logic                                           qbs_mul_lease_i = 1'b0,
+    input  logic                                           qbs_mul_valid_i = 1'b0,
+    input  logic [15:0]                                    qbs_mul_weight_i = '0,
+    input  logic [63:0]                                    qbs_mul_activation_i = '0,
+    output logic                                           qbs_mul_owned_o,
+    output logic                                           qbs_mul_ready_o,
+    output logic                                           qbs_mul_result_valid_o,
+    output logic signed [16:0]                            qbs_mul_result_pair_o [4]
 `ifdef FOR_VERIFY
     ,output logic [4:0]                                    verify_wb_valid_o
     ,output vid_t [4:0]                                    verify_wb_id_o
@@ -738,6 +747,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .FPExtSupport   (FPExtSupport   ),
     .FixPtSupport   (FixPtSupport   ),
     .EnableResidentPv(EnableResidentPv),
+    .EnableQbsLaneMul(EnableQbsLaneMul),
     .vaddr_t        (vaddr_t        ),
     .vfu_operation_t(vfu_operation_t)
   ) i_vfus (
@@ -821,7 +831,9 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .resident_result_ready_i  (pv_fpu_result_ready),
     .resident_result_o        (pv_fpu_result),
     .resident_result_tag_o    (pv_fpu_result_tag),
-    .resident_result_flags_o  (pv_fpu_result_flags)
+    .resident_result_flags_o  (pv_fpu_result_flags),
+    .qbs_mul_lease_i, .qbs_mul_valid_i, .qbs_mul_weight_i, .qbs_mul_activation_i,
+    .qbs_mul_owned_o, .qbs_mul_ready_o, .qbs_mul_result_valid_o, .qbs_mul_result_pair_o
   );
 
   /******************************

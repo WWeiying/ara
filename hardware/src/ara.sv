@@ -11,6 +11,11 @@ module ara import ara_pkg::*; #(
     parameter  int           unsigned NrLanes      = 0,                          // Number of parallel vector lanes.
     parameter  int           unsigned VLEN         = 0,                          // VLEN [bit]
     parameter  int           unsigned OSSupport    = 1,
+`ifdef ARA_QBS_LANE_MUL_ENABLE
+    parameter  bit                    EnableQbsLaneMul = 1'b1,
+`else
+    parameter  bit                    EnableQbsLaneMul = 1'b0,
+`endif
     // Support for floating-point data types
     parameter  fpu_support_e          FPUSupport   = FPUSupportHalfSingleDouble,
     // External support for vfrec7, vfrsqrt7
@@ -469,6 +474,13 @@ module ara import ara_pkg::*; #(
   logic      [NrLanes-1:0]                     ldu_result_gnt;
   logic      [NrLanes-1:0]                     ldu_result_final_gnt;
   logic pv_lease, pv_acquire, pv_start, pv_release, pv_commit;
+  localparam bit QbsLaneMulSupported = EnableQbsLaneMul && qbs_pkg::QbsEnable &&
+      NrLanes == 4 && VLEN == 1024;
+  logic qbs_mul_lease, qbs_mul_valid;
+  logic [NrLanes-1:0] qbs_mul_owned, qbs_mul_ready, qbs_mul_result_valid;
+  logic [15:0] qbs_mul_weight [NrLanes];
+  logic [63:0] qbs_mul_activation;
+  logic signed [16:0] qbs_mul_result_pair [NrLanes][4];
   logic pv_payload_seed, pv_payload_value;
   logic [NrLanes-1:0] pv_abort, pv_done_ready, pv_owned, pv_ready;
   logic [NrLanes-1:0] pv_result_valid, pv_done_valid, pv_done_error;
@@ -495,6 +507,7 @@ module ara import ara_pkg::*; #(
 
   for (genvar lane = 0; lane < NrLanes; lane++) begin: gen_lanes
     lane #(
+      .EnableQbsLaneMul      (QbsLaneMulSupported  ),
       .NrLanes              (NrLanes              ),
       .VLEN                 (VLEN                 ),
       .CVA6Cfg              (CVA6Cfg              ),
@@ -546,6 +559,14 @@ module ara import ara_pkg::*; #(
       .ldu_result_gnt_o                (ldu_result_gnt[lane]                ),
       .ldu_result_final_gnt_o          (ldu_result_final_gnt[lane]          ),
       .pv_lease_i                      (pv_lease                            ),
+      .qbs_mul_lease_i                 (qbs_mul_lease),
+      .qbs_mul_valid_i                 (qbs_mul_valid),
+      .qbs_mul_weight_i                (qbs_mul_weight[lane]),
+      .qbs_mul_activation_i            (qbs_mul_activation),
+      .qbs_mul_owned_o                 (qbs_mul_owned[lane]),
+      .qbs_mul_ready_o                 (qbs_mul_ready[lane]),
+      .qbs_mul_result_valid_o          (qbs_mul_result_valid[lane]),
+      .qbs_mul_result_pair_o           (qbs_mul_result_pair[lane]),
       .pv_acquire_i                    (pv_acquire                          ),
       .pv_start_i                      (pv_start                            ),
       .pv_abort_i                      (pv_abort[lane]                      ),
@@ -640,6 +661,7 @@ module ara import ara_pkg::*; #(
   `FF(acc_mmu_en_q, acc_mmu_en, '0, clk_i, rst_ni);
 
   vlsu #(
+    .EnableQbsLaneMul(QbsLaneMulSupported),
     .NrLanes     (NrLanes     ),
     .VLEN        (VLEN        ),
     .AxiDataWidth(AxiDataWidth),
@@ -723,6 +745,14 @@ module ara import ara_pkg::*; #(
     .ldu_result_gnt_i           (ldu_result_gnt                                        ),
     .ldu_result_final_gnt_i     (ldu_result_final_gnt                                  ),
     .pv_lease_o                 (pv_lease),
+    .qbs_mul_lease_o            (qbs_mul_lease),
+    .qbs_mul_valid_o            (qbs_mul_valid),
+    .qbs_mul_weight_o           (qbs_mul_weight),
+    .qbs_mul_activation_o       (qbs_mul_activation),
+    .qbs_mul_owned_i            (qbs_mul_owned),
+    .qbs_mul_ready_i            (qbs_mul_ready),
+    .qbs_mul_result_valid_i     (qbs_mul_result_valid),
+    .qbs_mul_result_pair_i      (qbs_mul_result_pair),
     .pv_acquire_o               (pv_acquire),
     .pv_start_o                 (pv_start),
     .pv_release_o               (pv_release),

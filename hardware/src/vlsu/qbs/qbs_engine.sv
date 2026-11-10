@@ -18,6 +18,7 @@ module qbs_engine
     parameter int unsigned VLEN = 1024,
     parameter bit ActivationLookahead = 1'b1,
     parameter bit SeedRestoreEnable = 1'b0,
+    parameter bit CooperativeWaves = 1'b0,
     parameter type         vid_t = logic,
     parameter type         vaddr_t = logic,
     parameter type         axi_ar_t = logic,
@@ -117,7 +118,13 @@ module qbs_engine
     output logic [31:0]                  activation_axi_bytes_saved_o,
     output logic [31:0]                  context_replay_cycles_o,
     output logic [31:0]                  context_replay_compute_overlap_cycles_o,
-    output logic [31:0]                  context_validation_fault_count_o
+    output logic [31:0]                  context_validation_fault_count_o,
+    output logic                        loan_valid_o,
+    input  logic [3:0]                 loan_ready_i = '0,
+    output logic [15:0]                loan_weight_o [4],
+    output logic [63:0]                loan_activation_o,
+    input  logic [3:0]                 loan_result_valid_i = '0,
+    input  logic signed [16:0]         loan_result_pair_i [4][4]
   );
 
   localparam int unsigned RangeBytesWidth = 16;
@@ -1014,9 +1021,12 @@ module qbs_engine
     for (genvar b = 0; b < 8; b++) assign seed_data[b] = '0;
   end
 
-  qbs_compute_engine #(.SeedRestoreEnable(SeedRestoreEnable)) i_compute_engine (
+  qbs_compute_engine #(.SeedRestoreEnable(SeedRestoreEnable),
+      .CooperativeWaves(CooperativeWaves)) i_compute_engine (
     .clk_i,
     .rst_ni,
+    .loan_valid_o, .loan_ready_i, .loan_weight_o, .loan_activation_o,
+    .loan_result_valid_i, .loan_result_pair_i,
     .command_valid_i                (compute_command_valid),
     .command_ready_o                (compute_command_ready),
     .command_weight_profile_i       (weight_profile_q),

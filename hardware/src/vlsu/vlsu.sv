@@ -12,6 +12,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   import akv_pkg::*; #(
     parameter  int  unsigned NrLanes     = 0,
     parameter  int  unsigned VLEN        = 0,
+    parameter  bit          EnableQbsLaneMul = 1'b0,
     parameter  type          vaddr_t     = logic,  // Type used to address vector register file elements
     parameter  type          pe_req_t    = logic,
     parameter  type          pe_resp_t   = logic,
@@ -117,7 +118,14 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     input logic [NrLanes-1:0][4:0] pv_done_flags_i = '0,
     // Floating-point status from a completed blocking QBS command
     output logic                    qbs_fflags_valid_o,
-    output logic              [4:0] qbs_fflags_o
+    output logic              [4:0] qbs_fflags_o,
+    output logic                    qbs_mul_lease_o, qbs_mul_valid_o,
+    output logic [15:0]             qbs_mul_weight_o [NrLanes],
+    output logic [63:0]             qbs_mul_activation_o,
+    input  logic [NrLanes-1:0]      qbs_mul_owned_i = '0,
+    input  logic [NrLanes-1:0]      qbs_mul_ready_i = '0,
+    input  logic [NrLanes-1:0]      qbs_mul_result_valid_i = '0,
+    input  logic signed [16:0]     qbs_mul_result_pair_i [NrLanes][4]
   );
 
   `include "common_cells/registers.svh"
@@ -460,6 +468,30 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic [NrLanes-1:0] qbs_ldu_result_final_gnt;
 
   logic qbs_busy;
+  localparam bit QbsLaneMulSupported = EnableQbsLaneMul && NrLanes == 4 && VLEN == 1024;
+  logic qbs_loan_valid;
+  logic [3:0] qbs_loan_ready, qbs_loan_result_valid;
+  logic [15:0] qbs_loan_weight [4];
+  logic signed [16:0] qbs_loan_result_pair [4][4];
+  assign qbs_mul_lease_o = QbsLaneMulSupported && qbs_active_q;
+  assign qbs_mul_valid_o = QbsLaneMulSupported && qbs_loan_valid;
+  for (genvar loan_lane = 0; loan_lane < 4; loan_lane++) begin : gen_qbs_loan_return
+    if (loan_lane < NrLanes && QbsLaneMulSupported) begin : gen_present
+      assign qbs_loan_ready[loan_lane] = qbs_mul_owned_i[loan_lane] && qbs_mul_ready_i[loan_lane];
+      assign qbs_loan_result_valid[loan_lane] = qbs_mul_result_valid_i[loan_lane];
+      assign qbs_loan_result_pair[loan_lane] = qbs_mul_result_pair_i[loan_lane];
+    end else begin : gen_absent
+      assign qbs_loan_ready[loan_lane] = 1'b0;
+      assign qbs_loan_result_valid[loan_lane] = 1'b0;
+      assign qbs_loan_result_pair[loan_lane] = '{default:'0};
+    end
+  end
+  for (genvar loan_lane = 0; loan_lane < NrLanes; loan_lane++) begin : gen_qbs_loan_weight
+    if (loan_lane < 4 && QbsLaneMulSupported)
+      assign qbs_mul_weight_o[loan_lane] = qbs_loan_weight[loan_lane];
+    else
+      assign qbs_mul_weight_o[loan_lane] = '0;
+  end
   logic [31:0] qbs_command_cycles;
   logic [31:0] qbs_read_range_count, qbs_read_translation_count;
   logic [31:0] qbs_read_ar_count, qbs_read_beat_count;
@@ -1122,6 +1154,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   assign qbs_fflags_o = pv_terminal ? pv_flags : qbs_result_fflags;
 
   qbs_engine #(
+    .CooperativeWaves(QbsLaneMulSupported),
     .reader_req_t(shared_read_req_t), .reader_rsp_t(shared_read_rsp_t),
     .SeedRestoreEnable(QbsVrfContinuationEnable && NrLanes == 4 && VLEN == 1024),
     .AxiDataWidth(AxiDataWidth),
@@ -1137,6 +1170,9 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .exception_t(exception_t)
   ) i_qbs_engine (
     .clk_i(qbs_clk),
+    .loan_valid_o(qbs_loan_valid), .loan_ready_i(qbs_loan_ready),
+    .loan_weight_o(qbs_loan_weight), .loan_activation_o(qbs_mul_activation_o),
+    .loan_result_valid_i(qbs_loan_result_valid), .loan_result_pair_i(qbs_loan_result_pair),
     .rst_ni,
     .command_valid_i(qbs_command_valid),
     .command_ready_o(qbs_command_ready),

@@ -18,6 +18,7 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     // Support for fixed-point data types
     parameter  fixpt_support_e        FixPtSupport    = FixedPointEnable,
     parameter  bit                   EnableResidentPv = akv_pkg::AkvResidentPvEnable,
+    parameter  bit                   EnableQbsLaneMul = 1'b0,
     // Type used to address vector register file elements
     parameter  type                   vaddr_t         = logic,
     parameter  type                   vfu_operation_t = logic,
@@ -104,7 +105,15 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     input  logic                              resident_result_ready_i = 1'b0,
     output elen_t                             resident_result_o,
     output logic           [3:0]              resident_result_tag_o,
-    output logic           [4:0]              resident_result_flags_o
+    output logic           [4:0]              resident_result_flags_o,
+    input  logic                              qbs_mul_lease_i = 1'b0,
+    input  logic                              qbs_mul_valid_i = 1'b0,
+    input  logic [15:0]                       qbs_mul_weight_i = '0,
+    input  logic [63:0]                       qbs_mul_activation_i = '0,
+    output logic                              qbs_mul_owned_o,
+    output logic                              qbs_mul_ready_o,
+    output logic                              qbs_mul_result_valid_o,
+    output logic signed [16:0]               qbs_mul_result_pair_o [4]
   );
 
   ///////////////
@@ -180,6 +189,7 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .FPExtSupport   (FPExtSupport   ),
     .FixPtSupport   (FixPtSupport   ),
     .EnableResidentPv(EnableResidentPv && NrLanes == 4 && VLEN == 1024 && RVVH(FPUSupport)),
+    .EnableQbsLaneMul(EnableQbsLaneMul),
     .vaddr_t        (vaddr_t        ),
     .vfu_operation_t(vfu_operation_t)
   ) i_vmfpu (
@@ -213,6 +223,8 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .resident_result_o        (resident_result_o),
     .resident_result_tag_o    (resident_result_tag_o),
     .resident_result_flags_o  (resident_result_flags_o),
+    .qbs_mul_lease_i, .qbs_mul_valid_i, .qbs_mul_weight_i, .qbs_mul_activation_i,
+    .qbs_mul_owned_o, .qbs_mul_ready_o, .qbs_mul_result_valid_o, .qbs_mul_result_pair_o,
     // Interface with the lane
     .fpu_red_complete_o   (fpu_red_complete_o              ),
     .reduction_any_active_o(mfpu_reduction_any_active_o     ),

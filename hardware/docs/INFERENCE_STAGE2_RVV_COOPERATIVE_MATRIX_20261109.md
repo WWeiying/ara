@@ -93,3 +93,27 @@ Long runs use independent service-owned output directories. Confirm actual
 simulator execution once, then avoid polling simulations expected to take
 more than ten minutes. Preserve unrelated working-tree changes and never
 alter sealed inputs of an active worker.
+
+## First Measured Engine Gate
+
+The first paired engine check is complete. Its receipt is
+`verification/out/stage2_matrix_vcs_20261109_02/report.json` in the signoff
+worktree. It reuses the original compiled images after a separately recorded
+parser-only audit; the original worker's FAIL report is preserved. Both
+configurations pass the unchanged numerical and exception checker, the
+synthetic and context suites, and the same-coordinate real-data cases.
+
+For eight distinct Qwen2.5 input rows, K=1536, and N=32, two original M4/N32
+commands cost 13,756 engine cycles. Two original M8/N16 commands cost
+15,362 cycles; the cooperative M8 pair costs 12,238 cycles. This is a 20.34
+percent reduction relative to original M8, but an 11.04 percent reduction
+relative to the faster equal-work original M4 schedule. M4 cycles are
+unchanged with cooperation enabled. These are engine-command measurements,
+not whole software projection calls or end-to-end model acceleration.
+
+The original and cooperative M8 command perform identical memory work and
+FP operations. Integer dot issue cycles halve, but integer-result requests
+blocked at the FP interface rise from zero to 1,296 cycles per M8 command.
+This identifies the next constraint without justifying additional SRAM or a
+duplicate FP array. Qwen3 Attention/FFN cases, full-FP coexistence, and
+complete SoC/SDK call accounting remain required before acceptance.

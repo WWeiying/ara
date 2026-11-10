@@ -5,7 +5,8 @@ module qbs_compute_engine
   import qbs_pkg::*;
   import fpnew_pkg::*;
 #(
-  parameter bit SeedRestoreEnable = 1'b0
+  parameter bit SeedRestoreEnable = 1'b0,
+  parameter bit CooperativeWaves = 1'b0
 )
 (
   input  logic                    clk_i,
@@ -36,6 +37,13 @@ module qbs_compute_engine
   // drains into hidden state before the command-local state is discarded.
   input  logic                    fault_i,
   output logic                    fault_done_o,
+
+  output logic                    loan_valid_o,
+  input  logic [3:0]              loan_ready_i = '0,
+  output logic [15:0]             loan_weight_o [4],
+  output logic [63:0]             loan_activation_o,
+  input  logic [3:0]              loan_result_valid_i = '0,
+  input  logic signed [16:0]      loan_result_pair_i [4][4],
 
   input  logic                    weight_write_valid_i,
   output logic                    weight_write_ready_o,
@@ -130,6 +138,7 @@ module qbs_compute_engine
   logic activation_next_available, activation_next_complete;
   logic activation_loading_state;
   logic wide_command;
+  logic cooperative_command;
   logic final_context_wave;
   logic [2:0] wave_m;
   logic [2:0] wave_context_base;
@@ -280,6 +289,8 @@ module qbs_compute_engine
   endfunction
 
   assign wide_command = unsigned'(m_q) >= QbsWideMMin;
+  assign cooperative_command = CooperativeWaves && m_q == 4'd8 &&
+      weight_profile_q == QBS_WEIGHT_PROFILE_Q4_K;
   assign activation_read_bank = activation_lookahead_q ? k_block_q[0] : context_wave_q;
   assign activation_write_bank = activation_lookahead_q ? activation_write_k_block_i[0] : 1'b0;
   assign activation_write_current = activation_write_k_block_i == k_block_q;
@@ -287,7 +298,7 @@ module qbs_compute_engine
   assign activation_write_next = activation_next_available &&
       activation_write_k_block_i == k_block_q + 8'd1;
   assign activation_next_complete = all_activation_complete_bank[~k_block_q[0]];
-  assign final_context_wave = !wide_command || context_wave_q;
+  assign final_context_wave = !wide_command || cooperative_command || context_wave_q;
 
   always_comb begin
     wave_context_base = wide_command && context_wave_q ? 3'd4 : 3'd0;
@@ -434,7 +445,8 @@ module qbs_compute_engine
     .weight_write_ready_o         (adapter_weight_ready[0]),
     .activation_write_ready_o     (adapter_activation_ready[0]),
     .weight_read_i                (buffer_read_valid && !active_weight_bank_q),
-    .activation_read_i            (buffer_read_valid && !activation_read_bank),
+    .activation_read_i            (buffer_read_valid &&
+                                   (cooperative_command || !activation_read_bank)),
     .read_k_i                     (buffer_read_k_base),
     .weight_write_valid_i         (weight_write_fire &&
                                    weight_write_bank_i == 1'b0),
@@ -478,7 +490,8 @@ module qbs_compute_engine
     .weight_write_ready_o         (adapter_weight_ready[1]),
     .activation_write_ready_o     (adapter_activation_ready[1]),
     .weight_read_i                (buffer_read_valid && active_weight_bank_q),
-    .activation_read_i            (buffer_read_valid && activation_read_bank),
+    .activation_read_i            (buffer_read_valid &&
+                                   (cooperative_command || activation_read_bank)),
     .read_k_i                     (buffer_read_k_base),
     .weight_write_valid_i         (weight_write_fire &&
                                    weight_write_bank_i == 1'b1),
@@ -538,13 +551,20 @@ module qbs_compute_engine
   assign probe_weight_wait_active = state_q == QBS_WAIT_WEIGHT;
 `endif
 
-  qbs_profile_engine_int #(.CompactRead(1'b1)) i_profile_engine_int (
+  qbs_profile_engine_int #(
+    .CompactRead(1'b1), .CooperativeWaves(CooperativeWaves)
+  ) i_profile_engine_int (
     .clk_i,
     .rst_ni,
     .weight_block_i                (weight_block),
     .activation_block_i            (activation_block),
     .weight_window_i(weight_window), .activation_window_i(activation_window),
     .weight_side_i(weight_side), .activation_side_i(activation_side),
+    .activation_hi_block_i(activation_block_bank1),
+    .activation_hi_window_i(activation_window_bank[1]),
+    .activation_hi_side_i(activation_side_bank[1]),
+    .loan_valid_o, .loan_ready_i, .loan_weight_o, .loan_activation_o,
+    .loan_result_valid_i, .loan_result_pair_i,
     .buffer_read_valid_o           (buffer_read_valid),
     .buffer_read_k_base_o          (buffer_read_k_base),
     .start_valid_i                 (integer_start_valid),
@@ -556,6 +576,7 @@ module qbs_compute_engine
     .start_row_count_i             (row_count),
     .start_row_base_i              (row_base_q),
     .start_first_block_i           (k_block_q == 0 && !seeded_q),
+    .start_cooperative_i           (cooperative_command),
     .busy_o                        (integer_busy),
     .done_o                        (integer_done),
     .result_valid_o                (integer_result_valid),
@@ -670,7 +691,7 @@ module qbs_compute_engine
         if (fault_i)
           state_d = QBS_FAULT_DRAIN;
         else if (integer_done) begin
-          if (wide_command && !context_wave_q)
+          if (wide_command && !cooperative_command && !context_wave_q)
             state_d = QBS_START_CONTEXT_WAVE;
           else if (next_row_available) begin
             if (load_weight_complete)
@@ -797,13 +818,14 @@ module qbs_compute_engine
       end
 
       if (state_q == QBS_COMPUTE_TILE && integer_done) begin
-        tiles_computed_o <= tiles_computed_o + 1'b1;
+        // Preserve the logical four-context tile count when both run together.
+        tiles_computed_o <= tiles_computed_o + (cooperative_command ? 32'd2 : 32'd1);
         useful_pairs_o <= useful_pairs_o + tile_useful_pairs;
         pair_capacity_o <= pair_capacity_o + tile_pair_capacity;
         dot_active_cycles_o <=
             dot_active_cycles_o + tile_dot_active_cycles;
 
-        if (wide_command && !context_wave_q) begin
+        if (wide_command && !cooperative_command && !context_wave_q) begin
           context_wave_q <= 1'b1;
         end else begin
           context_wave_q <= 1'b0;
