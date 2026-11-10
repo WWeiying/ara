@@ -28,3 +28,19 @@ Preserve attempt01 and its original diagnostics. Further semantic changes to
 these sealed inputs require a successor and review, not mutation of a consumer's
 frozen source. Source reconstruction and model inputs are still in preparation;
 no Stage5 performance ratio is established.
+
+## AKV Architecture State And Callback Model
+
+`stage5_akv_model_host_20261110_02/result.json` reports
+`HOST_MODEL_CALLBACK_PASS_NOT_QEMU`, SHA256
+`e8242012b8fff3dc2faa63935e5dd73bc5985f61233684560d9570ff3971554a`.
+Two host tests/configurations cover11 logical cases. Independent static review
+and parent verification confirm all10 declared pins match. Source-pin SHA256:
+`feb963022dd17335229b6c123b1418a02ef8b1f39c041e2fbbe12d345849fbf6`.
+
+The four model/test files are frozen for adapter consumption. This checkpoint
+checks lifecycle/layout, callback ordering and validation, using mock arithmetic.
+It does not establish numerical acceptance, complete toolchain closure or native
+QEMU execution. The successor adapter/build must bind these model bytes and
+host02 evidence, then execute real SoftFloat/native gates and unchanged Stage4
+ELFs. Preserve host01 and its diagnostics; no old model is overwritten.
