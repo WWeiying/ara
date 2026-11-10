@@ -125,3 +125,23 @@ CSR handling, fallback and no-retry semantics are checked. Model counters are
 control-path evidence only and must later match real instruction-model traces.
 Stage4's preflight producer and feature-bearing resident variant are not promoted.
 Attempts01..08 remain retained diagnostics; only host09 is this frozen checkpoint.
+
+## Successful QEMU Source Reconstruction
+
+V3/source05 passes34 host checks. The successor leaves all15 older adapter/
+archive files and failed preparations unchanged. Source review identity:
+`0b091570f4af0f07f45791ec25b97a554dcb1ec4fe29d3aa99de60291037ee23`.
+Full preflight checks34940 inherited entries, all retained links, alias groups,
+transforms and new destinations before any inherited-source copy.
+
+`stage5_qemu_prepare_20261110_03/prepare.json` is `PREPARED_NOT_BUILT`, SHA256
+`a947e2ebcaab10fbcb0480275746665e4ddcf2381a8282ebd66b7d239f3e6ea5`.
+Source-pin SHA256:
+`66fa102e49a37d134e8c92836d1f30ed826ba778dad9665dd599d34e089a9db9`.
+It preserves72 safe links and the exact accepted QBS bytes. On the fresh archive
+the plan keeps34799 regular files and10 symlinks, replaces8 regular files and
+creates123. Different CREATE/KEEP counts from the earlier partially overlaid
+failed tree are expected; the actual complete plan is validated before copying.
+The sole unsafe archive member remains explicitly excluded, not followed.
+Independent prepared-inventory review and direct-service compilation are next;
+this receipt is not a binary or guest-execution acceptance.
