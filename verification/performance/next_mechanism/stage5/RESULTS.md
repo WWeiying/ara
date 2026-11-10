@@ -184,3 +184,22 @@ on the exact new QEMU executable, checking raw output/architectural events,
 service completion, source/image identities and normal RVV coexistence.
 The old native-QBS smoke is separately required. No such execution has yet
 occurred, and built ELF or host markers cannot substitute for it.
+
+## Explicit Build-Only Tool Environment
+
+V4 changes only the build worker/tool preflight, reusing prepared03. Host02
+passes9 checks; toolenv02 binds Python3.11, offline Meson1.9.0/pycotap1.3.1,
+26 package checks,612 tool pins and516 artifacts. Independent review clears
+build launch. Toolenv receipt SHA256:
+`ffc26812e9e4de51bea4b9ef8c47411f88a5f8a5407580855c0f927d8aaf378d`.
+
+Toolenv01 remains FAIL because its library audit attempted ldd on the Red Hat
+pkg-config shell wrapper. The successor pins the wrapper, interpreter/rpm and
+actual platform pkgconf, and applies ldd only to ELF inputs. Existing offline
+bootstrap evidence is retained; no dependency is globally installed.
+
+Parent launched `stage5-qemu-build-20261110-02.service` with the reviewed v4
+worker and explicit Python/Ninja, bounds900/1800 seconds and four compiler jobs.
+Launch is not compilation or binary acceptance; confirm actual process/log
+progress and wait for terminal evidence before native guest execution. All
+source03/V4 inputs remain sealed while this service consumes them.
