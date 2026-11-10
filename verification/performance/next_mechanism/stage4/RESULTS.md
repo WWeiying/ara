@@ -132,6 +132,27 @@ Both probe ELFs, requests and complete Spike traces are byte-identical across
 attempts; no target arithmetic, inputs or tolerance changed. CSR restore uses
 an early-clobber output constraint and is checked in disassembly and at runtime.
 
+## Complete Attention Firmware And Prepared Runs
+
+Frozen firmware, checker and runner sources are committed at `11baa67c7`.
+Performance build `stage4_features_full_call_build_perf_20261110_02` has4 calls,
+1024 output words,482 legacy and12 resident commands. Functional build
+`stage4_features_full_call_build_functional_20261110_01` has18 calls,2816 output
+words,713 legacy and30 resident commands, including same-FRM1 fallback.
+Each build passes14 host checks; independent review verifies410 pins and202
+artifacts, exact SDK/common/wrapper sources, GNU libm and actual ELF bindings.
+The first performance build's symbol-name validation failure is preserved;
+the corrected binding names the existing hidden resident PV-preparation symbol.
+
+Prepared outputs `stage4_resident_features_vcs_perf_20261110_01` and
+`stage4_resident_features_vcs_functional_20261110_01` each pass20 runner host
+checks. Independent review verifies1170 pins and43 frozen files per output.
+Reviewed pin hashes are respectively
+`6393f55986b8cabcde5912d83cb945e540050905cee2df6fb08da60b5850be1b` and
+`96f1b4627e623a0f73e25c002a3a9d55688c7030af8ef1e818ede7137c06f37d`.
+Direct service launch has been requested. These are preparation/launch
+milestones only; numerical, protocol and performance execution remains pending.
+
 ## Screened Or Deferred Work
 
 | Candidate | Disposition and existing evidence |
