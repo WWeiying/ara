@@ -84,8 +84,12 @@ original FAIL and all original evidence; firmware output alone is not used as
 the acceptance criterion.
 
 QK architectural firmware and complete-Attention smoke/ABBA firmware are built.
-The independent QK architectural worker is now executing on the checked SoC
-image; its result and complete-Attention performance remain unverified.
+The independent QK architectural worker is executing on the checked SoC image.
+The complete-Attention smoke passes all 256 bitwise output checks, flags,
+memory guards and independent protocol checks; its single candidate call is
+29,725 cycles. Paired ABBA performance remains unmeasured: preparation stopped
+on JSON integer-versus-string lane-key comparison, with all actual evidence
+otherwise matching. This is a report-replay issue, not a new arithmetic failure.
 Runtime admission and tile mapping have host tests; they are not yet a native
 Attention executor or a promoted runtime capability. Capability remains zero.
 Detailed receipts and limitations are recorded in

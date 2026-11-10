@@ -45,7 +45,7 @@ FPU:     f3673a5d5b406c7662b9378dc8cc7cdab11638543dcbfa02bbb54bc237459ef8
 
 ## Complete-Call Preparation
 
-The smoke and ABBA firmware builds are complete, not executed:
+The smoke and ABBA firmware builds are complete:
 
 - `stage3_attention_build_smoke_20261110_01/build.json`
 - `stage3_attention_build_abba_20261110_01/build.json`
@@ -58,13 +58,33 @@ The unchanged oracle requires all output bits, flags and memory guards to match.
 The new work checker additionally checks every resident operation, per-lane
 accepted/returned FMA count, output byte-enable and architectural write.
 
+`stage3_attention_vcs_smoke_20261110_01/result.json` now passes. Its SHA256 is
+`1b5b42543463fae9bc04a1c1b730fc8e0a5e72600a41bcfa4c88cf4fb310f88c`.
+The one candidate call takes 29,725 cycles including a 34-cycle final drain;
+all 256 output words match the pinned independent golden bit for bit, FCSR is
+3, and input/guard checks, actual VRF work, independent protocol and pre/post
+source/image checks pass. The four context commands and six resident commands
+match the full 64/64/9 work. This single-arm run is not a paired speedup or a
+runtime acceptance. Simulation wall time was approximately 477 seconds.
+
+The first ABBA preparation stopped before creating its output or starting a
+simulator: `admitted_smoke` compared an in-memory integer-keyed lane dictionary
+with its JSON report, whose keys are necessarily strings. A diagnostic replay
+finds exactly these six lane-key differences; canonical JSON representation
+matches every other field without changing any numerical/work checker.
+A successor runner is required to handle this representation explicitly and
+retain strict rejection of changed evidence. The original smoke PASS and sealed
+runner remain unchanged. ABBA performance has not yet been measured.
+
 ## Still Required
 
 1. Finish the running QK architectural boundaries. The original PV ELF replay
    has completed and its separate strict audit passes; the original worker's
    serial-splitter FAIL remains unchanged.
-2. Pass complete-call smoke before paired ABBA measurements. Report full-call
-   cycles separately from resident-engine cycles; do not infer model speedup.
+2. Complete paired ABBA measurements after the passed smoke and architectural
+   boundary gates. Correct the preparation-only JSON replay issue described
+   above first. Report full-call cycles separately from resident-engine cycles;
+   do not infer model speedup.
 3. Make a measured retention decision and complete applicable runtime/fallback
    integration and version delivery. No FPGA or physical acceptance is implied.
 
@@ -200,3 +220,25 @@ These are preflight/mapping helpers, not an Attention executor or an integrated
 GGML path. No production native source, build wiring, or sealed assembly was
 changed. A measured complete-call retention decision and applicable runtime
 integration are still required by gate F.
+
+## Generic SDK PV Leaf Preparation
+
+`software/akv/experimental/resident_attention/pv.S` provides an explicit
+scalar-ABI H1/H2 leaf: probability, accumulator, old_scale, T, D and H are passed
+in a0..a5. It keeps preparation, the PV instruction and active-head stores in
+one assembly function, without a benchmark-global selector or intervening C
+call. The included `pv_prepare.S` is byte-identical to the sealed preparation
+source (SHA256 `8d039dd90da0b00497429be90483d0ed9f3576c1400f458889e9e8cd380968be`);
+only its symbol is mechanically namespaced by preprocessing. This preserves
+the existing FP conversion/rescale order and avoids an independently rewritten
+numerical preparation routine.
+
+`stage3_pv_leaf_static_20261110_02/freeze-review.json` records 18 passing source,
+control-path and GNU object checks, 384 T/D/H paths, and matching source/tool
+identities. Independent review checks H1/H2 control encoding, scalar ABI,
+clobbers, active-memory footprints and unchanged preparation. The first static
+attempt is preserved: its checker expected decimal shift immediate 6 while
+GNU objdump prints 0x6; the assembly leaf did not change. These are static
+checks, not numerical execution, complete-call acceptance or runtime wiring.
+The default SDK build/selection, capability and sealed prior assembly remain
+unchanged. Actual SDK executor integration and its RTL regression are pending.
