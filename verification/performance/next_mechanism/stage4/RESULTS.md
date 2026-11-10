@@ -60,7 +60,19 @@ one cold producer and two hits per chain, 64 native commands and 8192 outputs.
 This is a production-helper complete SDK chain, not GGML graph/model timing.
 The future runner must inspect retired producer/native entry PCs, all work,
 raw results/flags/guards, independent protocol and post-run identities before
-any performance result is accepted. Its VCS runner is being prepared.
+any performance result is accepted.
+
+The successor runner passes 14 host checks and two independent operational
+reviews. `stage4_projection_chain_vcs_20261110_01` is prepared with 2420 pins
+and an exact 40-file execution inventory. Reviewed source-pin SHA256 is
+`67275e21f746955638b5e5e5d2bffa2beb075b782bd939291bae8c3c7118a234`.
+The directly owned service
+`stage4-projection-chain-stage4_projection_chain_vcs_20261110_01.service`
+was started; worker PID3954339 reports SIMULATION and simulator PID3954418
+was observed with the accepted image and BUILD02 ELF. This is launch evidence,
+not a passing numerical or performance result. The run is bounded to9000s,
+with no FSDB or automatic retry. Inherited helper and documentation pins
+remain sealed while the consumer executes.
 
 ## B: Feature-Bearing Resident Decode
 
