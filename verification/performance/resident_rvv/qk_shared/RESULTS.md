@@ -106,3 +106,31 @@ stores `cpu_overlay` at its top level. The failure is preserved in
 original runner and numerical checks are preserved; a separately reviewed
 successor must use the actual stage-three build contract. This preparation
 failure is not an RTL failure or architectural acceptance.
+
+The reviewed successor `qk_boundary_soc_v2.py` now uses the same strict
+`build_soc.checked_build()` contract as the original PV successor. It copies
+the unchanged frozen QK numerical/architectural checkers and the independent
+protocol package. It also records an explicit runtime environment and checks
+dynamic library resolution without executing the simulator.
+`stage3_qk_boundary_v2_20261110_01/prepare-report.json` is
+`PREPARED_NOT_EXECUTED`: 15 adapter tests and the original 30 firmware tests
+pass, and independent review verifies 912 pins and 44 frozen inputs. Inventory
+SHA256 is `bbb07a73d743732f5c530c0e9e938ad38d660c9fcdb1aedb209772c52e1bbc92`.
+The expected exception counts remain ten accelerator rejections and two
+CPU-only FS/VS-Off rejections. No QK simulation or hardware PASS is claimed.
+
+## CPU Patch Delivery Preparation
+
+`stage3_cva6_dirty_delivery_host_20261110_01/report.json` records 31 passing
+host checks: ten new delivery tests and 21 unchanged dependency-patch tests.
+They reconstruct the locked CVA6 commit in a disposable archive directory,
+apply the existing registered bundle and then the reviewed retirement fix.
+The resulting CPU bytes equal the tested SoC overlay. All earlier patch
+blocks remain byte-identical; the canonical successor bundle SHA256 is
+`4afb780061813ca90b19e94aa6b552ac0c11df7ac57a33bf594a9392468dd3b8`.
+Tests cover clean application, idempotent admission and rejection of incorrect
+base revisions, unrelated deltas and a noncanonical concatenated patch.
+
+The registry and shared dependency checkout remain unchanged at this checkpoint.
+Formal registration waits for the original PV SoC regression. These checks
+prove reproducible patch delivery, not the pending architectural result.
