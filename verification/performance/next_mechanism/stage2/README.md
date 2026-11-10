@@ -150,6 +150,28 @@ jq . /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage
 完整调用的20%目标是否达到。每个worker的源文件、输入、镜像和输出身份独立核查。
 所有结论仍以相应最终回执为准，不把本段启动记录视为完成验收。
 
+## 后续已完成的验收
+
+`stage2_matrix_special_vcs_20261109_02/report.json` 已通过。复用上述深度0/16的
+封存镜像，每侧执行六种Q4_K/M8/N5/Kb2场景：qNaN、sNaN、正负无穷、混合
+符号零和FP16非规格化scale。原始SV检查器逐位检查结果及flags；详情及NaN参考值
+适配范围见 `MATRIX_SPECIAL_GATE.md`。继承的half sNaN转换行为未作独立IEEE验收，
+不能将保持原契约写成新完成的浮点规范认证。
+
+完整SoC的协同关闭/开启两份镜像均已构建。两侧的 `qbs_control_smoke` 和
+`qbs_akv_handoff_smoke` 都通过，报告分别在
+`stage2_soc_campaign_20261109_01_{baseline,candidate}_smokes/report.json`。
+包括QBS异常后的恢复、普通RVV/QBS/AKV2交接、精确异常指令匹配，以及独立
+CVXIF/VID/AXI协议检查。这些烟测不是性能验收，也不替代完整指令退休状态对比。
+八组完整软件调用由后台服务继续执行；实际周期以最终配对报告为准。
+
+GGML已有 `GGML_RISCV_QBS_WIDE_M` 环境开关。打开后，
+`ggml_riscv_qbs_plan_activations()` 调用SDK的 `qbs_recommend_activation_storage()`，
+依据设备能力、形状及预计输入流量决定是否使用M8存储，不是所有Prefill自动使用M8。
+本轮RTL不改变该选择或QBS指令契约；关闭软件开关仍使用原M4/小行数路径。
+协同开启也只将Q4_K/M8映射到并行两组行，其余命令沿用原实现。当前完整调用测试
+显式比较M4/M8，不能据此宣称整模型每个投影均已自动命中新路径。
+
 ## 运行方法
 
 所有结果写入唯一主验证工作树的 `verification/out`，每次使用新目录名。
