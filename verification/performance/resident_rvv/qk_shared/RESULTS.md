@@ -5,7 +5,8 @@ accumulation on the actual lane FPU. It reuses the lane-private 16 x 64-bit
 accumulator array, the two reader entries and existing AKV Q/K/V storage.
 No new arithmetic array, larger SRAM or wider external interface is introduced.
 QK and PV remain experimental and unadvertised; normal runtime selection is
-unchanged. This checkpoint does not establish complete Attention performance.
+unchanged. The paired complete-call result below establishes benefit on one
+captured shape, not model-wide performance or automatic runtime promotion.
 
 ## Checked Evidence
 
@@ -19,7 +20,7 @@ All paths below are relative to
 | Synchronous resident reader | `stage3_reader_gate_20261110_01/report.json` | 232 normal scenarios, 128,048 accepted-data checks; four each of cancel/reset/invalid-command cases; real context and synchronous storage. |
 | Central control and final-write accounting | `stage3_control_gate_20261110_03/report.json` | 43 scenarios, 12,078 checks; tagged stub lanes, stalled final acknowledgements and outstanding K-collector drain. Not an arithmetic test. |
 | Actual shared FPU | `resident_qk_lane_fpu_20261110_01/report.json` | Standard/shared integer configurations each pass 26 controller scenarios against independent SoftFloat expectations and the unchanged ordinary-FP/coexistence suite. |
-| Decoder and ABI | `qk_admission/test_admission.py` | 17 host tests, exhaustive control/register checks, default-off selection, no VRF source, preserved old operation IDs and generated contracts. Not whole-SoC execution. |
+| Decoder and ABI | `stage3_abi_host_closeout_20261110_01/junit.xml` | 17 host tests, exhaustive control/register checks, default-off selection, no VRF source, preserved old operation IDs and generated contracts. Not whole-SoC execution. |
 
 The FPU gate checks FP32 QK and existing FP16 PV, all five supported rounding
 modes, signaling/quiet NaNs, inactive elements, odd tails, held outputs,
@@ -41,7 +42,12 @@ CPU:     2b297b1738ba1aea7e539a83ac6ade6dfd624168590d804fb211dec285b4872d
 Reader:  ee15e86c3f52ff66c0acefda7bcb098e94d97a41e8f70ca31202481dbc6c2458
 Control: b0099f9f0df97248f0147234e807dc828fd9736ebd3d6192c52349dc31d86e59
 FPU:     f3673a5d5b406c7662b9378dc8cc7cdab11638543dcbfa02bbb54bc237459ef8
+ABI XML: 66311f0892eefffe8ecbae250f63cd37b727a897b6f9abcda4f07d103d3eb10d
 ```
+
+The ABI closeout records the command and clean relevant tracked inputs at
+`ca772ef9096899be4749335581eb45077d5377e8`. Its 17 passing tests are host ABI,
+C-contract and source-predicate checks, not 17 RTL simulations.
 
 ## Complete-Call Preparation
 
@@ -332,8 +338,32 @@ new core cannot invalidate later reruns. The fresh
 successfully, with matching live inputs and the same unchanged default/OFF
 object hash. Its SHA256 is
 `07501a97d0ff385dac1ddfdae38ca280f2cfb409c658137900e2e5abb0775794`.
-Actual SDK firmware is being prepared separately: requested-OFF and ON original
-D128/H2/T137, plus an explicitly derived D96, two-KV-group, H3-per-group/T65
-case. This is a functional fallback/head/tail/group regression, not a substitute
-for the paired strong-baseline performance experiment. No GGML or deployment
+Actual SDK firmware is built at `stage3_attention_sdk_build_20261110_02`,
+ELF SHA256 `d8c413799646ddf3286347d0c18a76eaaadce27a2840fc3bf4f46f3d7d1de17c`.
+Eighteen host checks pass; target execution is still pending. The three calls
+are requested-OFF and ON original D128/H2/T137, plus an explicitly derived D96,
+two-KV-group, H3-per-group/T65 case. Both OFF and ON enter the same enabled SDK
+executor through the real Decode group callback. Actual entry PCs, commands,
+masked VRF writes, 1,088 final FP32 values and FCSR 3/11/3 are required checks.
+The incoming DZ flag in the second call must survive.
+
+The SDK inputs are an archive of `8dc915db8` plus the two reviewed executor
+files, byte-identical to their committed `ca772ef90` versions. The uncommitted
+live AKV assembly is excluded. Firmware uses its frozen corrected fixture and
+checker, not the earlier live helper with different counter attribution.
+`PV_PREP` records software cast/rescale/probability flags; `PV` records only
+token-ordered FMA flags. This test-side correction changes no output golden,
+whole-call flags or firmware ELF.
+
+`stage3_attention_sdk_fixture_quality_20261110_01/report.json` passes six host
+tests and four wrong-routing sensitivity experiments. Six derived query rows,
+their F16 forms and outputs are distinct; both active KV groups differ. Wrong
+local query base or stale Q/K/V group input changes every expected affected
+head. These are raw-bit permutations of real captured data, not six independently
+captured model heads. The corrected build retains the same data/goldens. All six
+new derived scalar expf inputs are exactly zero; original-shape golden identity
+does not prove general host/target libm equivalence.
+
+This is a functional fallback/head/tail/group regression, not a substitute for
+the paired strong-baseline performance experiment. No GGML or deployment
 promotion is implied by these preliminary checks.

@@ -1,0 +1,26 @@
+{
+  "generated_sources": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_flags_sources_20261110_02/README.md": "063c156ce0d34caa6de8be395ddf727a37e30e464c15195d8ddc63e23eafbedf",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_flags_sources_20261110_02/build.py": "b816bab797b754a321ea0805caca27af5bfea5f724a3759e8b035ae341c9411e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_flags_sources_20261110_02/check.py": "56b6cbd8d240a320cdfa8454565ecd78224a7488e813df2f9a5c6431ce450979",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_flags_sources_20261110_02/fixture.py": "c4c47d5c7933750a69bf2d8bff8ad1c08eb2e679fd9d2f6bf1503d15ee14ec9f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_flags_sources_20261110_02/main.c": "2c5bcf9917c84723f17c383d7c1e84751b1ae4dccbca1e29f1156b55973c514c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_flags_sources_20261110_02/test_flags_v2.py": "ad0416e7a800deedaaac30a2b5780cc13d3f6863469df11b1cb07655ad1c148b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_flags_sources_20261110_02/test_sdk.py": "ed4dbf65fdfabfaecd50158989efda32194c13668b367a03bba402cf69f226d8"
+  },
+  "schema": "sdk-pv-counter-boundary-v2",
+  "scope": "Test-side phase attribution only; unchanged firmware/production and scalar expf zero-input proof",
+  "source_inputs": {
+    "/home/wangwy/openproject/ara_dsa/verification/performance/resident_rvv/qk_shared/full_call_sdk/build_flags_v2.py": "9855c7a6af6c61b77ed29c82838b6fa996b474860604475fafe292ba0264732c",
+    "/home/wangwy/openproject/ara_dsa/verification/performance/resident_rvv/qk_shared/full_call_sdk/test_flags_v2.py": "ad0416e7a800deedaaac30a2b5780cc13d3f6863469df11b1cb07655ad1c148b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_build_20261110_01/build.json": "c722d476cc1f73f14711e1b9cc24b111b0609d9ba42574b868aa2ee3ad054653",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_build_20261110_01/inputs/fixture/README.md": "82d3d8dd40e5e2a4cfce816461ac270043a02095b7adf01687d20a4eafa1151c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_build_20261110_01/inputs/fixture/build.py": "668f750eff2f8109d8a1ca8eaaedccc9e08ed1bbc78de079e6e7ae708218c5e4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_build_20261110_01/inputs/fixture/check.py": "56b6cbd8d240a320cdfa8454565ecd78224a7488e813df2f9a5c6431ce450979",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_build_20261110_01/inputs/fixture/fixture.py": "0d250640fab33a655da7c61a3431601ca8e7c1ede1fe0819d3c47609ed9fac23",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_build_20261110_01/inputs/fixture/main.c": "2c5bcf9917c84723f17c383d7c1e84751b1ae4dccbca1e29f1156b55973c514c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_build_20261110_01/inputs/fixture/test_sdk.py": "cdc4194d8e780c615d0dbe743ff314dbf4727eef4b1af88e5dd924375388cee4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_build_20261110_01/source-pins.json": "1d506a9b106f640c6c0eabf36a0d346f9a80598165a92fc066f830c49e3784ff",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage3_attention_sdk_flags_sources_20261110_02/flags-v2.patch": "908c9c423e51f8f13a7048004c02e76cfe8d2b40600609673bfbbc3068fecd92"
+  }
+}
