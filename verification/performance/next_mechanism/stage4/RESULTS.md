@@ -1,8 +1,9 @@
 # Stage4 Evidence And Disposition Ledger
 
-Status: the projection RTL pair passes with a measured1.02014x complete SDK
-speedup, below the promotion screen. Attention performance and functional RTL
-jobs are executing. Stage4 is not complete; no model-level gain is claimed.
+Status: the projection and Attention performance pairs pass with measured
+complete SDK speedups1.02014x and1.04005x, both below the promotion screen.
+Attention functional RTL acceptance remains pending. Stage4 is not complete;
+no model-level gain is claimed.
 
 Baseline is `d3d92ad72a3cabb91e8c333186160ae422f0866b`, tagged
 `stage3-resident-attention-20261110`. The plan was committed at `ebf9549ed`;
@@ -186,6 +187,29 @@ Reviewed pin hashes are respectively
 `96f1b4627e623a0f73e25c002a3a9d55688c7030af8ef1e818ede7137c06f37d`.
 Direct service launch has been requested. These are preparation/launch
 milestones only; numerical, protocol and performance execution remains pending.
+
+### Attention Performance Result
+
+`stage4_resident_features_vcs_perf_20261110_01/result.json` is PASS, SHA256
+`9106e86de6b11d91c45900884ae378e956741fe9d99eab19f60e92cb1c505db8`.
+Parent verified all1170 pins and71 artifacts. Simulation took1392.71s;
+complete worker time was1490.73s including checking. All1024 outputs match
+the independent target-libm/ordered oracle; FCSR is3/11/3/11,VCSR5,VSTART0.
+Retired entries prove three actual rotating-PV bodies per baseline call,
+three resident QK/PV/PV_PREP entries per candidate call and no cross-route
+execution. Legacy commands are237/4/4/237, with12 resident commands total.
+Independent protocol and post-run image/input checks pass.
+
+ABBA complete-call cycles including normalization/drain are67682,65086,
+65218,67841. Strong baseline mean67761.5 versus candidate65152 gives1.040052x
+speedup and3.851007% fewer cycles. Each final drain is46cycles. This is the
+captured D128/H2/T137 tensor with explicit derived score controls, not a new
+captured model behavior or end-to-end speedup.
+
+The result does not meet the approximately5% performance-promotion screen.
+Do not default-enable or weaken the baseline to increase the measured ratio.
+The experimental feature-bearing capability's final disposition additionally
+requires the functional boundary/fallback run and independent terminal review.
 
 ## Screened Or Deferred Work
 
