@@ -44,6 +44,18 @@ registered board/software changes explicitly; do not overwrite, revert or
 silently commit unrelated local edits. Use archived inputs and reviewed,
 hash-bound overlays for tests when the live workspaces differ.
 
+The source comparison establishes that current HEAD is not a superset of the
+validated delivery: its two-file delta removes the quantized-KV CMake block
+and several mask/feature handling paths. Do not use a plain HEAD archive as
+the complete integration baseline. Preserve the da56 runtime and register a
+minimal reviewed adaptation of auto-pair commit `06d046324` instead. Its last
+patch context differs from da56, so direct patch application or unchecked
+copying of the dirty runtime is not an accepted reconstruction procedure.
+Accepted da56 CMake SHA256:
+`2168ddbf805dc048b86d868468b4793f8998d635bd55cfa9d247bef4e375275f`;
+accepted da56 AKV source SHA256:
+`a2382b3a19a9c035428181c22a131ca18aaa466c153d9dc8006d7b43a75f97fb`.
+
 The existing GGML native path calls ordinary v2/native-auto SDK entries,
 not the resident entry. The generated resident supported fields remain0 in
 the accepted software contract. An environment switch alone cannot assert
