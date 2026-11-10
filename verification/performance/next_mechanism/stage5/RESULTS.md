@@ -294,3 +294,12 @@ identity `0b1ea7542c5e201525ac6605f7eaa9d66551aada5405cee17facd7aee675cd09`.
 The worker retains four build jobs, offline/internal-FDT configuration and
 before/after pin checks; only the exact empty Meson lock is admitted as generated
 metadata. Actual QEMU compilation and subsequent native gates remain pending.
+
+BUILD04 is terminal FAIL during configuration: dtc also requires
+`libfdt/version.lds`. No QEMU C compilation occurred. The3,119-reference audit
+was not a complete conditional build-input closure and must not be described
+as one. The next preparation must compare the complete fixed-revision dtc
+archive and restore all missing tracked inputs in one explicit manifest,
+instead of repeating single-file additions. Variant01, BUILD04 and their
+receipts remain preserved. The completed static libraries remain independent
+of this source-packaging failure.
