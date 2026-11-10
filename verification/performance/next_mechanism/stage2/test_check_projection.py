@@ -8,8 +8,10 @@ check = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(check)
 
 
-def fixture(enabled):
-    build = dict(m=8, k=2048, n=32, trials=[4, 8, 8, 4], build_id='test', full_output_width=False)
+def fixture(enabled, modes=(4, 8, 8, 4), oracle_flags=0):
+    build = dict(m=8, k=2048, n=32, trials=list(modes), build_id='test', full_output_width=False)
+    if len(modes) == 2:
+        build['flag_seeds'] = [0, 8]
     lines = []
     seq = 0
     for mode in build['trials']:
@@ -25,10 +27,11 @@ def fixture(enabled):
                      **{k: 0 for k in check.PHASES})
             p['phase_compute_cycles'] = 10
             lines.append('[QBS_PERF] ' + ' '.join(f'{k}={v}' for k, v in p.items()))
-    lines.append('STAGE2_PROJECTION_META id=test m=8 k=2048 n=32 trials=4 whole_model=0')
+    lines.append(f'STAGE2_PROJECTION_META id=test m=8 k=2048 n=32 trials={len(modes)} whole_model=0')
     for trial, mode in enumerate(build['trials']):
+        flag = oracle_flags | ((0 if trial == 0 else 8) if len(modes) == 2 else 1)
         lines.append(f'STAGE2_PROJECTION_TRIAL id={trial} mode={mode} status=0 commands=2 context=0 '
-                     'quant=1 pack=1 plan=1 execute=20 drain=1 total=24 flags=1 expected_flags=1 '
+                     f'quant=1 pack=1 plan=1 execute=20 drain=1 total=24 flags={flag} expected_flags={flag} '
                      'q8_bad=0 output_bad=0 guards_bad=0')
         for row in range(8):
             for col in range(32):
@@ -40,9 +43,10 @@ def fixture(enabled):
 class TestProjectionChecker(unittest.TestCase):
     def test_baseline_and_candidate(self):
         for enabled in (0, 1):
-            text, build, expected = fixture(enabled)
-            result = check.check(text, build, expected, 0, enabled)
-            self.assertEqual(result['outputs_bit_exact'], 1024)
+            for modes in ((4, 8, 8, 4), (4, 4), (8, 8)):
+                text, build, expected = fixture(enabled, modes)
+                result = check.check(text, build, expected, 0, enabled)
+                self.assertEqual(result['outputs_bit_exact'], len(modes)*256)
 
     def test_reject_missing_bad_duplicate_or_work_mismatch(self):
         text, build, expected = fixture(1)
@@ -55,6 +59,15 @@ class TestProjectionChecker(unittest.TestCase):
                         text.replace('col=0 bits=3f800000', 'col=1 bits=3f800000', 1)):
             with self.subTest(changed=changed[:50]), self.assertRaises(ValueError):
                 check.check(changed, build, expected, 0, 1)
+
+    def test_nx_generation_and_existing_dz_preservation(self):
+        text, build, expected = fixture(1, (8, 8), 1)
+        check.check(text, build, expected, 1, 1)
+        for changed in (text.replace('flags=1 expected_flags=1', 'flags=0 expected_flags=1', 1),
+                        text.replace('flags=9 expected_flags=9', 'flags=8 expected_flags=9', 1),
+                        text.replace('flags=9 expected_flags=9', 'flags=1 expected_flags=9', 1)):
+            with self.assertRaises(ValueError):
+                check.check(changed, build, expected, 1, 1)
 
 
 if __name__ == '__main__':

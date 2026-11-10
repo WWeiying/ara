@@ -5,7 +5,7 @@
 #include "printf.h"
 
 enum { M = 8, K = 2048, KB = 8, N = PROJECTION_N,
-       AB = M*KB*292, WB = N*KB*144, GUARD = 64, TRIALS = 4 };
+       AB = M*KB*292, WB = N*KB*144, GUARD = 64, TRIALS = PROJECTION_TRIALS };
 extern const float projection_input[M*K];
 extern const unsigned char projection_weights[WB], projection_expected_q8[AB];
 extern const float projection_expected[M*N];
@@ -35,7 +35,7 @@ static inline uint64_t cycles(void) {
 }
 
 __attribute__((noinline, noclone))
-static void projection_trial(unsigned mode, record_t *r) {
+static void projection_trial(unsigned mode, unsigned flags_seed, record_t *r) {
   qbs_device_t device;
   qbs_plan_t plan;
   qbs_execution_options_t options = {0};
@@ -68,12 +68,12 @@ static void projection_trial(unsigned mode, record_t *r) {
   r->commands = mode == 8 ? N/16 : 2*(N/32);
   if (status == QBS_STATUS_OK &&
       (plan.split_k || plan.needs_activation_gather || plan.workspace_bytes ||
-       plan.command_m != mode || plan.command_n != (mode == 8 ? 16 : 32) ||
+       plan.command_m != mode || plan.command_n != 32 || plan.wide_command_n != 16 ||
        plan.k_blocks != KB || qbs_plan_supports_activation_context(&plan)))
     status = QBS_STATUS_SHAPE;
   r->context = 0;
   r->t[3] = cycles();
-  __asm__ volatile("csrwi fflags, 1" : : : "memory");
+  __asm__ volatile("csrw fflags, %0" : : "r"((uint64_t)flags_seed) : "memory");
   if (status == QBS_STATUS_OK)
     status = qbs_execute_with_options(&plan, projection_weights, WB,
         packed.data, AB, output.data, M*N, N, NULL, 0, &options,
@@ -99,7 +99,7 @@ int main(void) {
   __asm__ volatile("csrwi fcsr, 0\ncsrwi vcsr, 0\ncsrwi vstart, 0" : : : "memory");
   for (unsigned trial = 0; trial < TRIALS; ++trial) {
     memset(output.data, 0x5a, sizeof(output.data));
-    projection_trial(trial == 0 || trial == 3 ? 4 : 8, &records[trial]);
+    projection_trial(PROJECTION_MODE, trial == 0 ? 0 : 8, &records[trial]);
     memcpy(snapshots[trial], output.data, sizeof(output.data));
     memcpy(q8_snapshots[trial], q8.data, AB);
     for (unsigned i = 0; i < GUARD; ++i)
@@ -108,8 +108,8 @@ int main(void) {
           output.before[i] != 0xa5 || output.after[i] != 0xa5;
   }
   unsigned errors = 0;
-  printf("STAGE2_PROJECTION_META id=%s m=8 k=2048 n=%u trials=4 whole_model=0\n",
-         PROJECTION_ID, N);
+  printf("STAGE2_PROJECTION_META id=%s m=8 k=2048 n=%u trials=%u whole_model=0\n",
+         PROJECTION_ID, N, TRIALS);
   for (unsigned trial = 0; trial < TRIALS; ++trial) {
     record_t *r = &records[trial];
     for (unsigned i = 0; i < AB; ++i)
@@ -117,14 +117,14 @@ int main(void) {
     for (unsigned i = 0; i < M*N; ++i)
       r->outputs_bad += bits(snapshots[trial][i]) != bits(projection_expected[i]);
     errors += r->status != QBS_STATUS_OK || r->guards_bad || r->q8_bad ||
-              r->outputs_bad || r->flags != (projection_flags | 1u);
+              r->outputs_bad || r->flags != (projection_flags | (trial == 0 ? 0u : 8u));
     printf("STAGE2_PROJECTION_TRIAL id=%u mode=%u status=%u commands=%u context=%u "
            "quant=%lu pack=%lu plan=%lu execute=%lu drain=%lu total=%lu "
            "flags=%lu expected_flags=%u q8_bad=%u output_bad=%u guards_bad=%u\n",
            trial, r->mode, r->status, r->commands, r->context,
            r->t[1]-r->t[0], r->t[2]-r->t[1], r->t[3]-r->t[2],
            r->t[4]-r->t[3], r->t[5]-r->t[4], r->t[5]-r->t[0],
-           r->flags, projection_flags | 1u, r->q8_bad, r->outputs_bad, r->guards_bad);
+           r->flags, projection_flags | (trial == 0 ? 0u : 8u), r->q8_bad, r->outputs_bad, r->guards_bad);
     for (unsigned row = 0; row < M; ++row)
       for (unsigned col = 0; col < N; ++col)
         printf("STAGE2_PROJECTION_OUTPUT trial=%u row=%u col=%u bits=%08x\n",

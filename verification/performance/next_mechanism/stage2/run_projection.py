@@ -37,7 +37,8 @@ def input_pins(base, soc, software):
     base.require(hw['configuration'] == expected and expected['qbs_lane_multiplier'] in (0, 1),
                  'Unexpected hardware configuration')
     base.require(sw['state'] == 'BUILT_NOT_EXECUTED' and sw['post_pins_match'] and
-                 sw['trials'] == [4, 8, 8, 4] and sw['m'] == 8 and sw['k'] == 2048 and
+                 sw['trials'] in ([4, 4], [8, 8]) and sw['flag_seeds'] == [0, 8] and
+                 sw['m'] == 8 and sw['k'] == 2048 and
                  sw['n'] in (32, 64, 96, 128) and sw['context_replay'] is False,
                  'Unexpected software scope')
     pins = {}
@@ -85,14 +86,14 @@ def prepare(args):
     print(inputs / 'run_projection.py', flush=True)
 
 
-def check_loans(text, n, enabled, parse):
+def check_loans(text, n, enabled, parse, modes=(4, 8, 8, 4)):
     records = [parse(line, 'STAGE2_SOC_LOAN ') for line in text.splitlines()
                if line.startswith('STAGE2_SOC_LOAN ')]
     totals = [parse(line, 'STAGE2_SOC_LOAN_DONE ') for line in text.splitlines()
               if line.startswith('STAGE2_SOC_LOAN_DONE ')]
     if len(totals) != 4 or {t['lane'] for t in totals} != set(range(4)):
         raise ValueError('Missing/duplicate actual VMFPU terminal accounting')
-    commands = 4*(n//16) if enabled else 0
+    commands = len(modes)*(n//16) if enabled else 0
     if len(records) != 4*commands:
         raise ValueError('Missing/extra actual VMFPU loan commands')
     for lane in range(4):
@@ -101,7 +102,7 @@ def check_loans(text, n, enabled, parse):
             raise ValueError('Loan command sequence mismatch')
         expected_sum = 0
         for index, row in enumerate(rows):
-            mode = (4, 8, 8, 4)[index//(n//16)]
+            mode = modes[index//(n//16)]
             beats = 4096 if mode == 8 else 0
             expected_sum += beats
             if set(row) != {'lane', 'seq', 'accepted', 'core_issued', 'core_completed', 'returned'} or any(
@@ -143,7 +144,7 @@ def execute(out):
         wall = time.monotonic()-before
         log = work / 'run.vcs.log'
         measured = check.check_run(log, Path(config['software']), config['enabled'])
-        loans = check_loans(log.read_text(), sw['n'], config['enabled'], check.fields)
+        loans = check_loans(log.read_text(), sw['n'], config['enabled'], check.fields, sw['trials'])
         proof = work / 'protocol.json'
         base.execute([sys.executable, '-B', '-m', 'ara_verify.uvm_dut', '--require-events',
                       '--require-backend', '--require-axi', '--require-axi-write',

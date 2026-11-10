@@ -13,13 +13,13 @@ def load(name):
 run, check = load('run_projection'), load('check_projection')
 
 
-def fixture(enabled):
+def fixture(enabled, modes=(4, 8, 8, 4)):
     lines = []
-    count = 8 if enabled else 0
+    count = len(modes)*2 if enabled else 0
     for lane in range(4):
         total = 0
         for seq in range(1, count+1):
-            beats = 4096 if (4, 8, 8, 4)[(seq-1)//2] == 8 else 0
+            beats = 4096 if modes[(seq-1)//2] == 8 else 0
             total += beats
             lines.append(f'STAGE2_SOC_LOAN lane={lane} seq={seq} accepted={beats} '
                          f'core_issued={beats} core_completed={beats} returned={beats}')
@@ -30,8 +30,9 @@ def fixture(enabled):
 class TestActualCoreAccounting(unittest.TestCase):
     def test_native_and_borrowed_paths(self):
         for enabled in (0, 1):
-            result = run.check_loans(fixture(enabled), 32, enabled, check.fields)
-            self.assertEqual(result['commands_per_lane'], 8*enabled)
+            for modes in ((4, 8, 8, 4), (4, 4), (8, 8)):
+                result = run.check_loans(fixture(enabled, modes), 32, enabled, check.fields, modes)
+                self.assertEqual(result['commands_per_lane'], len(modes)*2*enabled)
 
     def test_wrong_or_incomplete_work_rejected(self):
         original = fixture(1)

@@ -49,7 +49,8 @@ def build(args):
     directory, meta = captured_inputs(args.operator, base.digest)
     out.mkdir()
     b = base.Builder(out)
-    for path in (Path(__file__), HERE / 'projection_main.c', HERE / 'projection_host.c', BASE,
+    for path in (Path(__file__), HERE / 'projection_main.c', HERE / 'projection_host.c',
+                 HERE / 'projection_plan_test.c', BASE,
                  CAPTURE / 'result.json', directory / 'operator.json', directory / 'activation_f32.bin',
                  directory / 'weight_q4_K.bin'):
         b.pin(path)
@@ -76,10 +77,19 @@ def build(args):
     host = out / 'host_ref'
     b.run('host-link', ['/usr/bin/gcc', out / 'host.o', out / 'reference.o', '-lm', '-o', host])
     b.run('host-reference', [host, directory / 'activation_f32.bin', directory / 'weight_q4_K.bin', args.n, data])
+    plan_flags = host_flags + ['-I' + str(sdk / 'software/qbs/include')]
+    for source, name in ((HERE / 'projection_plan_test.c', 'host_plan'),
+                         (sdk / 'software/qbs/src/qbs_runtime.c', 'host_runtime')):
+        b.compile('/usr/bin/gcc', plan_flags, source, out / (name + '.o'))
+    b.run('host-plan-link', ['/usr/bin/gcc', out / 'host_plan.o', out / 'host_runtime.o',
+                            out / 'reference.o', '-lm', '-o', out / 'host_plan_test'])
+    b.run('host-plan-check', [out / 'host_plan_test'])
     build_id = hashlib.sha256(json.dumps(dict(sources=b.pins, sdk=sdk_revision, llama=llama_revision,
-                  operator=args.operator, n=args.n), sort_keys=True).encode()).hexdigest()
+                  operator=args.operator, n=args.n, mode=args.mode, trials=2,
+                  flag_seeds=[0, 8]), sort_keys=True).encode()).hexdigest()
     config = out / 'projection_config.h'
-    config.write_text(f'#define PROJECTION_N {args.n}\n#define PROJECTION_ID "{build_id}"\n')
+    config.write_text(f'#define PROJECTION_N {args.n}\n#define PROJECTION_ID "{build_id}"\n'
+                      f'#define PROJECTION_MODE {args.mode}\n#define PROJECTION_TRIALS 2\n')
     assembly = out / 'data.S'
     assembly.write_text('.section .rodata\n' + ''.join(
         f'.balign 64\n.global {symbol}\n{symbol}:\n.incbin "{data / name}"\n'
@@ -139,7 +149,8 @@ def build(args):
         elf_sha256=base.digest(elf), build_id=build_id, sdk_revision=sdk_revision, llama_revision=llama_revision,
         source_pins_sha256=base.digest(out / 'source-pins.json'), post_pins_match=True,
         operator=args.operator, capture=str(CAPTURE), provenance=meta, m=8, k=2048, n=args.n,
-        trials=[4, 8, 8, 4], golden='Independent ordered qbs_ref; no captured GGML projection golden',
+        trials=[args.mode, args.mode], flag_seeds=[0, 8],
+        golden='Independent ordered qbs_ref; no captured GGML projection golden',
         context_replay=False, context_note='M4/M8 full-K activation bytes exceed unchanged 4672-byte context',
         cold_weight_repack_in_roi=False, quant_pack_plan_execute_drain_in_roi=True,
         full_software_call=True, whole_model=False, full_output_width=args.n == meta['original_weight_shape'][1],
@@ -152,4 +163,5 @@ if __name__ == '__main__':
     parser.add_argument('output', type=Path)
     parser.add_argument('--operator', choices=('attn_q', 'ffn_gate'), required=True)
     parser.add_argument('--n', type=int, choices=(32, 64, 96, 128), required=True)
+    parser.add_argument('--mode', type=int, choices=(4, 8), required=True)
     build(parser.parse_args())

@@ -33,8 +33,12 @@ def fields(line, prefix, strings=()):
 
 def check(text, build, expected, expected_flags, enabled):
     n = build['n']
+    modes = build['trials']
+    trial_count = len(modes)
     require(build['m'] == 8 and build['k'] == 2048 and len(expected) == 8*n*4 and
-            build['trials'] == [4, 8, 8, 4], 'Wrong build/expected scope')
+            modes in ([4, 8, 8, 4], [4, 4], [8, 8]), 'Wrong build/expected scope')
+    seeds = build.get('flag_seeds', [1, 1, 1, 1] if trial_count == 4 else None)
+    require(seeds == ([0, 8] if trial_count == 2 else [1, 1, 1, 1]), 'Wrong exception seeds')
     require(text.count('Core Test *** SUCCESS ***') == 1, 'Missing/duplicate firmware success')
     require(not re.search(r'(?im)(?:^\s*(?:Error[-:]|Fatal:)|Assertion failed|\$fatal|'
                           r'STAGE2_PROJECTION_FAIL|\bTIMEOUT\b|\bTIMED OUT\b)', text), 'Simulation failure')
@@ -57,11 +61,11 @@ def check(text, build, expected, expected_flags, enabled):
         elif line.startswith('STAGE2_PROJECTION_META '):
             require(meta is None and footer is None, 'Duplicate metadata')
             meta = fields(line, 'STAGE2_PROJECTION_META ', ('id',))
-            require(meta == dict(id=build['build_id'], m=8, k=2048, n=n, trials=4, whole_model=0),
+            require(meta == dict(id=build['build_id'], m=8, k=2048, n=n, trials=trial_count, whole_model=0),
                     'Build metadata mismatch')
         elif line.startswith('STAGE2_PROJECTION_TRIAL '):
             r = fields(line, 'STAGE2_PROJECTION_TRIAL ')
-            require(meta is not None and footer is None and r['id'] == len(trials) and len(trials) < 4,
+            require(meta is not None and footer is None and r['id'] == len(trials) and len(trials) < trial_count,
                     'Trial order/identity')
             mode = build['trials'][r['id']]
             require(set(r) == {'id', 'mode', 'status', 'commands', 'context', *TIMES, 'total',
@@ -70,7 +74,8 @@ def check(text, build, expected, expected_flags, enabled):
             require(r['mode'] == mode and r['status'] == r['context'] == r['q8_bad'] ==
                     r['output_bad'] == r['guards_bad'] == 0 and r['commands'] == n//16,
                     'Work/admission/numerical failure')
-            require(r['flags'] == r['expected_flags'] == expected_flags | 1,
+            seed = seeds[r['id']]
+            require(r['flags'] == r['expected_flags'] == expected_flags | seed,
                     'Sticky exceptions mismatch')
             require(all(r[k] > 0 for k in TIMES) and sum(r[k] for k in TIMES) == r['total'],
                     'Software cycle partition mismatch')
@@ -88,13 +93,13 @@ def check(text, build, expected, expected_flags, enabled):
                     'Independent bit-exact output mismatch')
             values[key] = value
         elif line.startswith('STAGE2_PROJECTION_PASS '):
-            require(meta is not None and footer is None and len(trials) == 4, 'Early/duplicate footer')
+            require(meta is not None and footer is None and len(trials) == trial_count, 'Early/duplicate footer')
             footer = fields(line, 'STAGE2_PROJECTION_PASS ')
             require(footer == {'errors': 0}, 'Failed firmware footer')
         elif line.startswith('STAGE2_PROJECTION_'):
             raise ValueError('Unknown workload record')
-    require(meta is not None and footer is not None and len(trials) == 4 and
-            len(values) == 4*8*n and len(perf) == 4*(n//16), 'Incomplete evidence')
+    require(meta is not None and footer is not None and len(trials) == trial_count and
+            len(values) == trial_count*8*n and len(perf) == trial_count*(n//16), 'Incomplete evidence')
     count = n//16
     for trial, t in enumerate(trials):
         commands = perf[trial*count:(trial+1)*count]
@@ -113,7 +118,7 @@ def check(text, build, expected, expected_flags, enabled):
         t['native_busy'] = sum(p['busy_cycles'] for p in commands)
         require(t['native_busy'] <= t['execute'], 'Engine cycles exceed execute ROI')
         t['software_execute_remainder'] = t['execute']-t['native_busy']
-    return dict(state='PASS', trials=trials, outputs_bit_exact=4*8*n,
+    return dict(state='PASS', trials=trials, outputs_bit_exact=trial_count*8*n,
                 command_count=len(perf), numerical='Host independently checks every reported output; '
                 'firmware compares complete Q8 bytes and guards against independent constants',
                 scope='Real full-K projection slice, complete software invocation; not full layer/model',
