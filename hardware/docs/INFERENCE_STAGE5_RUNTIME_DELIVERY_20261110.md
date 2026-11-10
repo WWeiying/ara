@@ -56,3 +56,51 @@ runtime/model execution if its instruction model is inspected and checked.
 No Verilator, URG or RTL Linux boot campaign is introduced. Long jobs use
 independent outputs and direct service ownership, with one launch confirmation
 and event/terminal inspection rather than repeated polling.
+
+## Native Execution Dependency And Implementation Split
+
+Source audit confirms that the inspected QEMU10.2.0 image implements QBS but
+not AKV INFO, lifecycle, replay or resident QK/PV. Earlier AKV software emulation
+is useful reference evidence, not native resident execution. Therefore S3
+requires a successor QEMU instruction model, preserving the frozen QBS model.
+Do not modify a previously accepted emulator source/build in place.
+
+The implementation split is:
+
+1. Per-hart AKV context, descriptor/range validation, FULL/REFILL/RELEASE and
+   row/column/panel replay, with explicit memory-fault invalidation.
+2. QEMU decode/translation and guest-memory/VRF callbacks; QEMU SoftFloat for
+   dimension-ordered FP32 QK and token-ordered FP16 PV, including flags and
+   legal register/control constraints. Do not substitute host arithmetic.
+3. Directed state/fault/numerical checks, then the unchanged accepted Stage4
+   performance and functional ELFs, before real GGML/model execution. Startup
+   compatibility is an isolated test-machine adapter, not an ELF/oracle rewrite.
+4. A versioned trusted-platform provider, absent/default-deny in generic builds.
+   A validated test deployment is bound to sealed emulator/launch inputs;
+   it does not claim new hardware discovery or board eligibility. Index4 remains
+   zero. Model/native support and operator environment flags alone cannot grant
+   production normal-memory or exclusive-context eligibility.
+5. Minimal GGML plain-Decode selection under that contract; keep features,
+   quantized KV, Prefill and unsupported shapes on their original paths.
+
+## Proposed Finite Model Matrix
+
+The model owner is pinning actual files, tokenizers and natural-text token
+prefixes. These are intended test points, not accepted or frozen inputs yet.
+Each pair changes resident selection only; QBS optimizations stay fixed.
+
+| Model/weight family | KV | Prompt and Decode contexts | Purpose |
+|---|---|---|---|
+| SmolLM2-135M Q4_K_M | F16/F16 | 63 then64,65 | D64, GQA3, odd heads and tile boundary |
+| Qwen3-1.7B Q4_K_M | F16/F16 | 136 then137,138, capacity256 | D128, GQA2, multi-tile tail |
+| Qwen2.5-1.5B Q4_0 | Q8_0/Q8_0 | Short fixed prefix, two Decode steps | Different weight family; quantized-KV fallback |
+| Same Qwen2.5 model | Q4_0/Q8_0 | Identical prefix/steps | Second quantized-KV fallback |
+| Gemma3-1B Q4_K_M | F16/F16 | Existing short-prefix pattern | D256 resident rejection and original fallback |
+
+Require eligible native resident instruction hits, zero resident execution on
+ineligible paths, complete logits/tokens/CSR checks, and exact source/model/
+launch provenance. Different primitive command counts across execution routes
+are expected; useful logical work and each route's own protocol must match.
+Only QEMU functional claims are allowed from these runs. Full integration cost
+measurement must include query conversion and other GGML preparation; the
+accepted SDK-only RTL ratios are not model performance.
