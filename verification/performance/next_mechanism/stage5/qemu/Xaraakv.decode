@@ -1,0 +1,17 @@
+# Experimental Ara AKV architecture model. Independent of Xaraqbs.
+%rs2 20:5
+%rs1 15:5
+%rd   7:5
+
+&akv_info rd rs1
+&akv_exec rd rs1 rs2
+@akv_info ....... ..... ..... ... ..... ....... &akv_info %rs1 %rd
+@akv_exec ....... ..... ..... ... ..... ....... &akv_exec %rs2 %rs1 %rd
+
+akvinfo    0000000 00000 ..... 100 ..... 1011011 @akv_info
+# The model checks reserved fields before callbacks or architectural writes.
+akvexec    ....... ..... ..... 010 ..... 1011011 @akv_exec
+akvexec    ....... ..... ..... 011 ..... 1011011 @akv_exec
+akvexec    ....... ..... ..... 101 ..... 1011011 @akv_exec
+akvexec    ....... ..... ..... 110 ..... 1011011 @akv_exec
+akvexec    ....... ..... ..... 111 ..... 1011011 @akv_exec
