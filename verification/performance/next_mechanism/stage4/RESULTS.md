@@ -1,9 +1,8 @@
 # Stage4 Evidence And Disposition Ledger
 
-Status: implementation/correctness checkpoints exist; the paired projection
-RTL evaluation is executing and native Attention numerical preparation is in
-progress. Stage4 is not complete and no new performance
-gain is claimed here.
+Status: the projection RTL pair passes with a measured1.02014x complete SDK
+speedup, below the promotion screen. Attention performance and functional RTL
+jobs are executing. Stage4 is not complete; no model-level gain is claimed.
 
 Baseline is `d3d92ad72a3cabb91e8c333186160ae422f0866b`, tagged
 `stage3-resident-attention-20261110`. The plan was committed at `ebf9549ed`;
@@ -74,6 +73,34 @@ was observed with the accepted image and BUILD02 ELF. This is launch evidence,
 not a passing numerical or performance result. The run is bounded to9000s,
 with no FSDB or automatic retry. Inherited helper and documentation pins
 remain sealed while the consumer executes.
+
+### Complete-Call Result And Decision
+
+`stage4_projection_chain_vcs_20261110_01/result.json` is PASS, SHA256
+`4169c03338a2c76dddd111085ded3dcdffcb7722b3ce6e886cc4d4e33901eb5c`.
+Simulation took2451.73s. Parent verified all2420 input pins and68 artifacts
+still match. All32768 outputs, prepared bytes, guards and CSR controls pass;
+retired entries are2 baseline producers,2 candidate producers and256 native
+commands. The independent protocol and post-image checks also pass.
+
+| Mean cycles | Accepted parallel/cache | Retained-maxima preflight |
+|---|---:|---:|
+| Preparation/cache handling | 66457 | 56673.5 |
+| Admission | 5917 | 5610 |
+| Execution | 469669.5 | 469119 |
+| Complete SDK chain | 542821 | 532106 |
+
+Preparation/cache handling is1.172629x faster (14.72155% fewer cycles); the
+complete chain is1.020137x faster (1.973947% fewer cycles). Hardware native-busy
+means remain444400.5/444400 cycles. This software preparation change does not
+accelerate that dominant execution work. ABBA complete totals are543893,
+532433,531779,541749 cycles; all calls preserve FCSR17,VCSR5,VSTART0.
+
+Disposition: keep the correct helper and reproducible experiment, but do not
+promote it into the GGML performance selection/defaults: the complete-call
+gain is below the approximately5% screen. No conditional GGML integration is
+required for this rejected promotion. Do not repeat/tune this experiment merely
+to cross the threshold, or report the preparation ratio as a model speedup.
 
 ## B: Feature-Bearing Resident Decode
 
