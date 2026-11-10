@@ -65,7 +65,12 @@ model heads. No extra target case or RTL experiment was added.
 Required work is 247 legacy commands (237/4/6), 11 QK and 11 PV commands,
 255 vector custom allocations (233 native +22 resident), and actual retired
 entry counts decode_execute6 (including three pure preflights) / SDK executor4.
-These are strict expected counts, not claims of completed SoC acceptance.
+The terminal `stage3_attention_sdk_vcs_20261110_01/result.json` now verifies
+these counts, all 1,088 exact outputs, FCSR 3/11/3, guards and post-run identities.
+Independent protocol passes with zero exceptions, errors or outstanding work.
+This is scoped actual SDK functional acceptance, not a new performance or
+deployment claim. The result SHA256 is
+`70ccad29ade83850f3c6a94276b8f60d7258513c4091939267641f550bbd3fb1`.
 
 All published sources are frozen for parent review/commit. No production files,
 old helper, frozen OUT file, checker threshold, or numerical contract was changed.

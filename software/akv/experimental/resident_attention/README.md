@@ -111,3 +111,10 @@ The paired prototype measures one real Qwen3 D128/H2/T137 call at 1.20842x.
 That result does not establish model-wide speedup, all-shape benefit or native
 SDK acceptance by itself. Use the applicable receipt, not host-test counts, to
 decide which execution scope has passed.
+
+Actual native SDK execution separately passes in
+`stage3_attention_sdk_vcs_20261110_01/result.json`: requested-OFF/ON original
+D128/H2/T137 and a distinct derived D96/H6/KV2/T65 case, 1,088 bit-exact FP32
+values, FCSR 3/11/3, actual SDK entries, work, independent protocol and post-run
+identities. This closes stage-3 candidate validation without changing the
+default route, capability or board delivery.

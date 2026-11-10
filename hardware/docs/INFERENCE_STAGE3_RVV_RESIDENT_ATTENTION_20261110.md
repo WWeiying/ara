@@ -1,7 +1,8 @@
 # Stage 3: Shared RVV Execution for Resident Attention
 
-Status: architectural and paired complete-call gates pass; actual SDK execution
-is running and final delivery remains in progress. No new FPGA or physical acceptance is
+Status: gates A through F are complete for the scoped experimental candidate.
+Architectural, paired complete-call and actual native SDK checks pass. Default
+selection and capability remain unchanged; no FPGA or physical acceptance is
 claimed.
 Starting commit: `7543bbec0` on `ara_dsa`. Stage 2 remains an opt-in candidate;
 this stage does not silently enable its integer multiplier borrowing.
@@ -17,7 +18,8 @@ normalization in their existing software positions and numerical order.
 No larger SRAM, wider external bus, extra FPU array, synthesis, power analysis
 or new FPGA campaign is authorized. Source inputs and results go to independent
 directories under the sole signoff worktree. Existing failed results remain
-unchanged. The unfinished PV boundary test is a prerequisite, not a waived case.
+unchanged. The original PV boundary test was a prerequisite, not a waived case;
+it is now closed through the separate strict audit described below.
 
 ## Shared Resources and Interfaces
 
@@ -38,11 +40,13 @@ lanes do not execute or wait for nonexistent packets. Each output follows
 increasing dimension order using FP32 FMA and exact internal F16 re-encoding
 that preserves signaling NaNs; inactive elements cannot contribute flags.
 
-The proposed QK encoding and detailed geometry are in
-`verification/performance/resident_rvv/qk_shared/PLAN.md`. They become an
-accepted contract only after decoder, SDK and RTL validation, not merely by
-adding constants. PV encoding, architectural VL/VTYPE and ordinary RVV remain
-unchanged. Capability/default promotion is gated by composed results.
+The tested experimental QK encoding and detailed geometry are in
+`verification/performance/resident_rvv/qk_shared/PLAN.md`, retained as the
+original design record rather than a current progress report. Decoder, SDK and
+RTL checks now cover that contract. PV encoding, architectural VL/VTYPE and
+ordinary RVV remain unchanged. The assembly leaves' normal RVV setup/stores
+can change VL/VTYPE; their clobber contract is separate from the custom command.
+Capability discovery and default deployment are not promoted by this stage.
 
 ## Work and Acceptance Gates
 
@@ -62,10 +66,10 @@ Representative complete-call benefit, not peak FMA rate or one fast tile, drives
 retention. Do not change arithmetic order to manufacture a speedup, or replace
 an optimized software baseline with a weaker one.
 
-Unresolved points at entry: the original PV boundary firmware has reported
-failures; the QK lane file is only an uncompiled draft; the production reader,
-central controller, VMFPU format selector and architectural QK path are not yet
-implemented. No gate is marked complete until its evidence has been inspected.
+Historical unresolved points at entry: the original PV boundary firmware had
+failures; the QK lane file was only an uncompiled draft; the production reader,
+central controller, VMFPU format selector and architectural QK path were not yet
+implemented. The completed gates and their inspected evidence follow.
 
 ## Current Checkpoint
 
@@ -102,9 +106,20 @@ measurement is not whole-model speedup or acceptance of the new SDK entry.
 Runtime admission and tile mapping have host tests. An experimental SDK entry
 now shares the existing native v2 execution loop and selects the resident QK/PV
 leaves only after admission; default-OFF object equivalence and host helper
-checks pass. Actual SDK whole-call execution is running, with terminal acceptance
-still pending. Capability
-remains zero and existing entry points retain native selection.
+checks pass. `stage3_attention_sdk_vcs_20261110_01/result.json` now also passes
+actual native SDK execution: three complete calls, 1,088 exact FP32 outputs,
+FCSR 3/11/3, six Decode entry retirements, four experimental executor entry
+retirements, eleven QK and eleven PV commands. The D96 case covers two distinct
+KV groups, odd H3 pairing, local query-base reset and a one-token tail. It is
+explicitly derived from real inputs, not a separately captured six-head model
+layer. Independent protocol and post-run source/image checks pass; the service
+exited successfully. Capability remains zero and existing entry points retain
+native selection.
+
+The measured 1.20842x prototype benefit supports retaining the explicit
+experimental route. The SDK functional gate is not a new performance baseline
+or a model-level speedup. Stage 3 is closed; shape/performance expansion and
+formal GGML/default integration remain stages four and five respectively.
 Detailed receipts and limitations are recorded in
 `verification/performance/resident_rvv/qk_shared/RESULTS.md`.
 The version composition and gate ledger are in

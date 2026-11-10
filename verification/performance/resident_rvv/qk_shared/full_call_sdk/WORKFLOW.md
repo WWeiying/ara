@@ -41,7 +41,7 @@ is bounded at 5,400 seconds; no FSDB or automatic retry is enabled.
 
 The reviewed attempt is `stage3_attention_sdk_vcs_20261110_01`, with source-pin
 SHA256 `d532da52c58a5742c294cab8a7148397a08e4e2ec13cb1a568e3f7c0582da3c2`.
-It is launched, not yet accepted. Its service is
+It is terminal PASS; its service exited successfully and is now inactive:
 `stage3-attention-sdk-stage3_attention_sdk_vcs_20261110_01.service`.
 
 ```sh
@@ -59,3 +59,9 @@ fixture is explicitly distinguished from independently captured model heads.
 Keep `performance_acceptance=false` in this functional worker: retention uses
 the separate equal-work ABBA measurement. Neither receipt promotes capability,
 GGML selection, a new bitstream or whole-model performance.
+
+The accepted result SHA256 is
+`70ccad29ade83850f3c6a94276b8f60d7258513c4091939267641f550bbd3fb1`.
+It checks all 1,088 outputs, flags, actual entries, work and protocol above,
+including post-run identities. Diagnostic full-call cycles are 41,908/37,984/
+58,285; these are not a new paired performance comparison.

@@ -1,7 +1,7 @@
 # Stage 3 Candidate Delivery Contract
 
-Status: gates A through E are closed within the scopes below. Gate F native SDK
-execution is running; this is not yet a completed stage or a board delivery.
+Status: gates A through F are closed within the scopes below. Stage 3 is
+complete as a default-disabled experimental candidate, not a board delivery.
 The development branch is `ara_dsa`. No physical signoff, new FPGA result or
 whole-model speedup is included.
 
@@ -101,7 +101,7 @@ integration; neither is implied by setting experimental options.
 | C: resident dataflow | `stage3_reader_gate_20261110_01/report.json`; `stage3_control_gate_20261110_03/report.json` | Synchronous storage and masks, backpressure, cancellation and final-write debt; control lanes are explicitly stubs |
 | D: architectural QK | `stage3_qk_boundary_v2_20261110_01/report.json`; `stage3_abi_host_closeout_20261110_01/junit.xml` | 24 successful QK operations, 12 actual rejection groups, PV/QBS/RVV coexistence; 17 additional host ABI tests |
 | E: complete-call performance | `stage3_attention_vcs_abba_20261110_01/result.json` | One captured real Qwen3 D128/H2/T137 input, optimized baseline, equal work and all output bits/flags/guards/protocol |
-| F: actual SDK | `stage3_attention_sdk_vcs_20261110_01/result.json` | Pending: three complete native SDK calls, actual entry PCs, numerical/CSR/work/protocol and post-run identities |
+| F: actual SDK | `stage3_attention_sdk_vcs_20261110_01/result.json` | PASS: three complete native SDK calls, actual entry PCs, numerical/CSR/work/protocol and post-run identities |
 
 The original PV worker's FAIL is retained. It arose from an invalid global
 serialization assumption in the work splitter; the separate audit checks all
@@ -137,20 +137,23 @@ it is a measurement receipt, not deployment authorization. Gate F's OFF call
 is a functional fallback check and is not the optimized performance baseline.
 Its diagnostic cycles must not replace this ABBA comparison.
 
-## 6. SDK Closure Still Required
+## 6. Completed SDK Acceptance
 
-The running SDK worker is pinned by SHA256
+The terminal PASS worker is pinned by SHA256
 `d532da52c58a5742c294cab8a7148397a08e4e2ec13cb1a568e3f7c0582da3c2`.
-It must pass all of the following before this stage is marked complete:
+Its service exited with status zero after 1,249 seconds of execution/checking.
+The inspected receipt closes all of the following requirements:
 
 1. OFF and ON original D128/H2/T137 plus a distinct derived D96/H6/KV2/T65
    case: all 1,088 outputs exact, FCSR 3/11/3 and memory guards intact.
 2. Six actual Decode entries and four experimental group-executor entries,
    bound to the retired ELF instructions rather than software-only labels.
-3. Exact legacy and resident command counts, active-lane FMA work, local
-   query-base selection, architectural write masks and final completion.
-4. Independent protocol PASS with zero exceptions, errors or outstanding work;
-   source, image, ELF and checker I/O identities match after execution.
+3. Exact 247 legacy commands (237/4/6), eleven QK and eleven PV commands,
+   active-lane FMA work, local query-base selection, architectural write masks
+   and final completion.
+4. Independent protocol PASS: 2,828 requests and responses, zero exceptions,
+   errors or outstanding work; source, image, ELF and checker I/O identities
+   match after execution.
 5. Final source/version disposition and explicit fallback/availability rules
    recorded without changing any original receipt or unrelated dirty input.
 
@@ -159,8 +162,36 @@ data; it is not six independently captured model heads. Four wrong-routing
 mutations change every intended affected head. Corrected `PV_PREP` and `PV`
 counter scopes distinguish software preparation from hardware FMA flags.
 
+| SDK call | Complete-call cycles, diagnostic only | FCSR |
+|---|---:|---:|
+| OFF original | 41,908 | 3 |
+| ON original, incoming DZ | 37,984 | 11 |
+| ON derived D96/GQA | 58,285 | 3 |
+
+These unpaired functional calls are not a replacement for the optimized ABBA
+comparison. The final SDK receipt SHA256 is
+`70ccad29ade83850f3c6a94276b8f60d7258513c4091939267641f550bbd3fb1`;
+independent protocol receipt SHA256 is
+`240475d620b697af0b13c36a0196a1286da3e494579df3be7bfbb7a70928f35f`.
+
 The source and commands are in
 `verification/performance/resident_rvv/qk_shared/full_call_sdk/WORKFLOW.md`;
 full receipts and scope details are in the adjacent `RESULTS.md`. Stage four
 shape/performance expansion, formal GGML selection, model regression, physical
 closure and FPGA migration are not silently included in this delivery.
+
+## 7. Final Completion Audit
+
+Independent read-only review rehashed 1,036 unique pinned files without a
+mismatch. All 52 simulator image entries match the accepted build. All 66
+pinned SDK C/header/assembly files match `ca772ef90`; the dirty live assembly
+is not substituted. The 23 selected live production RTL files match both
+`9af19508d` and the executed snapshot. The registered CPU bundle and tested
+postimage match the SoC build and post-registration dependency receipt.
+These are identity checks, not additional arithmetic tests.
+
+Gates A through F therefore close within their stated scopes. The retained
+candidate is marked by local tag `stage3-resident-attention-20261110`, with
+this delivery contract, source helpers and acceptance references in its commit.
+Do not replace the older FPGA delivery tag or infer a remote push, default
+enablement, all-shape performance or whole-design signoff from this tag.

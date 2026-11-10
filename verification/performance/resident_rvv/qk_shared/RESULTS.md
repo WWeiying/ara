@@ -1,4 +1,4 @@
-# Stage-3 Component Checkpoint
+# Stage-3 Acceptance And Measured Results
 
 The implementation extends the existing resident PV datapath with FP32 QK
 accumulation on the actual lane FPU. It reuses the lane-private 16 x 64-bit
@@ -7,6 +7,8 @@ No new arithmetic array, larger SRAM or wider external interface is introduced.
 QK and PV remain experimental and unadvertised; normal runtime selection is
 unchanged. The paired complete-call result below establishes benefit on one
 captured shape, not model-wide performance or automatic runtime promotion.
+All six stage gates now close for this default-disabled experimental candidate;
+the actual native SDK receipt is recorded below.
 
 ## Checked Evidence
 
@@ -21,6 +23,7 @@ All paths below are relative to
 | Central control and final-write accounting | `stage3_control_gate_20261110_03/report.json` | 43 scenarios, 12,078 checks; tagged stub lanes, stalled final acknowledgements and outstanding K-collector drain. Not an arithmetic test. |
 | Actual shared FPU | `resident_qk_lane_fpu_20261110_01/report.json` | Standard/shared integer configurations each pass 26 controller scenarios against independent SoftFloat expectations and the unchanged ordinary-FP/coexistence suite. |
 | Decoder and ABI | `stage3_abi_host_closeout_20261110_01/junit.xml` | 17 host tests, exhaustive control/register checks, default-off selection, no VRF source, preserved old operation IDs and generated contracts. Not whole-SoC execution. |
+| Actual native SDK | `stage3_attention_sdk_vcs_20261110_01/result.json` | Three complete calls, 1,088 exact FP32 values, FCSR 3/11/3, actual entry PCs, eleven QK/eleven PV operations, guards, independent protocol and post-run identities. |
 
 The FPU gate checks FP32 QK and existing FP16 PV, all five supported rounding
 modes, signaling/quiet NaNs, inactive elements, odd tails, held outputs,
@@ -119,20 +122,23 @@ arms. Simulation wall time was about 1,169 seconds.
 
 The worker deliberately leaves `performance_acceptance=false`: it records the
 measurement, not a runtime/deployment promotion. The measured positive benefit
-supports retaining this opt-in candidate for the scoped SDK follow-up. Actual
-new-entry SDK validation remains pending, and no cross-shape speedup or complete
-llama.cpp model acceleration is inferred from this one captured shape.
+supports retaining this opt-in candidate. The separate actual new-entry SDK
+functional gate below also passes. No cross-shape speedup or complete llama.cpp
+model acceleration is inferred from this one captured shape.
 
-## Still Required
+## Final Gate Disposition
 
-1. Preserve the completed PV and QK architectural evidence. PV closes through
+1. PV and QK architectural evidence is complete. PV closes through
    its separate strict audit; the original worker's serial-splitter FAIL remains
    unchanged. QK now passes the original architectural/numerical/protocol suite.
-2. Preserve the passed paired ABBA result and close the actual SDK whole-call
-   regression. Report the prototype's full-call result separately from new SDK
-   diagnostic cycles and resident-engine cycles; do not infer model speedup.
-3. Make a measured retention decision and complete applicable runtime/fallback
-   integration and version delivery. No FPGA or physical acceptance is implied.
+2. Paired ABBA performance and actual SDK whole-call functional checks pass.
+   The prototype's full-call comparison remains separate from SDK diagnostic
+   cycles and resident-engine cycles; no model speedup is inferred.
+3. Retain the explicit default-disabled experimental route. Applicable SDK
+   admission/fallback and source-version delivery are complete, with the
+   contract in `hardware/docs/INFERENCE_STAGE3_DELIVERY_20261110.md`. Formal
+   GGML selection, wider shape evaluation and physical/FPGA acceptance remain
+   outside this stage.
 
 ## SoC Build and Architectural Firmware Checkpoint
 
@@ -274,8 +280,8 @@ injected for host tests, not discovered from current production capability.
 These are preflight/mapping helpers, not an Attention executor or an integrated
 GGML path by themselves. The opt-in SDK executor described below now consumes
 them. No default selection, capability or sealed assembly was changed. The
-paired measurement supports experimental retention; actual SDK terminal
-acceptance and final version delivery remain required by gate F.
+paired measurement supports experimental retention; the actual SDK terminal
+acceptance and version composition below close gate F.
 
 ## Generic SDK PV Leaf Preparation
 
@@ -297,7 +303,8 @@ attempt is preserved: its checker expected decimal shift immediate 6 while
 GNU objdump prints 0x6; the assembly leaf did not change. These are static
 checks, not numerical execution, complete-call acceptance or runtime wiring.
 The default SDK build/selection, capability and sealed prior assembly remain
-unchanged. The new leaf's actual SDK whole-call RTL regression remains pending.
+unchanged. The new leaf's actual SDK whole-call RTL regression is included in
+the passing final functional gate below.
 
 ## Opt-In SDK Executor
 
@@ -342,8 +349,8 @@ object hash. Its SHA256 is
 `07501a97d0ff385dac1ddfdae38ca280f2cfb409c658137900e2e5abb0775794`.
 Actual SDK firmware is built at `stage3_attention_sdk_build_20261110_02`,
 ELF SHA256 `d8c413799646ddf3286347d0c18a76eaaadce27a2840fc3bf4f46f3d7d1de17c`.
-Eighteen host checks pass; target execution is running and terminal acceptance
-is pending. The three calls
+Eighteen host checks pass. Actual target execution has also completed with a
+terminal PASS. The three calls
 are requested-OFF and ON original D128/H2/T137, plus an explicitly derived D96,
 two-KV-group, H3-per-group/T65 case. Both OFF and ON enter the same enabled SDK
 executor through the real Decode group callback. Actual entry PCs, commands,
@@ -369,4 +376,30 @@ does not prove general host/target libm equivalence.
 
 This is a functional fallback/head/tail/group regression, not a substitute for
 the paired strong-baseline performance experiment. No GGML or deployment
-promotion is implied by these preliminary checks.
+promotion is implied by these functional checks.
+
+## Native SDK Terminal Result
+
+`stage3_attention_sdk_vcs_20261110_01/result.json` is PASS, SHA256
+`70ccad29ade83850f3c6a94276b8f60d7258513c4091939267641f550bbd3fb1`.
+The direct systemd service is inactive with exit status zero. Execution and
+checking took 1,249 seconds. The immutable BUILD02 receipt remains a build
+receipt; its separate run result, not an edited build status, proves execution.
+
+| Call | Shape and selection | Checked FP32 values | Final FCSR | Diagnostic full-call cycles |
+|---|---|---:|---:|---:|
+| 0 | D128/H2/T137, requested OFF/native-auto | 256 | 3 | 41,908 |
+| 1 | D128/H2/T137, requested ON, incoming DZ=8 | 256 | 11 | 37,984 |
+| 2 | Derived D96/H6/KV2/T65, requested ON | 576 | 3 | 58,285 |
+
+All outputs, query/input fingerprints, guards and inactive head/dimension spans
+match. Actual ELF-bound retired entry counts are Decode six and experimental
+executor four. There are 247 legacy context/native records (237/4/6) and eleven
+QK plus eleven PV commands, with exact active-lane work, local base/H1 tails,
+architectural source/byte masks and completion. Independent protocol passes
+2,828 requests/responses with zero exceptions, errors or outstanding work;
+its receipt SHA256 is
+`240475d620b697af0b13c36a0196a1286da3e494579df3be7bfbb7a70928f35f`.
+Source/image and checker I/O pins match after execution. These diagnostic SDK
+cycles are not a strong-baseline paired performance claim. The retention
+measurement remains the separate 1.20842x ABBA result above.
