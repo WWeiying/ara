@@ -19,6 +19,13 @@ package akv_pkg;
   localparam bit AkvResidentPvEnable = 1'b0;
 `endif
 
+// QK admission is independently opt-in and requires the shared PV resources.
+`ifdef ARA_AKV_RESIDENT_QK_ENABLE
+  localparam bit AkvResidentQkEnable = AkvResidentPvEnable;
+`else
+  localparam bit AkvResidentQkEnable = 1'b0;
+`endif
+
   localparam int unsigned AkvArchitectureVersion = 1;
   localparam int unsigned AkvDescriptorVersion = 1;
   localparam int unsigned AkvDescriptorBytes = 64;
@@ -83,6 +90,22 @@ package akv_pkg;
   localparam int unsigned AkvResidentPvDestinationRegisters = 4;
   localparam int unsigned AkvResidentPvDestinationElements = 256;
   localparam bit AkvResidentPvSupported = 1'b0;
+
+  localparam int unsigned AkvResidentQkProfileVersion = 1;
+  localparam int unsigned AkvResidentQkFunct3 = 7;
+  localparam int unsigned AkvResidentQkFunct7 = 3;
+  localparam int unsigned AkvResidentQkCapabilityIndex = 4;
+  localparam int unsigned AkvResidentQkControlBits = 12;
+  localparam int unsigned AkvResidentQkQueryBaseShift = 9;
+  localparam int unsigned AkvResidentQkQueryBaseBits = 3;
+  localparam int unsigned AkvResidentQkNrLanes = 4;
+  localparam int unsigned AkvResidentQkVlenBits = 1024;
+  localparam int unsigned AkvResidentQkElementBits = 32;
+  localparam int unsigned AkvResidentQkHeadStrideElements = 64;
+  localparam int unsigned AkvResidentQkSourceRegisters = 0;
+  localparam int unsigned AkvResidentQkDestinationRegisters = 4;
+  localparam int unsigned AkvResidentQkDestinationElements = 128;
+  localparam bit AkvResidentQkSupported = 1'b0;
 
   typedef enum logic [7:0] {
     AKV_ELEMENT_FORMAT_INVALID = 8'd0,
@@ -269,5 +292,48 @@ package akv_pkg;
   );
     return '0;
   endfunction : akv_resident_pv_capability_word
+
+  function automatic logic [2:0] akv_resident_qk_query_base(input logic [63:0] control);
+    return control[AkvResidentQkQueryBaseShift +: AkvResidentQkQueryBaseBits];
+  endfunction : akv_resident_qk_query_base
+
+  function automatic logic [63:0] akv_resident_qk_control(
+      input int unsigned tokens, heads, head_dim, query_base
+  );
+    automatic logic [63:0] low = akv_resident_pv_control(tokens, heads, head_dim);
+    if (low == '1 || query_base >= AkvMaxQRows ||
+        heads > AkvMaxQRows - query_base) return '1;
+    return low | (64'(query_base) << AkvResidentQkQueryBaseShift);
+  endfunction : akv_resident_qk_control
+
+  function automatic logic akv_resident_qk_registers_are_valid(input int unsigned vd);
+    return vd <= 32 - AkvResidentQkDestinationRegisters &&
+           (vd & (AkvResidentQkDestinationRegisters - 1)) == 0;
+  endfunction : akv_resident_qk_registers_are_valid
+
+  // Context Q-row/D/T validation belongs to the resident owner before launch.
+  function automatic logic akv_resident_qk_command_is_valid(
+      input logic [63:0] control, input int unsigned vd, rs2
+  );
+    return (control >> AkvResidentQkControlBits) == 0 && rs2 == 0 &&
+           akv_resident_pv_head_dim(control) != 0 &&
+           (int'(akv_resident_qk_query_base(control)) +
+            int'(akv_resident_pv_heads(control))) <= AkvMaxQRows &&
+           akv_resident_qk_registers_are_valid(vd);
+  endfunction : akv_resident_qk_command_is_valid
+
+  function automatic logic [31:0] akv_encode_resident_qk(
+      input int unsigned vd, control_rs1
+  );
+    if (control_rs1 >= 32 || !akv_resident_qk_registers_are_valid(vd)) return '1;
+    return (32'(AkvResidentQkFunct7) << 25) | (32'(control_rs1) << 15) |
+           (32'(AkvResidentQkFunct3) << 12) | (32'(vd) << 7) | 32'(AkvOpcodeCustom2);
+  endfunction : akv_encode_resident_qk
+
+  function automatic logic [63:0] akv_resident_qk_capability_word(
+      input logic [63:0] index, input bit enabled
+  );
+    return '0;
+  endfunction : akv_resident_qk_capability_word
 
 endpackage : akv_pkg

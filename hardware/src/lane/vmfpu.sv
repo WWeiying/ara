@@ -72,7 +72,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     input  strb_t                        mask_i,
     input  logic                         mask_valid_i,
     output logic                         mask_ready_o,
-    // Exclusive, lane-local borrowing of the existing FP16 SIMD FMA.
+    // Exclusive, lane-local borrowing of the existing FP16/FP32 SIMD FMA.
     // The parent drains upstream queues before acquisition and publishes private
     // flags/architectural results before release. Neither handshake flushes FPnew.
     input  logic                         resident_acquire_i,
@@ -82,12 +82,13 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     output logic                         resident_release_ready_o,
     input  logic                         resident_valid_i,
     output logic                         resident_ready_o,
-    // Four physical halfwords: operands[0] * operands[1] + operands[2].
-    // Mask bits follow those halfwords; only static rounding modes 0..4 are accepted.
+    // Format is captured at acquisition, before the shared controller starts.
+    // Masks select four FP16 or two FP32 elements; rounding modes 0..4 are legal.
     input  elen_t          [2:0]         resident_operands_i,
     input  logic           [3:0]         resident_tag_i,
     input  logic           [3:0]         resident_mask_i,
     input  logic           [2:0]         resident_rm_i,
+    input  logic                         resident_fp32_i = 1'b0,
     output logic                         resident_result_valid_o,
     input  logic                         resident_result_ready_i,
     output elen_t                        resident_result_o,
@@ -1407,11 +1408,14 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     vfpu_tag_t bulk_tag_in, bulk_tag_out;
     fpu_mask_t resident_simd_mask;
     logic bulk_in_ready, bulk_out_valid;
-    logic resident_rm_legal;
+    logic resident_rm_legal, resident_format_legal, resident_fp32_q;
     assign resident_rm_legal = resident_rm_i <= 3'd4;
+    assign resident_format_legal = (resident_fp32_i === 1'b0) ||
+        ((resident_fp32_i === 1'b1) && RVVF(FPUSupport));
     for (genvar b = 0; b < FPULanes; b++) begin : gen_resident_simd_mask
-      // FPnew samples every second mask bit when FP8 is also enabled.
-      assign resident_simd_mask[b] = resident_mask_i[(4*b)/FPULanes];
+      // Repeat semantic masks across the finest enabled physical FP lanes.
+      assign resident_simd_mask[b] = resident_fp32_q
+          ? resident_mask_i[(2*b)/FPULanes] : resident_mask_i[(4*b)/FPULanes];
     end
 
     always_comb begin
@@ -1438,7 +1442,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       // A simultaneous native offer wins even before it enters the queue.
       // Preserve PV's existing ISSUE_IDLE check for this specific divider.
       assign resident_acquire_ready_o = rst_ni && !resident_owned_q &&
-          !qbs_mul_owned && !resident_native_offer && native_drained && vdiv_in_ready;
+          !qbs_mul_owned && !resident_native_offer && native_drained && vdiv_in_ready &&
+          resident_format_legal;
       assign resident_release_ready_o = rst_ni && resident_owned_q &&
           !resident_valid_i && !vfpu_busy && !vfpu_busy_q && !bulk_out_valid;
       assign resident_ready_o = resident_owned_q && resident_rm_legal && bulk_in_ready;
@@ -1448,9 +1453,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       assign resident_result_flags_o = resident_result_valid_o ? bulk_status : '0;
 
       always_ff @(posedge clk_i or negedge rst_ni) begin
-        if (!rst_ni) resident_owned_q <= 1'b0;
-        else if (resident_acquire_i && resident_acquire_ready_o) resident_owned_q <= 1'b1;
-        else if (resident_release_i && resident_release_ready_o) resident_owned_q <= 1'b0;
+        if (!rst_ni) begin
+          resident_owned_q <= 1'b0;
+          resident_fp32_q <= 1'b0;
+        end else if (resident_acquire_i && resident_acquire_ready_o) begin
+          resident_owned_q <= 1'b1;
+          resident_fp32_q <= resident_fp32_i;
+        end else if (resident_release_i && resident_release_ready_o) begin
+          resident_owned_q <= 1'b0;
+          resident_fp32_q <= 1'b0;
+        end
       end
 
 `ifndef SYNTHESIS
@@ -1460,6 +1472,15 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         assert (!(resident_result_valid_o && vfpu_out_valid))
           else $error("VMFPU resident/native return overlap");
         if (resident_owned_q) begin
+          assert (resident_fp32_i === resident_fp32_q)
+            else $error("VMFPU resident format changed during ownership");
+          if (resident_fp32_q) begin
+            assert (RVVF(FPUSupport))
+              else $error("VMFPU resident FP32 format is unsupported");
+            if (resident_valid_i)
+              assert (resident_mask_i[3:2] == '0)
+                else $error("VMFPU resident FP32 semantic mask is invalid");
+          end
           assert (vinsn_queue_q.issue_cnt == '0 && vinsn_queue_q.processing_cnt == '0 &&
                   vinsn_queue_q.commit_cnt == '0 && mfpu_state_q == NO_REDUCTION &&
                   result_queue_cnt_q == '0 && !(|result_queue_valid_q))
@@ -1478,6 +1499,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `endif
     end else begin : gen_no_resident_pv
       assign resident_owned_q = 1'b0;
+      assign resident_fp32_q = 1'b0;
       assign resident_acquire_ready_o = 1'b0;
       assign resident_release_ready_o = 1'b0;
       assign resident_ready_o = 1'b0;
@@ -1509,9 +1531,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       .operands_i    (resident_owned_q ? resident_operands_i : vfpu_operands),
       .tag_i         (bulk_tag_in    ),
       .simd_mask_i   (resident_owned_q ? resident_simd_mask : vfpu_simd_mask),
-      .src_fmt_i     (resident_owned_q ? FP16 : fp_src_fmt),
-      .dst_fmt_i     (resident_owned_q ? FP16 : fp_dst_fmt),
-      .int_fmt_i     (resident_owned_q ? INT16 : fp_int_fmt),
+      .src_fmt_i     (resident_owned_q ? (resident_fp32_q ? FP32 : FP16) : fp_src_fmt),
+      .dst_fmt_i     (resident_owned_q ? (resident_fp32_q ? FP32 : FP16) : fp_dst_fmt),
+      .int_fmt_i     (resident_owned_q ? (resident_fp32_q ? INT32 : INT16) : fp_int_fmt),
       .in_valid_i    (resident_owned_q ? (resident_valid_i && resident_rm_legal) : vfpu_in_valid),
       .in_ready_o    (bulk_in_ready  ),
       .result_o      (bulk_result    ),

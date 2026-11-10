@@ -70,5 +70,22 @@
     "source_lane_words": 24,
     "destination_registers": 4,
     "destination_elements": 256
+  },
+  "resident_qk_profile": {
+    "version": 1,
+    "funct3": 7,
+    "funct7": 3,
+    "capability_index": 4,
+    "supported": false,
+    "control_bits": 12,
+    "query_base_shift": 9,
+    "query_base_bits": 3,
+    "nr_lanes": 4,
+    "vlen_bits": 1024,
+    "element_bits": 32,
+    "head_stride_elements": 64,
+    "source_registers": 0,
+    "destination_registers": 4,
+    "destination_elements": 128
   }
 }

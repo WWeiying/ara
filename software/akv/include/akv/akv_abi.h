@@ -62,6 +62,22 @@
 #define AKV_RESIDENT_PV_DESTINATION_ELEMENTS 256u
 #define AKV_RESIDENT_PV_SUPPORTED 0u
 
+#define AKV_RESIDENT_QK_PROFILE_VERSION 1u
+#define AKV_RESIDENT_QK_FUNCT3 7u
+#define AKV_RESIDENT_QK_FUNCT7 3u
+#define AKV_RESIDENT_QK_CAPABILITY_INDEX 4u
+#define AKV_RESIDENT_QK_CONTROL_BITS 12u
+#define AKV_RESIDENT_QK_QUERY_BASE_SHIFT 9u
+#define AKV_RESIDENT_QK_QUERY_BASE_BITS 3u
+#define AKV_RESIDENT_QK_NR_LANES 4u
+#define AKV_RESIDENT_QK_VLEN_BITS 1024u
+#define AKV_RESIDENT_QK_ELEMENT_BITS 32u
+#define AKV_RESIDENT_QK_HEAD_STRIDE_ELEMENTS 64u
+#define AKV_RESIDENT_QK_SOURCE_REGISTERS 0u
+#define AKV_RESIDENT_QK_DESTINATION_REGISTERS 4u
+#define AKV_RESIDENT_QK_DESTINATION_ELEMENTS 128u
+#define AKV_RESIDENT_QK_SUPPORTED 0u
+
 typedef enum {
   AKV_ELEMENT_FORMAT_INVALID = 0,
   AKV_ELEMENT_FORMAT_F16 = 1,
@@ -433,6 +449,55 @@ static inline int akv_resident_pv_is_supported(void) {
 }
 
 static inline uint64_t akv_resident_pv_capability_word(uint64_t index,
+                                                   int enabled) {
+  (void)index;
+  (void)enabled;
+  return UINT64_C(0);
+}
+
+/* QK shares PV's low nine control bits, never its VRF source footprint. */
+static inline uint32_t akv_resident_qk_query_base(uint64_t control) {
+  return (uint32_t)((control >> AKV_RESIDENT_QK_QUERY_BASE_SHIFT) &
+      ((1u << AKV_RESIDENT_QK_QUERY_BASE_BITS) - 1u));
+}
+
+static inline uint64_t akv_resident_qk_control(uint32_t tokens, uint32_t heads,
+                                            uint32_t head_dim, uint32_t query_base) {
+  const uint64_t low = akv_resident_pv_control(tokens, heads, head_dim);
+  if (low == UINT64_MAX || query_base >= AKV_MAX_Q_ROWS ||
+      heads > AKV_MAX_Q_ROWS - query_base)
+    return UINT64_MAX;
+  return low | ((uint64_t)query_base << AKV_RESIDENT_QK_QUERY_BASE_SHIFT);
+}
+
+static inline int akv_resident_qk_registers_are_valid(uint32_t vd) {
+  return vd <= 32u - AKV_RESIDENT_QK_DESTINATION_REGISTERS &&
+         (vd & (AKV_RESIDENT_QK_DESTINATION_REGISTERS - 1u)) == 0u;
+}
+
+/* The owner separately checks the actual resident context's Q rows, D and T. */
+static inline int akv_resident_qk_command_is_valid(uint64_t control,
+                                                uint32_t vd, uint32_t rs2) {
+  return (control >> AKV_RESIDENT_QK_CONTROL_BITS) == 0u && rs2 == 0u &&
+         akv_resident_pv_head_dim(control) != 0u &&
+         akv_resident_qk_query_base(control) + akv_resident_pv_heads(control) <=
+             AKV_MAX_Q_ROWS &&
+         akv_resident_qk_registers_are_valid(vd);
+}
+
+static inline uint32_t akv_encode_resident_qk(uint32_t vd, uint32_t control_rs1) {
+  if (control_rs1 >= 32u || !akv_resident_qk_registers_are_valid(vd))
+    return UINT32_MAX;
+  return akv_encode_r(AKV_RESIDENT_QK_FUNCT3, AKV_RESIDENT_QK_FUNCT7,
+                      vd, control_rs1, 0u);
+}
+
+static inline int akv_resident_qk_is_supported(void) {
+  return AKV_RESIDENT_QK_SUPPORTED;
+}
+
+/* Experimental decode enable does not advertise an accepted runtime capability. */
+static inline uint64_t akv_resident_qk_capability_word(uint64_t index,
                                                    int enabled) {
   (void)index;
   (void)enabled;

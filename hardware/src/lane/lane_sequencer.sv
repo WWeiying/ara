@@ -420,8 +420,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
         vfu_operation_d.scalar_op     = '0;
       end
       vfu_operation_valid_d = (vfu_operation_d.vfu != VFU_None) ? 1'b1 : 1'b0;
-      // PV uses StA and the private owner; it is not a native lane instruction.
-      if (pe_req.op == VAKVPV) vfu_operation_valid_d = 1'b0;
+      // Both commands use the private owner; only PV additionally imports StA.
+      if (pe_req.op inside {VAKVPV, VAKVQK}) vfu_operation_valid_d = 1'b0;
 
       if (pe_req.op inside {[VRGATHER:VCOMPRESS]}) begin
         vrgat_source_hazard_d = pe_req.hazard_vs2;

@@ -418,14 +418,21 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic qbs_active_d, qbs_active_q;
   localparam bit ResidentPvSupported = AkvEnable && AkvV2Enable &&
       AkvResidentPvEnable && NrLanes == 4 && VLEN == 1024;
+  localparam bit ResidentQkSupported = ResidentPvSupported && AkvResidentQkEnable;
   logic pv_command_valid, pv_command_ready, pv_command_fire;
-  logic pv_source_owner, pv_request_consumed_q, pe_req_is_pv;
+  logic pv_source_owner, pv_request_consumed_q, pe_req_is_pv, pv_qk_q;
   logic pv_error, pv_fatal, pv_context_valid, pv_context_lease_ready, pv_row_read;
   logic [15:0] pv_context_dimension;
   logic [6:0] pv_context_tokens;
   logic [5:0] pv_row_token;
   logic [3:0] pv_row_word;
   logic [255:0] pv_row_data;
+  logic [3:0] pv_context_q_rows, pv_query_word;
+  logic [2:0] pv_query_row;
+  logic pv_query_read, pv_column_start, pv_column_busy, pv_column_valid;
+  logic [6:0] pv_column_dimension, pv_column_tokens;
+  logic [1:0] pv_column_index, pv_column_packet;
+  logic [255:0] pv_query_data, pv_column_data;
   logic [4:0] pv_flags;
   vid_t pv_id;
   logic [NrLanes-1:0] pv_source_ready, shared_stu_operand_ready, pv_payload_valid;
@@ -627,9 +634,11 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   assign pe_req_is_akv = AkvEnable && pe_req_i.op inside {
       VAKVFILL, VAKVLOAD, VAKVRELEASE};
-  assign pe_req_is_pv = ResidentPvSupported && pe_req_i.op == VAKVPV;
+  // QK shares the resident owner, but has no StA/VRF source import.
+  assign pe_req_is_pv = (ResidentPvSupported && pe_req_i.op == VAKVPV) ||
+                        (ResidentQkSupported && pe_req_i.op == VAKVQK);
   assign normal_pe_req_valid = pe_req_valid_i &&
-      pe_req_i.op != VQBEXEC && pe_req_i.op != VAKVPV && !pe_req_is_akv &&
+      !(pe_req_i.op inside {VQBEXEC, VAKVPV, VAKVQK}) && !pe_req_is_akv &&
       !qbs_active_q && !akv_active_q && !pv_lease_o;
 
   // The only outstanding precise store owns this preparation window. Indexed,
@@ -797,7 +806,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .seed_valid_o(qbs_seed_lane_valid), .seed_ready_i(qbs_seed_lane_ready)
   );
   assign pv_source_owner = ResidentPvSupported &&
-      (pv_lease_o || (pe_req_valid_i && pe_req_is_pv));
+      (pv_lease_o ? !pv_qk_q : (pe_req_valid_i && pe_req_i.op == VAKVPV));
   assign stu_operand_ready_o = pv_source_owner ? pv_source_ready : shared_stu_operand_ready;
   for (genvar lane = 0; lane < NrLanes; lane++)
     assign qbs_seed_lane_data[lane] = stu_operand_i[lane];
@@ -853,6 +862,10 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     else if (!pe_req_valid_i || !pe_req_is_pv) pv_request_consumed_q <= 1'b0;
     else if (pv_command_fire) pv_request_consumed_q <= 1'b1;
   end
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) pv_qk_q <= 1'b0;
+    else if (pv_command_fire) pv_qk_q <= pe_req_i.op == VAKVQK;
+  end
   if (ResidentPvSupported) begin : gen_resident_pv
     akv_resident_pv_control i_control (
       .clk_i, .rst_ni, .command_valid_i(pv_command_valid), .command_ready_o(pv_command_ready),
@@ -871,7 +884,14 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       .row_data_i(pv_row_data), .payload_valid_o(pv_payload_valid), .payload_data_o(pv_payload_data),
       .payload_seed_o(pv_payload_seed_o), .payload_value_o(pv_payload_value_o),
       .lane_grant_i(ldu_result_gnt_i), .lane_final_grant_i(ldu_result_final_gnt_i),
-      .terminal_o(pv_terminal), .error_o(pv_error), .fatal_o(pv_fatal), .flags_o(pv_flags), .id_o(pv_id)
+      .terminal_o(pv_terminal), .error_o(pv_error), .fatal_o(pv_fatal), .flags_o(pv_flags), .id_o(pv_id),
+      .command_qk_i(ResidentQkSupported && pe_req_i.op == VAKVQK),
+      .command_query_base_i(pe_req_i.scalar_op[11:9]), .context_q_rows_i(pv_context_q_rows),
+      .query_read_o(pv_query_read), .query_row_o(pv_query_row), .query_word_o(pv_query_word),
+      .query_data_i(pv_query_data), .column_start_o(pv_column_start),
+      .column_dimension_o(pv_column_dimension), .column_tokens_o(pv_column_tokens),
+      .column_busy_i(pv_column_busy), .column_valid_i(pv_column_valid),
+      .column_index_o(pv_column_index), .column_packet_o(pv_column_packet), .column_data_i(pv_column_data)
     );
   end else begin : gen_no_resident_pv
     assign pv_command_ready=1'b0;
@@ -882,6 +902,9 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     assign pv_payload_valid='0; assign pv_payload_data='0;
     assign pv_payload_seed_o=1'b0; assign pv_payload_value_o=1'b0;
     assign pv_terminal=1'b0; assign pv_error=1'b0; assign pv_fatal=1'b0; assign pv_flags='0; assign pv_id='0;
+    assign pv_query_read=1'b0; assign pv_query_row='0; assign pv_query_word='0;
+    assign pv_column_start=1'b0; assign pv_column_dimension='0; assign pv_column_tokens='0;
+    assign pv_column_index='0; assign pv_column_packet='0;
   end
 
   // QBS contains byte-granular block storage, a 16-entry FP scheduler, and an
@@ -1068,8 +1091,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       if (pv_terminal) pe_resp_o[OffsetLoad].vinsn_done[pv_id] = 1'b1;
     end else if (!qbs_active_q && !akv_active_q) begin
       pe_req_ready_o = normal_pe_req_ready;
-      if (pe_req_i.op == VAKVPV) begin
-        pe_req_ready_o[OffsetLoad] = ResidentPvSupported && !pv_request_consumed_q &&
+      if (pe_req_i.op inside {VAKVPV, VAKVQK}) begin
+        pe_req_ready_o[OffsetLoad] = pe_req_is_pv && !pv_request_consumed_q &&
             normal_vlsu_idle && akv_command_ready && pv_context_lease_ready && pv_command_ready;
         pe_req_ready_o[OffsetStore] = 1'b0;
       end else if (pe_req_i.op == VQBEXEC) begin
@@ -1310,6 +1333,19 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .resident_context_valid_o      (pv_context_valid),
     .resident_context_dimension_o  (pv_context_dimension),
     .resident_context_tokens_o     (pv_context_tokens),
+    .resident_context_q_rows_o     (pv_context_q_rows),
+    .resident_query_read_i         (pv_query_read),
+    .resident_query_row_i          (pv_query_row),
+    .resident_query_word_i         (pv_query_word),
+    .resident_query_data_o         (pv_query_data),
+    .resident_column_start_i       (pv_column_start),
+    .resident_column_dimension_i   (pv_column_dimension),
+    .resident_column_tokens_i      (pv_column_tokens),
+    .resident_column_index_i       (pv_column_index),
+    .resident_column_packet_i      (pv_column_packet),
+    .resident_column_busy_o        (pv_column_busy),
+    .resident_column_valid_o       (pv_column_valid),
+    .resident_column_data_o        (pv_column_data),
     .reader_req_o(shared_read_req[1]),
     .reader_rsp_i(shared_read_rsp[1]),
     .ldu_result_req_o              (akv_ldu_result_req),

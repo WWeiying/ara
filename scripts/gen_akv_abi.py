@@ -92,6 +92,18 @@ def validate_spec(spec: dict) -> None:
         "destination_registers": 4, "destination_elements": 256,
     }:
         raise ValueError("Resident PV stage-A ABI is fixed and not advertised")
+    qk_profile = {
+        "version": 1, "funct3": 7, "funct7": 3, "capability_index": 4,
+        "supported": False, "control_bits": 12,
+        "query_base_shift": 9, "query_base_bits": 3,
+        "nr_lanes": 4, "vlen_bits": 1024, "element_bits": 32,
+        "head_stride_elements": 64, "source_registers": 0,
+        "destination_registers": 4, "destination_elements": 128,
+    }
+    if (spec["resident_qk_profile"] != qk_profile or
+            any(type(spec["resident_qk_profile"][key]) is not type(value)
+                for key, value in qk_profile.items())):
+        raise ValueError("Resident QK stage-3 ABI is fixed and not advertised")
 
 
 def resident_pv_constants(spec: dict) -> list[tuple[str, str, int]]:
@@ -255,6 +267,124 @@ def resident_pv_sv_helpers() -> str:
 """
 
 
+def resident_qk_constants(spec: dict) -> list[tuple[str, str, int]]:
+    qk = spec["resident_qk_profile"]
+    names = (
+        ("PROFILE_VERSION", "ProfileVersion", "version"),
+        ("FUNCT3", "Funct3", "funct3"), ("FUNCT7", "Funct7", "funct7"),
+        ("CAPABILITY_INDEX", "CapabilityIndex", "capability_index"),
+        ("CONTROL_BITS", "ControlBits", "control_bits"),
+        ("QUERY_BASE_SHIFT", "QueryBaseShift", "query_base_shift"),
+        ("QUERY_BASE_BITS", "QueryBaseBits", "query_base_bits"),
+        ("NR_LANES", "NrLanes", "nr_lanes"),
+        ("VLEN_BITS", "VlenBits", "vlen_bits"),
+        ("ELEMENT_BITS", "ElementBits", "element_bits"),
+        ("HEAD_STRIDE_ELEMENTS", "HeadStrideElements", "head_stride_elements"),
+        ("SOURCE_REGISTERS", "SourceRegisters", "source_registers"),
+        ("DESTINATION_REGISTERS", "DestinationRegisters", "destination_registers"),
+        ("DESTINATION_ELEMENTS", "DestinationElements", "destination_elements"),
+    )
+    return [(c, sv, qk[key]) for c, sv, key in names]
+
+
+def resident_qk_c_helpers() -> str:
+    return """/* QK shares PV's low nine control bits, never its VRF source footprint. */
+static inline uint32_t akv_resident_qk_query_base(uint64_t control) {
+  return (uint32_t)((control >> AKV_RESIDENT_QK_QUERY_BASE_SHIFT) &
+      ((1u << AKV_RESIDENT_QK_QUERY_BASE_BITS) - 1u));
+}
+
+static inline uint64_t akv_resident_qk_control(uint32_t tokens, uint32_t heads,
+                                            uint32_t head_dim, uint32_t query_base) {
+  const uint64_t low = akv_resident_pv_control(tokens, heads, head_dim);
+  if (low == UINT64_MAX || query_base >= AKV_MAX_Q_ROWS ||
+      heads > AKV_MAX_Q_ROWS - query_base)
+    return UINT64_MAX;
+  return low | ((uint64_t)query_base << AKV_RESIDENT_QK_QUERY_BASE_SHIFT);
+}
+
+static inline int akv_resident_qk_registers_are_valid(uint32_t vd) {
+  return vd <= 32u - AKV_RESIDENT_QK_DESTINATION_REGISTERS &&
+         (vd & (AKV_RESIDENT_QK_DESTINATION_REGISTERS - 1u)) == 0u;
+}
+
+/* The owner separately checks the actual resident context's Q rows, D and T. */
+static inline int akv_resident_qk_command_is_valid(uint64_t control,
+                                                uint32_t vd, uint32_t rs2) {
+  return (control >> AKV_RESIDENT_QK_CONTROL_BITS) == 0u && rs2 == 0u &&
+         akv_resident_pv_head_dim(control) != 0u &&
+         akv_resident_qk_query_base(control) + akv_resident_pv_heads(control) <=
+             AKV_MAX_Q_ROWS &&
+         akv_resident_qk_registers_are_valid(vd);
+}
+
+static inline uint32_t akv_encode_resident_qk(uint32_t vd, uint32_t control_rs1) {
+  if (control_rs1 >= 32u || !akv_resident_qk_registers_are_valid(vd))
+    return UINT32_MAX;
+  return akv_encode_r(AKV_RESIDENT_QK_FUNCT3, AKV_RESIDENT_QK_FUNCT7,
+                      vd, control_rs1, 0u);
+}
+
+static inline int akv_resident_qk_is_supported(void) {
+  return AKV_RESIDENT_QK_SUPPORTED;
+}
+
+/* Experimental decode enable does not advertise an accepted runtime capability. */
+static inline uint64_t akv_resident_qk_capability_word(uint64_t index,
+                                                   int enabled) {
+  (void)index;
+  (void)enabled;
+  return UINT64_C(0);
+}
+"""
+
+
+def resident_qk_sv_helpers() -> str:
+    return """  function automatic logic [2:0] akv_resident_qk_query_base(input logic [63:0] control);
+    return control[AkvResidentQkQueryBaseShift +: AkvResidentQkQueryBaseBits];
+  endfunction : akv_resident_qk_query_base
+
+  function automatic logic [63:0] akv_resident_qk_control(
+      input int unsigned tokens, heads, head_dim, query_base
+  );
+    automatic logic [63:0] low = akv_resident_pv_control(tokens, heads, head_dim);
+    if (low == '1 || query_base >= AkvMaxQRows ||
+        heads > AkvMaxQRows - query_base) return '1;
+    return low | (64'(query_base) << AkvResidentQkQueryBaseShift);
+  endfunction : akv_resident_qk_control
+
+  function automatic logic akv_resident_qk_registers_are_valid(input int unsigned vd);
+    return vd <= 32 - AkvResidentQkDestinationRegisters &&
+           (vd & (AkvResidentQkDestinationRegisters - 1)) == 0;
+  endfunction : akv_resident_qk_registers_are_valid
+
+  // Context Q-row/D/T validation belongs to the resident owner before launch.
+  function automatic logic akv_resident_qk_command_is_valid(
+      input logic [63:0] control, input int unsigned vd, rs2
+  );
+    return (control >> AkvResidentQkControlBits) == 0 && rs2 == 0 &&
+           akv_resident_pv_head_dim(control) != 0 &&
+           (int'(akv_resident_qk_query_base(control)) +
+            int'(akv_resident_pv_heads(control))) <= AkvMaxQRows &&
+           akv_resident_qk_registers_are_valid(vd);
+  endfunction : akv_resident_qk_command_is_valid
+
+  function automatic logic [31:0] akv_encode_resident_qk(
+      input int unsigned vd, control_rs1
+  );
+    if (control_rs1 >= 32 || !akv_resident_qk_registers_are_valid(vd)) return '1;
+    return (32'(AkvResidentQkFunct7) << 25) | (32'(control_rs1) << 15) |
+           (32'(AkvResidentQkFunct3) << 12) | (32'(vd) << 7) | 32'(AkvOpcodeCustom2);
+  endfunction : akv_encode_resident_qk
+
+  function automatic logic [63:0] akv_resident_qk_capability_word(
+      input logic [63:0] index, input bit enabled
+  );
+    return '0;
+  endfunction : akv_resident_qk_capability_word
+"""
+
+
 def c_header(spec: dict) -> str:
     desc = spec["descriptor"]
     insn = spec["instruction"]
@@ -264,6 +394,9 @@ def c_header(spec: dict) -> str:
     pv = spec["resident_pv_profile"]
     pv_constants = "\n".join(f"#define AKV_RESIDENT_PV_{c} {value}u"
                              for c, _, value in resident_pv_constants(spec))
+    qk = spec["resident_qk_profile"]
+    qk_constants = "\n".join(f"#define AKV_RESIDENT_QK_{c} {value}u"
+                             for c, _, value in resident_qk_constants(spec))
     return f"""/* Generated by scripts/gen_akv_abi.py. Do not edit. */
 #ifndef AKV_ABI_H
 #define AKV_ABI_H
@@ -308,6 +441,9 @@ def c_header(spec: dict) -> str:
 
 {pv_constants}
 #define AKV_RESIDENT_PV_SUPPORTED {int(pv['supported'])}u
+
+{qk_constants}
+#define AKV_RESIDENT_QK_SUPPORTED {int(qk['supported'])}u
 
 typedef enum {{
   AKV_ELEMENT_FORMAT_INVALID = 0,
@@ -622,6 +758,7 @@ static inline uint32_t akv_encode_v2_column_panel_load(
 }}
 
 {resident_pv_c_helpers()}
+{resident_qk_c_helpers()}
 #endif
 """
 
@@ -635,6 +772,9 @@ def sv_package(spec: dict) -> str:
     pv = spec["resident_pv_profile"]
     pv_constants = "\n".join(f"  localparam int unsigned AkvResidentPv{sv} = {value};"
                              for _, sv, value in resident_pv_constants(spec))
+    qk = spec["resident_qk_profile"]
+    qk_constants = "\n".join(f"  localparam int unsigned AkvResidentQk{sv} = {value};"
+                             for _, sv, value in resident_qk_constants(spec))
     return f"""// Generated by scripts/gen_akv_abi.py. Do not edit.
 package akv_pkg;
 
@@ -654,6 +794,13 @@ package akv_pkg;
   localparam bit AkvResidentPvEnable = 1'b1;
 `else
   localparam bit AkvResidentPvEnable = 1'b0;
+`endif
+
+// QK admission is independently opt-in and requires the shared PV resources.
+`ifdef ARA_AKV_RESIDENT_QK_ENABLE
+  localparam bit AkvResidentQkEnable = AkvResidentPvEnable;
+`else
+  localparam bit AkvResidentQkEnable = 1'b0;
 `endif
 
   localparam int unsigned AkvArchitectureVersion = {spec['architecture_version']};
@@ -701,6 +848,9 @@ package akv_pkg;
 
 {pv_constants}
   localparam bit AkvResidentPvSupported = 1'b{int(pv['supported'])};
+
+{qk_constants}
+  localparam bit AkvResidentQkSupported = 1'b{int(qk['supported'])};
 
   typedef enum logic [7:0] {{
     AKV_ELEMENT_FORMAT_INVALID = 8'd0,
@@ -825,6 +975,7 @@ package akv_pkg;
   endfunction : akv_v2_capability_word
 
 {resident_pv_sv_helpers()}
+{resident_qk_sv_helpers()}
 endpackage : akv_pkg
 """
 

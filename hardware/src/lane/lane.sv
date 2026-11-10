@@ -303,6 +303,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
 
   localparam bit EnableResidentPv = akv_pkg::AkvResidentPvEnable &&
       NrLanes == 4 && VLEN == 1024 && RVVH(FPUSupport);
+  localparam bit EnableResidentQk = EnableResidentPv &&
+      akv_pkg::AkvResidentQkEnable && RVVF(FPUSupport);
   logic lane_pe_req_valid, lane_pe_req_ready, pv_block_native, pv_pe_req_allowed;
   assign lane_pe_req_valid = pe_req_valid_i && pv_pe_req_allowed;
   assign pe_req_ready_o = lane_pe_req_ready && pv_pe_req_allowed;
@@ -319,6 +321,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   elen_t [2:0] pv_fpu_operands;
   logic [3:0] pv_fpu_tag, pv_fpu_mask, pv_fpu_result_tag;
   logic [2:0] pv_fpu_rm;
+  logic pv_fpu_fp32;
   elen_t pv_fpu_result;
   logic [4:0] pv_fpu_result_flags;
 
@@ -827,6 +830,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .resident_tag_i           (pv_fpu_tag),
     .resident_mask_i          (pv_fpu_mask),
     .resident_rm_i            (pv_fpu_rm),
+    .resident_fp32_i          (pv_fpu_fp32),
     .resident_result_valid_o  (pv_fpu_result_valid),
     .resident_result_ready_i  (pv_fpu_result_ready),
     .resident_result_o        (pv_fpu_result),
@@ -1044,6 +1048,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   if (EnableResidentPv) begin : gen_resident_pv
     logic lease, abort_command, commit_command, release_command;
     logic cmd_captured_q, lease_seen_q, started_q, release_seen_q, write_started_q;
+    logic qk_q, pe_is_qk, pe_is_resident, active, start_command, ctrl_fp32;
     logic [8:0] control_q;
     logic [2:0] rm_q;
     logic [4:0] vd_q;
@@ -1053,6 +1058,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     logic ctrl_result_valid, ctrl_result_ready, ctrl_done_valid, ctrl_done_error;
     logic [4:0] ctrl_done_flags;
     logic [5:0] elements;
+    logic [6:0] tokens;
+    logic [7:0] dimensions;
     logic [3:0] result_slot;
     logic [7:0] result_be;
     logic [63:0] result_data;
@@ -1068,16 +1075,22 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     assign release_command = pv_release_i === 1'b1;
     assign seed_payload = pv_payload_seed_i === 1'b1;
     assign value_payload = pv_payload_value_i === 1'b1;
+    assign pe_is_qk = EnableResidentQk && pe_req.op == VAKVQK;
+    assign pe_is_resident = pe_req.op == VAKVPV || pe_is_qk;
     assign pv_block_native = lease || pv_owned_o || cmd_captured_q;
     assign pv_pe_req_allowed = !pv_block_native ||
-        (pe_req.op == VAKVPV && (!cmd_captured_q || pe_req.id == id_q));
-    assign capture_command = pe_req_valid_i && pe_req_ready_o && pe_req.op == VAKVPV &&
+        (pe_is_resident && (!cmd_captured_q || (pe_req.id == id_q && pe_is_qk == qk_q)));
+    assign capture_command = pe_req_valid_i && pe_req_ready_o && pe_is_resident &&
         !cmd_captured_q;
+    // Acquisition precedes controller start, so format comes from captured PE metadata.
+    assign pv_fpu_fp32 = cmd_captured_q && qk_q;
+    assign active = !qk_q || elements != 0;
+    assign start_command = (pv_start_i === 1'b1) && pv_ready_o && active;
 
     always_comb begin
       // StA is the new PV source, not old native work to wait for here.
       upstream_empty = !vfu_operation_valid && !vfu_operation_valid_q &&
-          !(pe_req_valid_i && pe_req.op != VAKVPV) && !(|mfpu_operand_valid) &&
+          !(pe_req_valid_i && !pe_is_resident) && !(|mfpu_operand_valid) &&
           !mfpu_mask_valid && !(mask_valid_i && mask_target_fu_i == VFU_MFpu) &&
           !sldu_mfpu_valid && !sldu_mfpu_req_valid_o;
       for (int q = 0; q < NrOperandQueues; q++) begin
@@ -1087,12 +1100,17 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
               !operand_queue_cmd_valid[q];
         end
       end
+      tokens = {1'b0, control_q[5:0]} + 7'd1;
       case (control_q[8:7])
-        2'd0: elements = 6'd16;
-        2'd1: elements = 6'd32;
-        2'd2: elements = 6'd24;
-        default: elements = '0;
+        2'd0: dimensions = 8'd64;
+        2'd1: dimensions = 8'd128;
+        2'd2: dimensions = 8'd96;
+        default: dimensions = '0;
       endcase
+      elements = 6'(dimensions >> 2);
+      if (qk_q)
+        elements = tokens > 7'(lane_id_i)
+            ? 6'((tokens - 7'(lane_id_i) + 7'd3) >> 2) : 6'd0;
     end
 
     assign pv_fpu_acquire = lease && cmd_captured_q && !started_q && !release_seen_q &&
@@ -1156,6 +1174,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
         started_q <= 1'b0;
         release_seen_q <= 1'b0;
         write_started_q <= 1'b0;
+        qk_q <= 1'b0;
         control_q <= '0;
         rm_q <= '0;
         vd_q <= '0;
@@ -1175,11 +1194,12 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
         endcase
         if (lease) lease_seen_q <= 1'b1;
         if (lease && release_command) release_seen_q <= 1'b1;
-        if ((pv_start_i === 1'b1) && pv_ready_o) started_q <= 1'b1;
+        if (start_command) started_q <= 1'b1;
         if (private_accept) write_started_q <= 1'b1;
         // A PE command may arrive one cycle before lease; do not clear it then.
         if (capture_command) begin
           cmd_captured_q <= 1'b1;
+          qk_q <= pe_is_qk;
           control_q <= pe_req.scalar_op[8:0];
           rm_q <= pe_req.fp_rm;
           vd_q <= pe_req.vd;
@@ -1191,6 +1211,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
           started_q <= 1'b0;
           release_seen_q <= 1'b0;
           write_started_q <= 1'b0;
+          qk_q <= 1'b0;
           control_q <= '0;
           rm_q <= '0;
           vd_q <= '0;
@@ -1202,19 +1223,20 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     akv_resident_pv_lane i_resident_pv (
       .clk_i, .rst_ni,
       .abort_i(lease && abort_command),
-      .cmd_valid_i((pv_start_i === 1'b1) && pv_ready_o),
+      .cmd_valid_i(start_command),
       .cmd_ready_o(ctrl_cmd_ready),
       .cmd_elements_i(elements),
       .cmd_two_heads_i(control_q[6]),
-      .cmd_tokens_i({1'b0, control_q[5:0]} + 7'd1),
+      .cmd_tokens_i(tokens),
       .cmd_rm_i(rm_q),
+      .cmd_qk_i(qk_q), .cmd_dimensions_i(dimensions),
       .seed_valid_i(seed_valid), .seed_ready_o(ctrl_seed_ready),
       .seed_data_i(ldu_result_wdata_i),
       .stream_valid_i(stream_valid), .stream_ready_o(ctrl_stream_ready),
       .stream_is_value_i(value_payload), .stream_data_i(ldu_result_wdata_i),
       .fpu_valid_o(pv_fpu_valid), .fpu_ready_i(pv_fpu_ready),
       .fpu_operands_o(pv_fpu_operands), .fpu_tag_o(pv_fpu_tag),
-      .fpu_mask_o(pv_fpu_mask), .fpu_rm_o(pv_fpu_rm),
+      .fpu_mask_o(pv_fpu_mask), .fpu_rm_o(pv_fpu_rm), .fpu_fp32_o(ctrl_fp32),
       .fpu_result_valid_i(pv_fpu_result_valid), .fpu_result_ready_o(pv_fpu_result_ready),
       .fpu_result_i(pv_fpu_result), .fpu_result_tag_i(pv_fpu_result_tag),
       .fpu_result_flags_i(pv_fpu_result_flags),
@@ -1228,27 +1250,32 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     // synthesis translate_off
     logic perf_enable, perf_active_q;
     vid_t perf_id_q;
-    int unsigned perf_tokens_q, perf_elements_q, perf_heads_q;
+    logic perf_qk_q;
+    int unsigned perf_tokens_q, perf_elements_q, perf_heads_q, perf_dimensions_q;
     longint unsigned perf_issued_q, perf_returned_q, perf_writes_q;
     initial perf_enable = $test$plusargs("RESIDENT_PV_PERF");
     always_ff @(posedge clk_i or negedge rst_ni) begin
       if (!rst_ni) begin
         perf_active_q <= 1'b0;
         perf_id_q <= '0;
+        perf_qk_q <= 1'b0;
         perf_tokens_q <= '0;
         perf_elements_q <= '0;
         perf_heads_q <= '0;
+        perf_dimensions_q <= '0;
         perf_issued_q <= '0;
         perf_returned_q <= '0;
         perf_writes_q <= '0;
       end else if (perf_enable) begin
-        if ((pv_start_i === 1'b1) && pv_ready_o) begin
+        if (start_command) begin
           assert (!perf_active_q) else $error("Overlapping resident PV performance commands");
           perf_active_q <= 1'b1;
           perf_id_q <= id_q;
+          perf_qk_q <= qk_q;
           perf_tokens_q <= int'({1'b0, control_q[5:0]}) + 1;
           perf_elements_q <= int'(elements);
           perf_heads_q <= control_q[6] ? 2 : 1;
+          perf_dimensions_q <= int'(dimensions);
           perf_issued_q <= '0;
           perf_returned_q <= '0;
           perf_writes_q <= '0;
@@ -1262,13 +1289,22 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
           assert (perf_active_q && perf_returned_q == perf_issued_q)
             else $error("Resident PV accepted/returned FPU count mismatch at done");
           if (!pv_done_error_o) begin
-            assert (perf_issued_q == ((perf_elements_q + 3) / 4) * perf_heads_q * perf_tokens_q &&
-                    perf_writes_q == ((perf_elements_q + 3) / 4) * perf_heads_q)
+            assert (perf_issued_q == ((perf_elements_q + (perf_qk_q ? 1 : 3)) /
+                        (perf_qk_q ? 2 : 4)) * perf_heads_q *
+                        (perf_qk_q ? perf_dimensions_q : perf_tokens_q) &&
+                    perf_writes_q == ((perf_elements_q + (perf_qk_q ? 1 : 3)) /
+                        (perf_qk_q ? 2 : 4)) * perf_heads_q)
               else $error("Resident PV successful shape/work count mismatch");
           end
-          $display("[RESIDENT_PV_LANE] lane=%0d vid=%0d tokens=%0d elements=%0d heads=%0d issued=%0d returned=%0d writes=%0d flags=%0d error=%0d",
-                   lane_id_i, perf_id_q, perf_tokens_q, perf_elements_q, perf_heads_q,
-                   perf_issued_q, perf_returned_q, perf_writes_q, pv_done_flags_o, pv_done_error_o);
+          if (perf_qk_q)
+            $display("[RESIDENT_QK_LANE] lane=%0d vid=%0d tokens=%0d elements=%0d heads=%0d dimensions=%0d issued=%0d returned=%0d writes=%0d flags=%0d error=%0d",
+                     lane_id_i, perf_id_q, perf_tokens_q, perf_elements_q, perf_heads_q,
+                     perf_dimensions_q, perf_issued_q, perf_returned_q, perf_writes_q,
+                     pv_done_flags_o, pv_done_error_o);
+          else
+            $display("[RESIDENT_PV_LANE] lane=%0d vid=%0d tokens=%0d elements=%0d heads=%0d issued=%0d returned=%0d writes=%0d flags=%0d error=%0d",
+                     lane_id_i, perf_id_q, perf_tokens_q, perf_elements_q, perf_heads_q,
+                     perf_issued_q, perf_returned_q, perf_writes_q, pv_done_flags_o, pv_done_error_o);
           perf_active_q <= 1'b0;
         end
       end
@@ -1293,10 +1329,16 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
           else $error("PV lease ended before private work drained");
       if (pv_start_i === 1'b1)
         assert (pv_ready_o) else $error("PV group start without captured, owned ready lane");
+      if (lease && qk_q && !active)
+        assert (!started_q && !ctrl_busy && !pv_fpu_valid && !ctrl_result_valid &&
+                !private_accept && !seed_valid && !stream_valid)
+          else $error("Inactive QK lane executed controller or architectural work");
+      if (pv_fpu_valid)
+        assert (ctrl_fp32 == qk_q) else $error("Resident controller/owner format mismatch");
       if (abort_command && lease)
         assert (!write_started_q) else $error("PV abort after irreversible VRF acceptance");
-      if (pe_req_valid_i && pe_req_ready_o && pe_req.op == VAKVPV && cmd_captured_q)
-        assert (pe_req.id == id_q && pe_req.vd == vd_q &&
+      if (pe_req_valid_i && pe_req_ready_o && pe_is_resident && cmd_captured_q)
+        assert (pe_is_qk == qk_q && pe_req.id == id_q && pe_req.vd == vd_q &&
                 pe_req.scalar_op[8:0] == control_q && pe_req.fp_rm == rm_q)
           else $error("PV command changed while captured");
       if (pv_fpu_release && pv_fpu_release_ready)
@@ -1321,6 +1363,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     assign pv_fpu_tag = '0;
     assign pv_fpu_mask = '0;
     assign pv_fpu_rm = '0;
+    assign pv_fpu_fp32 = 1'b0;
     assign pv_fpu_result_ready = 1'b0;
     assign pv_ready_o = 1'b0;
     assign pv_result_valid_o = 1'b0;
