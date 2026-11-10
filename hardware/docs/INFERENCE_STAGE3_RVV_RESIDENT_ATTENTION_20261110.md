@@ -76,9 +76,12 @@ The original PV boundary replay has completed with zero firmware errors and a
 passing independent protocol report. Its original overall FAIL is preserved:
 the old work checker incorrectly assumes that all layout-maintenance uops are
 globally serial. The actual mixed-layout trace uses distinct live VIDs and
-drains maintenance before final PV execution. A separately tested per-VID audit
-is required before closing gate A; successful firmware output alone is not the
-acceptance criterion.
+drains maintenance before final PV execution. Gate A is now closed by
+`stage3_pv_boundary_audit_20261110_01/report.json`: 19 host mutation tests,
+all 706 backend lifetimes, unchanged raw-data/CSR/architectural checks and a
+recomputed independent protocol result pass. This separate audit preserves the
+original FAIL and all original evidence; firmware output alone is not used as
+the acceptance criterion.
 
 QK architectural firmware and complete-Attention smoke/ABBA firmware are built.
 The independent QK architectural worker is now executing on the checked SoC

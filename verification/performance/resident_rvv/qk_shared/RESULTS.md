@@ -14,7 +14,8 @@ All paths below are relative to
 
 | Gate | Receipt | Verified scope |
 |---|---|---|
-| Original CPU dirty-state cause | `resident_pv_commit_dirty_20261110_03/report.json` | 72 WT/WB checks; original 23 dirty-state failures versus zero after the patch; other outputs equal. Original PV SoC reproducer still pending. |
+| Original CPU dirty-state cause | `resident_pv_commit_dirty_20261110_03/report.json` | 72 WT/WB checks; original 23 dirty-state failures versus zero after the patch; other outputs equal. Original PV SoC replay closes through the separate audit below. |
+| Original PV SoC boundary | `stage3_pv_boundary_audit_20261110_01/report.json` | Separate audit PASS: unchanged numerical/CSR/VRF/protocol checks; original worker FAIL preserved; 19 mutation tests and all 706 backend ownership lifetimes checked. |
 | Synchronous resident reader | `stage3_reader_gate_20261110_01/report.json` | 232 normal scenarios, 128,048 accepted-data checks; four each of cancel/reset/invalid-command cases; real context and synchronous storage. |
 | Central control and final-write accounting | `stage3_control_gate_20261110_03/report.json` | 43 scenarios, 12,078 checks; tagged stub lanes, stalled final acknowledgements and outstanding K-collector drain. Not an arithmetic test. |
 | Actual shared FPU | `resident_qk_lane_fpu_20261110_01/report.json` | Standard/shared integer configurations each pass 26 controller scenarios against independent SoftFloat expectations and the unchanged ordinary-FP/coexistence suite. |
@@ -59,9 +60,9 @@ accepted/returned FMA count, output byte-enable and architectural write.
 
 ## Still Required
 
-1. Re-run the exact original PV boundary ELF, then QK architectural boundaries.
-   The fresh image described below has built successfully; build completion is
-   not functional acceptance.
+1. Finish the running QK architectural boundaries. The original PV ELF replay
+   has completed and its separate strict audit passes; the original worker's
+   serial-splitter FAIL remains unchanged.
 2. Pass complete-call smoke before paired ABBA measurements. Report full-call
    cycles separately from resident-engine cycles; do not infer model speedup.
 3. Make a measured retention decision and complete applicable runtime/fallback
@@ -97,8 +98,17 @@ read-only review finds no live-VID reuse, unowned write or missing completion.
 The original numerical and architectural checks also pass in a diagnostic
 replay that splits by live VID allocation generation instead of one global
 live slot. This diagnostic is not a replacement for the original worker result.
-A separate successor audit with negative tests is being prepared; no new RTL
-change or simulator rerun is justified by this parser failure.
+The separate successor audit now passes at
+`stage3_pv_boundary_audit_20261110_01/report.json`, SHA256
+`8ed1845fa59bfe227cbd9e17ae49bda58cd68514c4406a92b079e789ef827fa9`.
+It reproduces the original splitter error exactly once, checks all 706 global
+backend lifetimes including 30 PV-attributed uops, and recomputes the independent
+protocol result. All original numerical, architectural, writer, byte-enable
+and raw-data checks pass. Nineteen host tests include actual-trace mutations for
+live VID reuse, missing/duplicate completion, identity swaps, late writes,
+corrupt data and premature final allocation. Original artifacts, source/image
+pins and the original FAIL remain unchanged. Gate A closes on this separate
+audit plus the original execution, not by relabeling that worker or rerunning it.
 
 `resident_qk_boundary_build_20261110_01/build.json` records the separately
 frozen QK firmware, with 30 passing host tests bound to its actual GNU-built
@@ -140,7 +150,7 @@ This independent boundary run proceeds while the separate PV parser audit is
 finalized; it does not promote gate A or bypass its acceptance requirement.
 No QK hardware PASS is claimed while its worker is pending.
 
-## CPU Patch Delivery Preparation
+## CPU Patch Delivery
 
 `stage3_cva6_dirty_delivery_host_20261110_01/report.json` records 31 passing
 host checks: ten new delivery tests and 21 unchanged dependency-patch tests.
@@ -152,9 +162,20 @@ blocks remain byte-identical; the canonical successor bundle SHA256 is
 Tests cover clean application, idempotent admission and rejection of incorrect
 base revisions, unrelated deltas and a noncanonical concatenated patch.
 
-The registry and shared dependency checkout remain unchanged at this checkpoint.
-Formal registration waits for the original PV SoC regression. These checks
-prove reproducible patch delivery, not the pending architectural result.
+After the original PV replay and its independent audit passed, the exact
+canonical bundle was registered in `verification/patches/dependencies.json`.
+Only the reviewed commit-stage hunk and the CVA6 bundle hash/scope were added;
+the earlier patch blocks and all other dependency entries remain unchanged.
+`stage3_cva6_dirty_delivery_host_20261110_02/junit.xml` records 31 passing
+post-registration tests, including the property `promoted registry validated`.
+Reconstruction from the locked dependency archive produces commit-stage bytes
+identical to the executed SoC overlay. These tests do not launch EDA tools.
+
+The shared live dependency checkout was deliberately not edited. Existing
+simulator snapshots remain immutable; future dependency reconstruction must
+use the registered bundle rather than treating an older already-patched
+checkout as the new delivery. This registration closes reproducible delivery
+of the CPU fix, not the pending QK or complete-Attention acceptance.
 
 ## Runtime Selection Preparation
 
