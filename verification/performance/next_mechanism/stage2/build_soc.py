@@ -89,6 +89,7 @@ def prepare(out, revision, enabled):
     inputs.mkdir()
     shutil.copy2(Path(__file__), inputs / 'build_soc.py')
     shutil.copy2(HELPER, inputs / 'base_build.py')
+    shutil.copy2(HERE / 'soc_loan_monitor.sv', inputs / 'soc_loan_monitor.sv')
     sim = out / 'sim'
     sim.mkdir()
     config = dict(schema_version=1, config='stage2_lane_coexecution', revision=revision,
@@ -105,7 +106,8 @@ def prepare(out, revision, enabled):
                '+define+TSMC_NO_WARNING', '+define+ARA_NO_FSDB', '+define+ARA_FAIL_FAST_ASSERTS',
                '+define+ARA_VERIFY_UVM_CVXIF', '+define+ARA_SHARED_SIMD_MUL',
                '-f', str(out / 'sources.f'), str(out / 'elfloader.o'),
-               *(str(source / path) for path in base.UVM), '-l', 'comp.vcs.log']
+               *(str(source / path) for path in base.UVM), str(inputs / 'soc_loan_monitor.sv'),
+               '-l', 'comp.vcs.log']
     if enabled:
         command.append('+define+ARA_QBS_LANE_MUL_ENABLE')
     base.save(out / 'plan.json', dict(state='PREPARED_NOT_COMPILED', command=command,
@@ -113,7 +115,8 @@ def prepare(out, revision, enabled):
               dependencies='Previously accepted frozen dependency snapshot',
               full_soc_executed=False, performance_measured=False))
     pins = dict(dependencies)
-    for path in (Path(__file__), HELPER, TEMPLATE / 'report.json', TEMPLATE / 'source-pins.json',
+    for path in (Path(__file__), HERE / 'soc_loan_monitor.sv', HELPER,
+                 TEMPLATE / 'report.json', TEMPLATE / 'source-pins.json',
                  TEMPLATE / 'shared/sources.f', TEMPLATE / 'elfloader.o', vcs):
         pins[str(path)] = base.digest(path)
     for path in out.rglob('*'):
