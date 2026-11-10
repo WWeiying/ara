@@ -117,3 +117,37 @@ blocked at the FP interface rise from zero to 1,296 cycles per M8 command.
 This identifies the next constraint without justifying additional SRAM or a
 duplicate FP array. Qwen3 Attention/FFN cases, full-FP coexistence, and
 complete SoC/SDK call accounting remain required before acceptance.
+
+## Validated Supporting Decoupling
+
+The follow-up `stage2_matrix_queue_vcs_20261109_01/report.json` passes with
+fresh queue-depth-zero and queue-depth-16 images. Zero depth reproduces the
+previous cooperative cycles. A 16-entry, 140-bit typed FIFO captures the full
+integer result and its destination/scale fields before releasing the integer
+context. It uses 280 bytes of raw register data, not additional activation or
+weight SRAM, and does not duplicate arithmetic arrays. Completion, fault
+drain, seed admission, and reset accounting include queued work.
+
+Both real Qwen3 projection samples retain eight distinct rows, K=2048, N=32,
+and exactly the same ordered outputs and flags. Original M4 costs 18,216
+engine cycles; cooperative M8 costs 16,194 without the FIFO and 13,604 with
+it. The final engine reduction versus the faster original M4 is 25.32
+percent. M4 fallback cycles remain unchanged. Per M8 command, next-tile
+start blocking falls from 2,112 to 816 cycles; waits with only context1
+occupied fall from 1,680 to 384 cycles. All 1,024 queued results drain, with
+24 starts overlapping queued prior results. This is measured evidence for
+context/result decoupling, not an inference from peak product throughput.
+
+The full-FP lane ownership gate also passes after fixing held-request
+arbitration and retaining FP/SLDU/flag drain checks. Ordinary RVV and PV
+offers take priority until QBS has acquired ownership; the dispatcher still
+requires global Ara idle before submitting a QBS command. No ordinary
+instruction or private PV result may overlap a borrowed owner.
+
+The complete-call gate uses separate reset-first M4 and M8 programs with
+first/repeat trials, real RVV quantization, packing, SDK planning, native
+execution and final fence included. Attention Q uses N64 and FFN gate N128,
+both at M8/K2048. These are bounded output-channel slices, not complete
+model projections. Their software-call cycle reductions remain unmeasured;
+the engine-level result must not be advertised as a model speedup or as
+meeting the complete-call retention target.

@@ -6,7 +6,8 @@ module qbs_compute_engine
   import fpnew_pkg::*;
 #(
   parameter bit SeedRestoreEnable = 1'b0,
-  parameter bit CooperativeWaves = 1'b0
+  parameter bit CooperativeWaves = 1'b0,
+  parameter int unsigned IntegerResultQueueDepth = CooperativeWaves ? 16 : 0
 )
 (
   input  logic                    clk_i,
@@ -210,12 +211,39 @@ module qbs_compute_engine
   logic [15:0] tile_dot_active_cycles;
 
   logic fp_request_ready;
+  logic fp_request_valid;
   logic [6:0] fp_request_index;
+  logic [6:0] integer_result_index;
   logic [3:0] fp_request_context;
   logic fp_busy;
   logic fp_update_valid;
   logic [6:0] fp_update_index;
   logic [31:0] fp_update_data;
+
+  typedef struct packed {
+    logic [3:0] slot;
+    logic [6:0] index;
+    logic first_block;
+    logic signed [31:0] dot;
+    logic signed [31:0] aux;
+    logic [15:0] weight_d;
+    logic [15:0] weight_dmin;
+    logic [31:0] activation_d;
+  } integer_result_t;
+  localparam int unsigned IntegerQueueAddrWidth =
+      IntegerResultQueueDepth > 1 ? $clog2(IntegerResultQueueDepth) : 1;
+  integer_result_t integer_result_data, integer_queue_head, fp_request_data;
+  logic integer_queue_enabled, integer_queue_full, integer_queue_empty;
+  logic integer_queue_busy, integer_queue_push, integer_queue_pop;
+  logic [IntegerQueueAddrWidth-1:0] integer_queue_usage;
+  logic [IntegerQueueAddrWidth:0] integer_queue_occupancy;
+
+  assign integer_queue_enabled = CooperativeWaves && IntegerResultQueueDepth > 0 &&
+      cooperative_command;
+  assign integer_queue_busy = !integer_queue_empty;
+  // fifo_v3 truncates usage at a power-of-two full count.
+  assign integer_queue_occupancy = integer_queue_full
+      ? (IntegerQueueAddrWidth+1)'(IntegerResultQueueDepth) : {1'b0, integer_queue_usage};
 
 `ifndef SYNTHESIS
   logic [127:0] seed_seen_q;
@@ -258,7 +286,7 @@ module qbs_compute_engine
                        seed_mask_i[c%8]))
                 else $fatal(1, "QBS computation started before all seeds arrived");
       end
-      assert (!integer_busy && !integer_result_valid && !fp_busy)
+      assert (!integer_busy && !integer_result_valid && !fp_busy && !integer_queue_busy)
         else $fatal(1, "QBS seed phase overlapped compute");
     end
   end
@@ -279,6 +307,13 @@ module qbs_compute_engine
   logic [31:0] probe_profile_drain_only_cycles_q;
   logic [31:0] probe_profile_correction_pending_cycles_q;
   logic [31:0] probe_profile_result_pending_cycles_q;
+  logic [31:0] probe_integer_queue_pushes_q, probe_integer_queue_pops_q;
+  logic [31:0] probe_integer_queue_occupancy_sum_q, probe_integer_queue_occupancy_max_q;
+  logic [31:0] probe_integer_queue_full_cycles_q;
+  logic [31:0] probe_integer_queue_decoupled_pushes_q;
+  logic [31:0] probe_integer_queue_start_overlap_q;
+  logic [31:0] probe_integer_queue_final_drain_cycles_q;
+  logic [31:0] probe_integer_queue_fault_drain_cycles_q;
   logic probe_weight_wait_active;
 `endif
 
@@ -352,8 +387,8 @@ module qbs_compute_engine
       bank1_row_count = weight_write_row_count_i;
   end
 
-  assign command_ready_o = state_q == QBS_IDLE;
-  assign busy_o = state_q != QBS_IDLE;
+  assign command_ready_o = state_q == QBS_IDLE && !integer_queue_busy;
+  assign busy_o = state_q != QBS_IDLE || integer_queue_busy;
   assign result_valid_o = state_q == QBS_RESULT;
   assign expected_k_block_o = k_block_q;
   assign expected_row_base_o = load_row_base;
@@ -612,35 +647,64 @@ module qbs_compute_engine
     fp_request_context = {1'b0, integer_result_context_base} +
                          {2'b0, integer_result_stream[1:0]};
     if (wide_command)
-      fp_request_index = {fp_request_context[2:0], 4'b0} +
+      integer_result_index = {fp_request_context[2:0], 4'b0} +
                          {1'b0, integer_result_row_base} +
                          {5'b0, integer_result_stream[3:2]};
     else
-      fp_request_index = {integer_result_stream[1:0], 5'b0} +
+      integer_result_index = {integer_result_stream[1:0], 5'b0} +
                          {1'b0, integer_result_row_base} +
                          {5'b0, integer_result_stream[3:2]};
   end
-  assign integer_result_ready = fp_request_ready;
+  // Capture the complete FP request before releasing an integer context. Its
+  // SRAM bank, live row/K cursor and result arbiter may change after acceptance.
+  assign integer_result_data = '{slot: integer_result_stream, index: integer_result_index,
+      first_block: integer_result_first_block, dot: integer_result_dot, aux: integer_result_aux,
+      weight_d: integer_result_weight_d, weight_dmin: integer_result_weight_dmin,
+      activation_d: integer_result_activation_d};
+  if (CooperativeWaves && IntegerResultQueueDepth > 0) begin : gen_integer_result_queue
+    fifo_v3 #(.DEPTH(IntegerResultQueueDepth), .dtype(integer_result_t),
+              .FALL_THROUGH(1'b0)) i_fifo (
+      .clk_i, .rst_ni, .flush_i(clear_accumulator), .testmode_i(1'b0),
+      .full_o(integer_queue_full), .empty_o(integer_queue_empty), .usage_o(integer_queue_usage),
+      .data_i(integer_result_data), .push_i(integer_queue_push),
+      .data_o(integer_queue_head), .pop_i(integer_queue_pop)
+    );
+  end else begin : gen_no_integer_result_queue
+    assign integer_queue_full = 1'b0;
+    assign integer_queue_empty = 1'b1;
+    assign integer_queue_usage = '0;
+    assign integer_queue_head = '0;
+  end
+  assign integer_result_ready = integer_queue_enabled
+      ? !integer_queue_full && !clear_accumulator : fp_request_ready;
+  assign integer_queue_push = integer_queue_enabled && integer_result_valid && integer_result_ready;
+  assign integer_queue_pop = integer_queue_enabled && !integer_queue_empty &&
+      fp_request_ready && !clear_accumulator;
+  assign fp_request_valid = integer_queue_enabled ? !integer_queue_empty : integer_result_valid;
+  assign fp_request_data = integer_queue_enabled ? integer_queue_head : integer_result_data;
+  assign fp_request_index = fp_request_data.index;
 
-  assign raw_seed_valid = SeedRestoreEnable && state_q == QBS_SEED && !fault_i && seed_valid_i;
-  assign seed_ready_o = SeedRestoreEnable && state_q == QBS_SEED && !fault_i && raw_seed_ready;
+  assign raw_seed_valid = SeedRestoreEnable && state_q == QBS_SEED && !fault_i &&
+      !integer_queue_busy && seed_valid_i;
+  assign seed_ready_o = SeedRestoreEnable && state_q == QBS_SEED && !fault_i &&
+      !integer_queue_busy && raw_seed_ready;
 
   qbs_fp_accumulator #(.RawSeedEnable(SeedRestoreEnable)) i_fp_accumulator (
     .clk_i,
     .rst_ni,
     .clear_i                       (clear_accumulator),
-    .request_valid_i               (integer_result_valid),
+    .request_valid_i               (fp_request_valid),
     .request_ready_o               (fp_request_ready),
-    .request_slot_i                (integer_result_stream),
+    .request_slot_i                (fp_request_data.slot),
     .request_profile_i             (weight_profile_q),
     .request_activation_profile_i  (activation_profile_q),
     .request_accumulator_index_i   (fp_request_index),
-    .request_first_block_i         (integer_result_first_block),
-    .request_dot_i                 (integer_result_dot),
-    .request_aux_i                 (integer_result_aux),
-    .request_weight_d_i            (integer_result_weight_d),
-    .request_weight_dmin_i         (integer_result_weight_dmin),
-    .request_activation_d_i        (integer_result_activation_d),
+    .request_first_block_i         (fp_request_data.first_block),
+    .request_dot_i                 (fp_request_data.dot),
+    .request_aux_i                 (fp_request_data.aux),
+    .request_weight_d_i            (fp_request_data.weight_d),
+    .request_weight_dmin_i         (fp_request_data.weight_dmin),
+    .request_activation_d_i        (fp_request_data.activation_d),
     .read_index_i                  (result_read_index_i),
     .read_valid_o                  (result_read_valid_o),
     .read_data_o                   (result_read_data_o),
@@ -727,7 +791,7 @@ module qbs_compute_engine
       QBS_FINAL_DRAIN: begin
         if (fault_i)
           state_d = QBS_FAULT_DRAIN;
-        else if (!integer_busy && !fp_busy)
+        else if (!integer_busy && !integer_queue_busy && !fp_busy)
           state_d = QBS_RESULT;
       end
       QBS_RESULT: begin
@@ -735,7 +799,7 @@ module qbs_compute_engine
           state_d = QBS_IDLE;
       end
       QBS_FAULT_DRAIN: begin
-        if (!integer_busy && !fp_busy)
+        if (!integer_busy && !integer_queue_busy && !fp_busy)
           state_d = QBS_FAULT_CLEAR;
       end
       QBS_FAULT_CLEAR: begin
@@ -879,8 +943,8 @@ module qbs_compute_engine
           assert (command_n_i <= QbsWideMMaxN);
         end
       end
-      if (integer_result_valid && fp_request_ready) begin
-        assert (unsigned'(fp_request_index) < QbsMaxResults);
+      if (integer_result_valid && integer_result_ready) begin
+        assert (unsigned'(integer_result_index) < QbsMaxResults);
         assert (unsigned'(integer_result_stream[3:2]) <
                 unsigned'(integer_result_row_count));
         assert (unsigned'(fp_request_context) < unsigned'(m_q));
@@ -903,8 +967,24 @@ module qbs_compute_engine
           else $fatal(1, "QBS started an incomplete or clearing weight bank");
       end
       if (state_q == QBS_RESULT) begin
-        assert (!integer_busy && !fp_busy)
+        assert (!integer_busy && !integer_queue_busy && !fp_busy)
           else $fatal(1, "QBS result exposed before compute drain");
+      end
+      if (clear_accumulator || state_q inside {QBS_IDLE, QBS_SEED} || fault_done_o) begin
+        assert (!integer_queue_busy)
+          else $fatal(1, "QBS integer result queue cleared or released before drain");
+      end
+      if (clear_accumulator)
+        assert (!integer_busy && !fp_busy && !fp_request_valid)
+          else $fatal(1, "QBS command state cleared before hidden work drained");
+      if (state_q == QBS_RESULT || fault_done_o) begin
+        assert (probe_integer_queue_pushes_q == probe_integer_queue_pops_q)
+          else $fatal(1, "QBS lost queued integer results before terminal");
+      end
+      if (fp_request_valid && fp_request_ready) begin
+        assert (unsigned'(fp_request_index) / (wide_command ? 16 : 32) < unsigned'(m_q) &&
+                unsigned'(fp_request_index) % (wide_command ? 16 : 32) < unsigned'(n_q))
+          else $fatal(1, "QBS queued FP request lost its destination geometry");
       end
       if (fault_done_o)
         assert (!result_valid_o)
@@ -914,6 +994,13 @@ module qbs_compute_engine
   end
 
 `ifndef SYNTHESIS
+  initial assert ($bits(integer_result_t) == 140)
+    else $fatal(1, "QBS integer result entry width changed");
+  assert property (@(posedge clk_i) disable iff (!rst_ni || clear_accumulator)
+      integer_queue_enabled && fp_request_valid && !fp_request_ready |=>
+      fp_request_valid && $stable(fp_request_data))
+    else $fatal(1, "QBS queued FP request changed while blocked");
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       probe_context_start_blocked_cycles_q <= '0;
@@ -930,6 +1017,15 @@ module qbs_compute_engine
       probe_profile_drain_only_cycles_q <= '0;
       probe_profile_correction_pending_cycles_q <= '0;
       probe_profile_result_pending_cycles_q <= '0;
+      probe_integer_queue_pushes_q <= '0;
+      probe_integer_queue_pops_q <= '0;
+      probe_integer_queue_occupancy_sum_q <= '0;
+      probe_integer_queue_occupancy_max_q <= '0;
+      probe_integer_queue_full_cycles_q <= '0;
+      probe_integer_queue_decoupled_pushes_q <= '0;
+      probe_integer_queue_start_overlap_q <= '0;
+      probe_integer_queue_final_drain_cycles_q <= '0;
+      probe_integer_queue_fault_drain_cycles_q <= '0;
     end else if (state_q == QBS_IDLE && command_valid_i) begin
       probe_context_start_blocked_cycles_q <= '0;
       probe_compute_without_dot_issue_cycles_q <= '0;
@@ -945,6 +1041,15 @@ module qbs_compute_engine
       probe_profile_drain_only_cycles_q <= '0;
       probe_profile_correction_pending_cycles_q <= '0;
       probe_profile_result_pending_cycles_q <= '0;
+      probe_integer_queue_pushes_q <= '0;
+      probe_integer_queue_pops_q <= '0;
+      probe_integer_queue_occupancy_sum_q <= '0;
+      probe_integer_queue_occupancy_max_q <= '0;
+      probe_integer_queue_full_cycles_q <= '0;
+      probe_integer_queue_decoupled_pushes_q <= '0;
+      probe_integer_queue_start_overlap_q <= '0;
+      probe_integer_queue_final_drain_cycles_q <= '0;
+      probe_integer_queue_fault_drain_cycles_q <= '0;
     end else begin
       if (integer_start_valid && !integer_start_ready)
         probe_context_start_blocked_cycles_q <=
@@ -954,10 +1059,11 @@ module qbs_compute_engine
         probe_compute_without_dot_issue_cycles_q <=
             probe_compute_without_dot_issue_cycles_q + 1'b1;
 
-      if (integer_result_valid && !fp_request_ready) begin
+      if (integer_result_valid && !integer_result_ready)
         probe_profile_result_blocked_cycles_q <=
             probe_profile_result_blocked_cycles_q + 1'b1;
-        if (i_fp_accumulator.entry_valid_q[integer_result_stream]) begin
+      if (fp_request_valid && !fp_request_ready) begin
+        if (i_fp_accumulator.entry_valid_q[fp_request_data.slot]) begin
           probe_fp_slot_blocked_cycles_q <=
               probe_fp_slot_blocked_cycles_q + 1'b1;
         end else if (i_fp_accumulator.request_accumulator_conflict) begin
@@ -1000,6 +1106,24 @@ module qbs_compute_engine
           |i_profile_engine_int.result_pending_q[1])
         probe_profile_result_pending_cycles_q <=
             probe_profile_result_pending_cycles_q + 1'b1;
+      if (integer_queue_push)
+        probe_integer_queue_pushes_q <= probe_integer_queue_pushes_q + 1'b1;
+      if (integer_queue_pop)
+        probe_integer_queue_pops_q <= probe_integer_queue_pops_q + 1'b1;
+      probe_integer_queue_occupancy_sum_q <= probe_integer_queue_occupancy_sum_q +
+          32'(integer_queue_occupancy);
+      if (32'(integer_queue_occupancy) > probe_integer_queue_occupancy_max_q)
+        probe_integer_queue_occupancy_max_q <= 32'(integer_queue_occupancy);
+      if (integer_queue_enabled && integer_queue_full)
+        probe_integer_queue_full_cycles_q <= probe_integer_queue_full_cycles_q + 1'b1;
+      if (integer_queue_push && fp_request_valid && !fp_request_ready)
+        probe_integer_queue_decoupled_pushes_q <= probe_integer_queue_decoupled_pushes_q + 1'b1;
+      if (integer_start_fire && integer_queue_busy)
+        probe_integer_queue_start_overlap_q <= probe_integer_queue_start_overlap_q + 1'b1;
+      if (state_q == QBS_FINAL_DRAIN && integer_queue_busy)
+        probe_integer_queue_final_drain_cycles_q <= probe_integer_queue_final_drain_cycles_q + 1'b1;
+      if (state_q == QBS_FAULT_DRAIN && integer_queue_busy)
+        probe_integer_queue_fault_drain_cycles_q <= probe_integer_queue_fault_drain_cycles_q + 1'b1;
     end
   end
 `endif
