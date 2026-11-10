@@ -1,8 +1,9 @@
 # Stage4 Delivery Contract
 
-Status: NOT COMPLETE. Attention functional terminal acceptance and its final
-independent review remain pending. This document does not authorize default
-promotion, Stage5 execution, synthesis or a new board campaign.
+Status: COMPLETE within the finite Stage4 contract. All three RTL jobs and
+independent terminal reviews pass; measured promotion decisions are closed.
+Delivery tag: `stage4-supporting-reuse-20261110`. This document does not authorize
+default promotion, Stage5 execution, synthesis or a new board campaign.
 
 ## Version And Scope
 
@@ -29,7 +30,7 @@ No unchecked live llama.cpp source or dirty AKV assembly is a build input.
 | Pair | Strong baseline mean cycles | Candidate mean cycles | Speedup | Decision |
 |---|---:|---:|---:|---|
 | Real Q/V/K complete projection SDK chain | 542821 | 532106 | 1.020137x | Correct experimental helper; reject GGML/default performance promotion |
-| Feature-bearing complete Attention SDK call | 67761.5 | 65152 | 1.040052x | Performance pair passes; below promotion screen; capability retention awaits functional acceptance |
+| Feature-bearing complete Attention SDK call | 67761.5 | 65152 | 1.040052x | Retain explicit experimental capability; reject default/GGML performance promotion |
 
 Both use equal-work ABBA against the strongest applicable existing software
 path. The projection includes cache/preparation/admission/native execution;
@@ -62,7 +63,7 @@ dimensions, tails and grouped heads are derived fixtures, not additional models.
 - Existing multi-query/quantized paths remain inherited support. Their presence
   is not a claim of new Stage4 coverage or performance.
 
-## Evidence And Remaining Gate
+## Accepted Evidence
 
 Authoritative ledger:
 `verification/performance/next_mechanism/stage4/RESULTS.md`.
@@ -76,13 +77,22 @@ Receipts reside under the sole signoff worktree:
 | B entry/default compatibility | `stage4_resident_features_host_20261110_06` | PASS; independently reviewed |
 | B target libm/ordered oracle | `stage4_resident_features_target_20261110_02` | Oracle/probes PASS; independently reviewed |
 | B complete-call performance RTL | `stage4_resident_features_vcs_perf_20261110_01` | PASS; independently reviewed |
-| B complete-call functional RTL | `stage4_resident_features_vcs_functional_20261110_01` | Pending terminal acceptance |
+| B complete-call functional RTL | `stage4_resident_features_vcs_functional_20261110_01` | PASS; independently reviewed |
 
-Closing Stage4 requires the last gate's outputs, flags, guards, real route/work,
-protocol and input identities to pass, plus independent review and final
-disposition/committed delivery. A's below-screen decision creates no conditional
-GGML integration requirement. Do not mark this contract complete from build,
-scalar-probe or performance-only results.
+The functional gate checks18 calls,2816 output words,713 legacy and30 resident
+commands. Independent review reconstructs2560 RNE outputs against the oracle
+and256 non-RNE outputs against the same-FRM1 baseline. Retired CSR/entry checks,
+guards,20 groups,6057 completed allocations and7036 matched protocol requests/
+responses pass; all1170 pins,71 run artifacts,202 firmware artifacts and52 image
+files match. Receipt SHA256:
+`ae0cb8b50bda4a788df05113633186613be6fcdd03c7c11e5d39d173977b2903`.
+
+All eight small RNE functional candidate pairs are slower than their OFF
+controls. They establish correctness, not broad performance superiority.
+Both same-FRM1 calls execute zero resident entries. B remains explicit and
+default-OFF; A's below-screen decision creates no conditional GGML integration
+requirement. All selected and deferred candidate areas have closed dispositions
+in the ledger; no required Stage4 work remains.
 
 ## Stage5 Boundary
 

@@ -1,9 +1,11 @@
 # Stage4 Evidence And Disposition Ledger
 
-Status: the projection and Attention performance pairs pass with measured
-complete SDK speedups1.02014x and1.04005x, both below the promotion screen.
-Attention functional RTL acceptance remains pending. Stage4 is not complete;
-no model-level gain is claimed.
+Status: COMPLETE within the finite Stage4 contract. All three RTL jobs and
+independent terminal reviews pass. Measured complete SDK speedups are1.02014x
+and1.04005x, both below the promotion screen. No model-level gain is claimed.
+Final contract: `hardware/docs/INFERENCE_STAGE4_DELIVERY_20261110.md`.
+Delivery tag: `stage4-supporting-reuse-20261110`. Preparation/launch descriptions
+below record earlier milestones; terminal sections give their final status.
 
 Baseline is `d3d92ad72a3cabb91e8c333186160ae422f0866b`, tagged
 `stage3-resident-attention-20261110`. The plan was committed at `ebf9549ed`;
@@ -211,6 +213,48 @@ Do not default-enable or weaken the baseline to increase the measured ratio.
 The experimental feature-bearing capability's final disposition additionally
 requires the functional boundary/fallback run and independent terminal review.
 
+### Attention Functional Result
+
+`stage4_resident_features_vcs_functional_20261110_01/result.json` is PASS,
+SHA256 `ae0cb8b50bda4a788df05113633186613be6fcdd03c7c11e5d39d173977b2903`.
+Parent verified1170 pins and71 artifacts, with no drift. Simulation took
+3277.35s; the complete worker took3446.37s. All18 calls and2816 output words
+pass, including the same-FRM1 fallback pair. Work is713 legacy and30 resident
+commands; final input/image, real-entry, numerical and protocol checks pass.
+
+| Derived functional fixture | Requested OFF cycles | Requested ON cycles |
+|---|---:|---:|
+| D64/T5 softcap and additive masks | 20874 | 22339 |
+| T1 fully excluded, no sink | 14821 | 16024 |
+| T1 fully excluded, sink | 15871 | 17789 |
+| T65 excluded first tile, no sink | 28019 | 29311 |
+| T65 excluded first tile, sink | 30468 | 31639 |
+| T65 excluded tail, no sink | 38196 | 39136 |
+| T65 excluded tail, sink | 38963 | 40467 |
+| Two local H3 groups | 36166 | 37913 |
+| Same-FRM1 fallback, D64/T5 | 20670 | 20529 |
+
+These are bounded correctness fixtures, not repeated performance experiments.
+The small RNE cases are slower with the candidate, so correctness/capability
+coverage does not imply speedup on those shapes. The FRM1 pair executes no
+resident arithmetic and is not compared to the RNE oracle. It preserves FCSR41
+in both arms; all cases preserve VCSR5/VSTART0. No timing-based default selector
+or extra tuning experiment is introduced.
+
+Final disposition after independent functional review: retain B as
+an explicit default-OFF experimental capability, reject default/GGML performance
+promotion. Existing public native selection remains unchanged.
+
+Independent terminal review reconstructs2560 RNE raw VRF values against the
+oracle and256 non-RNE values against the same-FRM1 baseline. It confirms20
+groups, query bases resetting0,2,0,2, and zero resident entries on both non-RNE
+calls. All6057 vector allocations complete;7036 protocol requests/responses
+match with zero exceptions, errors or outstanding work. All1170 pins,71 run
+artifacts,202 firmware artifacts and52 image files match. The independent
+performance review separately reconstructs1024 values, verifies3657 completed
+allocations and4004 matched protocol requests/responses, and agrees with the
+below-screen decision. No tests or checkers were rerun to manufacture acceptance.
+
 ## Screened Or Deferred Work
 
 | Candidate | Disposition and existing evidence |
@@ -230,20 +274,21 @@ The older Register-PV receipt is
 `8a32db0ca352e08fc676b88a640967066b857d3235fe81cc607a57e900f1fac5`.
 Its 140922.5/139667.5 mean cycles belong only to that old same-executable pair.
 
-## Remaining Stage4 Acceptance
+## Stage4 Acceptance Audit
 
-1. A and B core implementation reviews/freezes are closed. Close independent
-   review and freeze of B's remaining target oracle, fixtures and runner before
-   execution; do not edit A's sealed consumer inputs.
-2. Finish the executing SDK-chain pair and run the bounded Attention VCS case on the accepted
-   unchanged SoC image, using directly owned services and independent outputs.
-3. For new feature math, check every required target-newlib expf/tanhf sample;
-   host glibc is not a target oracle. Preserve actual transform branch/flag order.
-4. Give each candidate a measured retained/rejected/deferred decision. Insufficient
-   gain is not a reason to weaken the baseline or default-enable a path.
-5. Connect any retained shared producer to its existing runtime selection with
-   functional evidence, preserve unsupported fallback, and pin source/evidence
-   commits for Stage5. Do not claim GGML graph cycles from SDK timing.
+| Requirement | Evidence and status |
+|---|---|
+| Evidence-backed candidate selection | Closed: all candidate areas have implemented/rejected/deferred dispositions above |
+| Correct retained implementations and fallback | Closed: A directed gate, B host06, both B actual SDK runs and independent terminal reviews pass |
+| Equal-work complete-call RTL | Closed: three terminal runs pass; strong baselines, actual entry PCs, independent protocol and post-run identities checked |
+| Independent feature math | Closed: exact27 target-newlib samples,7 scalar transforms, ordered oracle and actual RTL flags/results; no host-libm substitute |
+| Measured promotion decisions | Closed: A promotion rejected; B retained as explicit experimental capability only, default/GGML performance promotion rejected |
+| Conditional shared-producer integration | Not triggered: A is not promoted; existing GGML producer/cache/fallback unchanged |
+| Pinned delivery and Stage5 boundary | Closed: final delivery contract, source milestone commits, immutable receipts/hashes and delivery tag identify the result |
+
+No required Stage4 work remains after the independent terminal and scope audits.
+Actual resident GGML selection and model regression remain Stage5, not a
+relabeled SDK timing result.
 
 No Stage4 synthesis, area, timing, power, new bitstream or whole-model result
 has been produced. Unrelated dirty files and older acceptance records remain

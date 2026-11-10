@@ -1,11 +1,15 @@
 # Stage 4: Supporting Reuse And Applicable-Shape Coverage
 
-Status: the projection complete-call RTL pair passes with1.020137x speedup,
-below the approximately5% promotion screen; retain its experimental helper,
-not a new GGML selection/default. Feature-bearing Attention performance and
-functional RTL jobs are executing. Stage4 remains open; this is not Stage5
-model/runtime acceptance. Current evidence and dispositions are in
+Status: COMPLETE within this finite stage. Projection and feature-bearing
+Attention complete-call RTL pairs pass at1.020137x and1.040052x, below the
+approximately5% promotion screen. Functional boundaries and independent
+terminal reviews pass. Retain experimental implementations, not new GGML
+defaults. This is not Stage5 model/runtime acceptance. The design/proposal
+sections below preserve the implementation plan; final evidence supersedes
+their historical pending/approval wording. Current evidence and dispositions are in
 `verification/performance/next_mechanism/stage4/RESULTS.md`.
+Delivery: `INFERENCE_STAGE4_DELIVERY_20261110.md`, tag
+`stage4-supporting-reuse-20261110`.
 
 Baseline: `d3d92ad72a3cabb91e8c333186160ae422f0866b`, tag
 `stage3-resident-attention-20261110`, on `ara_dsa`. Preserve its experimental
