@@ -84,3 +84,20 @@ No inference or QEMU launch occurred. The future reviewed launcher must allow
 emulator overhead above4GiB guest RAM (a6-8GiB host ceiling), rather than blindly
 using the draft4GiB host limit. This is a successor binding change, not mutation
 of the frozen preparation or a model-input change.
+
+## Archive-Policy Successor And Reconstruction Preflight
+
+The archive-policy v2 successor passes22 host checks, including hostile-link
+tests and the complete official archive. Inventory is84624 members/73 links;
+only the exact `X11IncludeHack -> /opt/X11/include` entry is excluded, with the
+data filter retained for everything else. Source04 review identity:
+`10f4fc05d16af2285fd7bec1e4c0455c3a6dc23617eb0a770dd6af6144d87824`.
+
+Fresh `stage5_qemu_prepare_20261110_02` passes that extraction but then rejects
+`roms/u-boot/include/ctype.h` during inherited-source overlay: a safe internal
+symlink is represented by file content in the old source manifest, while the
+overlay only allowed regular files. It remains FAIL, not a successful build.
+No compiler/configure or guest ran. Before another preparation, preflight all
+inherited entries, link destinations/content identities and integration anchors
+against this already extracted tree. Any successor must avoid writing through
+symlinks, preserve safe matching links, and reject escaping/conflicting content.
