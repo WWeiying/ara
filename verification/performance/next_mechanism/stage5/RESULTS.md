@@ -327,3 +327,35 @@ The authorized direct worker launches exactly once as
 `stage5-qemu-build-20261110-05.service`, with8GiB host memory, four build jobs
 and a3,000-second service bound. This is a launch record, not successful
 compilation, native instruction acceptance or model-regression evidence.
+
+## Decoder Generation, RAM Admission And Sixth Build
+
+BUILD05 reaches step1,603/1,694, then fails in the real decodetree generator:
+the five AKV execution patterns leave the high seven bits unspecified. The
+successor marks those bits ignored by decoding, retaining raw instruction bits
+for the helper's reserved-field validation. They are not forced to zero, which
+would reject resident operations. Real generator checks cover65,548 routing
+inputs, including resident and reserved encodings. Four actual translation
+units also pass independent compiler syntax probes using the generated headers.
+
+Static review separately proves the RAM-only callback contract incomplete:
+QEMU permits direct host-pointer reads of ROMD without setting TLB_MMIO. The
+new copy classifies the backing MemoryRegion under an explicit RCU read lock,
+requires non-ROM RAM and an in-range chunk, and unlocks before raising an
+access exception. Guest read-only mappings backed by ordinary DRAM remain
+eligible. A separate ROM-negative guest is prepared; its native result remains
+pending. Host callback checks are not substituted for that execution.
+
+The first successor preflight also identifies one new empty generated directory,
+`tests/qemu-iotests/scratch`, created during BUILD05 configuration. All prior
+file bytes and types match. The successor records that exact empty real
+directory in the copied inventory; it does not broadly ignore directories or
+delete original evidence. Earlier checks and source snapshots remain historical.
+
+Final host04 passes12 tests with helper identity
+`9b30fc522f1e258c8d85e7ed8ad51f4bbf522969fd2034541f973c4537466fd7`.
+Variant03 passes preparation, receipt SHA256:
+`655b1c715559885fa99e9bd353553299330b6e46e27ee744a63a7c62a5a28855`.
+The authorized direct worker launches once as
+`stage5-qemu-build-20261110-06.service`, retaining8GiB/four jobs/3,000 seconds.
+No successful executable or guest/model acceptance is claimed from launch.
