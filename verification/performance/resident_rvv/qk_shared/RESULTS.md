@@ -72,19 +72,32 @@ simulator: `admitted_smoke` compared an in-memory integer-keyed lane dictionary
 with its JSON report, whose keys are necessarily strings. A diagnostic replay
 finds exactly these six lane-key differences; canonical JSON representation
 matches every other field without changing any numerical/work checker.
-A successor runner is required to handle this representation explicitly and
-retain strict rejection of changed evidence. The original smoke PASS and sealed
-runner remain unchanged. ABBA performance has not yet been measured.
+The successor `full_call/run_v2.py` now handles this representation explicitly
+and rejects duplicate JSON keys, non-finite values, changed field types and
+changed evidence. Its separate immutable smoke-reader instance retains the old
+four-file runner inventory; the new worker pins the original four files plus
+the two successor files and keeps the original worker's actual file identity.
+Nineteen host checks pass (six successor, eight original runner and five work
+checks), and independent review finds no blocking issue. The original smoke
+PASS, sealed helpers and archived preparation failure remain unchanged.
+
+Preparation evidence is
+`stage3_attention_serialization_successor_20261110_01/preparation-receipt.json`,
+SHA256 `bceed9dfeab9e437cd2a1a6f5f97426d17170a39acb791487c6489f3c92c7074`.
+The ABBA worker `stage3_attention_vcs_abba_20261110_01` has been launched with
+inventory SHA256 `ceadb494a1a4aaf6570263f4e4b15d02af985d45372f10fe52d29dcd3429de2f`.
+Its original host loop still runs only the original tests; successor tests are
+recorded separately before preparation, not claimed as new worker tests.
+ABBA performance is pending; the single-arm smoke does not establish speedup.
 
 ## Still Required
 
-1. Finish the running QK architectural boundaries. The original PV ELF replay
-   has completed and its separate strict audit passes; the original worker's
-   serial-splitter FAIL remains unchanged.
-2. Complete paired ABBA measurements after the passed smoke and architectural
-   boundary gates. Correct the preparation-only JSON replay issue described
-   above first. Report full-call cycles separately from resident-engine cycles;
-   do not infer model speedup.
+1. Preserve the completed PV and QK architectural evidence. PV closes through
+   its separate strict audit; the original worker's serial-splitter FAIL remains
+   unchanged. QK now passes the original architectural/numerical/protocol suite.
+2. Complete the running paired ABBA measurement after the passed smoke and
+   architectural boundaries. Report full-call cycles separately from resident
+   engine cycles; do not infer model speedup.
 3. Make a measured retention decision and complete applicable runtime/fallback
    integration and version delivery. No FPGA or physical acceptance is implied.
 
@@ -166,9 +179,16 @@ CPU-only FS/VS-Off rejections. The prepared successor has now been launched:
 its direct-owned service is
 `resident-qk-boundary-v2-stage3_qk_boundary_v2_20261110_01.service` and the actual
 `stage3_soc_20261110_02/sim/simv` was confirmed executing the frozen QK ELF.
-This independent boundary run proceeds while the separate PV parser audit is
-finalized; it does not promote gate A or bypass its acceptance requirement.
-No QK hardware PASS is claimed while its worker is pending.
+The worker is now terminal PASS at
+`stage3_qk_boundary_v2_20261110_01/report.json`, SHA256
+`3d346cfdc56d4a310db5d5b7e55cb66de078d522d76dc751837048526e6ce5fc`.
+All 24 successful QK operations, 12 true trap groups, two PV operations and
+the QBS/RVV postludes pass numerical, actual masked-write, architectural and
+independent protocol checks. There are 34 accelerator requests: ten accelerator
+rejections plus two CPU-only FS/VS-Off rejections are accounted without ignored
+issues. Pre/post source and image checks match. This is architecture-level
+evidence for the tested geometry and boundary matrix, not whole-design signoff
+or a performance result.
 
 ## CPU Patch Delivery
 

@@ -1,6 +1,7 @@
 # Stage 3: Shared RVV Execution for Resident Attention
 
-Status: implementation in progress; no new performance or hardware acceptance.
+Status: architectural gates pass; paired complete-call performance and runtime
+delivery remain in progress. No new FPGA or physical acceptance is claimed.
 Starting commit: `7543bbec0` on `ara_dsa`. Stage 2 remains an opt-in candidate;
 this stage does not silently enable its integer multiplier borrowing.
 
@@ -84,12 +85,15 @@ original FAIL and all original evidence; firmware output alone is not used as
 the acceptance criterion.
 
 QK architectural firmware and complete-Attention smoke/ABBA firmware are built.
-The independent QK architectural worker is executing on the checked SoC image.
+The QK architecture worker passes 24 successful QK operations, 12 real trap
+groups, two PV operations and QBS/RVV postludes, with raw-data, actual masked
+write, CSR, independent protocol and source/image checks.
 The complete-Attention smoke passes all 256 bitwise output checks, flags,
 memory guards and independent protocol checks; its single candidate call is
-29,725 cycles. Paired ABBA performance remains unmeasured: preparation stopped
-on JSON integer-versus-string lane-key comparison, with all actual evidence
-otherwise matching. This is a report-replay issue, not a new arithmetic failure.
+29,725 cycles. ABBA preparation initially stopped on JSON integer-versus-string
+lane-key comparison, with all actual evidence otherwise matching. A separately
+reviewed successor preserves the original evidence and passes 19 host checks;
+the paired ABBA worker is now launched. Its result remains pending.
 Runtime admission and tile mapping have host tests; they are not yet a native
 Attention executor or a promoted runtime capability. Capability remains zero.
 Detailed receipts and limitations are recorded in
