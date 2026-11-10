@@ -1,7 +1,8 @@
 # Stage4 Evidence And Disposition Ledger
 
-Status: implementation/correctness checkpoints exist; complete-call RTL
-evaluation is not yet executed. Stage4 is not complete and no new performance
+Status: implementation/correctness checkpoints exist; the paired projection
+RTL evaluation is executing and native Attention numerical preparation is in
+progress. Stage4 is not complete and no new performance
 gain is claimed here.
 
 Baseline is `d3d92ad72a3cabb91e8c333186160ae422f0866b`, tagged
@@ -118,6 +119,9 @@ not establish that strong baseline.
 | Quantized Prefill Register-PV | Existing paired whole C-call result gained only0.89056%; real causal active-suffix handling already works. Do not repeat that experiment or count it as new |
 | General active masks | Nonmonotonic-prefix extension alone saves no work on the actual monotonic causal path; no new code/test was added |
 | Direct M8 producer | Defer because row-wise M8 and fused-bias M4 tie/rounding contracts differ; no silent arithmetic substitution |
+| Multi-query F16 Prefill | No new resident admission: B requires one Decode query token and interprets rows as heads. Existing Prefill/RVV routes remain; no conversion of F32 queries or over-capacity row groups into Decode semantics |
+| Quantized KV and causal Prefill | Existing quantized routes and ordered active-suffix handling remain inherited support, not new Stage4 validation or gain; B accepts F16 only |
+| Shape and tails | Stage3 D96, GQA and T1 results remain inherited evidence. New B directed derivatives must identify their source, slicing and local-head mapping separately from the captured D128/H2/T137 performance case |
 
 The older Register-PV receipt is
 `register-prefill-q4-vcs-20261028-01/result.json`, SHA256
@@ -126,8 +130,10 @@ Its 140922.5/139667.5 mean cycles belong only to that old same-executable pair.
 
 ## Remaining Stage4 Acceptance
 
-1. Close independent implementation review and freeze applicable source inputs.
-2. Run the bounded paired complete SDK-chain/Attention VCS cases on the accepted
+1. A and B core implementation reviews/freezes are closed. Close independent
+   review and freeze of B's remaining target oracle, fixtures and runner before
+   execution; do not edit A's sealed consumer inputs.
+2. Finish the executing SDK-chain pair and run the bounded Attention VCS case on the accepted
    unchanged SoC image, using directly owned services and independent outputs.
 3. For new feature math, check every required target-newlib expf/tanhf sample;
    host glibc is not a target oracle. Preserve actual transform branch/flag order.
