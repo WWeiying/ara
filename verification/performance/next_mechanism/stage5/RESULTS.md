@@ -161,3 +161,26 @@ System pkg-config reports GLib2.68.4, pixman0.40.0 and zlib1.2.11. A reviewed
 build-only successor must bind its interpreter/offline dependencies explicitly
 while preserving environment isolation and the already accepted source tree.
 Do not count service launch or a configure failure as an executing compiler.
+
+## Directed Guest Firmware And Checker
+
+`stage5_akv_directed_build_20261110_03/build.json` is
+`DIRECTED_GUESTS_BUILT_NOT_EXECUTED`, SHA256
+`ae70017f636067c87c490175a92c8bbb22227298debc08072893e83fa4f707fe`.
+Three GNU ELFs and eight host checks pass. Parent verifies34 pins and61
+artifacts; independent static review clears the frozen firmware/checker.
+The main mode contains100 instruction steps; resident-OFF and AKV-OFF images
+contain4 and2 steps. These are instruction steps, not independent test counts.
+
+The INFO-check successor is separately frozen at
+`stage5_akv_directed_info_host_20261110_01`: four host checks pass, no firmware
+rebuild or guest execution. Original checker and failed build01 are retained;
+build02/03 have identical ELF bytes, with03 carrying complete dependency and
+disassembly evidence. The tests contain a real trap handler and independently
+specified numerical constants, not a call into the model under test.
+
+Native lifecycle/fault/flags acceptance still requires running all three modes
+on the exact new QEMU executable, checking raw output/architectural events,
+service completion, source/image identities and normal RVV coexistence.
+The old native-QBS smoke is separately required. No such execution has yet
+occurred, and built ELF or host markers cannot substitute for it.

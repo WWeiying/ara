@@ -1,0 +1,80 @@
+    .text
+    .option norvc
+    .global _start
+_start:
+    .option push
+    .option norelax
+    la gp,__global_pointer$
+    .option pop
+    la sp,_stack_top
+    li t0,0x6600
+    csrs mstatus,t0
+    csrwi fcsr,0
+    csrwi vstart,0
+    csrwi vcsr,5
+    la t0,gate_trap
+    csrw mtvec,t0
+    call main
+    li t0,0xd0000000
+    sw a0,0(t0)
+    fence rw,rw
+1:  wfi
+    j 1b
+
+    .balign 4
+gate_trap:
+    addi sp,sp,-64
+    sd t0,0(sp)
+    sd t1,8(sp)
+    sd t2,16(sp)
+    sd t3,24(sp)
+    sd t4,32(sp)
+    sd t5,40(sp)
+    sd t6,48(sp)
+    la t0,gate_traps
+    ld t1,0(t0)
+    beqz t1,gate_fatal
+    csrr t1,mepc
+    sd t1,40(t0)
+    ld t2,8(t0)
+    bne t1,t2,gate_fatal
+    csrr t2,mcause
+    sd t2,48(t0)
+    ld t3,16(t0)
+    bne t2,t3,gate_fatal
+    csrr t2,mtval
+    sd t2,56(t0)
+    ld t3,24(t0)
+    bne t2,t3,gate_fatal
+    csrr t2,mstatus
+    sd t2,64(t0)
+    ld t3,32(t0)
+    addi t3,t3,1
+    sd t3,32(t0)
+    sd zero,0(t0)
+    addi t1,t1,4
+    csrw mepc,t1
+    li t1,0x6600
+    csrs mstatus,t1
+    ld t0,0(sp)
+    ld t1,8(sp)
+    ld t2,16(sp)
+    ld t3,24(sp)
+    ld t4,32(sp)
+    ld t5,40(sp)
+    ld t6,48(sp)
+    addi sp,sp,64
+    mret
+gate_fatal:
+    li t1,1
+    sd t1,72(t0)
+    li t0,0xc0000000
+    li t1,84
+    sb t1,0(t0)
+    li t0,0xd0000000
+    li t1,255
+    sw t1,0(t0)
+    fence rw,rw
+2:  wfi
+    j 2b
+    .section .note.GNU-stack,"",@progbits
