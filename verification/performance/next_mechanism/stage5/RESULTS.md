@@ -463,3 +463,11 @@ checks. Its original worker remains FAIL because its checker additionally
 expected an unknown-file shared negative that the firmware only ran privately.
 The independent scoped audit explicitly retains that limitation; unknown-shared
 denial has host evidence only. No model result follows from this smoke.
+
+The combined native gate now completes as NATIVE_QEMU_FOUR_GATES_CHECKED in
+`stage5_qemu_four_gates_20261110_03`. Receipt SHA256:
+`d1fe3d705d1caa1923536eff66a6e4fa51030d180e2db01c1724ccc1a4f211d0`.
+All four gates bind BUILD07 executable
+`1f4619e1573ed6626b259912d6780ac9d40e8cca8ed38ec32694a0b1d399388a`;
+the combination includes actual ROM rejection and does not credit historical
+BUILD06 runs. Full-model graph/path/numerical acceptance remains pending.

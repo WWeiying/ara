@@ -23,9 +23,9 @@ Do not add or multiply these ratios, or infer model speedup from QEMU time.
 
 | Gate | Required proof | Initial state |
 |---|---|---|
-| S1: source and execution contract | Fixed baseline/patch inventory; active consumers protected; actual QEMU/SDK/RTL capability and numerical contracts inspected | In progress |
-| S2: native runtime integration | GGML capability/type/shape/rounding/ownership selection; whole-call admission and failure semantics; ordinary fallback; explicit opt-in where required | Pending |
-| S3: instruction and graph validation | Actual custom instructions executed by an independently checked model; original and new GGML routes, flags, counters and numerical outputs checked; unsupported controls exercise fallback | Pending |
+| S1: source and execution contract | Fixed baseline/patch inventory; active consumers protected; actual QEMU/SDK/RTL capability and numerical contracts inspected | Source/build contracts checked; deployment remains experimental |
+| S2: native runtime integration | GGML capability/type/shape/rounding/ownership selection; whole-call admission and failure semantics; ordinary fallback; explicit opt-in where required | Implemented and compile/link checked; full-model acceptance pending |
+| S3: instruction and graph validation | Actual custom instructions executed by an independently checked model; original and new GGML routes, flags, counters and numerical outputs checked; unsupported controls exercise fallback | Same-image instruction/SDK gates pass; real GGML graph check remains with S4 |
 | S4: representative model regression | Same-input baseline/candidate model runs spanning selected models, weight formats and contexts; complete outputs/logits and actual dispatch counts; bounded individual jobs | Pending |
 | S5: unified delivery | Source/patch/tool/model/build hashes, runtime switches, result table, reproduction commands, reviewed commits/tag and Stage4-to-Stage5 acceptance audit | Pending |
 
@@ -34,6 +34,15 @@ after inspecting available captures/models and the real runtime contracts,
 before execution. A synthetic graph or SDK stub alone cannot close S4.
 Model runs cannot replace instruction-model checks at S3. Unsupported model
 paths should retain correct fallback, not be silently cast or reinterpreted.
+
+Current native gate evidence is
+`stage5_qemu_four_gates_20261110_03/result.json`, SHA256
+`d1fe3d705d1caa1923536eff66a6e4fa51030d180e2db01c1724ccc1a4f211d0`.
+It binds the directed enabled/disabled/ROM tests and unchanged QBS/Stage4
+performance/functional ELFs to BUILD07. No full-model result follows from
+these gates. The model provider additionally retains real Linux CSR guards
+and permits the exact fixed model's shared read-only mapping, matching llama's
+actual mmap loader; it does not grant arbitrary shared/device memory access.
 
 ## Initial Findings And Preservation
 
