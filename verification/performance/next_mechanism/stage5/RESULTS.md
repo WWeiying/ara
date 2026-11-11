@@ -471,3 +471,35 @@ All four gates bind BUILD07 executable
 `1f4619e1573ed6626b259912d6780ac9d40e8cca8ed38ec32694a0b1d399388a`;
 the combination includes actual ROM rejection and does not credit historical
 BUILD06 runs. Full-model graph/path/numerical acceptance remains pending.
+
+## First Complete Model Pair And Scoped Checker Correction
+
+The real SmolLM2 pair executes to Linux child exit0 with the same ELF/model,
+63-token prompt and teacher-forced Decode contexts64/65. All147,456 logits,
+greedy tokens and architectural CSR values match bitwise. OFF executes60 native
+Decode calls/180 groups; ON executes60 resident calls/180 groups. Architectural
+traces verify540 QK and540 PV resident commands across the two Decode steps,
+and180 FULL/90 REFILL/180 RELEASE operations. Each arm executes90,378 native
+QBS command entries with matching complete per-format work summaries.
+
+The original worker remains FAIL: it incorrectly expects accelerated Prefill
+completion for every non-D256 model. The compiled source sets GGML_FA_TILE_Q=64
+and explicitly declines the numerically distinct short-Prefill path. The actual
+63-token Smol Prefill correctly falls back in both arms, with30 size-decline
+records each and no AKV computation. A source-bound successor checks this exact
+case rather than accepting arbitrary fallback. It also subtracts explicitly
+cancelled pre-execution TB trace records, using the fixed QEMU trace semantics;
+entry attempts are not described as instruction retirements.
+
+Independent complete-log replay succeeds; the separate final audit rechecks
+all406,566 original pins and preserves the failed original worker. Result:
+`stage5_models_smol_prefill_audit_20261110_02/result.json`, SHA256
+`0887a6da31d749c4f7cb4d400f3b2b7777d9a7f57c6c25a5f491543baaa61a26`.
+This is scoped full-model functional/path evidence, not a relabeling of the
+original worker, a QEMU speedup or completion of the five-pair matrix.
+
+The two Qwen2.5 quantized-KV cases are launched in independent direct-owned
+services using the unchanged prepared model ELFs and an explicitly bound
+successor checker. Qwen3 F16 and Gemma D256 preparations are also available;
+their execution results remain pending. No failed model case counts as verified
+coverage merely because it exercised the new path.
