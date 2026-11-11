@@ -503,3 +503,34 @@ services using the unchanged prepared model ELFs and an explicitly bound
 successor checker. Qwen3 F16 and Gemma D256 preparations are also available;
 their execution results remain pending. No failed model case counts as verified
 coverage merely because it exercised the new path.
+
+## Bounded Observation Policy And Planned Verbose-Run Stops
+
+At approximately51 minutes the two verbose Qwen2.5 guests are still executing
+OFF Prefill. Their remaining command work predicts that completing both arms
+will exceed the original5,400-second limit. Parent stops those two services
+before spending the remaining budget on predictably incomplete runs, preserving
+all inputs, logs, attempts and explicit stop-reason.json files. No result.json
+or PASS is fabricated. This is a planned resource stop, not a numerical bug.
+
+The low-overhead observation policy retains identical model inputs, computation,
+libraries and whole-output checks. It disables only QBS TRACE_CALLS,
+TRACE_LIFETIME and TRACE_M4_PREPARE diagnostics, while retaining main TRACE
+summaries/counters. Source review confirms these controls affect printing and
+diagnostic snapshots, not context-reuse decisions or numerical execution.
+The QBS/PV_PREP trace filter retains their entry PCs rather than entire function
+ranges; AKV architectural events and all logits remain enabled.
+
+A same-image/same-ELF control in ordinary TCG TB mode (not one-insn-per-tb)
+checks unchanged entry/required-PC counts and successful exits under both
+filters. Its trace sizes are344,510 versus26,396 bytes. These are observation
+cost/semantics data, not RTL or model speedups. Raw evidence is
+`stage5_models_observability_normal_tb_smoke_20261110_01/result.json`.
+
+Qwen3 and Gemma use fresh, separately pinned diagnostic-only frontend relinks:
+models, tokens, provider and SDK/libraries are unchanged, and both arms still
+share one ELF. Parent launches both directly owned services with single vCPU,
+8GiB host cap and10,000-second guest/12,600-second whole-service limits. The
+extra service time includes pre/post identity checks; it is not an instruction
+or model-performance claim. The original Qwen2.5 outputs remain sealed, and
+their quiet successors require fresh preparations and execution evidence.
