@@ -583,3 +583,26 @@ original Q4/Q8 evidence; its terminal acceptance remains pending. The final
 Q8/Q8 model service is launched with the same frozen quiet assets and this
 explicitly pinned checker extension. Qwen3 has completed both guest arms and
 is in final checking; no result is presumed until its receipt exists.
+
+## Qwen3 Positive Resident Pair And Quantized-KV Audit Pass
+
+Qwen3 F16 completes MODEL_PAIR_CHECKED with post-input pins matching. Receipt:
+`stage5_models_execution_final_qwen3_20261110_01/result.json`, SHA256
+`d2f48995def4627f844b3969146dfbf4af0918b252bb968f937ac8d483da188c`.
+All455,808 logits, greedy tokens and CSR observations match. Each of the two
+ON Decode calls has28 resident calls/224 groups and672 actual QK plus672 PV
+architectural events; the corresponding OFF calls have28 native calls and no
+resident execution. Prefill retains its existing native path. Each arm has
+644,580 independently checked QBS native entries. This proves real D128 model
+selection and numerical agreement, not QEMU or end-to-end performance.
+
+The separate Qwen2.5 Q4/Q8 KV audit passes with all406,594 original/binding/
+audit pins verified before and after replay and102 source dependencies checked.
+Receipt: `stage5_models_quant_audit_q4_20261110_01/result.json`, SHA256
+`330965770cdfea0425b38151341e133a7259261fd8d205095ee6f0abd01df6d5`;
+checked proof SHA256
+`cdfcb30606e11b8ac717eb524d5dc2645a925d9edaace585c7dd8676111061b9`.
+All455,808 logits/tokens/CSRs match. Both arms retain the original quantized-KV
+route, with28 successful legacy calls per phase and no resident computation.
+Its original projection-only checker FAIL remains unchanged. The final Q8/Q8
+pair is still in progress; four of the five finite model pairs are accepted.
