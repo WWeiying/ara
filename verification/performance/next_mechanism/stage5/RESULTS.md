@@ -534,3 +534,19 @@ share one ELF. Parent launches both directly owned services with single vCPU,
 extra service time includes pre/post identity checks; it is not an instruction
 or model-performance claim. The original Qwen2.5 outputs remain sealed, and
 their quiet successors require fresh preparations and execution evidence.
+
+## Gemma D256 Fallback Pair Passes
+
+`stage5_models_execution_final_gemma_20261110_01` completes MODEL_PAIR_CHECKED
+with post-input pins matching. Receipt SHA256:
+`ecdb0e109049cbbe12993607bc4715333e2f53aed150519108e0ce17cbff2d49`.
+All786,432 logits, greedy tokens and CSR observations match across the pair.
+Every phase takes the explicitly expected D256 legacy fallback; both arms have
+zero resident calls/groups and zero AKV computation events. Native QBS work
+remains independently checked. This is unsupported-shape correctness evidence,
+not positive Resident acceleration coverage.
+
+Qwen3 remains on its original bounded quiet run. Parent uses the freed slot to
+launch fresh `stage5_models_execution_final_qwen25q4_20261110_02`, using its
+reviewed quiet assets and the same model/tokens/libraries. The Qwen2.5 Q8/Q8
+successor is prepared but waits for a slot; model concurrency remains two.
