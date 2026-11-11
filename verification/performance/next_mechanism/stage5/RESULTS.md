@@ -606,3 +606,26 @@ All455,808 logits/tokens/CSRs match. Both arms retain the original quantized-KV
 route, with28 successful legacy calls per phase and no resident computation.
 Its original projection-only checker FAIL remains unchanged. The final Q8/Q8
 pair is still in progress; four of the five finite model pairs are accepted.
+
+## All Five Model Pairs Accepted; Full Source Replay Finding
+
+Qwen2.5 Q8/Q8 KV completes MODEL_PAIR_CHECKED with post-input pins matching.
+Receipt: `stage5_models_execution_final_qwen25q8_20261110_02/result.json`, SHA256
+`5485406147300124a25d4972ae6e48fdee525bb9969bc8793c46456819b45908`.
+All455,808 logits, greedy tokens and CSR observations agree. Per arm486,132
+projection commands plus5,600 quantized Attention commands equal491,732 native
+entries. The six phases each have28 successful legacy calls, no resident
+execution and no denied/failed admissions. Q4 and Q8 K-cache encodings are
+checked separately against their exact source-derived row-byte/layout fields.
+
+The five accepted pairs compare2,301,312 FP32 logits in total. Positive resident
+coverage comes from Smol D64 and Qwen3 D128; quantized KV and Gemma D256 establish
+preserved alternative/fallback routes, not resident speedups. There is no
+remaining model guest, synthesized design or FPGA run required by this phase.
+
+The additional real full-source reconstruction into
+`stage5_source_reconstruct_20261110_01` fails its final inventory check. Preserve
+that destination and stderr/stdout logs. The small bundle tests and in-memory
+delta replay did not prove actual extraction identity. S5 remains open until
+the exact difference is diagnosed, a reviewed successor fixes reconstruction,
+and a fresh actual full-source replay passes without weakening the inventory.
