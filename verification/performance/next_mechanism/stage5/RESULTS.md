@@ -440,3 +440,26 @@ one query total. The successor must retain exact source-derived, shape-sensitive
 counts, including multi-group and early-rejection shapes, without modifying
 the firmware or numerical oracle. Fresh same-image three-ELF execution remains
 required before the combined S3 gate can pass.
+
+## Same-Image Three-ELF Regression Passes
+
+Fresh worker `stage5_qemu_execution_20261110_03` runs all three original ELFs
+on BUILD07 and finishes NATIVE_QEMU_THREE_GATES_CHECKED. Receipt SHA256:
+`09792bce390c67d3136dc95dd561d0ba96e1f1ce24a30a28fbc55a96f922b15c`.
+QBS checks190 instruction attempts and69 exact source-stage traps. The original
+performance oracle checks4 calls/1,024 bit-exact outputs/FCSR `[3,11,3,11]`.
+The original functional oracle checks18 calls/2,816 bit-exact outputs, including
+the non-RNE pair, floating flags and VCSR/VSTART. Exact group-sensitive INFO
+counts, SDK entries, native/resident instruction order, snapshot reads, local
+flags and context lifecycles also pass. The failed earlier workers remain FAIL.
+
+Before model execution, static review finds that llama's frozen mmap loader
+uses MAP_SHARED/PROT_READ. The private-only provider would wrongly deny that
+normal read-only model mapping. A separate provider_shared_v3 source changes
+only that permission check: the exact pinned model path may be `r--s`, never
+writable or executable; other shared/unknown mappings remain denied. Actual
+OS smoke confirms the model's shared read-only mapping and16 callback/CSR
+checks. Its original worker remains FAIL because its checker additionally
+expected an unknown-file shared negative that the firmware only ran privately.
+The independent scoped audit explicitly retains that limitation; unknown-shared
+denial has host evidence only. No model result follows from this smoke.
