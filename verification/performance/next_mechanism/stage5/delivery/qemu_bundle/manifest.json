@@ -1,0 +1,3590 @@
+{
+  "component_provenance": {
+    "dtc": {
+      "all_component_bytes_in_payload": true,
+      "commit": "b6910bec11614980a21e46fbccc35934b671bd81",
+      "executable_bit_differences": [
+        {
+          "delivery_executable": false,
+          "git_archive_executable": true,
+          "path": "pylibfdt/setup.py"
+        }
+      ],
+      "git_archive_needed_for_reconstruction": false,
+      "git_archive_sha256": "1fb660c56f7c255b930f9763f58e0b3f3c59d1815fa11bc5cb01d01823540ba4",
+      "retained_wrap_marker": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "9759c268dc2acb02e3e4c053b89632fb3979a297e012e8072ac7a491b4acb151",
+        "size": 65
+      },
+      "tracked_bytes_identical": true,
+      "tracked_files": 310
+    }
+  },
+  "edits": [
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "90a29a4e0405840828fac5ff58900144c2fb43048a0236a2c85e78b95ba242fa",
+        "size": 65
+      },
+      "before": null,
+      "path": ".xaraqbs-source"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "932d97bc9c6fa9c37ebad33f1ae7f2d1ee3181638704ad8c2bceebe543cf6959",
+        "size": 4759
+      },
+      "before": null,
+      "path": "hw/riscv/ara_stage4.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "44e00466fb11c73678de1cd105a455b886746bca9059b79e498348c35272fe5e",
+        "size": 1069
+      },
+      "before": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "416ed6518f78dc017b89b7d31c6c471ab78f2d59fb1f04e7b24d36623e9f5716",
+        "size": 1053
+      },
+      "path": "hw/riscv/meson.build"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "c7e524ea4c269a4e834ce276e9bc31327dc0bd30a4f36728767817e89cfdd61b",
+        "size": 78145
+      },
+      "before": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "76c6fda6120a85cbf3ea61fd090b5ddb31a05a00368b4af2fe6e0dc55461156b",
+        "size": 77463
+      },
+      "path": "hw/riscv/virt.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "5e317fdf9868961c2b758bd1522baef6e6be4f8a733551538d4e0ab8c374a39e",
+        "size": 326
+      },
+      "before": null,
+      "path": "include/hw/riscv/ara_stage4.h"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "7f31a7fead28b5420a86e2fe492295689e68090ea270dfcefd71b409e6482e46",
+        "size": 4963
+      },
+      "before": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "8eecce492287ca85412026706f38bc01fbe0d5d5bdeb18580bbe4bf8f62bdf5f",
+        "size": 4942
+      },
+      "path": "include/hw/riscv/virt.h"
+    },
+    {
+      "after": {
+        "kind": "directory"
+      },
+      "before": null,
+      "path": "subprojects/dtc"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "dc48b67b9893cfc61b9545bae4144b4b3e5cf97a676ebcfdb7b81ef2a5f2451b",
+        "size": 405
+      },
+      "before": null,
+      "path": "subprojects/dtc/.cirrus.yml"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "d9ce4bffae4c5e62dc133c23254a887df6537a4642d538d69ec3517deaa1850e",
+        "size": 562
+      },
+      "before": null,
+      "path": "subprojects/dtc/.editorconfig"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "9644d2d45fd6bcefefa5a0b55e7c7e5e97f38e45b7918d22d90f154ef2ab847f",
+        "size": 190
+      },
+      "before": null,
+      "path": "subprojects/dtc/.gitignore"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "9759c268dc2acb02e3e4c053b89632fb3979a297e012e8072ac7a491b4acb151",
+        "size": 65
+      },
+      "before": null,
+      "path": "subprojects/dtc/.meson-subproject-wrap-hash.txt"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "d2d94b7f0ddafcceace6cf4d3ebd38d268e17b127d4e8b2a7e65be2c9b5d836b",
+        "size": 1450
+      },
+      "before": null,
+      "path": "subprojects/dtc/.travis.yml"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "6313108c23efffa36948f8b2cff1560a5935373b527b0e1a837cc77e6ed1bacd",
+        "size": 1641
+      },
+      "before": null,
+      "path": "subprojects/dtc/BSD-2-Clause"
+    },
+    {
+      "after": {
+        "kind": "directory"
+      },
+      "before": null,
+      "path": "subprojects/dtc/Documentation"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "da2a602dd704185c7ab6373f8caf614d7a515dba5ba576df00fc74f702c45f2f",
+        "size": 8833
+      },
+      "before": null,
+      "path": "subprojects/dtc/Documentation/dt-object-internal.txt"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "34eaf7f6c971de772c05dad29335f3b8a1e387a4f8d0893473f739692bba90c1",
+        "size": 1275
+      },
+      "before": null,
+      "path": "subprojects/dtc/Documentation/dtc-paper.bib"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "7774a373c382f28b9368d6367d716b35ee812b50211b9df1fcd8d38a7a3b567c",
+        "size": 27634
+      },
+      "before": null,
+      "path": "subprojects/dtc/Documentation/dtc-paper.tex"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "15afcd53128e74fe47447bf2822b226b974438b8fa78c8adca4a521e6f9a695b",
+        "size": 4264
+      },
+      "before": null,
+      "path": "subprojects/dtc/Documentation/dts-format.txt"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "d4405657d783c900deb7b26aa4f07c39513f8872ea352af9ba4bc5fa2ac4d4d7",
+        "size": 26797
+      },
+      "before": null,
+      "path": "subprojects/dtc/Documentation/manual.txt"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643",
+        "size": 18092
+      },
+      "before": null,
+      "path": "subprojects/dtc/GPL"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "9f0f152038d75b9ed954b39fceecba85d98f554462dbe0cf2af9048bd651e02f",
+        "size": 8772
+      },
+      "before": null,
+      "path": "subprojects/dtc/Makefile"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "4a4e5bcd6821dcf3284adc2bf9a7c40ae570d0d570dbb8ac40885ebb07793a61",
+        "size": 330
+      },
+      "before": null,
+      "path": "subprojects/dtc/Makefile.convert-dtsv0"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "ab8ed5d7f688414747a099fd2f3c88c3b4edb6fa3654721a021918f7d746b646",
+        "size": 467
+      },
+      "before": null,
+      "path": "subprojects/dtc/Makefile.dtc"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "0c3d4e2786d0bc89595fb589ef0aed5fee23f883a496bad7a319840a5f05c012",
+        "size": 499
+      },
+      "before": null,
+      "path": "subprojects/dtc/Makefile.utils"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "7be0ae5168cb8b936357973364284cf6985aabd59f07654939a757a14a97559a",
+        "size": 2768
+      },
+      "before": null,
+      "path": "subprojects/dtc/README"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "78e1e1ce5728a990d59c7de61d4741c49185d5129daf783b386380a214328d68",
+        "size": 2903
+      },
+      "before": null,
+      "path": "subprojects/dtc/README.license"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "bdb30453495e16228c25057a5f42d7c1cd76edfcd4f4b0e4d1be984dad77cf79",
+        "size": 260
+      },
+      "before": null,
+      "path": "subprojects/dtc/TODO"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "fe4da8609611ae7d7aadb0a4c374dcb6ebe043ada22001376fe16a1a7a48166f",
+        "size": 52340
+      },
+      "before": null,
+      "path": "subprojects/dtc/checks.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "fcb14d431f5bb93f631157dbefefce51c97db4b16477b1f84aba830aa14bcc16",
+        "size": 4393
+      },
+      "before": null,
+      "path": "subprojects/dtc/convert-dtsv0-lexer.l"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "0ec6c1530a2b97c42fe3f86f558a2d9d42973e075708eb58728074cf0c9bf1fa",
+        "size": 4616
+      },
+      "before": null,
+      "path": "subprojects/dtc/data.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "edad98cb95b4351f258dff70a4aee3371a649fa2db16a0f25a77aeeb967c9380",
+        "size": 6292
+      },
+      "before": null,
+      "path": "subprojects/dtc/dtc-lexer.l"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "6f27e15d2588da87dc8197d122ffe39f5d516dd42d66df82162166686fe93cc3",
+        "size": 10817
+      },
+      "before": null,
+      "path": "subprojects/dtc/dtc-parser.y"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b597e5308ba8ab1ac95fce412612edee3364609143f1b2339c4bf6706f3e8e87",
+        "size": 9458
+      },
+      "before": null,
+      "path": "subprojects/dtc/dtc.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "5506b7b4c58ff2f8e29800f5d196ea611def15da930a2466db139529fec34e27",
+        "size": 9358
+      },
+      "before": null,
+      "path": "subprojects/dtc/dtc.h"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "5eb3282ed9b946e3fcfdbb7bdbb272da198960575af1ca2e216db23db72499f2",
+        "size": 680
+      },
+      "before": null,
+      "path": "subprojects/dtc/dtdiff"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "fd805b6008a94c49ee200ad6d19661f491537dda11c5f722eed3feeedd375562",
+        "size": 6205
+      },
+      "before": null,
+      "path": "subprojects/dtc/fdtdump.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "03e47a0bcf783c82bd3d39cd4851bfeed196a67a41565d0c85c28463364ba4b5",
+        "size": 8647
+      },
+      "before": null,
+      "path": "subprojects/dtc/fdtget.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "c628633bf2e0f0b331e9e5dc418092aa252c05f40cd3389ec5b111fea5ef2300",
+        "size": 4345
+      },
+      "before": null,
+      "path": "subprojects/dtc/fdtoverlay.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "466bf60164911568ed2f573c3d4ceb6fb5bc4fa35489750adcae103e7c81fcf5",
+        "size": 10915
+      },
+      "before": null,
+      "path": "subprojects/dtc/fdtput.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "3c7fbbe3713000fa761f536fe75bc8c564e11696d9e3e8cda3837278b5c413e7",
+        "size": 21971
+      },
+      "before": null,
+      "path": "subprojects/dtc/flattree.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "81e1e41f499713d92d6b5b38b88753c10ade4900a3e136cae2ae1aae2e930eb7",
+        "size": 1557
+      },
+      "before": null,
+      "path": "subprojects/dtc/fstree.c"
+    },
+    {
+      "after": {
+        "kind": "directory"
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "cc085368b7aa1d1b028239514ce18341ba8732c34be961b48252e7c2eff6d0de",
+        "size": 12
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/.gitignore"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "54c50982a755c6723c195d0d0f221a65edb10026c697d50b4b68cbfa489ff07c",
+        "size": 677
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/Makefile.libfdt"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "7131272f17155fcd3374f806c3dda98c77b02b76f2e9ae0fa7e565117ffca1cf",
+        "size": 85
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/TODO"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "4f3b3ca6da6bd0a7608b767e9988020950f71924878318d13f1a0a3928ceeeb3",
+        "size": 7762
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/fdt.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "0841a268996ad929ee062303409b9f1bd536c1dfce8516fc121bed3331e41f4e",
+        "size": 1761
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/fdt.h"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "8c9c754345ce105bf55f2597173d55a69a557c3854e0eb7ac6b3a87991d4fd93",
+        "size": 2182
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/fdt_addresses.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "8732f455239e742f17d486e2870c6e38afa21407c0b865053ad48baf99855f9f",
+        "size": 1818
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/fdt_check.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "f3cdbfa1bcc86cc841544fee5a16c2f66a4da86b1065eaadab9700addb858369",
+        "size": 641
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/fdt_empty_tree.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "c3acd8cb68b8b59792b0677026f961b3e012573952d1190431f9b54d8aeec74a",
+        "size": 22164
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/fdt_overlay.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "8fbd21bb76940dfe5b32091025172ecbe6105e22f0c63bd400454006f7d39c44",
+        "size": 18552
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/fdt_ro.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "dd7c00cd8c23638a934b20f902ac94dbd75c752455549f55b6a7baf30d51daea",
+        "size": 12260
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/fdt_rw.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "6eccc76d37f8789c6af9a50d6bfc7cbc5c281edc95ee93100294d6ada039d931",
+        "size": 1450
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/fdt_strerror.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "e9d193f023880f4359c3ed9954d678b51a87b1d66b783318a9d69a8122378122",
+        "size": 8671
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/fdt_sw.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "a26966b2d991b432473f5c7f6740a3db97ae51313da0ad9eba56048d56c06c73",
+        "size": 1906
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/fdt_wip.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "5d0c45df7f5b21e3a3e79e42b61c7c92b4be5683fe3776d317274d4bc343e6bc",
+        "size": 75652
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/libfdt.h"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "273bb264cacd60bb005cfa558bee084558469b9107eaf40d7e1362571ed1bc94",
+        "size": 2753
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/libfdt_env.h"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "7c29a6e30115cdd0a30fb4014c7674ead0d4bd39b9989bed46acb4f838bbd4e8",
+        "size": 6491
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/libfdt_internal.h"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "8a060c7f7dabde582784c69377c6fc0904560d826c7799098c98985304ab6157",
+        "size": 928
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/meson.build"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "c4c3d5e208cb971417726ae6d92a2916f8ddc5cd90b8d32dcdeb9e52c878831f",
+        "size": 1745
+      },
+      "before": null,
+      "path": "subprojects/dtc/libfdt/version.lds"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "0929fa5e9126d6eb0c49a0a55c2631e8c24f0c70d308372daa9a092e643e9b75",
+        "size": 20796
+      },
+      "before": null,
+      "path": "subprojects/dtc/livetree.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "d6f53246acb7aa1bc275007061aab2bd7f040bdcd8c46c0bb45c644603f8b596",
+        "size": 2709
+      },
+      "before": null,
+      "path": "subprojects/dtc/meson.build"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "2da7853499644f789c66fb1e43a8397a28e359998669d03e406150e9c51b321d",
+        "size": 502
+      },
+      "before": null,
+      "path": "subprojects/dtc/meson_options.txt"
+    },
+    {
+      "after": {
+        "kind": "directory"
+      },
+      "before": null,
+      "path": "subprojects/dtc/pylibfdt"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "dceb85c9f1490570447790dfc8271aae0370569dc2dc6ad76ddbc463b59376b2",
+        "size": 30
+      },
+      "before": null,
+      "path": "subprojects/dtc/pylibfdt/.gitignore"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "eaf4a5712920790530cd23b6a023500931ac9401d8afff7b3cb54e8ce294f2f7",
+        "size": 888
+      },
+      "before": null,
+      "path": "subprojects/dtc/pylibfdt/Makefile.pylibfdt"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "57d4c69b0d261b64a412864aade00cd33a53876afedd9a55bd99598d5824b4aa",
+        "size": 33437
+      },
+      "before": null,
+      "path": "subprojects/dtc/pylibfdt/libfdt.i"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "ad266de24abd55697dcfc9133a4098fee27cbaf1e2d7e927a65bd42c85d86f9a",
+        "size": 439
+      },
+      "before": null,
+      "path": "subprojects/dtc/pylibfdt/meson.build"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "55beacb54eb2bf542ff10621ff857e4a613c11fdece63e06f351fd7da6482cbb",
+        "size": 1445
+      },
+      "before": null,
+      "path": "subprojects/dtc/pylibfdt/setup.py"
+    },
+    {
+      "after": {
+        "kind": "directory"
+      },
+      "before": null,
+      "path": "subprojects/dtc/scripts"
+    },
+    {
+      "after": {
+        "executable": true,
+        "kind": "file",
+        "sha256": "76f6e27ad732976d5fe4774cc52d6c1ce2c0638091835aaecffc8ee0eef8583c",
+        "size": 610
+      },
+      "before": null,
+      "path": "subprojects/dtc/scripts/kup-dtc"
+    },
+    {
+      "after": {
+        "executable": true,
+        "kind": "file",
+        "sha256": "31fc615f8b7f613138fb3fa099cac554c4d1923d1e55429e2032c1995c89b640",
+        "size": 571
+      },
+      "before": null,
+      "path": "subprojects/dtc/scripts/setlocalversion"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "12ff521077ab1156c475ccdf29bc928deb830f1ec08c28a310e660129669ddc1",
+        "size": 8772
+      },
+      "before": null,
+      "path": "subprojects/dtc/srcpos.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "40af803b1e02f1945cd215f54fc1d826f81d0471f9723230ae8c7d0f598d32e8",
+        "size": 2948
+      },
+      "before": null,
+      "path": "subprojects/dtc/srcpos.h"
+    },
+    {
+      "after": {
+        "kind": "directory"
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "429a1b7139299b36d9049b3e28f662d9ccff952cd68ead9c3f5030b32b16fd53",
+        "size": 1096
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/.gitignore"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "1043a64da01dc21bc6b4b5f49bfeabb56f7d9670aaf9cd3aa57313cc4e3beaae",
+        "size": 2950
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/Makefile.tests"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "2188d1694a2047ba4ca3254a7cb9466c93ce3ca1bd67a92f171d959355c8b1e9",
+        "size": 1424
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/add_subnode_with_nops.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "7c14a4b6b62d37a02247aeca516e10cf5418841106d55d9b8a64511a0b6dfb4d",
+        "size": 1404
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/addr_size_cells.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "93a8cf94dc0f43fe8be092ba06849c373c521344bd2660cc7ee690211b59b5fb",
+        "size": 1022
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/addr_size_cells2.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "782653ed114d9b320d320f0e015e4dc7340c721ebd1c3bdcf10ed28d57beeb2c",
+        "size": 516
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/addresses.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "e97764eb1f83db92ad17ccdb024a636c133df8851a959041573270964fedf8a6",
+        "size": 360
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/aliases.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "28861fcde3ba468656839c171d5373d70928699aa0b6873d5bc4143d15acbcfe",
+        "size": 219
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/appendprop.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "45186b2bd720076b715005e30aeccbb0d6714f0e015da0057ee19c92c18698c4",
+        "size": 1243
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/appendprop1.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "fb9f441d2d6454c2f0bec0a688b961a59d61376bc4a0cf88a40c666c7c2a3550",
+        "size": 1063
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/appendprop2.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "52476d166dd7b1db72202f480b56923c95101bc388e4c8708e6d2a4d169bddc8",
+        "size": 2239
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/appendprop_addrrange.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "bdbf861accab445206b0fb1466eaf84a06510df792e38fc66915b83f400882b6",
+        "size": 954
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/asm_tree_dump.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "667a8cf9c63584f6a44ad39df308890028a47de96b0d8fe08a99512db7fec753",
+        "size": 97
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/bad-chosen.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "147947a6c43625417c22073f39bd6dcaebd3a9f4c45676707b56a96018debf9b",
+        "size": 156
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/bad-dma-ranges.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "a8991bd095e01f2b89a7c1a8d4ac9002af0cd961e42bafc8c31e14539843b1e4",
+        "size": 128
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/bad-empty-ranges.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "ccfb814e32c933b4664cf5f8ba22293e4eb5cb573db88c37fdbc8ab29d303357",
+        "size": 150
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/bad-gpio.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "8a19be2beb87595ef119f487d6ca4bc9210d06fff7be393474ebb39f3ba325f3",
+        "size": 277
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/bad-graph.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "18285ade690394d34f1984f9d515b1d414a72bd8e66a7e678fc5c0121aa167f8",
+        "size": 140
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/bad-interrupt-cells.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "25085131b4016de8435f4db2e8c5b639522d6fdd2242ec0f914c3ecadd9f7d27",
+        "size": 76
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/bad-interrupt-controller.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "c72cccef0d93ea09ace3757b83358dcf812032ef01c3b13ae6b7865917377f4c",
+        "size": 53
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/bad-name-property.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b6a2e783d09da9ccb9141e7e0c285866b54aada00c75e28731dfcc6391800f78",
+        "size": 107
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/bad-ncells.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "434bc6d0216e793b9525f4b0d513ea219c224a4588b908720c9e51e1e0ace49b",
+        "size": 29
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/bad-octal-literal.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "db74673f8b5a76ebc5c3a7808f92fffcc7b66fecc815f09deff56d053a398284",
+        "size": 124
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/bad-phandle-cells.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b24a31589ba87b58a0ef2a8784ca358a76273c1c36679a46ba1d293a23f56f2e",
+        "size": 153
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/bad-reg-ranges.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b86aaca6661aafdb61caa990f9ef121baa8b6e1297f1a0611ec3e3df87be79e6",
+        "size": 142
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/bad-size-cells.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "0289fe7adf3d5834d3ac61289c3a39a208b0b20ca45bbf5e7ffab462adef5f7d",
+        "size": 196
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/bad-string-props.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "db692cf18f3abd95bd669683867f6f51f2a8be22a48fbb03ba4ea73694fb5420",
+        "size": 2967
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/base01.asm"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "885f5565ec4cd6d03801935f1e2fcc2fedc5cef731927a542ee83f89f30cfd53",
+        "size": 32
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/base01.cmd"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "955227a36852f436de23813c057a7e24999a037cecc49f3873593ed361b39e1d",
+        "size": 653
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/base01.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "f026feaff78c8852aaec589a17dba24183daa2fc8651944e37957a72d14b3aac",
+        "size": 250
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/base01.stderr"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "6546e67e9f4af10cb2cf66ab9820e8766149afb72d81727804dfa1ce9c05cfd0",
+        "size": 624
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/boot-cpuid.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "a9a536a5696bede3a180c6a8ee7ff8abfb18c9da09f6bf7f8dd0967e20eb0e6e",
+        "size": 200
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/boot-cpuid.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "0b1b40236cb1ae7cea91324cb90163471ff0a7b2c02ed1039c6daffa5c834edd",
+        "size": 950
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/char_literal.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "d1dfc7f0329feb3f006ea9f259df31839b51b30acccef47cd61290d6c8ce9df0",
+        "size": 69
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/char_literal.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "f651aa739ace501b8a6575fcbe274ccf05feb1ee26b850e8403ff866c2879b32",
+        "size": 1078
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/check_full.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "1b08a5616058c6d45b5ff2bcb7ee62904c977406d502a31ca35ccef5a29d601e",
+        "size": 2961
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/check_header.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "eb073e1f607038eec55799d605c8d1a147c50d59d4ef8aa4f5856dafac607de8",
+        "size": 1232
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/check_path.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "78dd2bb4e2b792860f946a81248896ff3a555734446fc5210541a9f6e9b779cc",
+        "size": 112
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/comments-cmp.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "9f11dea5a1377515bc0b001a24f2fc6315c7e0468a71133d74fb6a93d48571b5",
+        "size": 456
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/comments.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "ce72c067e99665d48e601c711167d7571c660708210d82a9964430cd36ee92d9",
+        "size": 109
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/data.S"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "a1e53ae563e1710b802ea58f29f2249431748d7ecfa901bd0ea9643d7d8bc887",
+        "size": 47
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/default-addr-size.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "3afef4807392ab7ccb8ce3c913c7ab16d8275d3b3e9d5035f511a4dff6f4977c",
+        "size": 3406
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/del_node.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "88ba6152bacfb4805341c3303552e1b9bdd0a660d58692feae0c308dc81bb4eb",
+        "size": 1863
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/del_property.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "a6781aed2f9c2aaca180913a599147352c6d60d9914be9d54ddeef987eda0c83",
+        "size": 823
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/delete_reinstate_multilabel.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b3de77737bc8c498cbf5a8129c1d05575b7b93cd200f2caa2449ed4488199c52",
+        "size": 66
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/delete_reinstate_multilabel_ref.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "073068c6c2d474c6cb8bd2e230656c5d5ee17ceef0f88d9cc0fc124daaebfdc5",
+        "size": 70
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/dependencies.cmp"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "9f38447a381e1174ed7e698f4e10599b8bddaab7e9d98037d7f37c7cd521a846",
+        "size": 46
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/dependencies.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "104990e7197656bf556decc7581419eb29c2988b86c46c41d13870192ab24567",
+        "size": 27
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/deps_inc1.dtsi"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b8615c04f6ef48661afaaa61894cb0d2cdf0fe14ca0cfe1a338e72cd589d0320",
+        "size": 12
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/deps_inc2.dtsi"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "5ee69179590fe1eeb2b07b881ab9c774bcb22b15555fc25eed7686a6ca1d9c38",
+        "size": 64
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/division-by-zero.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "a22dc1062c9b5c57c915d6a75ad7910194770e1c1388611c72064bc87d41a15b",
+        "size": 3463
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/dtb_reverse.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "874609600691120a4da07ac8469f2636d98a5b35956f7469999e626f45977082",
+        "size": 3959
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/dtbs_equal_ordered.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "0c6f53e28930a213dd5bc5c6ae85f831cc8dad340d3133c62af8ab6a53127823",
+        "size": 5679
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/dtbs_equal_unordered.c"
+    },
+    {
+      "after": {
+        "executable": true,
+        "kind": "file",
+        "sha256": "1e3f1930cb5907d5ac095e176eec76d4d35e12a564eaffdb54004a532bda0d6d",
+        "size": 734
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/dtc-checkfails.sh"
+    },
+    {
+      "after": {
+        "executable": true,
+        "kind": "file",
+        "sha256": "85d816df2b3d00f51155899e6f12fd91761841f960b75685e7b9931dc4d0e02d",
+        "size": 402
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/dtc-fails.sh"
+    },
+    {
+      "after": {
+        "executable": true,
+        "kind": "file",
+        "sha256": "7d355e40791a71dca6eb72184cb7ab7137e2063a013f15eca746845d7310cc84",
+        "size": 284
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/dtc-fatal.sh"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "37fbbaa19f9f629492128c64021677b3c91ad6936b22c071cf367709f6c9ba8c",
+        "size": 1339
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/dumptrees.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "573ce8d39a0410027c8fc9282efc2e9baa82b9bae0123fd8561f12988b100031",
+        "size": 42
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/dup-nodename.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "290e86e3f66e104b2ff397b43b76dbcaf783b1b32d939ee361daa17ea61527e8",
+        "size": 90
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/dup-phandle.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "50d8c965e6739826b61cf4d946a109801c0e27f3d38b04be94286d86685acdfa",
+        "size": 32
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/dup-propname.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "ebebad48d1d74a3c26d4d8e6407221845835c6c1932bcf3fa91c8cb900607e8d",
+        "size": 152
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/embedded_nul.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "688e1db3506ac96df7255ca9555a3f5c6dcdc746d2e4600a4afd7bfbd2e10a39",
+        "size": 154
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/embedded_nul_equiv.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "6474c9f03f5e2ac6ac904a660035a0e5fa0f01d6fb39c84ef02e70f83360212d",
+        "size": 18
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/empty.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "43a6b88208b2e5fbec9b494602833370dc83b496fb7e91568b401dd8e7f462b2",
+        "size": 140
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/escapes.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "a4b1d09149d8a941c52bc5f4717251ad33122023ad01e6064c918079e82185bd",
+        "size": 1153
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/extra-terminating-null.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "caf1d437308a177063f423d35e27054932b6db4199f8edcfb585bbdafac2f935",
+        "size": 263
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/extra-terminating-null.dts"
+    },
+    {
+      "after": {
+        "executable": true,
+        "kind": "file",
+        "sha256": "47cee9ab0d7e871a3fbcedd6dbf8fc8ffb14c87ed3a577425c9326132c741a0a",
+        "size": 562
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/fdtdump-runtest.sh"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "5da8133a3c2c52a90f3c5915ecba1120de6aef6582af306f8fcef4e4c54d4805",
+        "size": 724
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/fdtdump.dts"
+    },
+    {
+      "after": {
+        "executable": true,
+        "kind": "file",
+        "sha256": "4c34459916f63e1e26d365576501dfcfaeff55164b09a8b9c87f0ec0b79a0acd",
+        "size": 417
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/fdtget-runtest.sh"
+    },
+    {
+      "after": {
+        "executable": true,
+        "kind": "file",
+        "sha256": "ff1760977b87905bca015b5d9b3c7f844f3cce41f66a5173cdd9516bf15fa036",
+        "size": 864
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/fdtoverlay-runtest.sh"
+    },
+    {
+      "after": {
+        "executable": true,
+        "kind": "file",
+        "sha256": "e833ec800b84fefa6fb1af9c764f0b77ba33f98f97f219236fb78b338ac9ae53",
+        "size": 809
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/fdtput-runtest.sh"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "505581b9eee1c3a22df4d832c41658d973b787de9bbc9a4f8395c551e5fb7924",
+        "size": 581
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/find_property.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "66646b354b52c7addd0e3bb1cb40277313cd97b80586804efc3605d08c5d30b3",
+        "size": 2907
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/fs_tree1.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "25e6893119464c5601d7d0eab1746fd7e5d4e77acc29dcb4ecc46f05b361c2e3",
+        "size": 936
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/get_alias.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "150c8340770cfa614d65561540adc3749a24fefdaf9b7ddd6bb7ceaf2243b845",
+        "size": 740
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/get_mem_rsv.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "6e14cc9cb272bff8fa87c9fa5214edd77a56705b79de127f5ff242ab3dfb77db",
+        "size": 1691
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/get_name.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "946302dc57061f5265d7004ba37fb7a79127a6c082587533b33a9e1588ff643d",
+        "size": 1991
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/get_path.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "8133f69646bd35ddaef4a376dad98a04909846c29df5846ccb9ecd926bf2d2e2",
+        "size": 1943
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/get_phandle.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "f8e07535a399ea461c14852cff51cf8745e8b51e49c5a64e7b793bb27c11ea3e",
+        "size": 952
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/get_prop_offset.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "198ab304be897ed88d4685c437f0459f2f0e1e6a7617457f7bae9d50db3f9344",
+        "size": 572
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/getprop.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "329ee7a7cd8913a50f2427cac5afdda659ae041ad6d1288aa19f57b055682c1f",
+        "size": 132
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/good-gpio.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "3964294b664613798d1a477eb8ad02118b48d0c5738c427613202f2ed123b5f1",
+        "size": 52
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/incbin.bin"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "67d00dc40a11b00fe7a0d909417a07092df6b7a1c816e82c561eb3468df927dd",
+        "size": 1222
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/incbin.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "a0115e1f8d498277c0ca50d848c5902a64375331089f62a70cc66208e453304d",
+        "size": 102
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/incbin.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "2043d0782948de4ee46b9f9bfa043cb01be40dd3f636f4d6f37587b2678dc00f",
+        "size": 25
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/include0.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "300c2f00900ca9ce6fef5ff4365ebd4c6862e11f67dc44f9090b1e25bcce4cec",
+        "size": 571
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/include1.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "f523c4ec38293203cb728a99ce86e70651fbe3329fe7db6a6e3773eb0954a499",
+        "size": 42
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/include2.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "02e588cab3cfe890a3fa79520f0b712a3ab1ff8871bc4ec789c36acf2debf8f1",
+        "size": 17
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/include3.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "7b356d93238417ae74501a1200f13e9310a9b998d4e91913454487969ef61562",
+        "size": 28
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/include4.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "03dad4948fdc01b5d4600bb9bc833a0b59ba5854e0c9dc6d108e1d017e202004",
+        "size": 9
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/include5.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "0ad38c1127ff9170c353c08648b4eacd1f3ae3ff4cb0b32cdb39ad53a2b24ccc",
+        "size": 32
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/include5a.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "1041e639a857839ca65bd47b2007d6d48c515d98318fc27036bc2f6136677370",
+        "size": 14
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/include6.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "8b6df943d877f6ae833492c3de7ad1a8ff5db0c6befd89f976d77938a9d6a0cc",
+        "size": 250
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/include7.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "3a9b106522cc1ef17bf72acd685a35dbb863941d490691264b2f46f534aebb51",
+        "size": 27
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/include8.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "d72f511ce3b027411bd31935ea8f905286a53ea2ebb9a96373ef6112ae90297b",
+        "size": 2453
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/integer-expressions.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "d37444426a9b2a41dbf3205c71b66902a69efa544d2e735dcfc252a1f4f1e44d",
+        "size": 1482
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/label01.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "c1589efe9ead6377906df0f977dca949d606eeaf6726b3814743abdc569453b2",
+        "size": 98
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/label_repeated.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "2710b0dbc2b88124f45108c636880ed3f3da4c0132cb27d18de9628a19e1ddc1",
+        "size": 554
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/line_directives.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "e1492557f79a08875f134b9af108df3e7e140f6cf69fe4fda3ae7cb6037ed038",
+        "size": 2055
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/lorem.txt"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "14f8888a909855df3ed88545e1bfd088902f0211309e4d5f581be0547565d145",
+        "size": 3104
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/mangle-layout.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "217f8d91822df5ed6b04ab6681d9076125aecc0d19b18839f4a1a17c8afc66d4",
+        "size": 2610
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/meson.build"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "eb9fbb54b6a1160d15983e0252f7d6447e6a8b46a8a8b267d1bf1db6413b6368",
+        "size": 62
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/minusone-phandle.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "1a42c2bc89fff65fd1292fd5d99c452aed2db29a3c91589b899aaa4202906c0c",
+        "size": 1392
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/move_and_save.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "4b72f1115ea73db02fb15fd8e9f2bd1784579e42b523297ceaac030cca0583fe",
+        "size": 989
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/multilabel.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "a8f37ee934b593f2b1b293baed815b5776039163c226bc34d61e3f25927e1e90",
+        "size": 1357
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/multilabel_merge.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b12c0d635c9bd8bb873f3a69de2e3d916e2c4a7076fb2ad46a748397bedc9bce",
+        "size": 1805
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/node_check_compatible.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "0b1cb0faac1d16716e71d8beeca11aa2b956bf2c3cff75a41c84e019a79723dd",
+        "size": 2139
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/node_offset_by_compatible.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "aaa6edcabc36f17b57655ce37322855a9aa339f5f4c18b89d79c256c6e002ca5",
+        "size": 1242
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/node_offset_by_phandle.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b92821dbea12d85a5d0abba0493084f0259a3880ccb4ea1bc0c54841532688ce",
+        "size": 2606
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/node_offset_by_prop_value.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "412ade8fb58d9962d9cd19006c83b0f9c0ce32a26018fbb4672f16dc8d2e6bd7",
+        "size": 80
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/nonexist-label-ref.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "2e9686946c666c91c054e0bf65259942a126396294c6023cf0e3b27320650fa4",
+        "size": 88
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/nonexist-node-ref.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "26bcc34ee74aa2072e3c822c0eb84486393f96b9614313ce3c7daaa2f15e766b",
+        "size": 111
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/nonexist-node-ref2.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "2d046ab756c02535c7806d4418538d7807d4fb88106c7132961b601e8bea877a",
+        "size": 2996
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/nop_node.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "fdef1dfbceb92b2cc5e2302776f891bd641982d2a00995803b9f5742c0ab7ee3",
+        "size": 1445
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/nop_property.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "c97aa96d18c8333a9a24074dc895821e0b2cf966edbbcc2f36bb38d61b0214d2",
+        "size": 2184
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/nopulate.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "97717f5e7431551be4e3d8271a5547bb90e58067da9e9fd6ee5b3bc8a40764c3",
+        "size": 1572
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/notfound.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "d2e2f517e0dcb79ff5f76c5b872d267d3001f3fcbd0f38d292cfc3c36aa87620",
+        "size": 36
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/nul-in-escape.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b6eca605b7005936d793bb052396e05b7d5ffe5251dc91f4ac11d853e2cf1d8b",
+        "size": 8
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/nul-in-line-info1.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "3948a864d263f13ec9850e8b8206647c14424cd868baa382559b56659a5ee6b9",
+        "size": 9
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/nul-in-line-info2.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "23b2c44099ff3256b755fbe1eb109700e3a553a7537a37681225fa7680509bcb",
+        "size": 170
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/obsolete-chosen-interrupt-controller.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "82e445c3862d96b5f9692b1f77e79c9032f41b37843f76e2f79043f791dadf67",
+        "size": 305
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/omit-no-ref.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "ed6823047a2a23e6073ad726f8f286282720a9a910db83af45bf571433769735",
+        "size": 1226
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/open_pack.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "168994fb220215739562ed4fd55515eb2928b47e5e13ef42fe9e93d0bd1de17f",
+        "size": 4733
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b572a83f31403e341613f93850844ac8970cb43f34a3a4ec8c0c321da9288232",
+        "size": 1084
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_bad_fixup.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "84b3c6b7fcd45ef9d32769a32d8c67188c55d4c5b6e2dab48f2367d3715a385a",
+        "size": 220
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_bad_fixup_bad_index.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "4b0e5ee299ec49ead2d9eb1e6d2ba447c552dda673b71fde28b0018555cb5b9b",
+        "size": 221
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_bad_fixup_base.dtsi"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "66a4d218aa93c8d3d1a04aa58779cbea31d98d8271710adec009c778eeaea964",
+        "size": 199
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_bad_fixup_empty.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "495dabf61af37b2bab8253ba46c52d77ffb8ec30a8e099a52080bd607a273bc4",
+        "size": 218
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_bad_fixup_empty_index.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b6b7730fd8ffbd594946fd8ac71fdd1e7de703a98d727728ae4f6079dd5e16ad",
+        "size": 220
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_bad_fixup_index_trailing.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "a6647385741ce7853704007d5107899c3f3248e5eba19f779359516b543274fe",
+        "size": 212
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_bad_fixup_path_empty_prop.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "71d09260a8707a9a104ac35a17305acf3e59797649d97db7df2e0b50646642bc",
+        "size": 210
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_bad_fixup_path_only.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "523ae4ef31d2548e74369a618d04a1f4bb14982b9e323f05fb56a44eb89b45d8",
+        "size": 211
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_bad_fixup_path_only_sep.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "fa7ce2ac48277b9991555175f67b1ea36bdccd6e889c40b757962661bca18da5",
+        "size": 217
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_bad_fixup_path_prop.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "9268982d9f04076b472cd98f658f687e0afbfd90c61d7820d521b8a2219096f0",
+        "size": 381
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_base.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "7ad69d5e2e466538c33bea9d05a312f318aa24ed2fc4f5de3aef73dfc0daabd1",
+        "size": 362
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_base_manual_symbols.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "e1080346297f05a3565e39a07f910f8d230d7ce5b2f1ae933c9a5d33d13dffad",
+        "size": 755
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_overlay.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "d4d08a72e8852b00dfbf7bdc91f1d7b6ce6f03d0074343e728f6908143b06ad1",
+        "size": 746
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_overlay_bypath.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "816ef20153e473ad03ae4a9ada79d228473613570873126ff730e1035d52076b",
+        "size": 364
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_overlay_local_merge.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "900c59491aa614283215b2c0e3bebb107784aa1d673471e920a5a0877e498b75",
+        "size": 343
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_overlay_long_path.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b5479c9a382edff935fbb3c3bda22b0104132e62e153437a247f1deec547f32c",
+        "size": 1906
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_overlay_manual_fixups.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "cfdb608ab035cef00ec8627297b6ecb924a7815bb386e043abcb5a6c1739cf57",
+        "size": 1099
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_overlay_no_fixups.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "edae2645b9a0b63f205ddc2a58af81aa6f34557ff4a85066456ab0ff8a6a00ff",
+        "size": 1186
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_overlay_nosugar.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "00e0ce487a35430de016aadf8c79645ba9e837e60ad719e094e249f05ef3bc97",
+        "size": 143
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/overlay_overlay_simple.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "07d0f71fbe8027ca1a9fbac224fefde07f7aef1088927d183409b097f818eb80",
+        "size": 1880
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/parent_offset.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "7e4b1a99c6f43690d75efd0b6e9aa6b791f94c12abb55a0691d0880018f2de03",
+        "size": 2467
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/path-references.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "65780e8129b8b0358fc821f953f54c2180443980a3ee6be257416a3e1e65c3e1",
+        "size": 461
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/path-references.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "4cb3e9761c6a1c1bb78fa5cc60b9424982a1233051da676057c476a9233ec943",
+        "size": 4111
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/path_offset.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "eb2d4da0b1f03a758755fb7c33a5b2629679545b220584468f3b9ec0ad452265",
+        "size": 1241
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/path_offset_aliases.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "cc61f1b3c035cbfb866ec8b737a0293959752eee807e7a984588132ddb52aa7d",
+        "size": 313
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/pci-bridge-bad1.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "1684115b94305ed2e30313b43d3fc60cf19d9569cfe1f87cb8f52ebe026683c7",
+        "size": 306
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/pci-bridge-bad2.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "aab3512abf5e293ece568f53eeb1820304703757af5ee7b65991a938f91cec6a",
+        "size": 536
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/pci-bridge-ok.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "2e3929243394ee8fa470c8cca1de744dca94d96fbb821a1b46affaf6e4487a43",
+        "size": 1539
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/phandle_format.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "87193667adaa4782c4aafcf83554312eadfd63dbf9fc6b4e6646637921c8e5f4",
+        "size": 51
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/prop-after-subnode.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "8aa761940f61f063dd775b4f3b2ec311aacfe2306ce7c3fbd68e95e39585388d",
+        "size": 1686
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/property_iterate.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "7e25ea5107deaf6f0b8f19a1f7e518301245d3bd42f7d5a30d64fb0c57022d0d",
+        "size": 242
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/property_iterate.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "e0d9da7d56e89357330f49d077893e7e06ebba69466058dce944b93f40f127ac",
+        "size": 579
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/propname_escapes.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "029056b276e8a539f7cab6534d1ec94801908ac3131c7fcf327355b79ac446d9",
+        "size": 62
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/propname_escapes.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "7b4f3c5978a8784edb74a6cb3fd1b3496ad511c57131124d4bfda2e4c87845c7",
+        "size": 23620
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/pylibfdt_tests.py"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "ec2a429e19d25b2b5c3eee80aa48939051c65524479a4fbfa7fe56d67ef4e9bc",
+        "size": 3518
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/references.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "8c97e3f4bcc36b9c1af4120c7fbbef68c376b3d62bb4cf8a115df63730c5b36d",
+        "size": 853
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/references.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "a242cb2eb99c8926df37abec68cfc946847d345912710b461598691caf4609dc",
+        "size": 117
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/reg-ranges-root.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "f46754b1f829f1fe4d0a2e5637d9b4bbc781cc1ad9bc8a834e50d0f68a8991c9",
+        "size": 89
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/reg-without-unit-addr.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "8b390de74563b5af62b8064cad49a307a710cb79ac337132e0d7079da21c1345",
+        "size": 163
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/reuse-label.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "66fc2080e7299cae20dba3e6bf964345a5910ea474340c75202a1ba2e03d7780",
+        "size": 90
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/reuse-label1.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "ddcc93a9f5d0f2c252a80dfb499822314b5d37463c3bd364d5dfc65e5d0309e2",
+        "size": 72
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/reuse-label2.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "3a669d8f05608e7eabe27ce8fa095c3ce36e2bf6079a423e5d4b459e71addd6b",
+        "size": 84
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/reuse-label3.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "4badfe8119e96f43eaaac469c01b65c2cf7b66c0f093fed1530b1fdd8951a45c",
+        "size": 51
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/reuse-label4.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "eb5e6e756a85d0ed05222d6f5d2c21353da6f67db2c44b6399c87eabd091a50a",
+        "size": 64
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/reuse-label5.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "451d2dce77c6d3f9c25446457d88ac701995054c90dba91ebe76006cf1ff8ec7",
+        "size": 64
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/reuse-label6.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "e6928cd687292131a7a1d4cd72519eb0dd796d6d9829c4a08c868b6db6f204b7",
+        "size": 765
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/root_node.c"
+    },
+    {
+      "after": {
+        "executable": true,
+        "kind": "file",
+        "sha256": "c96ab2c05343477064779e5f6b2db1110935dab9c4b885d559b2c678a2bab775",
+        "size": 43072
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/run_tests.sh"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "a627ec1165b9a6f4d40ad326e5779c7419a4d78f89ef7dca69707e79c2787997",
+        "size": 2022
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/rw_oom.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "62746c5d4235e826197ac929d13bb5072814ac69cbdcef7bba5619fb3b20e19b",
+        "size": 2225
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/rw_tree1.c"
+    },
+    {
+      "after": {
+        "kind": "directory"
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/search_dir"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "916d54abdd5f8c5e126ada533aeceb036acbe4d66cd53519c6332b250ca484b0",
+        "size": 38
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/search_dir/search_test.dtsi"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "09764a10b254cafd2dc796c1eef4b361e4506b52026f276dc109ef382482a881",
+        "size": 8
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/search_dir/search_test2.dtsi"
+    },
+    {
+      "after": {
+        "kind": "directory"
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/search_dir_b"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "3bcd74f2201e63040971ebdf8f40fff5de0487482cad25e885e9a16c63c807e3",
+        "size": 50
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/search_dir_b/search_paths_subdir.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "cca002b11442388829841026fbe5e0b71657d3e560a10f8129fe05e4e3df0a14",
+        "size": 40
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/search_dir_b/search_test_b.dtsi"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "a0e931d11a9853de86eb5fc02dbcbfa9bc01435defbe4d9e8793301010527696",
+        "size": 38
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/search_dir_b/search_test_b2.dtsi"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "ae388d8bfaa77da0725f5d82061084b7dbd1720b6d4b2cf641cc7d1e3c553e25",
+        "size": 7
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/search_dir_b/search_test_c.dtsi"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "ef599a257a5f78d7df4f8c98d4b4a4aac4c2e9ea12d81b3453d24cb6f8d22a1f",
+        "size": 48
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/search_paths.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "d357439702c08a2ed40ee8cef4c88f4873e742960c22a6a2b05dd861bd8cbb32",
+        "size": 50
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/search_paths_b.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "6a9f7787b2bfa046975e6b400ae5a9b4605d9c9f0d7e9ef1b26538a0996fdd69",
+        "size": 1930
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/set_name.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "d6c75f8f4d8219cbba9ab188944d53607eecf895c0ded3ebf5c61f132cfd20a3",
+        "size": 2121
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/setprop.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "1cffa5eab0915e14a6e9d4673d5b3bf0736dfaefe0649506d82180708d49ef3c",
+        "size": 2410
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/setprop_inplace.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "d889c33cb19ea17afbf9b3041c490a3f5e51aa9308bc5e4fda6a7e74217311c2",
+        "size": 1756
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/sized_cells.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "4a9795685a03a07df1863f27be3ff6dc8a8fc951ea5600c5dbe81df5df01fb29",
+        "size": 364
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/sized_cells.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "0ed912c0929bbca925e90f3b05cace4ffdb7529f6b0dc3ea9df2c47714c753f5",
+        "size": 405
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/sourceoutput.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "74ea7dad6bd7dd72e9e0344be463d4284c207bb6b58cb36b36599d150c090446",
+        "size": 205
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/stacked_overlay_addlabel.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "c9a98eb08aca0917bebdc8718e9043c80fb033354fe813c546be8f2bf4ec6379",
+        "size": 158
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/stacked_overlay_bar.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "a5922fad47f56636abe953868a749a59372344515ebd12cdf64356b2271d6567",
+        "size": 61
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/stacked_overlay_base.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b2dec536a273b6472895d400fa10933c825486687cd3315206de139d0d3b3079",
+        "size": 56
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/stacked_overlay_base_nolabel.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "2ff7efeecfaa7fcd308a9cca6327915fe7517c8c38ac91d553cc25c85e6b5bd8",
+        "size": 158
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/stacked_overlay_baz.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "e7c63a925fcc4deac2e7a8b0110cde4d53e4350177901860af48acdf7733cbf3",
+        "size": 622
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/string_escapes.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "31d7a352ec972fc008a4f226c8b788292f25a00e5a122a4530d886cb395d1a89",
+        "size": 4087
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/stringlist.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "76aa48987d31ddec948c800e91aadaaf727f1d03396fdc6b94413ef5ee398b1c",
+        "size": 149
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/stringlist.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "1ff7a8290acf8fa0298dc4c43fc090e20cf5a5967c31b95642c86f6db5a4e85e",
+        "size": 1522
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/subnode_iterate.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "3fed84ea47009679c515203adfc59e891c7d5cde499903fcf9ebee148035fbdc",
+        "size": 761
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/subnode_iterate.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "909407cfe95a85dfac467844e5c65fb05d0d23292b6d084efb38e0a31932a3d8",
+        "size": 2636
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/subnode_offset.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "510df619c241be7cf78a11c41afcf24e6c8017b67e5526f754954f3e35783065",
+        "size": 3145
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/supernode_atdepth_offset.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "78ec133666dbfa8bc9c53bc7f5de68716afa7c1b0f1b40afcbba9a7b85d873a4",
+        "size": 3850
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/sw_states.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "be39ca6488012f1eab0db73a70908adcc2d64ce547a2765973ef42b7b09f67c8",
+        "size": 5369
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/sw_tree1.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "562c0e98441a6b8eb25c9870b240d5f520c20e78f1dd52c086986b91b2daa106",
+        "size": 4884
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test01.asm"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "0b529fc498433cdfcc589bbd3d88e7ee7cdbb34e74ed76fe7b1a9a5ea1ac4fec",
+        "size": 1184
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test01.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "3b37ea6229a7fc081dd0adf3437d3ed377c8deaa5748100b7cfd33d381f0fa67",
+        "size": 220
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test01.stderr"
+    },
+    {
+      "after": {
+        "executable": true,
+        "kind": "file",
+        "sha256": "feb9c22b57e368bd1e40c004553284093d8f0867392f710fd7c93e07c883740b",
+        "size": 2056
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_kernel_dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "374720fc2a68074ef834c754de0104513784f40efc36c2242a46bac7134079ac",
+        "size": 41
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_label_ref.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "704388fed4220fe2768506c2e2f820d4f0adba3874c379d8626b4596aa1fa4b1",
+        "size": 264
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_props.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "503567eaccd54099679b80ec5877d56ecb6303079487679a2c7769fbc09d58dc",
+        "size": 796
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_tree1.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "ce2b25531838d28012350d4f59ffa90478dc573ce0b8ce2c9db7fcd10da8ee8b",
+        "size": 732
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_tree1_delete.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "851d1b40e97ff31da27aaf0a58af394c44fcdc47dd24de1677c51453de863560",
+        "size": 933
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_tree1_label_noderef.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "c43a7e590dcdbef8e774b5ad6437f115053caea0b921e180efb4ea3d993f5434",
+        "size": 798
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_tree1_merge.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "c9652815b949bdbdbc54935cb9992a1527eda56e672fd34a6db39776b09be092",
+        "size": 767
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_tree1_merge_labelled.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "42e340dd9079dc678d4f2209e9fdb48da5d2674344047923b0a9fce86b7d49f6",
+        "size": 788
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_tree1_merge_path.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b8343f85c83cd5b1770a74ddcdb52ed4f29987ce5cd8413ddfc03b27cf6dbd86",
+        "size": 642
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_tree1_wrong1.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "78fa2c7f1e202d34dd174ef1bd651173454cae4a38fc2f9e9123cb499f039e97",
+        "size": 658
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_tree1_wrong2.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "4195ded09f4d7cbd8f9c3930fbd46eadb92dbc74b54e426a411088f01dadfc0a",
+        "size": 659
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_tree1_wrong3.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "5cc8e552db017a2240926bae4aee66f1c02d79fcf61995e0aa33e4ce172cf99b",
+        "size": 670
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_tree1_wrong4.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "c01d3e52fc9c5d62989c247a9db03688b1e5595481352b43df48830b40f12b05",
+        "size": 684
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_tree1_wrong5.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "409dcfc1bad4e345435a6e719e18e834c9404877c375f9c028cf029fb9f5b3b0",
+        "size": 699
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_tree1_wrong6.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "68933ff3beac365784306f2648b864dc2f984dae9a9f53d05a2c956c46e24c48",
+        "size": 705
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_tree1_wrong7.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b472d93b3188cf7ee309fac8654b74fd4d4308ea83f525895f4f1a00b367be6e",
+        "size": 684
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_tree1_wrong8.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "301237c9417e580478f45abe624bf7146695207c05563569e2269cd2179cc4ad",
+        "size": 702
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/test_tree1_wrong9.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "419561196f071159b8c3fce62dbf0bd55fa745109bd22c01222f6f28b66f375a",
+        "size": 1963
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/testdata.h"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "851d783b3a47dbdb8045f350c8ee3ea95fd84dee2268d950fc2de832e31a087b",
+        "size": 3430
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/tests.h"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "95944b70f41e4e20a4fd9d20c8523638e36712d36900cc405abf0171c5c08fba",
+        "size": 8645
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/testutils.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "41e4e7349e65c626c03d846c81a6b4485522bdcf3511640dc39552d774e474c6",
+        "size": 1038
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/testutils.sh"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "e64577704a4e45a24ab813e083a18966c3154ae351d00a8b2eadf593c28becba",
+        "size": 6919
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/trees.S"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "16a6732428a29d9758704d8ce7f0de0b17ec3ad567b742bd3edaf0b81df640a7",
+        "size": 1235
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/truncated_memrsv.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "7e5feb6f9044f721a0ad14ee5ee61c01b37041a8a2beb85df7b5b542805139d2",
+        "size": 801
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/truncated_property.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "4a1a508a8486087bfb64e2957debf4b56c1db5ad3005266860832ce3e0dac120",
+        "size": 2007
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/truncated_string.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "45e7d3f0136ea4fc3770097a765aa0c489903104c0b282adbe1a28455668d5f8",
+        "size": 644
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/type-preservation.dt.yaml"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "c1022ab9442194505c56f4881fa335902e0a6f249e864c1997fb2e6c36218b70",
+        "size": 754
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/type-preservation.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "66c72a7bd17f23f97524c87e3315f8df8a512574530977a2affd5518f5e1b3a3",
+        "size": 107
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/unit-addr-leading-0s.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "14343f5c1e19f1feaa33585f0a80b3282baeb03d77b2058c53d6a8ebd37b53a4",
+        "size": 107
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/unit-addr-leading-0x.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "16bf2ed439e298924ba43869e496506e5f66101c7cb8a327185580b1ba7fb877",
+        "size": 245
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/unit-addr-simple-bus-compatible.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "e41483b7a7031d9f6727a7cf06eaff8314285aa66b93ed90954775b252e6651e",
+        "size": 234
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/unit-addr-simple-bus-reg-mismatch.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "5ee7dfe413e0ff1fee5f478a8c8b4c2b60ef6c18ee2f467d1e01df3b797df3cf",
+        "size": 115
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/unit-addr-unique.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "a071e3814561dc7d9940fe0fa99f55ed60d58c119f5b2677a21314c038a5951d",
+        "size": 76
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/unit-addr-without-reg.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "af5c948839b8b65a1502fdea571a5ea89ab6e63ac16528786b22fe08ef99dd13",
+        "size": 2461
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/utilfdt_test.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "d864cee2f398ce36c643a847044221b36c43aec92d8798900d44d51f36f02135",
+        "size": 2417
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/value-labels.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "063c5890ed8281fa9b604d9c9f70baa91dbbbc80128e807952285b30e97e1825",
+        "size": 233
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/value-labels.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "1d2d868b282a4586278d28917b66eaa5c32592c5d1f5dedb7d9624a3b74c60f2",
+        "size": 53
+      },
+      "before": null,
+      "path": "subprojects/dtc/tests/zero-phandle.dts"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "e2f05196abe2f67bb2f3448dc3d4a8f846fd798e053857b392ed25a317ad84a3",
+        "size": 6992
+      },
+      "before": null,
+      "path": "subprojects/dtc/treesource.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "075533ab3440dec3250f14db21e841f154e5b27fc8bd30aae1185120c7459922",
+        "size": 8701
+      },
+      "before": null,
+      "path": "subprojects/dtc/util.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "b6698db1a9a7bf9ba59e5590a8a7a66871bba8e1d030c1dff6a4d61f090f336f",
+        "size": 7175
+      },
+      "before": null,
+      "path": "subprojects/dtc/util.h"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "f483ed959a5933c337964f2913a8456b449161afe976a21d26328749da528156",
+        "size": 36
+      },
+      "before": null,
+      "path": "subprojects/dtc/version_gen.h.in"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "1520da006a13704b0c1298decadf872a5ce9ed5f60a430287a99462f6c383286",
+        "size": 6461
+      },
+      "before": null,
+      "path": "subprojects/dtc/yamltree.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "2bb2745649780507a963d2be289a817581c8915ad8d94f44da718a583492fd33",
+        "size": 707
+      },
+      "before": null,
+      "path": "target/riscv/Xaraakv.decode"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "dbc84efe5f1434c02259e947668b9df2c1b5e628a67fd9b0e30d08e7bda39f8d",
+        "size": 413
+      },
+      "before": null,
+      "path": "target/riscv/Xaraqbs.decode"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "6459c81f161b91af54a35d49d05185b7811546055fd77146c3efeecbd334bec5",
+        "size": 8588
+      },
+      "before": null,
+      "path": "target/riscv/akv_helper.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "834fb835b1034048c70872ebfc510164cb4edb9f3f6635504450290eb8fcf934",
+        "size": 14492
+      },
+      "before": null,
+      "path": "target/riscv/akv_model.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "6c0589606a5f580502adee020485f5a0609eff313872fb2592cdddf72569e4f8",
+        "size": 3713
+      },
+      "before": null,
+      "path": "target/riscv/akv_model.h"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "48545391ebcd6ead354126080f8f1a64eabf4fd8b5dc3a06bff92b5f98ce147f",
+        "size": 104959
+      },
+      "before": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "41efb17ee7b4c5fb6654177e1268197d696f4fa5408e354f11122895a57614a3",
+        "size": 104143
+      },
+      "path": "target/riscv/cpu.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "c604003060126bb38bab79095f983efc91e7305e0541be2c869cf1c2bf0dc1e6",
+        "size": 30450
+      },
+      "before": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "ef3a3b6d0f4a7a96d2e5a3c6a2e06a7b5e5dc62ae94f67b75a48850c0f2de30f",
+        "size": 30217
+      },
+      "path": "target/riscv/cpu.h"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "664f6160346c4112f061072930ef89bf0c285b8f0f3b3476973f19f972b8dea7",
+        "size": 2262
+      },
+      "before": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "e849f2b50e8a6e6e860cf5d077158dd4285f635806c087526bc23d5e820dd748",
+        "size": 2192
+      },
+      "path": "target/riscv/cpu_cfg.h"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "81270a8b9edd09b02b4e7db67232185278ed77ad78cc66085c84ba8379d0cb80",
+        "size": 4055
+      },
+      "before": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "87c2b4ec86faf5ee7e0379cd9eb490368815df52de13031e0514b57dc6dae247",
+        "size": 3975
+      },
+      "path": "target/riscv/cpu_cfg_fields.h.inc"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "c89334803ec995713162188589b2240f3b4c03a6d60fa3ecd3ad5b8ad81fec69",
+        "size": 71786
+      },
+      "before": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "eae99deaa223996e0b20ae9b3e2016d18b1467bd9978727017d5936ea5a8b52e",
+        "size": 71506
+      },
+      "path": "target/riscv/helper.h"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "be5895e293e75c49da1d5b3cb65fb0ebad48ad2f0097ebe02f960dd49f0c1f5c",
+        "size": 1412
+      },
+      "before": null,
+      "path": "target/riscv/insn_trans/trans_xaraakv.c.inc"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "8f8b6c30ec369e2417c5ce32c8d8afbe59252fb83a5fed28bb470b0029f2ec18",
+        "size": 1428
+      },
+      "before": null,
+      "path": "target/riscv/insn_trans/trans_xaraqbs.c.inc"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "8f640943e713345cb4738751aa4bbf724d0aaf01ca9912557f23739dd20a0695",
+        "size": 14861
+      },
+      "before": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "ded6096630f71dc7b74e0568282bea59e90a3c506954638756ab106917c94fe5",
+        "size": 14637
+      },
+      "path": "target/riscv/machine.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "8a1c8971a1d7b8bc5c3476e05361e6af2777d67d2354cc7f5c3eb80b818df620",
+        "size": 1409
+      },
+      "before": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "6aa98f6336bfaa5685e00ee6d2c3169bae56669d68f134c7f46fa67e7ddd05ba",
+        "size": 1169
+      },
+      "path": "target/riscv/meson.build"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "4d7bf2d7f78c44bab494d86aee4163a02087b6ad10a43f1ed0752ff3a98fa117",
+        "size": 27725
+      },
+      "before": null,
+      "path": "target/riscv/qbs_abi.h"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "5ed80e3807f078b75be6c89dc2825af8268fbe04d581fe4623d450b2fcc2c2fd",
+        "size": 8979
+      },
+      "before": null,
+      "path": "target/riscv/qbs_helper.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "adf815ed88e50d3f9d23dbb8fab2baa959d8d5aaebcd6f15cbd7a347678f423a",
+        "size": 62545
+      },
+      "before": null,
+      "path": "target/riscv/qbs_ref.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "58f6a328d355aad71fe900273117db30fc10cf45b62c1a0084f8f4c724d0fb47",
+        "size": 7737
+      },
+      "before": null,
+      "path": "target/riscv/qbs_ref.h"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "1c5d71533b69350028dc072e40256e06170f5820ba9e6f1d9d6d3dec40402b45",
+        "size": 50816
+      },
+      "before": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "60160caefed5737696d1fbc183d76d16713d1740a0789eb6355f6ba69d36132a",
+        "size": 50664
+      },
+      "path": "target/riscv/tcg/tcg-cpu.c"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "e2ab6d29ddd4f0401d0db59d4666fefa6870d5bcb3fb44ba642d46c94c252595",
+        "size": 1802
+      },
+      "before": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "9245fc0b8fb30787dc25bbb57693eaeff1940411d3ea4453e3f55a8d6ddc3dcb",
+        "size": 1034
+      },
+      "path": "target/riscv/trace-events"
+    },
+    {
+      "after": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "35dd45b33831f61c5936b59f6c7caef4b1f0a643c660fcc7440fcb21c9e9749a",
+        "size": 42453
+      },
+      "before": {
+        "executable": false,
+        "kind": "file",
+        "sha256": "2ea7b642931b95dcaf92d2399336a49cf184135bbc6c1f8196142bd950285e7b",
+        "size": 42229
+      },
+      "path": "target/riscv/translate.c"
+    }
+  ],
+  "final_tree": {
+    "directories": 6312,
+    "entries": 84955,
+    "files": 78571,
+    "inventory_sha256": "164d0a470c70b2d524956608c7aeb0533ab503b797f749978931838647c1bc56",
+    "regular_file_bytes": 695458426,
+    "symlinks": 72
+  },
+  "generated_policy": [
+    {
+      "kind": "empty_file",
+      "path": "subprojects/.wraplock"
+    },
+    {
+      "kind": "empty_directory",
+      "path": "tests/qemu-iotests/scratch"
+    }
+  ],
+  "payload": {
+    "blobs": 338,
+    "compressed_bytes": 255016,
+    "filename": "payload.tar.xz",
+    "raw_bytes": 1377938,
+    "sha256": "ce4f9ffde30105afe139f84ce116486d4749273fc871363eff9e188700f720b9"
+  },
+  "permission_policy": "Preserve owner executable bit; normalize files to 0644/0755; directory ownership/ACL/mtime are not source identity",
+  "primary": {
+    "excluded": [
+      {
+        "kind": "symlink",
+        "path": "roms/edk2/EmulatorPkg/Unix/Host/X11IncludeHack",
+        "target": "/opt/X11/include"
+      }
+    ],
+    "filename": "qemu-10.2.0.tar.xz",
+    "members": 84624,
+    "regular_file_bytes": 694485712,
+    "sha256": "9e30ad1b8b9f7b4463001582d1ab297f39cfccea5d08540c0ca6d6672785883a"
+  },
+  "provenance": {
+    "configure_arguments": [
+      "--target-list=riscv64-softmmu",
+      "--disable-docs",
+      "--disable-werror",
+      "--disable-download",
+      "--disable-plugins",
+      "--disable-linux-user",
+      "--disable-guest-agent",
+      "--disable-sdl",
+      "--disable-gtk",
+      "--disable-vnc",
+      "--disable-curses",
+      "--disable-opengl",
+      "--disable-slirp",
+      "--enable-trace-backends=log"
+    ],
+    "historical_receipt_is_not_a_reconstruction_dependency": true,
+    "origin_receipt_sha256": "17272253837fe18a89725dbe01e1ec59dee9a6d117ce5ad27e25bbcc99bcb17f",
+    "origin_schema": "stage5-qemu-prepare-v10"
+  },
+  "root": "qemu-10.2.0",
+  "schema": "stage5-qemu-portable-source-v1"
+}
