@@ -1,7 +1,7 @@
 # Stage5 Unified Delivery DRAFT
 
-Status: DRAFT / NOT COMPLETE. S3 aggregate instruction/graph acceptance and S4
-real-model regression remain pending; S5 cannot close without their reviewed
+Status: DRAFT / NOT COMPLETE. S3 same-image instruction/SDK acceptance passes;
+S4 real-model matrix remains incomplete. S5 cannot close without its reviewed
 evidence and final version/tag audit. RESULTS.md remains the parent's ledger.
 Contract: `hardware/docs/INFERENCE_STAGE5_RUNTIME_DELIVERY_20261110.md`.
 No model speedup, new RTL acceptance or board eligibility is claimed.
@@ -65,19 +65,42 @@ arguments. Those manifest arguments alone are NOT the full BUILD07 recipe.
 Source reconstruction is portable; binary reproduction needs the separately
 pinned host/tool environment and build receipts.
 
-Current verification entrypoints, not automatically authorized launch commands:
+Current verification entrypoints, requiring their explicit pinned inputs:
 `qemu/gates/run_v10.py` (directed/ROM), `qemu/execution/run_v4.py` (same-image
-QBS + unchanged Stage4 ELFs), and `models/launch_s3_v5/run.py` over sealed
-`models/execution_v2` (model owner). Do not treat every older `run_vN.py` as a
+QBS + unchanged Stage4 ELFs), and `models/final/run.py` (model preparation).
+`models/launch_assets.py` supplies the final low-overhead model launch policy;
+`models/prefill_check.py` retains complete numerical/path checks and the exact
+source-derived short-Prefill expectation. Do not treat older `run_vN.py` as a
 final command. These workers retain inherited imports/pins and OUT receipts;
 they are not made portable merely by copying their latest script.
 
 ## Remaining Acceptance
 
-Require the same BUILD07 image for all native gates, checked instruction counts,
-complete numerical outputs/flags and unsupported controls. Directed acceptance
-alone does not close S3. Model owner must bind provider/launcher/library/model
+All four native gates pass on the same BUILD07 image, including checked counts,
+complete numerical outputs/flags and unsupported controls. Aggregate receipt:
+`stage5_qemu_four_gates_20261110_03/result.json`, SHA256
+`d1fe3d705d1caa1923536eff66a6e4fa51030d180e2db01c1724ccc1a4f211d0`.
+SmolLM2 full-log replay and its separate post-pin audit pass; its original
+worker remains FAIL from a source-expectation error, never relabeled PASS.
+See RESULTS.md for that precise scope and the retained evidence.
+
+The remaining model results must bind provider/launcher/library/model
 identities and check complete logits/tokens, guest tokenization and actual
 dispatch across the frozen five OFF/ON pairs. Only QEMU functional claims follow,
 not RTL timing or end-to-end model acceleration. Parent reviews RESULTS.md,
 the source-control inventory and final commits/tag before changing this status.
+
+## Observation And Resource Policy
+
+Both arms always use the same ELF, model, token sequence and computation.
+The low-overhead frontend turns off only QBS TRACE_CALLS, TRACE_LIFETIME and
+TRACE_M4_PREPARE diagnostics. TRACE summaries, native-entry evidence, AKV
+architectural events and complete raw logits remain checked. Runtime/library
+source does not change. Entry-only and range tracing were compared on the same
+ELF in ordinary TCG TB mode; this is not a model performance measurement.
+
+Each final quiet guest is bounded to10,000 seconds, with a12,600-second direct
+systemd service including input/output identity checks, one vCPU and8GiB host
+memory. At most two model services run concurrently. The first verbose
+Qwen2.5 attempts were explicitly stopped for projected budget overrun; their
+original outputs and stop-reason files are preserved and are not PASS evidence.
