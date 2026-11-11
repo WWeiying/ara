@@ -416,3 +416,27 @@ pass; final source identity is
 `256fe96bb36cf229734d5b0427e77b360ea812a63128f38e3eef43b382389231`.
 The next image must execute all required gates itself; BUILD06 QBS evidence
 cannot be mixed into a different-image acceptance aggregate.
+
+## BUILD07 Directed Native Acceptance
+
+BUILD07 completes configure, compilation and linking, with executable SHA256
+`1f4619e1573ed6626b259912d6780ac9d40e8cca8ed38ec32694a0b1d399388a`.
+The new directed worker executes all three original ELFs and the independent
+ROM-negative ELF on that same image. Its result is DIRECTED_NATIVE_AKV_CHECKED,
+receipt SHA256
+`4968224d1a0cd7023e21f61aa17699d6dfc1688b81240892aaf5f60bf52aea16`.
+The enabled mode checks100 cases/10,392 output records/30 traps, including31
+successful resident operations. Resident-disabled4 cases and AKV-disabled2
+cases pass with zero successful resident operations. The ROM negative reports
+cause5/tval0x1000, unchanged CSRs, no descriptor read and no helper completion.
+These are QEMU architectural/function checks, not fresh RTL performance results.
+
+The unchanged performance ELF also exits0 on BUILD07. Independent use of the
+original numerical checker verifies4 calls/1,024 bit-exact outputs, FCSR
+`[3,11,3,11]` and VCSR/VSTART guards. Its worker remains FAIL because the added
+activity checker undercounts capability queries. Frozen caller/native-selection
+sources imply one outer query plus one query per eligible paired group, not
+one query total. The successor must retain exact source-derived, shape-sensitive
+counts, including multi-group and early-rejection shapes, without modifying
+the firmware or numerical oracle. Fresh same-image three-ELF execution remains
+required before the combined S3 gate can pass.
