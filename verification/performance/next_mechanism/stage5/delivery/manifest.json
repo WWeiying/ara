@@ -1,0 +1,532 @@
+{
+  "acceptance_gates": {
+    "S1": "fixed source/build/provider/numerical contracts inspected",
+    "S2": "default-OFF GGML resident route integrated and complete libraries linked",
+    "S3": "same-image native instruction/SDK gates and actual model dispatch checked",
+    "S4": "five frozen OFF/ON pairs accepted with complete logits/tokens/CSR checks",
+    "S5": "source reconstruction, unified identities and reproduction documentation accepted; release tag must resolve this manifest"
+  },
+  "default_resident_enabled": false,
+  "entrypoints": {
+    "delivery/qemu_source_v2.py": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/delivery/qemu_source_v2.py",
+      "sha256": "f4696f0080f2e9868ad887bb0b83ebf60321e5a20d63ea65e5b66efbfc7bd0ad"
+    },
+    "models/final/provider.c": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/models/final/provider.c",
+      "sha256": "979714845a8ac90550e510ed62a1128017957b5da5942e0767e28e3f10bfa99f"
+    },
+    "models/final/run.py": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/models/final/run.py",
+      "sha256": "136c906eb33d1edf94b2bae76bed6f9c6897c40ac4e8cca4a2881282431c9859"
+    },
+    "models/launch_assets.py": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/models/launch_assets.py",
+      "sha256": "9608b25aebd02f0bb38e6f99e699c5b0ff768c8f2813e3cc96ead2d9e0d30c3f"
+    },
+    "models/prefill_check.py": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/models/prefill_check.py",
+      "sha256": "2d00cd0f6fb7218889fa88e3d8f9ce3c5285867441cf645d3bda237731495267"
+    },
+    "models/quant_audit.py": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/models/quant_audit.py",
+      "sha256": "81750bedafdc467b5c32841399fb0ac20240cc2637cdba58eeb33616826b6ca8"
+    },
+    "models/quant_check.py": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/models/quant_check.py",
+      "sha256": "6188d58d1c08dce114ff5de4d567db3abf8773453d40593c7a6a516b1388ebdc"
+    },
+    "models/quant_launch.py": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/models/quant_launch.py",
+      "sha256": "329b6b9bbf72f80c6156e14e5bcbb2147f5f2d32795705fda308cdd57e9ce2bd"
+    },
+    "qemu/execution/run_v4.py": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/qemu/execution/run_v4.py",
+      "sha256": "d416c71665df4fb9995d97563493c2cfc17cd02546bf679d3a5e8cbc9a594d55"
+    },
+    "qemu/gates/run_v10.py": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/qemu/gates/run_v10.py",
+      "sha256": "25cc469351349c291dd58b386f62b49e8b7876eeaa4579c8dc39f742a7bb4d4e"
+    },
+    "runtime/library_build/plugin_v2.py": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/runtime/library_build/plugin_v2.py",
+      "sha256": "56f2bc582efe8d574966f450df11019e28de3c18985f7426e385328123362a45"
+    },
+    "runtime/library_build/recipe.py": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/runtime/library_build/recipe.py",
+      "sha256": "268281440cd9f1a526cfbbbdb891e8fbed2269e7855d01c9357cc865794e64ce"
+    },
+    "runtime/overlays/auto_pair.patch": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/runtime/overlays/auto_pair.patch",
+      "sha256": "2e2e223158de953fa695d1b8780d9bdaff84ae9172beec35ad4e7a208f81c5f3"
+    },
+    "runtime/overlays/entry.c": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/runtime/overlays/entry.c",
+      "sha256": "0561ae9db252323d0792952223b51aad559325f97e44e9cafefb3f3db97d8777"
+    },
+    "runtime/overlays/entry.h": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/runtime/overlays/entry.h",
+      "sha256": "a7df0e6448a94da1d6fffe50e681a5d0dc4743256051f8fdbc2a7159c5fd8c63"
+    },
+    "runtime/overlays/prepare.py": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/runtime/overlays/prepare.py",
+      "sha256": "ab4dd92760a587a1e040e4601aaf5d45bdd30988b07235123205b3dbfebed55d"
+    },
+    "runtime/overlays/resident.cmake": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/runtime/overlays/resident.cmake",
+      "sha256": "6a1f15076f9f13753ebc16fe4399eaa67919d41a9f3b04a3ef8defa7f546764c"
+    },
+    "runtime/overlays/resident.inc": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/runtime/overlays/resident.inc",
+      "sha256": "33374921b0e109aa6e70fa935315936816b4b5805532e68bc3d482df181a1cf1"
+    },
+    "runtime/platform.c": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/runtime/platform.c",
+      "sha256": "99570538ec0f733eb2fe3e6d2333568c0f03ef01b314a835e1daead71c52512c"
+    },
+    "runtime/platform.h": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/runtime/platform.h",
+      "sha256": "3bbebbbbedad8667a49bda85485f0f51b7a8f68c01b261052b2f3527c7ac0491"
+    },
+    "runtime/read_state.S": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/runtime/read_state.S",
+      "sha256": "22c1c0468a235cb06bbcab918e64ed215b1b16790a7b1d330bd1aa9acc7fa121"
+    }
+  },
+  "full_model_free_generation_claim": false,
+  "guest_worker_count": 1,
+  "integration_host": {
+    "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_ggml_overlay_host_20261110_09/result.json",
+    "sha256": "0a682a093837859d5cc43a2dd04e9859239827a839f4fedc4f9a76a838618f9c"
+  },
+  "library_build": {
+    "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_libraries_build_20261110_01/build.json",
+    "sha256": "f47864d88068b2aec18b7f63c9578d2bfeabd9e59f3fde5c5b0b386ece3b21fd"
+  },
+  "llama_archive_revision": "da56aa750559c180d631b466de983ff2bb5d54d9",
+  "models": [
+    {
+      "acceptance": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_smol_prefill_audit_20261110_02/result.json",
+        "sha256": "0887a6da31d749c4f7cb4d400f3b2b7777d9a7f57c6c25a5f491543baaa61a26"
+      },
+      "acceptance_state": "SCOPED_MODEL_SHORT_PREFILL_AUDIT_PASS",
+      "contract": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_smol_20261110_01/contract.json",
+        "sha256": "01f7d3c9423a34735b10bb34719e110c8167eb9da5488bfb93a24d6732d4bee5"
+      },
+      "effective_context_capacity": 256,
+      "executed_command": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_smol_20261110_01/qemu-command.json",
+        "sha256": "8100baaf4e12a4af56544ba9fc8a315948c7231cca5fd6b5ef354562980e2fce"
+      },
+      "executed_elf": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_smol_20261110_01/test",
+        "sha256": "3ed15b1cb2f75bd63f30d47f24e2f6c6f20219b0bb0838484c63610c1f289fd1"
+      },
+      "head_dim": 64,
+      "id": "smol_f16",
+      "kv": [
+        "f16",
+        "f16"
+      ],
+      "kv_heads": 3,
+      "launch_binding": null,
+      "layers": 30,
+      "logical_contexts": [
+        63,
+        64,
+        65
+      ],
+      "logits_compared": 147456,
+      "model": {
+        "architecture": "llama",
+        "bytes": 105454432,
+        "disk": "/home/wangwy/llama/platforms/cva6-qemu/images/smollm2-q4km.ext4",
+        "disk_sha256": "cdcfde87b3e1ace02c02d3ffa49f85ff59b946ceda5821a6f77ec0225edc82e0",
+        "path": "/home/wangwy/llama/models/SmolLM2-135M-Instruct-Q4_K_M.gguf",
+        "sha256": "2e8040ceae7815abe0dcb3540b9995eaa1fa0d2ca9e797d0a635ae4433c68c2d"
+      },
+      "native_commands": null,
+      "original_failure_preserved": true,
+      "original_result": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_smol_20261110_01/result.json",
+        "sha256": "ea078922eab3d18a7bd3e8ac5d2c7ee6ab3d1f5f3ea1bd1ab8c72b362f652d0c"
+      },
+      "original_state": "FAIL",
+      "preparation": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_smol_20261110_01/prepare.json",
+        "sha256": "2b9980c31d8160212339975d175d43d3cef36f27840949a2dddfb8e44407d24b"
+      },
+      "proof": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_smol_prefill_audit_20261110_02/checked.json",
+        "sha256": "f67111653edc568837d1e2d04ce3ebf617f8e41b56d5857a0b28ed2150d2fc83"
+      },
+      "provider_source_sha256": "979714845a8ac90550e510ed62a1128017957b5da5942e0767e28e3f10bfa99f",
+      "query_heads": 9,
+      "source_pins": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_smol_20261110_01/source-pins.json",
+        "sha256": "04c1d0fe99b654cafffcd81867b1ca4e4d750869b979753d9746927db5529167"
+      },
+      "specification": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_smol_20261110_01/spec.json",
+        "sha256": "1af665b96c6da11ed617e68c4e8e25148d14069ffb9a392e13b33288b008316a"
+      }
+    },
+    {
+      "acceptance": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen3_20261110_01/result.json",
+        "sha256": "d2f48995def4627f844b3969146dfbf4af0918b252bb968f937ac8d483da188c"
+      },
+      "acceptance_state": "MODEL_PAIR_CHECKED",
+      "contract": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen3_20261110_01/contract.json",
+        "sha256": "006735b034f87027a491a34da1c8d9a2d71b731dfda3aded1fe5cd6401a95642"
+      },
+      "effective_context_capacity": 256,
+      "executed_command": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_launch_assets_qwen3_20261110_01/qemu-command.json",
+        "sha256": "4151ad059486586d9611b7991e8a08bd8cc68260cdf7fd42d66536cb185c140b"
+      },
+      "executed_elf": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_launch_assets_qwen3_20261110_01/test",
+        "sha256": "990955f174ae68d0f37c8bfd1596548cd5db5dc450030eec89400f6b8553bc27"
+      },
+      "head_dim": 128,
+      "id": "qwen3_f16",
+      "kv": [
+        "f16",
+        "f16"
+      ],
+      "kv_heads": 8,
+      "launch_binding": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen3_20261110_01/launch-assets-binding.json",
+        "sha256": "93a66d7b1be9ff0392c0b364b08154d85583d12d69eba326bb3e3d4296948ad7"
+      },
+      "layers": 28,
+      "logical_contexts": [
+        136,
+        137,
+        138
+      ],
+      "logits_compared": 455808,
+      "model": {
+        "architecture": "qwen3",
+        "bytes": 1282439264,
+        "disk": "/home/wangwy/llama/platforms/cva6-qemu/images/model-generality/qwen3_1p7b_q4km.ext4",
+        "disk_sha256": "8d7fde7c7087153394772321799a3048e5fe382a29b0a0f66d94a36e8813ce9f",
+        "path": "/home/wangwy/llama/models/Qwen3-1.7B-Q4_K_M.gguf",
+        "sha256": "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5"
+      },
+      "native_commands": null,
+      "original_failure_preserved": false,
+      "original_result": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen3_20261110_01/result.json",
+        "sha256": "d2f48995def4627f844b3969146dfbf4af0918b252bb968f937ac8d483da188c"
+      },
+      "original_state": "MODEL_PAIR_CHECKED",
+      "preparation": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen3_20261110_01/prepare.json",
+        "sha256": "3c9684d3fc02263b4359081e74b6d92e81b9c34c467204d6cdd4e5187fc1702d"
+      },
+      "proof": {
+        "within_receipt": "proof"
+      },
+      "provider_source_sha256": "979714845a8ac90550e510ed62a1128017957b5da5942e0767e28e3f10bfa99f",
+      "query_heads": 16,
+      "source_pins": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen3_20261110_01/source-pins.json",
+        "sha256": "5759b1219b5adcde8758dcc4e94af3c5e5f98611088bd556799de19122810db6"
+      },
+      "specification": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen3_20261110_01/spec.json",
+        "sha256": "5d565d0111c64b2c5099bc2ab681175ae0a64e8dbc2239c61e516bb7537dacba"
+      }
+    },
+    {
+      "acceptance": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_quant_audit_q4_20261110_01/result.json",
+        "sha256": "330965770cdfea0425b38151341e133a7259261fd8d205095ee6f0abd01df6d5"
+      },
+      "acceptance_state": "SCOPED_QUANT_COMMAND_AUDIT_PASS",
+      "contract": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen25q4_20261110_02/contract.json",
+        "sha256": "caebbc236102df5406c94fc1a27c18ec7f91462d8fe30c10261ca8bc797e3c3d"
+      },
+      "effective_context_capacity": 256,
+      "executed_command": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_launch_assets_qwen25q4_20261110_02/qemu-command.json",
+        "sha256": "92d41460e688bc87283bcb2c2f9e821d46553ef8623bc8cabae62b52e7666554"
+      },
+      "executed_elf": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_launch_assets_qwen25q4_20261110_02/test",
+        "sha256": "2d22b41e5e1265e6083710cf5e8604ff70dad176da2def4fc0b51f85dc407ada"
+      },
+      "head_dim": 128,
+      "id": "qwen25_q4kv",
+      "kv": [
+        "q4_0",
+        "q8_0"
+      ],
+      "kv_heads": 2,
+      "launch_binding": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen25q4_20261110_02/launch-assets-binding.json",
+        "sha256": "77f1477f00df9000dcb39b5e594ecd133651c132ab67a60926ae63a4d3acab06"
+      },
+      "layers": 28,
+      "logical_contexts": [
+        40,
+        41,
+        42
+      ],
+      "logits_compared": 455808,
+      "model": {
+        "architecture": "qwen2",
+        "bytes": 1066227232,
+        "disk": "/home/wangwy/llama/platforms/cva6-qemu/images/qwen2.5-q4_0-capture.ext4",
+        "disk_sha256": "0be4402f8f91c017092cf19dc45703333645d169220634357ecce29d14b72da2",
+        "path": "/home/wangwy/llama/models/qwen2.5-1.5b-instruct-q4_0.gguf",
+        "sha256": "dcd819ff094852c38faba6873d8ff0c9d51eadb2844539e52042ae5d647bbfdb"
+      },
+      "native_commands": [
+        {
+          "format_commands": 486132,
+          "native_entries": 491732,
+          "quant_commands": 5600,
+          "requested": 0
+        },
+        {
+          "format_commands": 486132,
+          "native_entries": 491732,
+          "quant_commands": 5600,
+          "requested": 1
+        }
+      ],
+      "original_failure_preserved": true,
+      "original_result": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen25q4_20261110_02/result.json",
+        "sha256": "512631cde200190d26ebf3d1499b49fe7e636d0f19c04afd657ffc7c64f8cd37"
+      },
+      "original_state": "FAIL",
+      "preparation": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen25q4_20261110_02/prepare.json",
+        "sha256": "9779be506288cd724b1729b81ee87d526abb3482a19679dd5ba6914021c902bb"
+      },
+      "proof": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_quant_audit_q4_20261110_01/checked.json",
+        "sha256": "cdfcb30606e11b8ac717eb524d5dc2645a925d9edaace585c7dd8676111061b9"
+      },
+      "provider_source_sha256": "979714845a8ac90550e510ed62a1128017957b5da5942e0767e28e3f10bfa99f",
+      "query_heads": 12,
+      "source_pins": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen25q4_20261110_02/source-pins.json",
+        "sha256": "d50dcb6926aa37edee53c276a2385ffb29c589be96fe4fe00d25d87324c0261c"
+      },
+      "specification": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen25q4_20261110_02/spec.json",
+        "sha256": "3a92cceb7bc6bb77aa3e7a423492fa9668a4de603809041b5f67084c5e69710d"
+      }
+    },
+    {
+      "acceptance": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen25q8_20261110_02/result.json",
+        "sha256": "5485406147300124a25d4972ae6e48fdee525bb9969bc8793c46456819b45908"
+      },
+      "acceptance_state": "MODEL_PAIR_CHECKED",
+      "contract": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen25q8_20261110_02/contract.json",
+        "sha256": "b884be6a56c97977bbc1b6140e8209e8a0e0337a8b1699ffb040a77a3022d8ed"
+      },
+      "effective_context_capacity": 256,
+      "executed_command": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_launch_assets_qwen25q8_20261110_02/qemu-command.json",
+        "sha256": "a1b3dc8490324dbee5bd44f9e299ac70f9c639dfed5e1b78866cc89b6a59b90f"
+      },
+      "executed_elf": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_launch_assets_qwen25q8_20261110_02/test",
+        "sha256": "4741564f5ef094e9ed56f222ae975325238f7547301ce77071d8752ab2880cc4"
+      },
+      "head_dim": 128,
+      "id": "qwen25_q8kv",
+      "kv": [
+        "q8_0",
+        "q8_0"
+      ],
+      "kv_heads": 2,
+      "launch_binding": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen25q8_20261110_02/launch-assets-binding.json",
+        "sha256": "d887131441e2b5c79cf4f323fe5231729ba08e22be947ceb9520a282caab6753"
+      },
+      "layers": 28,
+      "logical_contexts": [
+        40,
+        41,
+        42
+      ],
+      "logits_compared": 455808,
+      "model": {
+        "architecture": "qwen2",
+        "bytes": 1066227232,
+        "disk": "/home/wangwy/llama/platforms/cva6-qemu/images/qwen2.5-q4_0-capture.ext4",
+        "disk_sha256": "0be4402f8f91c017092cf19dc45703333645d169220634357ecce29d14b72da2",
+        "path": "/home/wangwy/llama/models/qwen2.5-1.5b-instruct-q4_0.gguf",
+        "sha256": "dcd819ff094852c38faba6873d8ff0c9d51eadb2844539e52042ae5d647bbfdb"
+      },
+      "native_commands": [
+        {
+          "format_commands": 486132,
+          "native_entries": 491732,
+          "quant_commands": 5600,
+          "requested": 0
+        },
+        {
+          "format_commands": 486132,
+          "native_entries": 491732,
+          "quant_commands": 5600,
+          "requested": 1
+        }
+      ],
+      "original_failure_preserved": false,
+      "original_result": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen25q8_20261110_02/result.json",
+        "sha256": "5485406147300124a25d4972ae6e48fdee525bb9969bc8793c46456819b45908"
+      },
+      "original_state": "MODEL_PAIR_CHECKED",
+      "preparation": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen25q8_20261110_02/prepare.json",
+        "sha256": "7b6a9a29694890cf1fad539bcac9fa5f832aa7482d4c6a2a3fa942363ddde461"
+      },
+      "proof": {
+        "within_receipt": "proof"
+      },
+      "provider_source_sha256": "979714845a8ac90550e510ed62a1128017957b5da5942e0767e28e3f10bfa99f",
+      "query_heads": 12,
+      "source_pins": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen25q8_20261110_02/source-pins.json",
+        "sha256": "7a3f3299d46f4f447f5a0ac5e3b122676a95a9c0eae2a3478dd984259a72f454"
+      },
+      "specification": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_qwen25q8_20261110_02/spec.json",
+        "sha256": "1eb4e2b19dd47dabae1d47143db701a462ddf13b757e8e73dd24806667b3ae13"
+      }
+    },
+    {
+      "acceptance": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_gemma_20261110_01/result.json",
+        "sha256": "ecdb0e109049cbbe12993607bc4715333e2f53aed150519108e0ce17cbff2d49"
+      },
+      "acceptance_state": "MODEL_PAIR_CHECKED",
+      "contract": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_gemma_20261110_01/contract.json",
+        "sha256": "5c1ad6ee2b71610c030daea9b92d4fde11abf6220e11e497e71a650d1d04044e"
+      },
+      "effective_context_capacity": 256,
+      "executed_command": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_launch_assets_gemma_20261110_01/qemu-command.json",
+        "sha256": "2289f513a7d5193f9c90967fcb710e7509790bc84b7e2b9402eac10e4a3dd37d"
+      },
+      "executed_elf": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_launch_assets_gemma_20261110_01/test",
+        "sha256": "183594f537d42cf275983522d1a11c3e0cdec035a88fff88664c8b29551e4d88"
+      },
+      "head_dim": 256,
+      "id": "gemma_d256",
+      "kv": [
+        "f16",
+        "f16"
+      ],
+      "kv_heads": 1,
+      "launch_binding": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_gemma_20261110_01/launch-assets-binding.json",
+        "sha256": "ce46df248615a4ecb6e805ba7bae1d39ea0690cb6b2ba394cf2a32130abb0d5e"
+      },
+      "layers": 26,
+      "logical_contexts": [
+        4,
+        5,
+        6
+      ],
+      "logits_compared": 786432,
+      "model": {
+        "architecture": "gemma3",
+        "bytes": 806058240,
+        "disk": "/home/wangwy/llama/platforms/cva6-qemu/images/model-generality/gemma3_1b_q4km.ext4",
+        "disk_sha256": "9826ada3980c067a5a5796f2e1fecc24d71e12a6faf1608e790707fb23ca3f58",
+        "path": "/home/wangwy/llama/models/generality_20260831/gemma3/gemma-3-1b-it-Q4_K_M.gguf",
+        "sha256": "8ccc5cd1f1b3602548715ae25a66ed73fd5dc68a210412eea643eb20eb75a135"
+      },
+      "native_commands": null,
+      "original_failure_preserved": false,
+      "original_result": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_gemma_20261110_01/result.json",
+        "sha256": "ecdb0e109049cbbe12993607bc4715333e2f53aed150519108e0ce17cbff2d49"
+      },
+      "original_state": "MODEL_PAIR_CHECKED",
+      "preparation": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_gemma_20261110_01/prepare.json",
+        "sha256": "9d52749fef3355ff4df5117564511f5f20ea6a200fde6d7e16e1ebc85d75c3ed"
+      },
+      "proof": {
+        "within_receipt": "proof"
+      },
+      "provider_source_sha256": "979714845a8ac90550e510ed62a1128017957b5da5942e0767e28e3f10bfa99f",
+      "query_heads": 4,
+      "source_pins": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_gemma_20261110_01/source-pins.json",
+        "sha256": "959050243b7922577a1a3cb5b7df061e2ff9686ad68f4e10624815f95bdcf2bc"
+      },
+      "specification": {
+        "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_models_execution_final_gemma_20261110_01/spec.json",
+        "sha256": "67c5414aab9617e3830a0d3494f1ee525791a7c580ae53866d61666dda980347"
+      }
+    }
+  ],
+  "native_gates": {
+    "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_qemu_four_gates_20261110_03/result.json",
+    "sha256": "d1fe3d705d1caa1923536eff66a6e4fa51030d180e2db01c1724ccc1a4f211d0"
+  },
+  "performance_claim": false,
+  "physical_acceptance": false,
+  "production_capability_index4": 0,
+  "qemu_source_manifest": {
+    "path": "verification/performance/next_mechanism/stage5/delivery/qemu_bundle/manifest.json",
+    "sha256": "a7dcb9001a995bfbd886e327b334561f1aa2a5158dadf0abbaf721064a2e5148"
+  },
+  "qemu_source_payload": {
+    "path": "verification/performance/next_mechanism/stage5/delivery/qemu_bundle/payload.tar.xz",
+    "sha256": "ce4f9ffde30105afe139f84ce116486d4749273fc871363eff9e188700f720b9"
+  },
+  "release_tag": "stage5-ggml-resident-20261110",
+  "reviewed_implementation_base": "7183d4236853594194ba00e7f935fb891521b682",
+  "rtl_sdk_stage4_revision": "c49289ff8f433b8780954e207d6b0149f7bc2c32",
+  "runtime_overlay": "verification/performance/next_mechanism/stage5/runtime/overlays/prepare.py",
+  "schema": "stage5-unified-delivery-v1",
+  "sdk_archive_revision": "f50092f2d22238c6be4b6c159a1ad71a4ea68678",
+  "source_reconstruction": {
+    "final_tree": {
+      "directories": 6312,
+      "entries": 84955,
+      "files": 78571,
+      "inventory_sha256": "164d0a470c70b2d524956608c7aeb0533ab503b797f749978931838647c1bc56",
+      "regular_file_bytes": 695458426,
+      "symlinks": 72
+    },
+    "original_failure_log": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_source_reconstruct_20261110_01.stderr.log",
+      "sha256": "3be7a951ca28b59af54c5553b721740aeb1177be934389d1665eef5654b17b49"
+    },
+    "qemu_rebuilt": false,
+    "receipt": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_source_reconstruct_20261110_02.stdout.log",
+      "sha256": "bb62187b30523c6cb2e6fa0129d9a75c30a1e540fd727cbb485807307adbc3c6"
+    },
+    "source_root": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_source_reconstruct_20261110_02/qemu-10.2.0",
+    "state": "SOURCE_RECONSTRUCTED_NOT_BUILT",
+    "tool": {
+      "path": "/home/wangwy/openproject/ara_dsa/verification/performance/next_mechanism/stage5/delivery/qemu_source_v2.py",
+      "sha256": "f4696f0080f2e9868ad887bb0b83ebf60321e5a20d63ea65e5b66efbfc7bd0ad"
+    }
+  },
+  "state": "STAGE5_FINITE_CONTRACT_ACCEPTED",
+  "total_logits_compared": 2301312
+}

@@ -629,3 +629,38 @@ that destination and stderr/stdout logs. The small bundle tests and in-memory
 delta replay did not prove actual extraction identity. S5 remains open until
 the exact difference is diagnosed, a reviewed successor fixes reconstruction,
 and a fresh actual full-source replay passes without weakening the inventory.
+
+## Final Source Reconstruction And Stage5 Delivery
+
+The complete inventory comparison finds exactly two differences: safe symlink
+targets under `subprojects/libvduse/{linux-headers,standard-headers}/linux`
+lost their trailing slash in tarfile.data_filter. There are no missing/extra
+entries, file-content, type or executable-bit differences. The successor
+`delivery/qemu_source_v2.py` first performs the same safety filter, then retains
+the already authenticated original symlink spelling; all inventory and unsafe
+link rejection checks remain unchanged. The original helper, payload, manifest,
+failed root and logs are preserved. Seventeen successor tests pass.
+
+Actual fresh reconstruction into `stage5_source_reconstruct_20261110_02`
+exits successfully with SOURCE_RECONSTRUCTED_NOT_BUILT and empty stderr. All
+84,955 entries match:78,571 files,6,312 directories,72 symlinks,695,458,426
+regular-file bytes. Final inventory SHA256:
+`164d0a470c70b2d524956608c7aeb0533ab503b797f749978931838647c1bc56`.
+This is a complete source reconstruction, not a new compiled binary or model run.
+
+`delivery/manifest.json` binds the five accepted model pairs, original failures,
+scoped audits, executed ELFs/commands, fixed model/disk/token identities, native
+gates, libraries, source bundle, reconstruction and reviewed entrypoints.
+The final reader entry is `hardware/docs/INFERENCE_STAGE5_DELIVERY_20261110.md`.
+The earlier DELIVERY_DRAFT remains explicitly historical. Independent review
+corrects prototype-versus-SDK performance attribution, provider mapping scope
+and the interpretation of Resident-OFF; no test expectation is weakened.
+
+S1-S5 are closed within their finite experimental contract. All five models
+share BUILD07, the checked full-library build and the same reviewed provider
+source. Main RTL and committed SDK paths remain identical to Stage4 c492;
+unrelated dirty files and the user's uncommitted AKV assembly are excluded.
+The annotated local release tag is `stage5-ggml-resident-20261110`. It does not
+authorize default Resident promotion, FPGA eligibility, new PPA or model-level
+performance claims. No further model/synthesis/board campaign is required by
+the completed Stage5 contract.

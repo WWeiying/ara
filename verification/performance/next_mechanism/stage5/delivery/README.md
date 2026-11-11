@@ -1,6 +1,7 @@
 # Portable QEMU Source Delivery
 
-This is a source-packaging tool, not another acceptance gate. It does not import
+Use `qemu_source_v2.py` for reconstruction. This is a source-packaging tool, not
+an instruction/model acceptance gate. It does not import
 the historical V3--V10 helpers, configure/build QEMU, run firmware, or change an
 existing receipt. Current BUILD07/model workers remain independent.
 
@@ -10,7 +11,7 @@ The portable reconstruction inputs are exactly:
 2. Primary `qemu-10.2.0.tar.xz`, SHA256
    `9e30ad1b8b9f7b4463001582d1ab297f39cfccea5d08540c0ca6d6672785883a`.
 3. Reviewed `manifest.json` and its content-addressed `payload.tar.xz`.
-4. This standalone `qemu_source.py`.
+4. The standalone `qemu_source_v2.py`.
 
 The manifest carries relative paths, exact pre/post file hashes, sizes,
 executable bits, link targets, all source-directory names, and the final complete
@@ -52,14 +53,14 @@ Host tests use only tiny synthetic archives and a real tiny source extraction:
 
 ```sh
 cd verification/performance/next_mechanism/stage5/delivery
-python3 -B -W error::ResourceWarning -m unittest -v test_qemu_source
+python3 -B -W error::ResourceWarning -m unittest -v test_qemu_source_v2
 ```
 
 Capture reads the final frozen source without changing it. Set `PRIMARY`,
 `VARIANT`, `DTC_ARCHIVE` and a fresh `BUNDLE` output explicitly:
 
 ```sh
-python3 -B qemu_source.py capture --archive "$PRIMARY" \
+python3 -B qemu_source_v2.py capture --archive "$PRIMARY" \
   --source "$VARIANT/qemu-10.2.0" --origin-receipt "$VARIANT/prepare.json" \
   --dtc-archive "$DTC_ARCHIVE" --output "$BUNDLE"
 ```
@@ -69,7 +70,7 @@ memory. It emits `SOURCE_DELTA_REPLAY_CHECKED_NOT_REBUILT`, not a fresh full-sou
 extraction or QEMU build result. Future clean extraction is explicit:
 
 ```sh
-python3 -B qemu_source.py reconstruct --archive "$PRIMARY" \
+python3 -B qemu_source_v2.py reconstruct --archive "$PRIMARY" \
   --bundle "$BUNDLE" --destination "$FRESH_DESTINATION"
 ```
 
@@ -78,3 +79,22 @@ and the complete final inventory. It neither downloads missing assets nor starts
 configure/build. The original configure arguments are recorded in manifest
 provenance. Host compiler, libraries, Python build packages and subsequent build
 and execution evidence retain their own pinned delivery contracts.
+
+## Exact Symlink Identity
+
+The original `qemu_source.py` remains for historical evidence. Its first actual
+full extraction failed because `tarfile.data_filter` normalized the trailing
+slash from two safe symlink targets under `subprojects/libvduse/`. There were
+no missing/extra entries, file-byte or executable-bit differences. V2 retains
+all archive/link safety checks and the final exact inventory check, but restores
+the already authenticated original symlink spelling after the safety filter.
+The manifest/payload are unchanged. The17 V2 tests include that exact failure
+pattern and checks that filter rejections are never overridden.
+
+The actual full extraction in `stage5_source_reconstruct_20261110_02` passes
+with84,955 exact entries (78,571 files,6,312 directories,72 symlinks). Its final
+inventory SHA256 is
+`164d0a470c70b2d524956608c7aeb0533ab503b797f749978931838647c1bc56`.
+See `manifest.json` for the authenticated reconstruction result/log reference
+and the complete finite Stage5 delivery identities. The final human-readable
+contract is `hardware/docs/INFERENCE_STAGE5_DELIVERY_20261110.md`.

@@ -1,5 +1,11 @@
 # Stage5 Unified Delivery DRAFT
 
+Historical draft, superseded by
+`hardware/docs/INFERENCE_STAGE5_DELIVERY_20261110.md` and
+`delivery/manifest.json`. The pending-state text below records its earlier
+checkpoint, not the final Stage5 status. Current source reconstruction uses
+`delivery/qemu_source_v2.py`; the original is retained for evidence.
+
 Status: DRAFT / NOT COMPLETE. S3 same-image instruction/SDK acceptance passes;
 S4 real-model matrix remains incomplete. S5 cannot close without its reviewed
 evidence and final version/tag audit. RESULTS.md remains the parent's ledger.

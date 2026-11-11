@@ -1,10 +1,14 @@
 # Stage5: GGML Integration, Model Regression And Unified Delivery
 
-Status: ACTIVE. Same-image native instruction/SDK gates pass. SmolLM2 has a
+Status: COMPLETE within the finite Stage5 contract. Same-image native
+instruction/SDK gates pass. SmolLM2 has a
 separate accepted scoped audit; Gemma D256 fallback and Qwen3 F16 pass.
 Qwen2.5 Q4/Q8 KV has an accepted separate command-accounting audit, and Q8/Q8
 passes its corrected direct worker. All five model pairs are accepted. The
-unified delivery audit remains open pending full source reconstruction.
+unified delivery audit and actual full source reconstruction pass. Final scope,
+commands and version identity: `INFERENCE_STAGE5_DELIVERY_20261110.md` and
+`verification/performance/next_mechanism/stage5/delivery/manifest.json`.
+Release tag: `stage5-ggml-resident-20261110`.
 Starting Ara revision: `c49289ff8f433b8780954e207d6b0149f7bc2c32`, tag
 `stage4-supporting-reuse-20261110`.
 
@@ -25,13 +29,13 @@ Do not add or multiply these ratios, or infer model speedup from QEMU time.
 
 ## Acceptance Gates
 
-| Gate | Required proof | Initial state |
+| Gate | Required proof | Final state |
 |---|---|---|
 | S1: source and execution contract | Fixed baseline/patch inventory; active consumers protected; actual QEMU/SDK/RTL capability and numerical contracts inspected | Source/build contracts checked; deployment remains experimental |
 | S2: native runtime integration | GGML capability/type/shape/rounding/ownership selection; whole-call admission and failure semantics; ordinary fallback; explicit opt-in where required | Complete within explicit experimental integration contract |
 | S3: instruction and graph validation | Actual custom instructions executed by an independently checked model; original and new GGML routes, flags, counters and numerical outputs checked; unsupported controls exercise fallback | Same-image instruction/SDK gates and real-model routing checks pass |
 | S4: representative model regression | Same-input baseline/candidate model runs spanning selected models, weight formats and contexts; complete outputs/logits and actual dispatch counts; bounded individual jobs | All five finite pairs accepted; 2,301,312 logits compared |
-| S5: unified delivery | Source/patch/tool/model/build hashes, runtime switches, result table, reproduction commands, reviewed commits/tag and Stage4-to-Stage5 acceptance audit | Pending |
+| S5: unified delivery | Source/patch/tool/model/build hashes, runtime switches, result table, reproduction commands, reviewed commits/tag and Stage4-to-Stage5 acceptance audit | Complete within fixed source/tool/model contract; no physical/board/default promotion |
 
 The finite regression matrix and numerical comparison policy must be frozen
 after inspecting available captures/models and the real runtime contracts,
@@ -108,7 +112,7 @@ The implementation split is:
 5. Minimal GGML plain-Decode selection under that contract; keep features,
    quantized KV, Prefill and unsupported shapes on their original paths.
 
-## Proposed Finite Model Matrix
+## Accepted Finite Model Matrix
 
 Actual files, tokenizers and natural-text token prefixes are frozen in the
 final model preparations and their explicit launch-asset bindings. Frozen
