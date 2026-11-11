@@ -550,3 +550,36 @@ Qwen3 remains on its original bounded quiet run. Parent uses the freed slot to
 launch fresh `stage5_models_execution_final_qwen25q4_20261110_02`, using its
 reviewed quiet assets and the same model/tokens/libraries. The Qwen2.5 Q8/Q8
 successor is prepared but waits for a slot; model concurrency remains two.
+
+## Quantized-KV Command Accounting Correction In Progress
+
+The quiet Qwen2.5 Q4/Q8 KV pair completes both guest children and reports
+GUEST_TEST_EXIT=0. The unchanged full-content checker confirms455,808 logits,
+greedy tokens and CSR observations match. Its original worker remains FAIL:
+`QBS native-entry hits differ from complete command summaries`, receipt SHA256
+`512631cde200190d26ebf3d1499b49fe7e636d0f19c04afd657ffc7c64f8cd37`.
+
+Compiled qbs.cpp has two command routes. Projection execute_command updates
+the per-format summary, whereas quantized Attention's execute_direct_command
+calls the same native function without updating those projection counters.
+Each arm has486,132 projection commands plus5,600 direct Attention commands:
+28 layers times184 Prefill commands, followed by28 times8 commands in each
+of two Decode calls. This equals491,732 observed native entries exactly.
+Both arms have identical phase counts401,148 /45,292 /45,292, after excluding
+the explicitly cancelled pre-execution TB records. Entry counts are not
+instruction retirement or performance measurements.
+
+A separate source-bound checker/audit is being reviewed; it must verify the
+exact per-layer quantized Prefill/Decode records and independently derived
+shape work, not merely allow arbitrary excess entries. The original failure,
+log and preparations are preserved. The Q8/Q8 successor is held until that
+correction passes review; no model or computational code is changed.
+
+The successor now passes24 checker/launcher tests, including a complete raw-log
+replay, mutation rejection, exact field/layer/phase accounting and both fixed
+Q4/Q8 and Q8/Q8 shapes. Independent source review clears its mapped inputs and
+pin-preserving launcher. A directly owned background audit is rehashing the
+original Q4/Q8 evidence; its terminal acceptance remains pending. The final
+Q8/Q8 model service is launched with the same frozen quiet assets and this
+explicitly pinned checker extension. Qwen3 has completed both guest arms and
+is in final checking; no result is presumed until its receipt exists.

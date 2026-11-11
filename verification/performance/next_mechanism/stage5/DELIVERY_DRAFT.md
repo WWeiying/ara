@@ -74,6 +74,17 @@ source-derived short-Prefill expectation. Do not treat older `run_vN.py` as a
 final command. These workers retain inherited imports/pins and OUT receipts;
 they are not made portable merely by copying their latest script.
 
+Quantized-KV model execution additionally uses `models/quant_launch.py`, which
+preserves the original prepared ELF/assets and pins while installing the
+source-bound `models/quant_check.py`. Quantized Attention's direct QBS commands
+do not increment projection per-format counters, so total native entries must
+equal projection commands plus the exact per-phase quantized Attention work.
+The checker derives tile/group counts from the pinned SDK schedule and checks
+every expected layer/status/layout record. It is not an allowance for arbitrary
+extra commands. `models/quant_audit.py` can separately recheck an existing pair
+that failed only the original projection-only accounting, retaining that FAIL
+and rehashing all original and launch-binding pins before and after replay.
+
 ## Remaining Acceptance
 
 All four native gates pass on the same BUILD07 image, including checked counts,

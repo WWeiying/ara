@@ -1,6 +1,8 @@
 # Stage5: GGML Integration, Model Regression And Unified Delivery
 
-Status: ACTIVE. No Stage5 model result or delivery is accepted yet.
+Status: ACTIVE. Same-image native instruction/SDK gates pass. SmolLM2 has a
+separate accepted scoped audit; Gemma D256 fallback passes. The remaining
+three model pairs and unified delivery audit are not yet accepted.
 Starting Ara revision: `c49289ff8f433b8780954e207d6b0149f7bc2c32`, tag
 `stage4-supporting-reuse-20261110`.
 
@@ -26,7 +28,7 @@ Do not add or multiply these ratios, or infer model speedup from QEMU time.
 | S1: source and execution contract | Fixed baseline/patch inventory; active consumers protected; actual QEMU/SDK/RTL capability and numerical contracts inspected | Source/build contracts checked; deployment remains experimental |
 | S2: native runtime integration | GGML capability/type/shape/rounding/ownership selection; whole-call admission and failure semantics; ordinary fallback; explicit opt-in where required | Implemented and compile/link checked; full-model acceptance pending |
 | S3: instruction and graph validation | Actual custom instructions executed by an independently checked model; original and new GGML routes, flags, counters and numerical outputs checked; unsupported controls exercise fallback | Same-image instruction/SDK gates pass; real GGML graph check remains with S4 |
-| S4: representative model regression | Same-input baseline/candidate model runs spanning selected models, weight formats and contexts; complete outputs/logits and actual dispatch counts; bounded individual jobs | Pending |
+| S4: representative model regression | Same-input baseline/candidate model runs spanning selected models, weight formats and contexts; complete outputs/logits and actual dispatch counts; bounded individual jobs | Two of five pairs accepted; remaining checks in progress |
 | S5: unified delivery | Source/patch/tool/model/build hashes, runtime switches, result table, reproduction commands, reviewed commits/tag and Stage4-to-Stage5 acceptance audit | Pending |
 
 The finite regression matrix and numerical comparison policy must be frozen
@@ -106,17 +108,18 @@ The implementation split is:
 
 ## Proposed Finite Model Matrix
 
-The model owner is pinning actual files, tokenizers and natural-text token
-prefixes. These are intended test points, not accepted or frozen inputs yet.
+Actual files, tokenizers and natural-text token prefixes are frozen in the
+final model preparations and their explicit launch-asset bindings. Frozen
+inputs are not themselves evidence of successful model execution.
 Each pair changes resident selection only; QBS optimizations stay fixed.
 
 | Model/weight family | KV | Prompt and Decode contexts | Purpose |
 |---|---|---|---|
 | SmolLM2-135M Q4_K_M | F16/F16 | 63 then64,65 | D64, GQA3, odd heads and tile boundary |
 | Qwen3-1.7B Q4_K_M | F16/F16 | 136 then137,138, capacity256 | D128, GQA2, multi-tile tail |
-| Qwen2.5-1.5B Q4_0 | Q8_0/Q8_0 | Short fixed prefix, two Decode steps | Different weight family; quantized-KV fallback |
-| Same Qwen2.5 model | Q4_0/Q8_0 | Identical prefix/steps | Second quantized-KV fallback |
-| Gemma3-1B Q4_K_M | F16/F16 | Existing short-prefix pattern | D256 resident rejection and original fallback |
+| Qwen2.5-1.5B Q4_0 | Q8_0/Q8_0 | 40 then41,42, capacity256 | Different weight family; original quantized-KV route |
+| Same Qwen2.5 model | Q4_0/Q8_0 | Identical prefix/steps | Second original quantized-KV route |
+| Gemma3-1B Q4_K_M | F16/F16 | 4 then5,6, capacity256 | D256 resident rejection and original fallback |
 
 Require eligible native resident instruction hits, zero resident execution on
 ineligible paths, complete logits/tokens/CSR checks, and exact source/model/
