@@ -1,0 +1,160 @@
+diff --git a/hardware/include/akv_pkg.sv b/hardware/include/akv_pkg.sv
+index ca0db6758..742c7bebb 100644
+--- a/hardware/include/akv_pkg.sv
++++ b/hardware/include/akv_pkg.sv
+@@ -107,6 +107,22 @@ package akv_pkg;
+   localparam int unsigned AkvResidentQkDestinationElements = 128;
+   localparam bit AkvResidentQkSupported = 1'b0;
+ 
++  localparam int unsigned AkvResidentCapabilityIndex = 4;
++  localparam int unsigned AkvResidentCapabilityVersion = 1;
++  localparam int unsigned AkvResidentCapabilityVersionShift = 0;
++  localparam int unsigned AkvResidentCapabilityVersionWidth = 8;
++  localparam int unsigned AkvResidentCapabilityPvSupportedBit = 8;
++  localparam int unsigned AkvResidentCapabilityQkSupportedBit = 9;
++  localparam int unsigned AkvResidentCapabilityNrLanesShift = 16;
++  localparam int unsigned AkvResidentCapabilityNrLanesWidth = 8;
++  localparam int unsigned AkvResidentCapabilityVlenShift = 32;
++  localparam int unsigned AkvResidentCapabilityVlenWidth = 16;
++  localparam int unsigned AkvResidentCapabilityNrLanes = 4;
++  localparam int unsigned AkvResidentCapabilityVlenBits = 1024;
++  localparam logic [63:0] AkvResidentCapabilityBaseWord = 64'h0000040000040001;
++  localparam logic [63:0] AkvResidentCapabilitySupportMask = 64'h0000000000000300;
++  localparam logic [63:0] AkvResidentCapabilityKnownMask = 64'h0000ffff00ff03ff;
++
+   typedef enum logic [7:0] {
+     AKV_ELEMENT_FORMAT_INVALID = 8'd0,
+     AKV_ELEMENT_FORMAT_F16 = 8'd1
+@@ -286,11 +302,13 @@ package akv_pkg;
+            (32'(vd) << 7) | 32'(AkvOpcodeCustom2);
+   endfunction : akv_encode_resident_pv
+ 
+-  // Stage A stays unadvertised even when experimental admission is compiled in.
++  // The dispatcher supplies geometry, FPU and implementation gates, not a macro alone.
+   function automatic logic [63:0] akv_resident_pv_capability_word(
+-      input logic [63:0] index, input bit enabled
++      input logic [63:0] index, input bit actual_implementation_supported
+   );
+-    return '0;
++    if (index != AkvResidentCapabilityIndex || !actual_implementation_supported)
++      return '0;
++    return AkvResidentCapabilityBaseWord | (64'd1 << AkvResidentCapabilityPvSupportedBit);
+   endfunction : akv_resident_pv_capability_word
+ 
+   function automatic logic [2:0] akv_resident_qk_query_base(input logic [63:0] control);
+@@ -331,9 +349,11 @@ package akv_pkg;
+   endfunction : akv_encode_resident_qk
+ 
+   function automatic logic [63:0] akv_resident_qk_capability_word(
+-      input logic [63:0] index, input bit enabled
++      input logic [63:0] index, input bit actual_implementation_supported
+   );
+-    return '0;
++    if (index != AkvResidentCapabilityIndex || !actual_implementation_supported)
++      return '0;
++    return AkvResidentCapabilityBaseWord | (64'd1 << AkvResidentCapabilityQkSupportedBit);
+   endfunction : akv_resident_qk_capability_word
+ 
+ endpackage : akv_pkg
+diff --git a/hardware/include/ara_pkg.sv b/hardware/include/ara_pkg.sv
+index abc2619bd..f745036d1 100644
+--- a/hardware/include/ara_pkg.sv
++++ b/hardware/include/ara_pkg.sv
+@@ -146,7 +146,11 @@ package ara_pkg;
+   // FPU latencies.
+   localparam int unsigned LatFCompEW64    = 'd5;
+   // Experimental lane ADDMUL sharing; retain the accepted implementation by default.
++`ifdef ARA_SHARED_FMA
++  localparam bit EnableSharedFma = 1'b1;
++`else
+   localparam bit EnableSharedFma = 1'b0;
++`endif
+   localparam int unsigned LatFCompEW32    = 'd4;
+   localparam int unsigned LatFCompEW16    = 'd3;
+   localparam int unsigned LatFCompEW8     = 'd2;
+diff --git a/hardware/include/qbs_pkg.sv b/hardware/include/qbs_pkg.sv
+index fb20c18ca..334c26fb9 100644
+--- a/hardware/include/qbs_pkg.sv
++++ b/hardware/include/qbs_pkg.sv
+@@ -32,6 +32,9 @@ package qbs_pkg;
+   localparam int unsigned QbsVrfContinuationCapabilityIndex = 4;
+   localparam int unsigned QbsVrfContinuationCapabilityBit = 0;
+   localparam int unsigned QbsVrfContinuationVlenBits = 1024;
++  localparam int unsigned QbsCooperativeCapabilityIndex = 5;
++  localparam int unsigned QbsCooperativeQ4KBit = 0;
++  localparam int unsigned QbsCooperativeVlenBits = 1024;
+ 
+   localparam int unsigned QbsMaxM = 8;
+   localparam int unsigned QbsMaxN = 32;
+@@ -500,7 +503,8 @@ package qbs_pkg;
+ 
+   function automatic logic [63:0] qbs_capability_word(
+       input logic [63:0] index,
+-      input int unsigned vlen_bits
++      input int unsigned vlen_bits,
++      input bit cooperative_q4_k = 1'b0
+   );
+     int unsigned max_n;
+     logic [63:0] result;
+@@ -552,6 +556,10 @@ package qbs_pkg;
+         if (QbsVrfContinuationEnable && vlen_bits == QbsVrfContinuationVlenBits)
+           result[QbsVrfContinuationCapabilityBit] = 1'b1;
+       end
++      64'(QbsCooperativeCapabilityIndex): begin
++        if (QbsEnable && cooperative_q4_k && vlen_bits == QbsCooperativeVlenBits)
++          result[QbsCooperativeQ4KBit] = 1'b1;
++      end
+       64'h11: begin
+         result[QBS_ACTIVATION_PROFILE_Q8_K] = 1'b1;
+       end
+diff --git a/hardware/src/ara.sv b/hardware/src/ara.sv
+index 37a92870e..a4208d618 100644
+--- a/hardware/src/ara.sv
++++ b/hardware/src/ara.sv
+@@ -271,12 +271,16 @@ module ara import ara_pkg::*; #(
+     end
+   end
+ 
++  localparam bit QbsLaneMulSupported = EnableQbsLaneMul && qbs_pkg::QbsEnable &&
++      NrLanes == 4 && VLEN == 1024 && QbsLaneMulLatencySupported;
++
+   ara_dispatcher #(
+     .CVA6Cfg           (CVA6Cfg           ),
+     .NrLanes           (NrLanes           ),
+     .VLEN              (VLEN              ),
+     .FPUSupport        (FPUSupport        ),
+     .SegSupport        (SegSupport        ),
++    .QbsCooperativeMul (QbsLaneMulSupported),
+     .ara_req_t         (ara_req_t         ),
+     .ara_resp_t        (ara_resp_t        ),
+     .accelerator_req_t (accelerator_req_t ),
+@@ -474,8 +478,6 @@ module ara import ara_pkg::*; #(
+   logic      [NrLanes-1:0]                     ldu_result_gnt;
+   logic      [NrLanes-1:0]                     ldu_result_final_gnt;
+   logic pv_lease, pv_acquire, pv_start, pv_release, pv_commit;
+-  localparam bit QbsLaneMulSupported = EnableQbsLaneMul && qbs_pkg::QbsEnable &&
+-      NrLanes == 4 && VLEN == 1024 && QbsLaneMulLatencySupported;
+   logic qbs_mul_lease, qbs_mul_valid;
+   logic [NrLanes-1:0] qbs_mul_owned, qbs_mul_ready, qbs_mul_result_valid;
+   logic [15:0] qbs_mul_weight [NrLanes];
+diff --git a/hardware/src/ara_dispatcher.sv b/hardware/src/ara_dispatcher.sv
+index 2f021e43e..2361e650b 100644
+--- a/hardware/src/ara_dispatcher.sv
++++ b/hardware/src/ara_dispatcher.sv
+@@ -27,6 +27,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
+     parameter fixpt_support_e        FixPtSupport = FixedPointEnable,
+     // Support for segment memory operations
+     parameter seg_support_e          SegSupport   = SegSupportEnable,
++    parameter bit                    QbsCooperativeMul = 1'b0,
+     // Dependent parameters: DO NOT CHANGE
+     localparam type                  vlen_t       = logic[$clog2(VLEN+1)-1:0],
+     localparam int          unsigned VLENB        = VLEN / 8
+@@ -4973,7 +4974,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
+               // funct7 and rs2 are reserved in ABI version 1.
+               acc_resp_o.resp_valid = 1'b1;
+               acc_resp_o.result = xlen_t'(
+-                  qbs_capability_word(64'(acc_req_i.rs1), VLEN));
++                  qbs_capability_word(64'(acc_req_i.rs1), VLEN, QbsCooperativeMul));
+               if (instr.rtype.funct7 != '0 || instr.rtype.rs2 != '0)
+                 illegal_insn = 1'b1;
+             end else if (is_qbexec) begin

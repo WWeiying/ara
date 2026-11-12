@@ -1,3 +1,27 @@
+--- a/rtl/cva6/core/acc_dispatcher.sv
++++ b/rtl/cva6/core/acc_dispatcher.sv
+@@ -274,16 +274,15 @@
+   logic             acc_req_ready;
+ 
+   accelerator_req_t acc_req_int;
+-  // Keep both non-flushable slots, but avoid a bubble when the channel is empty.
+-  // Authorization remains at acc_req_valid, before this ownership boundary.
+-  fall_through_register_v1 #(
++  // FPGA timing boundary: retain two non-flushable slots and one request/cycle,
++  // but register forward data/valid to break the CSR-to-Ara-to-scoreboard path.
++  // Authorization remains at acc_req_valid; accepted requests survive flushes.
++  spill_register #(
+       .T(accelerator_req_t),
+-      .DEPTH(2)
++      .Bypass(1'b0)
+   ) i_accelerator_req_register (
+       .clk_i  (clk_i),
+       .rst_ni (rst_ni),
+-      .clr_i  (1'b0),
+-      .testmode_i(1'b0),
+       .data_i (acc_req),
+       .valid_i(acc_req_valid),
+       .ready_o(acc_req_ready),
 --- a/rtl/cheshire/hw/cheshire_pkg.sv
 +++ b/rtl/cheshire/hw/cheshire_pkg.sv
 @@ -493,6 +493,11 @@
@@ -493,7 +517,7 @@
    assign rptr_next = rptr_bin+1;
 --- a/rtl/ara/hardware/src/vlsu/qbs/qbs_engine.sv
 +++ b/rtl/ara/hardware/src/vlsu/qbs/qbs_engine.sv
-@@ -977,8 +977,17 @@
+@@ -984,8 +984,17 @@
    );
  
    assign compute_command_valid = state_q == QBS_ENGINE_COMPUTE_START;
@@ -515,7 +539,7 @@
        state_q inside {QBS_ENGINE_COMPUTE_START, QBS_ENGINE_FAULT};
 --- a/rtl/ara/hardware/src/vlsu/akv/akv_engine.sv
 +++ b/rtl/ara/hardware/src/vlsu/akv/akv_engine.sv
-@@ -218,6 +218,7 @@
+@@ -242,6 +242,7 @@
    logic read_data_valid, read_data_ready;
    logic [AxiDataWidth-1:0] read_data;
    logic [AxiDataWidth/8-1:0] read_data_strb;
@@ -523,7 +547,7 @@
    logic [RangeBytesWidth-1:0] read_data_offset;
  
    // Align the beat once; each descriptor byte has a fixed write enable.
-@@ -664,10 +665,21 @@
+@@ -702,10 +703,21 @@
    assign replay_word_count = replay_column_q
        ? 4'((unsigned'(context_tile_count_q) + 15) >> 4)
        : 4'(unsigned'(context_head_dim_q) >> 4);
@@ -546,7 +570,7 @@
    end
  
    always_comb begin
-@@ -1027,10 +1039,10 @@
+@@ -1065,10 +1077,10 @@
        if (read_data_fire && read_data_tag.role != AKV_RANGE_DESCRIPTOR) begin
          if (read_data_tag.role == AKV_RANGE_Q)
            q_external_bytes_o <= q_external_bytes_o +

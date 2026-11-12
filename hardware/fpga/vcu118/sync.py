@@ -270,10 +270,12 @@ def incoming_package(args, target):
     # Lazy imports keep the Windows package-to-package mode standard-library only.
     from prepare import prepare, CACHE
     from export import export, seal
-    prepare(download_board=not (CACHE / "board_files/vcu118/2.4/board.xml").is_file())
+    prepare(download_board=not (CACHE / "board_files/vcu118/2.4/board.xml").is_file(),
+            dependency_root=args.dependency_root)
     with tempfile.TemporaryDirectory(prefix="sync-", dir=CACHE) as temporary:
         source = Path(temporary) / "package"
-        export(source, args.gcc, args.objdump, smoke_from=target)
+        export(source, args.gcc, args.objdump, smoke_from=target,
+               optimization_profile=args.optimization_profile)
         manifest = json.loads((source / "manifest.json").read_text())
         previous = json.loads((target / "manifest.json").read_text())
         # Preserve creation time so an unchanged source tree is a true no-op.
@@ -289,6 +291,10 @@ def main():
                         help="Existing package; default: hardware/fpga/ara_dsa_vcu118")
     parser.add_argument("--apply", action="store_true", help="Apply after conflict check; otherwise preview only")
     parser.add_argument("--from-package", type=Path, help="Use an already-exported package, also works on Windows")
+    parser.add_argument("--dependency-root", type=Path,
+                        help="Checked locked dependencies for repository export mode")
+    parser.add_argument("--optimization-profile", choices=("generic", "candidate_all"),
+                        default="generic", help="Explicit hardware selection for repository export mode")
     parser.add_argument("--gcc", default=default_tool("gcc"))
     parser.add_argument("--objdump", default=default_tool("objdump"))
     args = parser.parse_args()

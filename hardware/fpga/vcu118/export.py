@@ -24,6 +24,17 @@ from axi_remap_fpga import patch_axi_remap
 from acc_request_fpga import patch_acc_request
 
 
+def optimization_defines(profile):
+    if profile == "generic":
+        return {}
+    if profile != "candidate_all":
+        raise RuntimeError(f"Unknown FPGA optimization profile: {profile}")
+    return {name: 1 for name in (
+        "ARA_SHARED_SIMD_MUL", "ARA_SHARED_FMA", "ARA_QBS_LANE_MUL_ENABLE",
+        "ARA_AKV_RESIDENT_PV_ENABLE", "ARA_AKV_RESIDENT_QK_ENABLE",
+    )}
+
+
 def replace_once(text, old, new):
     if text.count(old) != 1:
         raise RuntimeError(f"Integration source changed; cannot apply: {old!r}")
@@ -227,7 +238,7 @@ def build_or_reuse_smoke(dst, gcc, objdump, previous=None):
                         "--gcc", gcc, "--objdump", objdump], check=True)
 
 
-def export(dst, gcc, objdump, smoke_from=None):
+def export(dst, gcc, objdump, smoke_from=None, optimization_profile="generic"):
     if dst.exists():
         raise RuntimeError(f"Refusing to overwrite existing export: {dst}")
     groups = json.loads((CACHE / "sources.json").read_text())
@@ -332,6 +343,7 @@ def export(dst, gcc, objdump, smoke_from=None):
     defines.update({"TARGET_" + target.upper(): None for target in FPGA_TARGETS})
     defines.update({"ARA": None, "NR_LANES": 4, "VLEN": 1024,
                     "ARA_QBS_ENABLE": 1, "ARA_AKV_ENABLE": 1, "ARA_AKV_V2_ENABLE": 1})
+    defines.update(optimization_defines(optimization_profile))
     forbidden = {"TARGET_SRAM_MC", "IDEAL_DISPATCHER", "FOR_VERIFY"}
     if forbidden.intersection(defines):
         raise RuntimeError("ASIC/verification defines present in FPGA configuration")
@@ -374,6 +386,7 @@ def export(dst, gcc, objdump, smoke_from=None):
     manifest = {"top": "ara_dsa_vcu118", "part": "xcvu9p-flga2104-2L-e",
         "board_part": "xilinx.com:vcu118:part0:2.4", "soc_clock_mhz": 50,
         "files": files, "include_dirs": incdirs, "defines": defines,
+        "optimization_profile": optimization_profile,
         "created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "revisions": revisions, "cheshire_soc_commit": CHESHIRE,
         "cheshire_board_port_commit": BOARD_PORT, "board_definition_tree": BOARD_TREE,
@@ -417,6 +430,8 @@ if __name__ == "__main__":
     parser.add_argument("destination", type=Path)
     parser.add_argument("--gcc", required=True, help="Host path to the RV64 GCC for prebuilt smoke ELF")
     parser.add_argument("--objdump", required=True, help="Host path to matching RV64 objdump")
+    parser.add_argument("--optimization-profile", choices=("generic", "candidate_all"),
+                        default="generic")
     args = parser.parse_args()
     destination = args.destination.resolve()
-    export(destination, args.gcc, args.objdump)
+    export(destination, args.gcc, args.objdump, optimization_profile=args.optimization_profile)

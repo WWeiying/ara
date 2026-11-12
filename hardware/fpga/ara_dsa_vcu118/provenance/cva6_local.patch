@@ -301,6 +301,20 @@ index 22cc5c07..5f259d75 100644
      inval_ready_o      = 1'b0;
      if (inval_valid_i) begin
        inval_ready_o         = 1'b1;
+diff --git a/core/commit_stage.sv b/core/commit_stage.sv
+index b259f99e..a91ee67f 100644
+--- a/core/commit_stage.sv
++++ b/core/commit_stage.sv
+@@ -120,7 +120,8 @@ module commit_stage
+       )) || (CVA6Cfg.FpPresent && ariane_pkg::is_rd_fpr(
+           commit_instr_i[i].op
+           // Check if we issued a vector floating-point instruction to the accellerator
+-      ))) | (commit_instr_i[i].fu == ACCEL && commit_instr_i[i].vfp);
++      ))) | (commit_ack_o[i] && !commit_drop_i[i] && !commit_instr_i[i].ex.valid &&
++          commit_instr_i[i].fu == ACCEL && commit_instr_i[i].vfp);
+     end
+   end
+ 
 diff --git a/core/csr_regfile.sv b/core/csr_regfile.sv
 index 180cba4f..660d93f9 100644
 --- a/core/csr_regfile.sv

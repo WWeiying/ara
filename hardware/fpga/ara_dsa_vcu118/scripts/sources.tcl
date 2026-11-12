@@ -400,8 +400,14 @@ set rtl_files [list {rtl/tech_cells_generic/src/fpga/pad_functional_xilinx.sv} \
     {rtl/ara/hardware/src/lane/operand_queue.sv} \
     {rtl/ara/hardware/src/lane/operand_requester.sv} \
     {rtl/ara/hardware/src/lane/simd_alu.sv} \
+    {rtl/ara/hardware/src/lane/simd_fma_shared.sv} \
+    {rtl/ara/hardware/src/lane/simd_fpnew.sv} \
     {rtl/ara/hardware/src/lane/simd_div.sv} \
     {rtl/ara/hardware/src/lane/simd_mul.sv} \
+    {rtl/ara/hardware/src/lane/qbs_lane_mul_borrow.sv} \
+    {rtl/ara/hardware/src/lane/simd_mul_shared_product.sv} \
+    {rtl/ara/hardware/src/lane/simd_mul_partition_add.sv} \
+    {rtl/ara/hardware/src/lane/simd_mul_shared.sv} \
     {rtl/ara/hardware/src/lane/vector_regfile.sv} \
     {rtl/ara/hardware/src/lane/power_gating_generic.sv} \
     {rtl/ara/hardware/src/masku/masku_operands.sv} \
@@ -433,10 +439,16 @@ set rtl_files [list {rtl/tech_cells_generic/src/fpga/pad_functional_xilinx.sv} \
     {rtl/ara/hardware/src/vlsu/akv/akv_legacy_repacker.sv} \
     {rtl/ara/hardware/src/vlsu/akv/akv_q_store.sv} \
     {rtl/ara/hardware/src/vlsu/akv/akv_unified_context.sv} \
+    {rtl/ara/hardware/src/vlsu/akv/akv_resident_pv_group.sv} \
+    {rtl/ara/hardware/src/vlsu/akv/resident_payload_fanout.sv} \
+    {rtl/ara/hardware/src/vlsu/akv/akv_resident_pv_reader.sv} \
+    {rtl/ara/hardware/src/vlsu/akv/akv_resident_pv_import.sv} \
+    {rtl/ara/hardware/src/vlsu/akv/akv_resident_pv_control.sv} \
     {rtl/ara/hardware/src/vlsu/akv/akv_engine.sv} \
     {rtl/ara/hardware/src/lane/operand_queues_stage.sv} \
     {rtl/ara/hardware/src/lane/valu.sv} \
     {rtl/ara/hardware/src/lane/vmfpu.sv} \
+    {rtl/ara/hardware/src/lane/akv_resident_pv_lane.sv} \
     {rtl/ara/hardware/src/lane/fixed_p_rounding.sv} \
     {rtl/ara/hardware/src/vlsu/store_load_lookahead.sv} \
     {rtl/ara/hardware/src/vlsu/store_load_lookahead_pair.sv} \
@@ -646,17 +658,22 @@ set rtl_include_dirs [list {rtl/common_cells/include} \
     {rtl/serial_link/src/axis/include} \
     {rtl/cheshire/hw/include} \
     {rtl/board}]
-set rtl_defines [list {TARGET_RTL} \
-    {TARGET_FPGA} \
-    {TARGET_XILINX} \
-    {TARGET_VCU118} \
-    {TARGET_SYNTHESIS} \
-    {TARGET_VIVADO} \
-    {TARGET_CV64A6_IMAFDCV_SV39} \
+set rtl_defines [list {TARGET_CV64A6_IMAFDCV_SV39} \
     {TARGET_EXCLUDE_FIRST_PASS_DECODER} \
+    {TARGET_FPGA} \
+    {TARGET_RTL} \
+    {TARGET_SYNTHESIS} \
+    {TARGET_VCU118} \
+    {TARGET_VIVADO} \
+    {TARGET_XILINX} \
     {ARA} \
     {NR_LANES=4} \
     {VLEN=1024} \
     {ARA_QBS_ENABLE=1} \
     {ARA_AKV_ENABLE=1} \
-    {ARA_AKV_V2_ENABLE=1}]
+    {ARA_AKV_V2_ENABLE=1} \
+    {ARA_SHARED_SIMD_MUL=1} \
+    {ARA_SHARED_FMA=1} \
+    {ARA_QBS_LANE_MUL_ENABLE=1} \
+    {ARA_AKV_RESIDENT_PV_ENABLE=1} \
+    {ARA_AKV_RESIDENT_QK_ENABLE=1}]

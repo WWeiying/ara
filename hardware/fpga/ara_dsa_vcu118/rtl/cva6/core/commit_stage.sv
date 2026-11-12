@@ -120,7 +120,8 @@ module commit_stage
       )) || (CVA6Cfg.FpPresent && ariane_pkg::is_rd_fpr(
           commit_instr_i[i].op
           // Check if we issued a vector floating-point instruction to the accellerator
-      ))) | (commit_instr_i[i].fu == ACCEL && commit_instr_i[i].vfp);
+      ))) | (commit_ack_o[i] && !commit_drop_i[i] && !commit_instr_i[i].ex.valid &&
+          commit_instr_i[i].fu == ACCEL && commit_instr_i[i].vfp);
     end
   end
 

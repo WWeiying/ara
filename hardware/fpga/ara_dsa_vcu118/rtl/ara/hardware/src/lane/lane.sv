@@ -19,6 +19,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     parameter  fpext_support_e        FPExtSupport          = FPExtSupportEnable,
     // Support for fixed-point data types
     parameter  fixpt_support_e        FixPtSupport          = FixedPointEnable,
+    parameter  bit                   EnableQbsLaneMul      = 1'b0,
     // To please Verilator
     parameter  int           unsigned pe_req_t_bits         = 0,
     parameter  int           unsigned pe_resp_t_bits        = 0,
@@ -110,7 +111,31 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     input  strb_t                                          mask_i,
     input  logic                                           mask_valid_i,
     input  vfu_e                                           mask_target_fu_i,
-    output logic                                           mask_ready_o
+    output logic                                           mask_ready_o,
+    // Resident PV group control; omitted ports leave the native lane unchanged.
+    input  logic                                           pv_lease_i = 1'b0,
+    input  logic                                           pv_acquire_i = 1'b0,
+    input  logic                                           pv_start_i = 1'b0,
+    input  logic                                           pv_abort_i = 1'b0,
+    input  logic                                           pv_release_i = 1'b0,
+    input  logic                                           pv_commit_i = 1'b0,
+    input  logic                                           pv_payload_seed_i = 1'b0,
+    input  logic                                           pv_payload_value_i = 1'b0,
+    input  logic                                           pv_done_ready_i = 1'b0,
+    output logic                                           pv_owned_o,
+    output logic                                           pv_ready_o,
+    output logic                                           pv_result_valid_o,
+    output logic                                           pv_done_valid_o,
+    output logic                                           pv_done_error_o,
+    output logic [4:0]                                     pv_done_flags_o,
+    input  logic                                           qbs_mul_lease_i = 1'b0,
+    input  logic                                           qbs_mul_valid_i = 1'b0,
+    input  logic [15:0]                                    qbs_mul_weight_i = '0,
+    input  logic [63:0]                                    qbs_mul_activation_i = '0,
+    output logic                                           qbs_mul_owned_o,
+    output logic                                           qbs_mul_ready_o,
+    output logic                                           qbs_mul_result_valid_o,
+    output logic signed [16:0]                            qbs_mul_result_pair_o [4]
 `ifdef FOR_VERIFY
     ,output logic [4:0]                                    verify_wb_valid_o
     ,output vid_t [4:0]                                    verify_wb_id_o
@@ -253,6 +278,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   operand_request_cmd_t [NrOperandQueues-1:0] operand_request;
   logic                 [NrOperandQueues-1:0] operand_request_valid;
   logic                 [NrOperandQueues-1:0] operand_request_ready;
+  logic                 [NrOperandQueues-1:0] operand_request_idle;
   // Interface with the vector functional units
   vfu_operation_t                             vfu_operation;
   logic                                       vfu_operation_valid;
@@ -275,6 +301,30 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   assign pe_req    = pe_req_i;
   assign pe_resp_o = pe_resp;
 
+  localparam bit EnableResidentPv = akv_pkg::AkvResidentPvEnable &&
+      NrLanes == 4 && VLEN == 1024 && RVVH(FPUSupport);
+  localparam bit EnableResidentQk = EnableResidentPv &&
+      akv_pkg::AkvResidentQkEnable && RVVF(FPUSupport);
+  logic lane_pe_req_valid, lane_pe_req_ready, pv_block_native, pv_pe_req_allowed;
+  assign lane_pe_req_valid = pe_req_valid_i && pv_pe_req_allowed;
+  assign pe_req_ready_o = lane_pe_req_ready && pv_pe_req_allowed;
+
+  logic ldu_result_req_mux;
+  vid_t ldu_result_id_mux;
+  vaddr_t ldu_result_addr_mux;
+  elen_t ldu_result_wdata_mux;
+  strb_t ldu_result_be_mux;
+  logic ldu_result_gnt, ldu_result_final_gnt;
+
+  logic pv_fpu_acquire, pv_fpu_acquire_ready, pv_fpu_release, pv_fpu_release_ready;
+  logic pv_fpu_valid, pv_fpu_ready, pv_fpu_result_valid, pv_fpu_result_ready;
+  elen_t [2:0] pv_fpu_operands;
+  logic [3:0] pv_fpu_tag, pv_fpu_mask, pv_fpu_result_tag;
+  logic [2:0] pv_fpu_rm;
+  logic pv_fpu_fp32;
+  elen_t pv_fpu_result;
+  logic [4:0] pv_fpu_result_flags;
+
   lane_sequencer #(
     .NrLanes              (NrLanes              ),
     .VLEN                 (VLEN                 ),
@@ -288,9 +338,9 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .lane_id_i              (lane_id_i            ),
     // Interface with the main sequencer
     .pe_req_i               (pe_req               ),
-    .pe_req_valid_i         (pe_req_valid_i       ),
+    .pe_req_valid_i         (lane_pe_req_valid    ),
     .pe_vinsn_running_i     (pe_vinsn_running_i   ),
-    .pe_req_ready_o         (pe_req_ready_o       ),
+    .pe_req_ready_o         (lane_pe_req_ready    ),
     .pe_resp_o              (pe_resp              ),
     // Support for store exception flush
     .lsu_ex_flush_i         (lsu_ex_flush_i       ),
@@ -374,6 +424,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .operand_request_i        (operand_request         ),
     .operand_request_valid_i  (operand_request_valid   ),
     .operand_request_ready_o  (operand_request_ready   ),
+    .operand_request_idle_o   (operand_request_idle    ),
     // Support for store exception flush
     .lsu_ex_flush_i           (lsu_ex_flush_op_req_q   ),
     .lsu_ex_flush_o           (lsu_ex_flush_op_queues_d),
@@ -423,13 +474,13 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .sldu_result_gnt_o        (sldu_result_gnt_opqueues),
     .sldu_result_final_gnt_o  (sldu_result_final_gnt_o ),
     // Load Unit
-    .ldu_result_req_i         (ldu_result_req_i        ),
-    .ldu_result_id_i          (ldu_result_id_i         ),
-    .ldu_result_addr_i        (ldu_result_addr_i       ),
-    .ldu_result_wdata_i       (ldu_result_wdata_i      ),
-    .ldu_result_be_i          (ldu_result_be_i         ),
-    .ldu_result_gnt_o         (ldu_result_gnt_o        ),
-    .ldu_result_final_gnt_o   (ldu_result_final_gnt_o  )
+    .ldu_result_req_i         (ldu_result_req_mux      ),
+    .ldu_result_id_i          (ldu_result_id_mux       ),
+    .ldu_result_addr_i        (ldu_result_addr_mux     ),
+    .ldu_result_wdata_i       (ldu_result_wdata_mux    ),
+    .ldu_result_be_i          (ldu_result_be_mux       ),
+    .ldu_result_gnt_o         (ldu_result_gnt          ),
+    .ldu_result_final_gnt_o   (ldu_result_final_gnt    )
 `ifdef FOR_VERIFY
     ,.verify_wb_valid_o       (verify_wb_valid_o       )
     ,.verify_wb_id_o          (verify_wb_id_o          )
@@ -698,6 +749,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .FPUSupport     (FPUSupport     ),
     .FPExtSupport   (FPExtSupport   ),
     .FixPtSupport   (FixPtSupport   ),
+    .EnableResidentPv(EnableResidentPv),
+    .EnableQbsLaneMul(EnableQbsLaneMul),
     .vaddr_t        (vaddr_t        ),
     .vfu_operation_t(vfu_operation_t)
   ) i_vfus (
@@ -765,7 +818,26 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .alu_mask_ready_o     (alu_mask_ready                         ),
     .mfpu_mask_i          (mfpu_mask                              ),
     .mfpu_mask_valid_i    (mfpu_mask_valid                        ),
-    .mfpu_mask_ready_o    (mfpu_mask_ready                        )
+    .mfpu_mask_ready_o    (mfpu_mask_ready                        ),
+    .resident_acquire_i       (pv_fpu_acquire),
+    .resident_acquire_ready_o (pv_fpu_acquire_ready),
+    .resident_owned_o         (pv_owned_o),
+    .resident_release_i       (pv_fpu_release),
+    .resident_release_ready_o (pv_fpu_release_ready),
+    .resident_valid_i         (pv_fpu_valid),
+    .resident_ready_o         (pv_fpu_ready),
+    .resident_operands_i      (pv_fpu_operands),
+    .resident_tag_i           (pv_fpu_tag),
+    .resident_mask_i          (pv_fpu_mask),
+    .resident_rm_i            (pv_fpu_rm),
+    .resident_fp32_i          (pv_fpu_fp32),
+    .resident_result_valid_o  (pv_fpu_result_valid),
+    .resident_result_ready_i  (pv_fpu_result_ready),
+    .resident_result_o        (pv_fpu_result),
+    .resident_result_tag_o    (pv_fpu_result_tag),
+    .resident_result_flags_o  (pv_fpu_result_flags),
+    .qbs_mul_lease_i, .qbs_mul_valid_i, .qbs_mul_weight_i, .qbs_mul_activation_i,
+    .qbs_mul_owned_o, .qbs_mul_ready_o, .qbs_mul_result_valid_o, .qbs_mul_result_pair_o
   );
 
   /******************************
@@ -972,6 +1044,333 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   assign sldu_mfpu_valid   = sldu_red_valid_i & (sldu_addrgen_sel_q == FPU_RED_SEL);
   assign sldu_result_gnt_o = sldu_addrgen_sel_q == SLDU_SEL ? sldu_result_gnt_opqueues :
                             (sldu_addrgen_sel_q == ALU_RED_SEL ? sldu_alu_ready : sldu_mfpu_ready);
+
+  if (EnableResidentPv) begin : gen_resident_pv
+    logic lease, abort_command, commit_command, release_command;
+    logic cmd_captured_q, lease_seen_q, started_q, release_seen_q, write_started_q;
+    logic qk_q, pe_is_qk, pe_is_resident, active, start_command, ctrl_fp32;
+    logic [8:0] control_q;
+    logic [2:0] rm_q;
+    logic [4:0] vd_q;
+    vid_t id_q;
+    logic capture_command, upstream_empty, mux_private, payload_enable, commit_enable;
+    logic ctrl_cmd_ready, ctrl_seed_ready, ctrl_stream_ready, ctrl_busy;
+    logic ctrl_result_valid, ctrl_result_ready, ctrl_done_valid, ctrl_done_error;
+    logic [4:0] ctrl_done_flags;
+    logic [5:0] elements;
+    logic [6:0] tokens;
+    logic [7:0] dimensions;
+    logic [3:0] result_slot;
+    logic [7:0] result_be;
+    logic [63:0] result_data;
+    logic seed_valid, stream_valid, seed_payload, value_payload;
+    // operand_requester.i_ldu_stream_register has registered valid_o (no fall-through).
+    // A simultaneous accept/final retires the previous beat and refills its one slot.
+    logic [1:0] native_ldu_debt_q, private_ldu_debt_q;
+    logic native_accept, native_final, private_accept, private_final;
+
+    assign lease = pv_lease_i === 1'b1;
+    assign abort_command = pv_abort_i === 1'b1;
+    assign commit_command = pv_commit_i === 1'b1;
+    assign release_command = pv_release_i === 1'b1;
+    assign seed_payload = pv_payload_seed_i === 1'b1;
+    assign value_payload = pv_payload_value_i === 1'b1;
+    assign pe_is_qk = EnableResidentQk && pe_req.op == VAKVQK;
+    assign pe_is_resident = pe_req.op == VAKVPV || pe_is_qk;
+    assign pv_block_native = lease || pv_owned_o || cmd_captured_q;
+    assign pv_pe_req_allowed = !pv_block_native ||
+        (pe_is_resident && (!cmd_captured_q || (pe_req.id == id_q && pe_is_qk == qk_q)));
+    assign capture_command = pe_req_valid_i && pe_req_ready_o && pe_is_resident &&
+        !cmd_captured_q;
+    // Acquisition precedes controller start, so format comes from captured PE metadata.
+    assign pv_fpu_fp32 = cmd_captured_q && qk_q;
+    assign active = !qk_q || elements != 0;
+    assign start_command = (pv_start_i === 1'b1) && pv_ready_o && active;
+
+    always_comb begin
+      // StA is the new PV source, not old native work to wait for here.
+      upstream_empty = !vfu_operation_valid && !vfu_operation_valid_q &&
+          !(pe_req_valid_i && !pe_is_resident) && !(|mfpu_operand_valid) &&
+          !mfpu_mask_valid && !(mask_valid_i && mask_target_fu_i == VFU_MFpu) &&
+          !sldu_mfpu_valid && !sldu_mfpu_req_valid_o;
+      for (int q = 0; q < NrOperandQueues; q++) begin
+        if (q inside {MulFPUA, MulFPUB, MulFPUC, MaskM, SlideAddrGenA}) begin
+          upstream_empty &= !operand_request_valid[q] && operand_request_idle[q] &&
+              !operand_issued[q] && !vrf_operand_valid[q] && !operand_queue_input_valid[q] &&
+              !operand_queue_cmd_valid[q];
+        end
+      end
+      tokens = {1'b0, control_q[5:0]} + 7'd1;
+      case (control_q[8:7])
+        2'd0: dimensions = 8'd64;
+        2'd1: dimensions = 8'd128;
+        2'd2: dimensions = 8'd96;
+        default: dimensions = '0;
+      endcase
+      elements = 6'(dimensions >> 2);
+      if (qk_q)
+        elements = tokens > 7'(lane_id_i)
+            ? 6'((tokens - 7'(lane_id_i) + 7'd3) >> 2) : 6'd0;
+    end
+
+    assign pv_fpu_acquire = lease && cmd_captured_q && !started_q && !release_seen_q &&
+        !release_command && !abort_command && (pv_acquire_i === 1'b1) &&
+        (upstream_empty === 1'b1) && native_ldu_debt_q == 0 &&
+        private_ldu_debt_q == 0 && !ldu_result_final_gnt;
+    assign pv_fpu_release = lease && (release_command || release_seen_q) &&
+        private_ldu_debt_q == 0 && !ctrl_result_valid &&
+        (!started_q || ctrl_done_valid || !ctrl_busy);
+    assign pv_ready_o = lease && cmd_captured_q && pv_owned_o && !started_q &&
+        !release_seen_q && !release_command && ctrl_cmd_ready;
+
+    assign mux_private = lease || pv_owned_o || private_ldu_debt_q != 0;
+    assign payload_enable = lease && pv_owned_o && started_q && !commit_command &&
+        !abort_command && !release_seen_q && !release_command &&
+        ((pv_payload_seed_i === 1'b0) || seed_payload) &&
+        (seed_payload || (pv_payload_value_i === 1'b0) || value_payload);
+    assign commit_enable = lease && pv_owned_o && cmd_captured_q && started_q &&
+        commit_command && !abort_command && !release_seen_q && !release_command;
+    assign seed_valid = payload_enable && seed_payload && ldu_result_req_i;
+    assign stream_valid = payload_enable && !seed_payload && ldu_result_req_i;
+    assign ctrl_result_ready = commit_enable && ldu_result_gnt;
+    assign pv_result_valid_o = lease && ctrl_result_valid;
+    // Controller Done follows input acceptance, not the final VRF write.
+    assign pv_done_valid_o = lease && ctrl_done_valid && private_ldu_debt_q == 0;
+    assign pv_done_error_o = pv_done_valid_o && ctrl_done_error;
+    assign pv_done_flags_o = pv_done_valid_o ? ctrl_done_flags : '0;
+
+    always_comb begin
+      ldu_result_req_mux = ldu_result_req_i;
+      ldu_result_id_mux = ldu_result_id_i;
+      ldu_result_addr_mux = ldu_result_addr_i;
+      ldu_result_wdata_mux = ldu_result_wdata_i;
+      ldu_result_be_mux = ldu_result_be_i;
+      ldu_result_gnt_o = ldu_result_gnt;
+      ldu_result_final_gnt_o = ldu_result_final_gnt;
+      if (mux_private) begin
+        ldu_result_req_mux = commit_enable && ctrl_result_valid;
+        ldu_result_id_mux = id_q;
+        ldu_result_addr_mux = vaddr_t'(vaddr(vd_q, NrLanes, VLEN)) + vaddr_t'(result_slot);
+        ldu_result_wdata_mux = elen_t'(result_data);
+        ldu_result_be_mux = strb_t'(result_be);
+        ldu_result_gnt_o = 1'b0;
+        ldu_result_final_gnt_o = private_final;
+        if (payload_enable)
+          ldu_result_gnt_o = seed_payload ? ctrl_seed_ready : ctrl_stream_ready;
+        else if (commit_enable)
+          ldu_result_gnt_o = ctrl_result_valid && ldu_result_gnt;
+      end
+    end
+
+    assign native_accept = !mux_private && ldu_result_req_i && ldu_result_gnt;
+    assign native_final = ldu_result_final_gnt && native_ldu_debt_q != 0;
+    assign private_accept = mux_private && ldu_result_req_mux && ldu_result_gnt;
+    assign private_final = ldu_result_final_gnt && private_ldu_debt_q != 0;
+
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) begin
+        cmd_captured_q <= 1'b0;
+        lease_seen_q <= 1'b0;
+        started_q <= 1'b0;
+        release_seen_q <= 1'b0;
+        write_started_q <= 1'b0;
+        qk_q <= 1'b0;
+        control_q <= '0;
+        rm_q <= '0;
+        vd_q <= '0;
+        id_q <= '0;
+        native_ldu_debt_q <= '0;
+        private_ldu_debt_q <= '0;
+      end else begin
+        case ({native_accept, native_final})
+          2'b10: native_ldu_debt_q <= native_ldu_debt_q + 1'b1;
+          2'b01: native_ldu_debt_q <= native_ldu_debt_q - 1'b1;
+          default: ;
+        endcase
+        case ({private_accept, private_final})
+          2'b10: private_ldu_debt_q <= private_ldu_debt_q + 1'b1;
+          2'b01: private_ldu_debt_q <= private_ldu_debt_q - 1'b1;
+          default: ;
+        endcase
+        if (lease) lease_seen_q <= 1'b1;
+        if (lease && release_command) release_seen_q <= 1'b1;
+        if (start_command) started_q <= 1'b1;
+        if (private_accept) write_started_q <= 1'b1;
+        // A PE command may arrive one cycle before lease; do not clear it then.
+        if (capture_command) begin
+          cmd_captured_q <= 1'b1;
+          qk_q <= pe_is_qk;
+          control_q <= pe_req.scalar_op[8:0];
+          rm_q <= pe_req.fp_rm;
+          vd_q <= pe_req.vd;
+          id_q <= pe_req.id;
+        end else if (lease_seen_q && !lease && !pv_owned_o && !ctrl_busy &&
+                     private_ldu_debt_q == 0) begin
+          cmd_captured_q <= 1'b0;
+          lease_seen_q <= 1'b0;
+          started_q <= 1'b0;
+          release_seen_q <= 1'b0;
+          write_started_q <= 1'b0;
+          qk_q <= 1'b0;
+          control_q <= '0;
+          rm_q <= '0;
+          vd_q <= '0;
+          id_q <= '0;
+        end
+      end
+    end
+
+    akv_resident_pv_lane i_resident_pv (
+      .clk_i, .rst_ni,
+      .abort_i(lease && abort_command),
+      .cmd_valid_i(start_command),
+      .cmd_ready_o(ctrl_cmd_ready),
+      .cmd_elements_i(elements),
+      .cmd_two_heads_i(control_q[6]),
+      .cmd_tokens_i(tokens),
+      .cmd_rm_i(rm_q),
+      .cmd_qk_i(qk_q), .cmd_dimensions_i(dimensions),
+      .seed_valid_i(seed_valid), .seed_ready_o(ctrl_seed_ready),
+      .seed_data_i(ldu_result_wdata_i),
+      .stream_valid_i(stream_valid), .stream_ready_o(ctrl_stream_ready),
+      .stream_is_value_i(value_payload), .stream_data_i(ldu_result_wdata_i),
+      .fpu_valid_o(pv_fpu_valid), .fpu_ready_i(pv_fpu_ready),
+      .fpu_operands_o(pv_fpu_operands), .fpu_tag_o(pv_fpu_tag),
+      .fpu_mask_o(pv_fpu_mask), .fpu_rm_o(pv_fpu_rm), .fpu_fp32_o(ctrl_fp32),
+      .fpu_result_valid_i(pv_fpu_result_valid), .fpu_result_ready_o(pv_fpu_result_ready),
+      .fpu_result_i(pv_fpu_result), .fpu_result_tag_i(pv_fpu_result_tag),
+      .fpu_result_flags_i(pv_fpu_result_flags),
+      .result_valid_o(ctrl_result_valid), .result_ready_i(ctrl_result_ready),
+      .result_data_o(result_data), .result_slot_o(result_slot), .result_be_o(result_be),
+      .done_valid_o(ctrl_done_valid),
+      .done_ready_i((pv_done_ready_i === 1'b1) && pv_done_valid_o),
+      .done_error_o(ctrl_done_error), .done_flags_o(ctrl_done_flags), .busy_o(ctrl_busy)
+    );
+
+    // synthesis translate_off
+    logic perf_enable, perf_active_q;
+    vid_t perf_id_q;
+    logic perf_qk_q;
+    int unsigned perf_tokens_q, perf_elements_q, perf_heads_q, perf_dimensions_q;
+    longint unsigned perf_issued_q, perf_returned_q, perf_writes_q;
+    initial perf_enable = $test$plusargs("RESIDENT_PV_PERF");
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) begin
+        perf_active_q <= 1'b0;
+        perf_id_q <= '0;
+        perf_qk_q <= 1'b0;
+        perf_tokens_q <= '0;
+        perf_elements_q <= '0;
+        perf_heads_q <= '0;
+        perf_dimensions_q <= '0;
+        perf_issued_q <= '0;
+        perf_returned_q <= '0;
+        perf_writes_q <= '0;
+      end else if (perf_enable) begin
+        if (start_command) begin
+          assert (!perf_active_q) else $error("Overlapping resident PV performance commands");
+          perf_active_q <= 1'b1;
+          perf_id_q <= id_q;
+          perf_qk_q <= qk_q;
+          perf_tokens_q <= int'({1'b0, control_q[5:0]}) + 1;
+          perf_elements_q <= int'(elements);
+          perf_heads_q <= control_q[6] ? 2 : 1;
+          perf_dimensions_q <= int'(dimensions);
+          perf_issued_q <= '0;
+          perf_returned_q <= '0;
+          perf_writes_q <= '0;
+        end
+        if (perf_active_q) begin
+          if (pv_fpu_valid && pv_fpu_ready) perf_issued_q <= perf_issued_q + 1;
+          if (pv_fpu_result_valid && pv_fpu_result_ready) perf_returned_q <= perf_returned_q + 1;
+          if (private_accept) perf_writes_q <= perf_writes_q + 1;
+        end
+        if (pv_done_valid_o && (pv_done_ready_i === 1'b1)) begin
+          assert (perf_active_q && perf_returned_q == perf_issued_q)
+            else $error("Resident PV accepted/returned FPU count mismatch at done");
+          if (!pv_done_error_o) begin
+            assert (perf_issued_q == ((perf_elements_q + (perf_qk_q ? 1 : 3)) /
+                        (perf_qk_q ? 2 : 4)) * perf_heads_q *
+                        (perf_qk_q ? perf_dimensions_q : perf_tokens_q) &&
+                    perf_writes_q == ((perf_elements_q + (perf_qk_q ? 1 : 3)) /
+                        (perf_qk_q ? 2 : 4)) * perf_heads_q)
+              else $error("Resident PV successful shape/work count mismatch");
+          end
+          if (perf_qk_q)
+            $display("[RESIDENT_QK_LANE] lane=%0d vid=%0d tokens=%0d elements=%0d heads=%0d dimensions=%0d issued=%0d returned=%0d writes=%0d flags=%0d error=%0d",
+                     lane_id_i, perf_id_q, perf_tokens_q, perf_elements_q, perf_heads_q,
+                     perf_dimensions_q, perf_issued_q, perf_returned_q, perf_writes_q,
+                     pv_done_flags_o, pv_done_error_o);
+          else
+            $display("[RESIDENT_PV_LANE] lane=%0d vid=%0d tokens=%0d elements=%0d heads=%0d issued=%0d returned=%0d writes=%0d flags=%0d error=%0d",
+                     lane_id_i, perf_id_q, perf_tokens_q, perf_elements_q, perf_heads_q,
+                     perf_issued_q, perf_returned_q, perf_writes_q, pv_done_flags_o, pv_done_error_o);
+          perf_active_q <= 1'b0;
+        end
+      end
+    end
+
+    always_ff @(posedge clk_i) if (rst_ni) begin
+      assert (native_ldu_debt_q <= 1 && private_ldu_debt_q <= 1 &&
+              !(native_ldu_debt_q != 0 && private_ldu_debt_q != 0))
+        else $error("PV/native LDU ownership debt mismatch");
+      if (ldu_result_final_gnt)
+        assert (native_ldu_debt_q != 0 || private_ldu_debt_q != 0)
+          else $error("Unowned LDU final grant");
+      if (lease)
+        assert (!lsu_ex_flush_i && !lsu_ex_flush_op_req_d && !lsu_ex_flush_op_req_q &&
+                !lsu_ex_flush_op_queues_d && !lsu_ex_flush_op_queues_q && !lsu_ex_flush_o)
+          else $error("LSU-only flush during resident PV lease is unsupported");
+      if (pv_owned_o)
+        assert (lease && cmd_captured_q && upstream_empty && native_ldu_debt_q == 0)
+          else $error("Native upstream work or LDU debt survived PV acquisition");
+      if (lease_seen_q && !lease)
+        assert (!pv_owned_o && !ctrl_busy && private_ldu_debt_q == 0)
+          else $error("PV lease ended before private work drained");
+      if (pv_start_i === 1'b1)
+        assert (pv_ready_o) else $error("PV group start without captured, owned ready lane");
+      if (lease && qk_q && !active)
+        assert (!started_q && !ctrl_busy && !pv_fpu_valid && !ctrl_result_valid &&
+                !private_accept && !seed_valid && !stream_valid)
+          else $error("Inactive QK lane executed controller or architectural work");
+      if (pv_fpu_valid)
+        assert (ctrl_fp32 == qk_q) else $error("Resident controller/owner format mismatch");
+      if (abort_command && lease)
+        assert (!write_started_q) else $error("PV abort after irreversible VRF acceptance");
+      if (pe_req_valid_i && pe_req_ready_o && pe_is_resident && cmd_captured_q)
+        assert (pe_is_qk == qk_q && pe_req.id == id_q && pe_req.vd == vd_q &&
+                pe_req.scalar_op[8:0] == control_q && pe_req.fp_rm == rm_q)
+          else $error("PV command changed while captured");
+      if (pv_fpu_release && pv_fpu_release_ready)
+        assert (private_ldu_debt_q == 0 && !ctrl_result_valid)
+          else $error("PV FPU release before final architectural writes");
+    end
+    // synthesis translate_on
+  end else begin : gen_no_resident_pv
+    assign pv_block_native = 1'b0;
+    assign pv_pe_req_allowed = 1'b1;
+    assign ldu_result_req_mux = ldu_result_req_i;
+    assign ldu_result_id_mux = ldu_result_id_i;
+    assign ldu_result_addr_mux = ldu_result_addr_i;
+    assign ldu_result_wdata_mux = ldu_result_wdata_i;
+    assign ldu_result_be_mux = ldu_result_be_i;
+    assign ldu_result_gnt_o = ldu_result_gnt;
+    assign ldu_result_final_gnt_o = ldu_result_final_gnt;
+    assign pv_fpu_acquire = 1'b0;
+    assign pv_fpu_release = 1'b0;
+    assign pv_fpu_valid = 1'b0;
+    assign pv_fpu_operands = '0;
+    assign pv_fpu_tag = '0;
+    assign pv_fpu_mask = '0;
+    assign pv_fpu_rm = '0;
+    assign pv_fpu_fp32 = 1'b0;
+    assign pv_fpu_result_ready = 1'b0;
+    assign pv_ready_o = 1'b0;
+    assign pv_result_valid_o = 1'b0;
+    assign pv_done_valid_o = 1'b0;
+    assign pv_done_error_o = 1'b0;
+    assign pv_done_flags_o = '0;
+  end
 
   //////////////////
   //  Assertions  //

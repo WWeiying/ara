@@ -12,6 +12,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   import akv_pkg::*; #(
     parameter  int  unsigned NrLanes     = 0,
     parameter  int  unsigned VLEN        = 0,
+    parameter  bit          EnableQbsLaneMul = 1'b0,
     parameter  type          vaddr_t     = logic,  // Type used to address vector register file elements
     parameter  type          pe_req_t    = logic,
     parameter  type          pe_resp_t   = logic,
@@ -105,17 +106,34 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     output strb_t     [NrLanes-1:0] ldu_result_be_o,
     input  logic      [NrLanes-1:0] ldu_result_gnt_i,
     input  logic      [NrLanes-1:0] ldu_result_final_gnt_i,
+    // Lane-local resident arithmetic; payload reuses the existing LDU wires.
+    output logic pv_lease_o, pv_acquire_o, pv_start_o, pv_release_o, pv_commit_o,
+    output logic pv_payload_seed_o, pv_payload_value_o,
+    output logic [NrLanes-1:0] pv_abort_o, pv_done_ready_o,
+    input logic [NrLanes-1:0] pv_owned_i = '0,
+    input logic [NrLanes-1:0] pv_ready_i = '0,
+    input logic [NrLanes-1:0] pv_result_valid_i = '0,
+    input logic [NrLanes-1:0] pv_done_valid_i = '0,
+    input logic [NrLanes-1:0] pv_done_error_i = '0,
+    input logic [NrLanes-1:0][4:0] pv_done_flags_i = '0,
     // Floating-point status from a completed blocking QBS command
     output logic                    qbs_fflags_valid_o,
-    output logic              [4:0] qbs_fflags_o
+    output logic              [4:0] qbs_fflags_o,
+    output logic                    qbs_mul_lease_o, qbs_mul_valid_o,
+    output logic [15:0]             qbs_mul_weight_o [NrLanes],
+    output logic [63:0]             qbs_mul_activation_o,
+    input  logic [NrLanes-1:0]      qbs_mul_owned_i = '0,
+    input  logic [NrLanes-1:0]      qbs_mul_ready_i = '0,
+    input  logic [NrLanes-1:0]      qbs_mul_result_valid_i = '0,
+    input  logic signed [16:0]     qbs_mul_result_pair_i [NrLanes][4]
   );
 
   `include "common_cells/registers.svh"
 
   logic load_complete, store_complete;
-  logic qbs_terminal, akv_terminal;
+  logic qbs_terminal, akv_terminal, pv_terminal;
   logic addrgen_illegal_load, addrgen_illegal_store;
-  assign load_complete_o  = load_complete | qbs_terminal | akv_terminal;
+  assign load_complete_o  = load_complete | qbs_terminal | akv_terminal | pv_terminal;
   assign store_complete_o = store_complete;
 
   logic stu_current_burst_exception, ldu_current_burst_exception;
@@ -398,6 +416,27 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   //////////////////////////////////////
 
   logic qbs_active_d, qbs_active_q;
+  localparam bit ResidentPvSupported = AkvEnable && AkvV2Enable &&
+      AkvResidentPvEnable && NrLanes == 4 && VLEN == 1024;
+  localparam bit ResidentQkSupported = ResidentPvSupported && AkvResidentQkEnable;
+  logic pv_command_valid, pv_command_ready, pv_command_fire;
+  logic pv_source_owner, pv_request_consumed_q, pe_req_is_pv, pv_qk_q;
+  logic pv_error, pv_fatal, pv_context_valid, pv_context_lease_ready, pv_row_read;
+  logic [15:0] pv_context_dimension;
+  logic [6:0] pv_context_tokens;
+  logic [5:0] pv_row_token;
+  logic [3:0] pv_row_word;
+  logic [255:0] pv_row_data;
+  logic [3:0] pv_context_q_rows, pv_query_word;
+  logic [2:0] pv_query_row;
+  logic pv_query_read, pv_column_start, pv_column_busy, pv_column_valid;
+  logic [6:0] pv_column_dimension, pv_column_tokens;
+  logic [1:0] pv_column_index, pv_column_packet;
+  logic [255:0] pv_query_data, pv_column_data;
+  logic [4:0] pv_flags;
+  vid_t pv_id;
+  logic [NrLanes-1:0] pv_source_ready, shared_stu_operand_ready, pv_payload_valid;
+  logic [NrLanes-1:0][63:0] pv_payload_data;
   logic qbs_seed_owner_q, qbs_seed_owner;
   logic [NrLanes-1:0] qbs_seed_lane_valid, qbs_seed_lane_ready;
   logic [63:0] qbs_seed_lane_data [NrLanes];
@@ -436,6 +475,31 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic [NrLanes-1:0] qbs_ldu_result_final_gnt;
 
   logic qbs_busy;
+  localparam bit QbsLaneMulSupported = EnableQbsLaneMul && NrLanes == 4 &&
+      VLEN == 1024 && QbsLaneMulLatencySupported;
+  logic qbs_loan_valid;
+  logic [3:0] qbs_loan_ready, qbs_loan_result_valid;
+  logic [15:0] qbs_loan_weight [4];
+  logic signed [16:0] qbs_loan_result_pair [4][4];
+  assign qbs_mul_lease_o = QbsLaneMulSupported && qbs_active_q;
+  assign qbs_mul_valid_o = QbsLaneMulSupported && qbs_loan_valid;
+  for (genvar loan_lane = 0; loan_lane < 4; loan_lane++) begin : gen_qbs_loan_return
+    if (loan_lane < NrLanes && QbsLaneMulSupported) begin : gen_present
+      assign qbs_loan_ready[loan_lane] = qbs_mul_owned_i[loan_lane] && qbs_mul_ready_i[loan_lane];
+      assign qbs_loan_result_valid[loan_lane] = qbs_mul_result_valid_i[loan_lane];
+      assign qbs_loan_result_pair[loan_lane] = qbs_mul_result_pair_i[loan_lane];
+    end else begin : gen_absent
+      assign qbs_loan_ready[loan_lane] = 1'b0;
+      assign qbs_loan_result_valid[loan_lane] = 1'b0;
+      assign qbs_loan_result_pair[loan_lane] = '{default:'0};
+    end
+  end
+  for (genvar loan_lane = 0; loan_lane < NrLanes; loan_lane++) begin : gen_qbs_loan_weight
+    if (loan_lane < 4 && QbsLaneMulSupported)
+      assign qbs_mul_weight_o[loan_lane] = qbs_loan_weight[loan_lane];
+    else
+      assign qbs_mul_weight_o[loan_lane] = '0;
+  end
   logic [31:0] qbs_command_cycles;
   logic [31:0] qbs_read_range_count, qbs_read_translation_count;
   logic [31:0] qbs_read_ar_count, qbs_read_beat_count;
@@ -570,9 +634,12 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   assign pe_req_is_akv = AkvEnable && pe_req_i.op inside {
       VAKVFILL, VAKVLOAD, VAKVRELEASE};
+  // QK shares the resident owner, but has no StA/VRF source import.
+  assign pe_req_is_pv = (ResidentPvSupported && pe_req_i.op == VAKVPV) ||
+                        (ResidentQkSupported && pe_req_i.op == VAKVQK);
   assign normal_pe_req_valid = pe_req_valid_i &&
-      pe_req_i.op != VQBEXEC && !pe_req_is_akv &&
-      !qbs_active_q && !akv_active_q;
+      !(pe_req_i.op inside {VQBEXEC, VAKVPV, VAKVQK}) && !pe_req_is_akv &&
+      !qbs_active_q && !akv_active_q && !pv_lease_o;
 
   // The only outstanding precise store owns this preparation window. Indexed,
   // segmented and strided stores do not provide a bounded disjoint range.
@@ -625,8 +692,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   end
   assign prepare_invalidate = load_prepare_flush_i || !load_prepare_safe_i ||
       lsu_ex_flush_i || store_b_exception.valid || normal_addrgen_exception.valid ||
-      qbs_active_q || akv_active_q ||
-      (pe_req_valid_i && (pe_req_i.op == VQBEXEC || pe_req_is_akv));
+      qbs_active_q || akv_active_q || pv_lease_o ||
+      (pe_req_valid_i && (pe_req_i.op == VQBEXEC || pe_req_is_akv || pe_req_is_pv));
   assign prepare_allowed = prepare_pending_q && load_prepare_safe_i &&
       !prepare_invalidate && prepare_store_active_q &&
       prepare_addr_q[$clog2(AxiDataWidth/8)-1:0] == '0 &&
@@ -721,7 +788,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   end
 
   assign qbs_command_valid = QbsEnable && pe_req_valid_i &&
-      pe_req_i.op == VQBEXEC && !qbs_active_q && !akv_active_q &&
+      pe_req_i.op == VQBEXEC && !qbs_active_q && !akv_active_q && !pv_lease_o &&
       normal_vlsu_idle;
   assign qbs_command_fire = qbs_command_valid && qbs_command_ready;
   assign qbs_terminal = qbs_active_q &&
@@ -733,10 +800,14 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
        (pe_req_valid_i && pe_req_i.op == VQBEXEC && pe_req_i.use_vs1));
   qbs_seed_stream_router #(.NrLanes(NrLanes)) i_seed_stream_router (
     .seed_owner_i(qbs_seed_owner),
-    .lane_valid_i(stu_operand_valid_i), .lane_ready_o(stu_operand_ready_o),
+    .lane_valid_i(stu_operand_valid_i & {NrLanes{!pv_source_owner}}),
+    .lane_ready_o(shared_stu_operand_ready),
     .store_valid_o(normal_stu_operand_valid), .store_ready_i(normal_stu_operand_ready),
     .seed_valid_o(qbs_seed_lane_valid), .seed_ready_i(qbs_seed_lane_ready)
   );
+  assign pv_source_owner = ResidentPvSupported &&
+      (pv_lease_o ? !pv_qk_q : (pe_req_valid_i && pe_req_i.op == VAKVPV));
+  assign stu_operand_ready_o = pv_source_owner ? pv_source_ready : shared_stu_operand_ready;
   for (genvar lane = 0; lane < NrLanes; lane++)
     assign qbs_seed_lane_data[lane] = stu_operand_i[lane];
 
@@ -775,11 +846,66 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   assign akv_command_valid = AkvEnable && pe_req_valid_i &&
       pe_req_is_akv && !akv_request_consumed_q && !akv_active_q &&
-      !qbs_active_q && normal_vlsu_idle;
+      !qbs_active_q && !pv_lease_o && normal_vlsu_idle;
   assign akv_command_fire = akv_command_valid && akv_command_ready;
   assign akv_terminal = akv_active_q &&
       (akv_success_valid || akv_fault_valid);
-  assign akv_clk_en = akv_command_valid || akv_active_q;
+  assign akv_clk_en = akv_command_valid || akv_active_q || pv_lease_o ||
+      (pe_req_valid_i && pe_req_is_pv && !pv_request_consumed_q);
+
+  assign pv_command_valid = ResidentPvSupported && pe_req_valid_i && pe_req_is_pv &&
+      !pv_request_consumed_q && !qbs_active_q && !akv_active_q &&
+      normal_vlsu_idle && akv_command_ready && pv_context_lease_ready;
+  assign pv_command_fire = pv_command_valid && pv_command_ready;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) pv_request_consumed_q <= 1'b0;
+    else if (!pe_req_valid_i || !pe_req_is_pv) pv_request_consumed_q <= 1'b0;
+    else if (pv_command_fire) pv_request_consumed_q <= 1'b1;
+  end
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) pv_qk_q <= 1'b0;
+    else if (pv_command_fire) pv_qk_q <= pe_req_i.op == VAKVQK;
+  end
+  if (ResidentPvSupported) begin : gen_resident_pv
+    akv_resident_pv_control i_control (
+      .clk_i, .rst_ni, .command_valid_i(pv_command_valid), .command_ready_o(pv_command_ready),
+      .command_id_i(pe_req_i.id), .command_control_i(pe_req_i.scalar_op[8:0]),
+      .command_rm_i(3'(pe_req_i.fp_rm)), .context_valid_i(pv_context_valid),
+      .context_dimension_i(pv_context_dimension), .context_tokens_i(pv_context_tokens),
+      .abort_i(1'b0), .lease_o(pv_lease_o), .acquire_o(pv_acquire_o), .start_o(pv_start_o),
+      .release_o(pv_release_o), .commit_o(pv_commit_o), .lane_abort_o(pv_abort_o),
+      .lane_owned_i(pv_owned_i), .lane_ready_i(pv_ready_i),
+      .lane_result_valid_i(pv_result_valid_i), .lane_done_valid_i(pv_done_valid_i),
+      .lane_done_error_i(pv_done_error_i), .lane_done_flags_i(pv_done_flags_i),
+      .lane_done_ready_o(pv_done_ready_o),
+      .source_valid_i(stu_operand_valid_i & {NrLanes{pv_source_owner}}),
+      .source_ready_o(pv_source_ready), .source_data_i(stu_operand_i),
+      .row_read_o(pv_row_read), .row_token_o(pv_row_token), .row_word_o(pv_row_word),
+      .row_data_i(pv_row_data), .payload_valid_o(pv_payload_valid), .payload_data_o(pv_payload_data),
+      .payload_seed_o(pv_payload_seed_o), .payload_value_o(pv_payload_value_o),
+      .lane_grant_i(ldu_result_gnt_i), .lane_final_grant_i(ldu_result_final_gnt_i),
+      .terminal_o(pv_terminal), .error_o(pv_error), .fatal_o(pv_fatal), .flags_o(pv_flags), .id_o(pv_id),
+      .command_qk_i(ResidentQkSupported && pe_req_i.op == VAKVQK),
+      .command_query_base_i(pe_req_i.scalar_op[11:9]), .context_q_rows_i(pv_context_q_rows),
+      .query_read_o(pv_query_read), .query_row_o(pv_query_row), .query_word_o(pv_query_word),
+      .query_data_i(pv_query_data), .column_start_o(pv_column_start),
+      .column_dimension_o(pv_column_dimension), .column_tokens_o(pv_column_tokens),
+      .column_busy_i(pv_column_busy), .column_valid_i(pv_column_valid),
+      .column_index_o(pv_column_index), .column_packet_o(pv_column_packet), .column_data_i(pv_column_data)
+    );
+  end else begin : gen_no_resident_pv
+    assign pv_command_ready=1'b0;
+    assign pv_lease_o=1'b0; assign pv_acquire_o=1'b0; assign pv_start_o=1'b0;
+    assign pv_release_o=1'b0; assign pv_commit_o=1'b0;
+    assign pv_abort_o='0; assign pv_done_ready_o='0;
+    assign pv_source_ready='0; assign pv_row_read=1'b0; assign pv_row_token='0; assign pv_row_word='0;
+    assign pv_payload_valid='0; assign pv_payload_data='0;
+    assign pv_payload_seed_o=1'b0; assign pv_payload_value_o=1'b0;
+    assign pv_terminal=1'b0; assign pv_error=1'b0; assign pv_fatal=1'b0; assign pv_flags='0; assign pv_id='0;
+    assign pv_query_read=1'b0; assign pv_query_row='0; assign pv_query_word='0;
+    assign pv_column_start=1'b0; assign pv_column_dimension='0; assign pv_column_tokens='0;
+    assign pv_column_index='0; assign pv_column_packet='0;
+  end
 
   // QBS contains byte-granular block storage, a 16-entry FP scheduler, and an
   // FP pipeline. None of that state needs a clock while no blocking command is
@@ -922,7 +1048,15 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     akv_ldu_result_gnt = '0;
     akv_ldu_result_final_gnt = '0;
 
-    if (qbs_active_q) begin
+    if (pv_lease_o) begin
+      ldu_result_req_o = pv_payload_valid;
+      ldu_result_id_o = {NrLanes{pv_id}};
+      ldu_result_addr_o = '0;
+      ldu_result_wdata_o = pv_payload_data;
+      ldu_result_be_o = '0;
+      normal_ldu_result_gnt = '0;
+      normal_ldu_result_final_gnt = '0;
+    end else if (qbs_active_q) begin
       ldu_result_req_o = qbs_ldu_result_req;
       ldu_result_id_o = qbs_ldu_result_id;
       ldu_result_addr_o = qbs_ldu_result_addr;
@@ -952,9 +1086,16 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   always_comb begin
     pe_req_ready_o = '0;
     pe_resp_o = normal_pe_resp;
-    if (!qbs_active_q && !akv_active_q) begin
+    if (pv_lease_o) begin
+      pe_resp_o = '0;
+      if (pv_terminal) pe_resp_o[OffsetLoad].vinsn_done[pv_id] = 1'b1;
+    end else if (!qbs_active_q && !akv_active_q) begin
       pe_req_ready_o = normal_pe_req_ready;
-      if (pe_req_i.op == VQBEXEC) begin
+      if (pe_req_i.op inside {VAKVPV, VAKVQK}) begin
+        pe_req_ready_o[OffsetLoad] = pe_req_is_pv && !pv_request_consumed_q &&
+            normal_vlsu_idle && akv_command_ready && pv_context_lease_ready && pv_command_ready;
+        pe_req_ready_o[OffsetStore] = 1'b0;
+      end else if (pe_req_i.op == VQBEXEC) begin
         pe_req_ready_o[OffsetLoad] = normal_vlsu_idle && qbs_command_ready;
         pe_req_ready_o[OffsetStore] = 1'b0;
       end else if (pe_req_is_akv) begin
@@ -1008,7 +1149,13 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     addrgen_exception_o = '0;
     addrgen_exception_vstart_o = '0;
     addrgen_fof_exception_o = 1'b0;
-    if (qbs_active_q) begin
+    if (pv_lease_o) begin
+      addrgen_ack_o = pv_terminal;
+      if (pv_terminal && pv_error) begin
+        addrgen_exception_o.valid = 1'b1;
+        addrgen_exception_o.cause = riscv::ILLEGAL_INSTR;
+      end
+    end else if (qbs_active_q) begin
       addrgen_ack_o = qbs_terminal;
       addrgen_exception_o = qbs_terminal_exception;
     end else if (akv_active_q) begin
@@ -1026,10 +1173,12 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     end
   end
 
-  assign qbs_fflags_valid_o = qbs_active_q && qbs_success_valid;
-  assign qbs_fflags_o = qbs_result_fflags;
+  assign qbs_fflags_valid_o = (qbs_active_q && qbs_success_valid) ||
+      (pv_terminal && !pv_error);
+  assign qbs_fflags_o = pv_terminal ? pv_flags : qbs_result_fflags;
 
   qbs_engine #(
+    .CooperativeWaves(QbsLaneMulSupported),
     .reader_req_t(shared_read_req_t), .reader_rsp_t(shared_read_rsp_t),
     .SeedRestoreEnable(QbsVrfContinuationEnable && NrLanes == 4 && VLEN == 1024),
     .AxiDataWidth(AxiDataWidth),
@@ -1045,6 +1194,9 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .exception_t(exception_t)
   ) i_qbs_engine (
     .clk_i(qbs_clk),
+    .loan_valid_o(qbs_loan_valid), .loan_ready_i(qbs_loan_ready),
+    .loan_weight_o(qbs_loan_weight), .loan_activation_o(qbs_mul_activation_o),
+    .loan_result_valid_i(qbs_loan_result_valid), .loan_result_pair_i(qbs_loan_result_pair),
     .rst_ni,
     .command_valid_i(qbs_command_valid),
     .command_ready_o(qbs_command_ready),
@@ -1172,6 +1324,28 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .fault_vaddr_o                 (akv_fault_vaddr),
     .fault_mmu_exception_o         (akv_fault_mmu_exception),
     .context_ready_o               (akv_context_ready),
+    .resident_owner_i              (pv_lease_o),
+    .resident_row_read_i           (pv_row_read),
+    .resident_row_token_i          (pv_row_token),
+    .resident_row_word_i           (pv_row_word),
+    .resident_row_data_o           (pv_row_data),
+    .resident_lease_ready_o        (pv_context_lease_ready),
+    .resident_context_valid_o      (pv_context_valid),
+    .resident_context_dimension_o  (pv_context_dimension),
+    .resident_context_tokens_o     (pv_context_tokens),
+    .resident_context_q_rows_o     (pv_context_q_rows),
+    .resident_query_read_i         (pv_query_read),
+    .resident_query_row_i          (pv_query_row),
+    .resident_query_word_i         (pv_query_word),
+    .resident_query_data_o         (pv_query_data),
+    .resident_column_start_i       (pv_column_start),
+    .resident_column_dimension_i   (pv_column_dimension),
+    .resident_column_tokens_i      (pv_column_tokens),
+    .resident_column_index_i       (pv_column_index),
+    .resident_column_packet_i      (pv_column_packet),
+    .resident_column_busy_o        (pv_column_busy),
+    .resident_column_valid_o       (pv_column_valid),
+    .resident_column_data_o        (pv_column_data),
     .reader_req_o(shared_read_req[1]),
     .reader_rsp_i(shared_read_rsp[1]),
     .ldu_result_req_o              (akv_ldu_result_req),
@@ -1379,8 +1553,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
           end
         end
 
-        if (!qbs_active_q && !akv_active_q &&
-            pe_req_i.op != VQBEXEC && !pe_req_is_akv) begin
+        if (!qbs_active_q && !akv_active_q && !pv_lease_o &&
+            pe_req_i.op != VQBEXEC && !pe_req_is_akv && !pe_req_is_pv) begin
           assert (axi_req.ar_valid == prepared_axi_req.ar_valid &&
                   axi_req.aw_valid == normal_axi_req.aw_valid &&
                   axi_req.w_valid == normal_axi_req.w_valid &&
@@ -1689,6 +1863,22 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   if (NrLanes == 0)
     $error("[vlsu] Ara needs to have at least one lane.");
+
+  // synthesis translate_off
+  always_ff @(posedge clk_i) if (rst_ni && ResidentPvSupported) begin
+    assert (!(pv_lease_o && (qbs_active_q || akv_active_q)))
+      else $fatal(1,"Resident PV overlaps another VLSU owner");
+    if (pv_lease_o) begin
+      assert (!lsu_ex_flush_i && !normal_pe_req_valid &&
+              !axi_req_o.ar_valid && !axi_req_o.aw_valid && !axi_req_o.w_valid)
+        else $fatal(1,"Blocking resident PV overlapped memory work or a partial LSU flush");
+    end
+    if (pv_command_fire)
+      assert (normal_vlsu_idle && akv_command_ready && pv_context_lease_ready && !pv_request_consumed_q)
+        else $fatal(1,"Resident PV accepted before exclusive admission");
+    assert (!pv_fatal) else $fatal(1,"Resident PV owner protocol failed");
+  end
+  // synthesis translate_on
 
   `include "admission_assertions.svh"
 endmodule : vlsu

@@ -13,6 +13,19 @@ package akv_pkg;
   localparam bit AkvV2Enable = 1'b0;
 `endif
 
+`ifdef ARA_AKV_RESIDENT_PV_ENABLE
+  localparam bit AkvResidentPvEnable = 1'b1;
+`else
+  localparam bit AkvResidentPvEnable = 1'b0;
+`endif
+
+// QK admission is independently opt-in and requires the shared PV resources.
+`ifdef ARA_AKV_RESIDENT_QK_ENABLE
+  localparam bit AkvResidentQkEnable = AkvResidentPvEnable;
+`else
+  localparam bit AkvResidentQkEnable = 1'b0;
+`endif
+
   localparam int unsigned AkvArchitectureVersion = 1;
   localparam int unsigned AkvDescriptorVersion = 1;
   localparam int unsigned AkvDescriptorBytes = 64;
@@ -55,6 +68,60 @@ package akv_pkg;
       (AkvMaxQRows + 2 * AkvTileTokens) * AkvMaxHeadDim * 2;
   localparam int unsigned AkvV2ContextBytes =
       (AkvMaxQRows + 2 * AkvV2TileTokens) * AkvMaxHeadDim * 2;
+
+  localparam int unsigned AkvResidentPvProfileVersion = 1;
+  localparam int unsigned AkvResidentPvFunct3 = 7;
+  localparam int unsigned AkvResidentPvFunct7 = 2;
+  localparam int unsigned AkvResidentPvCapabilityIndex = 4;
+  localparam int unsigned AkvResidentPvControlBits = 9;
+  localparam int unsigned AkvResidentPvTokenBits = 6;
+  localparam int unsigned AkvResidentPvHeadsBit = 6;
+  localparam int unsigned AkvResidentPvDimShift = 7;
+  localparam int unsigned AkvResidentPvDimBits = 2;
+  localparam int unsigned AkvResidentPvNrLanes = 4;
+  localparam int unsigned AkvResidentPvVlenBits = 1024;
+  localparam int unsigned AkvResidentPvElementBits = 16;
+  localparam int unsigned AkvResidentPvHeadStrideElements = 128;
+  localparam int unsigned AkvResidentPvSourceRegisters = 6;
+  localparam int unsigned AkvResidentPvSourceReservedRegisters = 8;
+  localparam int unsigned AkvResidentPvSourceElements = 384;
+  localparam int unsigned AkvResidentPvSourceLaneElements = 96;
+  localparam int unsigned AkvResidentPvSourceLaneWords = 24;
+  localparam int unsigned AkvResidentPvDestinationRegisters = 4;
+  localparam int unsigned AkvResidentPvDestinationElements = 256;
+  localparam bit AkvResidentPvSupported = 1'b0;
+
+  localparam int unsigned AkvResidentQkProfileVersion = 1;
+  localparam int unsigned AkvResidentQkFunct3 = 7;
+  localparam int unsigned AkvResidentQkFunct7 = 3;
+  localparam int unsigned AkvResidentQkCapabilityIndex = 4;
+  localparam int unsigned AkvResidentQkControlBits = 12;
+  localparam int unsigned AkvResidentQkQueryBaseShift = 9;
+  localparam int unsigned AkvResidentQkQueryBaseBits = 3;
+  localparam int unsigned AkvResidentQkNrLanes = 4;
+  localparam int unsigned AkvResidentQkVlenBits = 1024;
+  localparam int unsigned AkvResidentQkElementBits = 32;
+  localparam int unsigned AkvResidentQkHeadStrideElements = 64;
+  localparam int unsigned AkvResidentQkSourceRegisters = 0;
+  localparam int unsigned AkvResidentQkDestinationRegisters = 4;
+  localparam int unsigned AkvResidentQkDestinationElements = 128;
+  localparam bit AkvResidentQkSupported = 1'b0;
+
+  localparam int unsigned AkvResidentCapabilityIndex = 4;
+  localparam int unsigned AkvResidentCapabilityVersion = 1;
+  localparam int unsigned AkvResidentCapabilityVersionShift = 0;
+  localparam int unsigned AkvResidentCapabilityVersionWidth = 8;
+  localparam int unsigned AkvResidentCapabilityPvSupportedBit = 8;
+  localparam int unsigned AkvResidentCapabilityQkSupportedBit = 9;
+  localparam int unsigned AkvResidentCapabilityNrLanesShift = 16;
+  localparam int unsigned AkvResidentCapabilityNrLanesWidth = 8;
+  localparam int unsigned AkvResidentCapabilityVlenShift = 32;
+  localparam int unsigned AkvResidentCapabilityVlenWidth = 16;
+  localparam int unsigned AkvResidentCapabilityNrLanes = 4;
+  localparam int unsigned AkvResidentCapabilityVlenBits = 1024;
+  localparam logic [63:0] AkvResidentCapabilityBaseWord = 64'h0000040000040001;
+  localparam logic [63:0] AkvResidentCapabilitySupportMask = 64'h0000000000000300;
+  localparam logic [63:0] AkvResidentCapabilityKnownMask = 64'h0000ffff00ff03ff;
 
   typedef enum logic [7:0] {
     AKV_ELEMENT_FORMAT_INVALID = 8'd0,
@@ -177,5 +244,116 @@ package akv_pkg;
       default: ;
     endcase
   endfunction : akv_v2_capability_word
+
+  // Widen before +1 so encoded T=63 produces 64, not zero.
+  function automatic logic [6:0] akv_resident_pv_tokens(input logic [63:0] control);
+    return {1'b0, control[AkvResidentPvTokenBits-1:0]} + 7'd1;
+  endfunction : akv_resident_pv_tokens
+
+  function automatic logic [1:0] akv_resident_pv_heads(input logic [63:0] control);
+    return {1'b0, control[AkvResidentPvHeadsBit]} + 2'd1;
+  endfunction : akv_resident_pv_heads
+
+  function automatic int unsigned akv_resident_pv_head_dim(input logic [63:0] control);
+    unique case (control[AkvResidentPvDimShift +: AkvResidentPvDimBits])
+      AkvResidentPvDimBits'(AkvHeadDimCode64): return AkvHeadDim64;
+      AkvResidentPvDimBits'(AkvHeadDimCode128): return AkvHeadDim128;
+      AkvResidentPvDimBits'(AkvHeadDimCode96): return AkvHeadDim96;
+      default: return 0;
+    endcase
+  endfunction : akv_resident_pv_head_dim
+
+  function automatic logic [63:0] akv_resident_pv_control(
+      input int unsigned tokens, heads, head_dim
+  );
+    automatic logic [7:0] code = akv_head_dim_code(head_dim);
+    if (tokens == 0 || tokens > (1 << AkvResidentPvTokenBits) ||
+        heads == 0 || heads > 2 || code == 8'hff) return '1;
+    return 64'(tokens - 1) | (64'(heads - 1) << AkvResidentPvHeadsBit) |
+           (64'(code) << AkvResidentPvDimShift);
+  endfunction : akv_resident_pv_control
+
+  function automatic logic akv_resident_pv_registers_are_valid(
+      input int unsigned vd, vs2
+  );
+    return vd <= 32 - AkvResidentPvDestinationRegisters &&
+           vs2 <= 32 - AkvResidentPvSourceReservedRegisters &&
+           (vd & (AkvResidentPvDestinationRegisters - 1)) == 0 &&
+           (vs2 & (AkvResidentPvSourceReservedRegisters - 1)) == 0 &&
+           (vd + AkvResidentPvDestinationRegisters <= vs2 ||
+            vs2 + AkvResidentPvSourceReservedRegisters <= vd);
+  endfunction : akv_resident_pv_registers_are_valid
+
+  function automatic logic akv_resident_pv_command_is_valid(
+      input logic [63:0] control, input int unsigned vd, vs2
+  );
+    return (control >> AkvResidentPvControlBits) == 0 &&
+           akv_resident_pv_head_dim(control) != 0 &&
+           akv_resident_pv_registers_are_valid(vd, vs2);
+  endfunction : akv_resident_pv_command_is_valid
+
+  function automatic logic [31:0] akv_encode_resident_pv(
+      input int unsigned vd, control_rs1, vs2
+  );
+    if (control_rs1 >= 32 || !akv_resident_pv_registers_are_valid(vd, vs2))
+      return '1;
+    return (32'(AkvResidentPvFunct7) << 25) | (32'(vs2) << 20) |
+           (32'(control_rs1) << 15) | (32'(AkvResidentPvFunct3) << 12) |
+           (32'(vd) << 7) | 32'(AkvOpcodeCustom2);
+  endfunction : akv_encode_resident_pv
+
+  // The dispatcher supplies geometry, FPU and implementation gates, not a macro alone.
+  function automatic logic [63:0] akv_resident_pv_capability_word(
+      input logic [63:0] index, input bit actual_implementation_supported
+  );
+    if (index != AkvResidentCapabilityIndex || !actual_implementation_supported)
+      return '0;
+    return AkvResidentCapabilityBaseWord | (64'd1 << AkvResidentCapabilityPvSupportedBit);
+  endfunction : akv_resident_pv_capability_word
+
+  function automatic logic [2:0] akv_resident_qk_query_base(input logic [63:0] control);
+    return control[AkvResidentQkQueryBaseShift +: AkvResidentQkQueryBaseBits];
+  endfunction : akv_resident_qk_query_base
+
+  function automatic logic [63:0] akv_resident_qk_control(
+      input int unsigned tokens, heads, head_dim, query_base
+  );
+    automatic logic [63:0] low = akv_resident_pv_control(tokens, heads, head_dim);
+    if (low == '1 || query_base >= AkvMaxQRows ||
+        heads > AkvMaxQRows - query_base) return '1;
+    return low | (64'(query_base) << AkvResidentQkQueryBaseShift);
+  endfunction : akv_resident_qk_control
+
+  function automatic logic akv_resident_qk_registers_are_valid(input int unsigned vd);
+    return vd <= 32 - AkvResidentQkDestinationRegisters &&
+           (vd & (AkvResidentQkDestinationRegisters - 1)) == 0;
+  endfunction : akv_resident_qk_registers_are_valid
+
+  // Context Q-row/D/T validation belongs to the resident owner before launch.
+  function automatic logic akv_resident_qk_command_is_valid(
+      input logic [63:0] control, input int unsigned vd, rs2
+  );
+    return (control >> AkvResidentQkControlBits) == 0 && rs2 == 0 &&
+           akv_resident_pv_head_dim(control) != 0 &&
+           (int'(akv_resident_qk_query_base(control)) +
+            int'(akv_resident_pv_heads(control))) <= AkvMaxQRows &&
+           akv_resident_qk_registers_are_valid(vd);
+  endfunction : akv_resident_qk_command_is_valid
+
+  function automatic logic [31:0] akv_encode_resident_qk(
+      input int unsigned vd, control_rs1
+  );
+    if (control_rs1 >= 32 || !akv_resident_qk_registers_are_valid(vd)) return '1;
+    return (32'(AkvResidentQkFunct7) << 25) | (32'(control_rs1) << 15) |
+           (32'(AkvResidentQkFunct3) << 12) | (32'(vd) << 7) | 32'(AkvOpcodeCustom2);
+  endfunction : akv_encode_resident_qk
+
+  function automatic logic [63:0] akv_resident_qk_capability_word(
+      input logic [63:0] index, input bit actual_implementation_supported
+  );
+    if (index != AkvResidentCapabilityIndex || !actual_implementation_supported)
+      return '0;
+    return AkvResidentCapabilityBaseWord | (64'd1 << AkvResidentCapabilityQkSupportedBit);
+  endfunction : akv_resident_qk_capability_word
 
 endpackage : akv_pkg

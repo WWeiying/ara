@@ -27,6 +27,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     input  operand_request_cmd_t [NrOperandQueues-1:0] operand_request_i,
     input  logic                 [NrOperandQueues-1:0] operand_request_valid_i,
     output logic                 [NrOperandQueues-1:0] operand_request_ready_o,
+    output logic                 [NrOperandQueues-1:0] operand_request_idle_o,
     // Support for store exception flush
     input  logic                                       lsu_ex_flush_i,
     output logic                                       lsu_ex_flush_o,
@@ -387,6 +388,8 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
       // Do not acknowledge any operand requester_index commands
       operand_request_ready_o[requester_index] = 1'b0;
+      // Ready acknowledges a valid command; idle observes the current requester state.
+      operand_request_idle_o[requester_index] = state_q[requester_index] == IDLE;
 
       // Do not send any operand conversion commands
       operand_queue_cmd_o[requester_index]       = '0;

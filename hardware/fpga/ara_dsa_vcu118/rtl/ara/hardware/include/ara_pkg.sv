@@ -135,8 +135,22 @@ package ara_pkg;
   localparam int unsigned LatMultiplierEW16 = 1;
   localparam int unsigned LatMultiplierEW8  = 0;
 
+  // The QBS return tags assume a combinational EW8 core. VMFPU explicitly
+  // pins the shared multiplier's EW8 bypass; the ordinary bank may be retimed.
+`ifdef ARA_SHARED_SIMD_MUL
+  localparam bit QbsLaneMulLatencySupported = 1'b1;
+`else
+  localparam bit QbsLaneMulLatencySupported = LatMultiplierEW8 == 0;
+`endif
+
   // FPU latencies.
   localparam int unsigned LatFCompEW64    = 'd5;
+  // Experimental lane ADDMUL sharing; retain the accepted implementation by default.
+`ifdef ARA_SHARED_FMA
+  localparam bit EnableSharedFma = 1'b1;
+`else
+  localparam bit EnableSharedFma = 1'b0;
+`endif
   localparam int unsigned LatFCompEW32    = 'd4;
   localparam int unsigned LatFCompEW16    = 'd3;
   localparam int unsigned LatFCompEW8     = 'd2;
@@ -225,13 +239,17 @@ package ara_pkg;
     // Attention/KV resident-context commands
     VAKVFILL, VAKVLOAD, VAKVRELEASE,
     // Store instructions
-    VSE, VSSE, VSXE
+    VSE, VSSE, VSXE,
+    // Experimental resident PV; append to retain every existing operation ID.
+    VAKVPV,
+    // Shared resident QK; append without renumbering any existing operation.
+    VAKVQK
   } ara_op_e;
 
   // Return true if op is a load operation
   function automatic logic is_load(ara_op_e op);
     is_load = op inside {
-      [VLE:VLXE], VQBEXEC, VAKVFILL, VAKVLOAD, VAKVRELEASE
+      [VLE:VLXE], VQBEXEC, VAKVFILL, VAKVLOAD, VAKVRELEASE, VAKVPV, VAKVQK
     };
   endfunction : is_load
 

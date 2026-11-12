@@ -40,6 +40,60 @@
 #define AKV_V2_COLUMN_SINGLE_FUNCT7 0u
 #define AKV_V2_COLUMN_PANEL_FUNCT7 1u
 
+#define AKV_RESIDENT_PV_PROFILE_VERSION 1u
+#define AKV_RESIDENT_PV_FUNCT3 7u
+#define AKV_RESIDENT_PV_FUNCT7 2u
+#define AKV_RESIDENT_PV_CAPABILITY_INDEX 4u
+#define AKV_RESIDENT_PV_CONTROL_BITS 9u
+#define AKV_RESIDENT_PV_TOKEN_BITS 6u
+#define AKV_RESIDENT_PV_HEADS_BIT 6u
+#define AKV_RESIDENT_PV_DIM_SHIFT 7u
+#define AKV_RESIDENT_PV_DIM_BITS 2u
+#define AKV_RESIDENT_PV_NR_LANES 4u
+#define AKV_RESIDENT_PV_VLEN_BITS 1024u
+#define AKV_RESIDENT_PV_ELEMENT_BITS 16u
+#define AKV_RESIDENT_PV_HEAD_STRIDE_ELEMENTS 128u
+#define AKV_RESIDENT_PV_SOURCE_REGISTERS 6u
+#define AKV_RESIDENT_PV_SOURCE_RESERVED_REGISTERS 8u
+#define AKV_RESIDENT_PV_SOURCE_ELEMENTS 384u
+#define AKV_RESIDENT_PV_SOURCE_LANE_ELEMENTS 96u
+#define AKV_RESIDENT_PV_SOURCE_LANE_WORDS 24u
+#define AKV_RESIDENT_PV_DESTINATION_REGISTERS 4u
+#define AKV_RESIDENT_PV_DESTINATION_ELEMENTS 256u
+#define AKV_RESIDENT_PV_SUPPORTED 0u
+
+#define AKV_RESIDENT_QK_PROFILE_VERSION 1u
+#define AKV_RESIDENT_QK_FUNCT3 7u
+#define AKV_RESIDENT_QK_FUNCT7 3u
+#define AKV_RESIDENT_QK_CAPABILITY_INDEX 4u
+#define AKV_RESIDENT_QK_CONTROL_BITS 12u
+#define AKV_RESIDENT_QK_QUERY_BASE_SHIFT 9u
+#define AKV_RESIDENT_QK_QUERY_BASE_BITS 3u
+#define AKV_RESIDENT_QK_NR_LANES 4u
+#define AKV_RESIDENT_QK_VLEN_BITS 1024u
+#define AKV_RESIDENT_QK_ELEMENT_BITS 32u
+#define AKV_RESIDENT_QK_HEAD_STRIDE_ELEMENTS 64u
+#define AKV_RESIDENT_QK_SOURCE_REGISTERS 0u
+#define AKV_RESIDENT_QK_DESTINATION_REGISTERS 4u
+#define AKV_RESIDENT_QK_DESTINATION_ELEMENTS 128u
+#define AKV_RESIDENT_QK_SUPPORTED 0u
+
+#define AKV_RESIDENT_CAPABILITY_INDEX 4u
+#define AKV_RESIDENT_CAPABILITY_VERSION 1u
+#define AKV_RESIDENT_CAPABILITY_VERSION_SHIFT 0u
+#define AKV_RESIDENT_CAPABILITY_VERSION_WIDTH 8u
+#define AKV_RESIDENT_CAPABILITY_PV_SUPPORTED_BIT 8u
+#define AKV_RESIDENT_CAPABILITY_QK_SUPPORTED_BIT 9u
+#define AKV_RESIDENT_CAPABILITY_NR_LANES_SHIFT 16u
+#define AKV_RESIDENT_CAPABILITY_NR_LANES_WIDTH 8u
+#define AKV_RESIDENT_CAPABILITY_VLEN_SHIFT 32u
+#define AKV_RESIDENT_CAPABILITY_VLEN_WIDTH 16u
+#define AKV_RESIDENT_CAPABILITY_NR_LANES 4u
+#define AKV_RESIDENT_CAPABILITY_VLEN_BITS 1024u
+#define AKV_RESIDENT_CAPABILITY_BASE_WORD UINT64_C(0x0000040000040001)
+#define AKV_RESIDENT_CAPABILITY_SUPPORT_MASK UINT64_C(0x0000000000000300)
+#define AKV_RESIDENT_CAPABILITY_KNOWN_MASK UINT64_C(0x0000ffff00ff03ff)
+
 typedef enum {
   AKV_ELEMENT_FORMAT_INVALID = 0,
   AKV_ELEMENT_FORMAT_F16 = 1,
@@ -350,6 +404,129 @@ static inline uint32_t akv_encode_v2_column_panel_load(
   return akv_encode_r(AKV_V2_COLUMN_LOAD_FUNCT3,
                       AKV_V2_COLUMN_PANEL_FUNCT7, vd,
                       dimension_rs1, 0u);
+}
+
+/* Field validity does not imply runtime or hardware availability. */
+static inline uint32_t akv_resident_pv_tokens(uint64_t control) {
+  return (uint32_t)(control & ((UINT64_C(1) << AKV_RESIDENT_PV_TOKEN_BITS) - 1u)) + 1u;
+}
+
+static inline uint32_t akv_resident_pv_heads(uint64_t control) {
+  return (uint32_t)((control >> AKV_RESIDENT_PV_HEADS_BIT) & 1u) + 1u;
+}
+
+static inline uint32_t akv_resident_pv_head_dim(uint64_t control) {
+  const uint32_t code = (uint32_t)((control >> AKV_RESIDENT_PV_DIM_SHIFT) &
+      ((1u << AKV_RESIDENT_PV_DIM_BITS) - 1u));
+  if (code == AKV_HEAD_DIM_CODE_64) return AKV_HEAD_DIM_64;
+  if (code == AKV_HEAD_DIM_CODE_128) return AKV_HEAD_DIM_128;
+  if (code == AKV_HEAD_DIM_CODE_96) return AKV_HEAD_DIM_96;
+  return 0u;
+}
+
+static inline uint64_t akv_resident_pv_control(uint32_t tokens, uint32_t heads,
+                                            uint32_t head_dim) {
+  const uint32_t code = akv_head_dim_code(head_dim);
+  if (tokens == 0u || tokens > (1u << AKV_RESIDENT_PV_TOKEN_BITS) ||
+      heads == 0u || heads > 2u || code == AKV_HEAD_DIM_CODE_INVALID)
+    return UINT64_MAX;
+  return (uint64_t)(tokens - 1u) |
+         ((uint64_t)(heads - 1u) << AKV_RESIDENT_PV_HEADS_BIT) |
+         ((uint64_t)code << AKV_RESIDENT_PV_DIM_SHIFT);
+}
+
+static inline int akv_resident_pv_registers_are_valid(uint32_t vd, uint32_t vs2) {
+  return vd <= 32u - AKV_RESIDENT_PV_DESTINATION_REGISTERS &&
+         vs2 <= 32u - AKV_RESIDENT_PV_SOURCE_RESERVED_REGISTERS &&
+         (vd & (AKV_RESIDENT_PV_DESTINATION_REGISTERS - 1u)) == 0u &&
+         (vs2 & (AKV_RESIDENT_PV_SOURCE_RESERVED_REGISTERS - 1u)) == 0u &&
+         (vd + AKV_RESIDENT_PV_DESTINATION_REGISTERS <= vs2 ||
+          vs2 + AKV_RESIDENT_PV_SOURCE_RESERVED_REGISTERS <= vd);
+}
+
+static inline int akv_resident_pv_command_is_valid(uint64_t control,
+                                                uint32_t vd, uint32_t vs2) {
+  return (control >> AKV_RESIDENT_PV_CONTROL_BITS) == 0u &&
+         akv_resident_pv_head_dim(control) != 0u &&
+         akv_resident_pv_registers_are_valid(vd, vs2);
+}
+
+static inline uint32_t akv_encode_resident_pv(uint32_t vd, uint32_t control_rs1,
+                                           uint32_t vs2) {
+  if (control_rs1 >= 32u || !akv_resident_pv_registers_are_valid(vd, vs2))
+    return UINT32_MAX;
+  return akv_encode_r(AKV_RESIDENT_PV_FUNCT3, AKV_RESIDENT_PV_FUNCT7,
+                      vd, control_rs1, vs2);
+}
+
+/* Legacy compile-time default, not hardware discovery. */
+static inline int akv_resident_pv_is_supported(void) {
+  return AKV_RESIDENT_PV_SUPPORTED;
+}
+
+static inline uint64_t akv_resident_pv_capability_word(uint64_t index,
+                                                   int actual_implementation_supported) {
+  if (index != AKV_RESIDENT_CAPABILITY_INDEX || !actual_implementation_supported)
+    return UINT64_C(0);
+  return AKV_RESIDENT_CAPABILITY_BASE_WORD |
+         (UINT64_C(1) << AKV_RESIDENT_CAPABILITY_PV_SUPPORTED_BIT);
+}
+
+/* QK shares PV's low nine control bits, never its VRF source footprint. */
+static inline uint32_t akv_resident_qk_query_base(uint64_t control) {
+  return (uint32_t)((control >> AKV_RESIDENT_QK_QUERY_BASE_SHIFT) &
+      ((1u << AKV_RESIDENT_QK_QUERY_BASE_BITS) - 1u));
+}
+
+static inline uint64_t akv_resident_qk_control(uint32_t tokens, uint32_t heads,
+                                            uint32_t head_dim, uint32_t query_base) {
+  const uint64_t low = akv_resident_pv_control(tokens, heads, head_dim);
+  if (low == UINT64_MAX || query_base >= AKV_MAX_Q_ROWS ||
+      heads > AKV_MAX_Q_ROWS - query_base)
+    return UINT64_MAX;
+  return low | ((uint64_t)query_base << AKV_RESIDENT_QK_QUERY_BASE_SHIFT);
+}
+
+static inline int akv_resident_qk_registers_are_valid(uint32_t vd) {
+  return vd <= 32u - AKV_RESIDENT_QK_DESTINATION_REGISTERS &&
+         (vd & (AKV_RESIDENT_QK_DESTINATION_REGISTERS - 1u)) == 0u;
+}
+
+/* The owner separately checks the actual resident context's Q rows, D and T. */
+static inline int akv_resident_qk_command_is_valid(uint64_t control,
+                                                uint32_t vd, uint32_t rs2) {
+  return (control >> AKV_RESIDENT_QK_CONTROL_BITS) == 0u && rs2 == 0u &&
+         akv_resident_pv_head_dim(control) != 0u &&
+         akv_resident_qk_query_base(control) + akv_resident_pv_heads(control) <=
+             AKV_MAX_Q_ROWS &&
+         akv_resident_qk_registers_are_valid(vd);
+}
+
+static inline uint32_t akv_encode_resident_qk(uint32_t vd, uint32_t control_rs1) {
+  if (control_rs1 >= 32u || !akv_resident_qk_registers_are_valid(vd))
+    return UINT32_MAX;
+  return akv_encode_r(AKV_RESIDENT_QK_FUNCT3, AKV_RESIDENT_QK_FUNCT7,
+                      vd, control_rs1, 0u);
+}
+
+static inline int akv_resident_qk_is_supported(void) {
+  return AKV_RESIDENT_QK_SUPPORTED;
+}
+
+/* OR with PV's contribution; QK execution also requires PV resources. */
+static inline uint64_t akv_resident_qk_capability_word(uint64_t index,
+                                                   int actual_implementation_supported) {
+  if (index != AKV_RESIDENT_CAPABILITY_INDEX || !actual_implementation_supported)
+    return UINT64_C(0);
+  return AKV_RESIDENT_CAPABILITY_BASE_WORD |
+         (UINT64_C(1) << AKV_RESIDENT_CAPABILITY_QK_SUPPORTED_BIT);
+}
+
+/* Exact v1 match rejects reserved bits, unknown geometry/version and QK-only. */
+static inline int akv_resident_capability_is_valid(uint64_t word) {
+  const uint64_t support = word & AKV_RESIDENT_CAPABILITY_SUPPORT_MASK;
+  return (support & (UINT64_C(1) << AKV_RESIDENT_CAPABILITY_PV_SUPPORTED_BIT)) != 0u &&
+         word == (AKV_RESIDENT_CAPABILITY_BASE_WORD | support);
 }
 
 #endif

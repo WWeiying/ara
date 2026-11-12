@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import subprocess
+import sys
 import urllib.request
 
 import yaml
@@ -35,7 +36,25 @@ def checkout(name, revision, branch):
     return dst
 
 
-def prepare(download_board=True):
+def dependency_roots(dependency_root=None):
+    sys.path.insert(0, str(ROOT / "verification"))
+    from ara_verify.dependencies import locked_dependencies
+    from ara_verify.dependency_patches import PatchError, patch_state, validate_submodules
+
+    parent = (dependency_root or ROOT / "hardware/deps").resolve()
+    roots = {}
+    for dependency in locked_dependencies(ROOT / "Bender.lock"):
+        path = parent / dependency.name
+        state = patch_state(ROOT, dependency.name, path, dependency.revision)
+        if state == "missing":
+            raise PatchError(f"{dependency.name}: required registered patch is not applied")
+        validate_submodules(path, dependency.name)
+        roots[dependency.name] = path
+    return roots
+
+
+def prepare(download_board=True, dependency_root=None):
+    checked_dependencies = dependency_roots(dependency_root)
     CACHE.mkdir(parents=True, exist_ok=True)
     soc = checkout("cheshire_ara", CHESHIRE, "mp/ara-pulpv2-os-rebase")
     checkout("cheshire_board", BOARD_PORT, "main")
@@ -43,9 +62,7 @@ def prepare(download_board=True):
     # packages would silently mix a new SoC API with this Ara-enabled integration.
     lock = yaml.safe_load(run("git", "-C", str(soc), "show", "HEAD:Bender.lock"))
     roots = {"ara": ROOT}
-    parent_lock = yaml.safe_load((ROOT / "Bender.lock").read_text())
-    for name in parent_lock["packages"]:
-        roots[name] = ROOT / "hardware" / "deps" / name
+    roots.update(checked_dependencies)
     for name, path in roots.items():
         manifest = yaml.safe_load((path / "Bender.yml").read_text())
         lock["packages"][name] = {
@@ -102,5 +119,8 @@ def prepare(download_board=True):
 
 
 if __name__ == "__main__":
-    argparse.ArgumentParser(description=__doc__).parse_args()
-    prepare()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dependency-root", type=Path,
+                        help="Locked dependency checkouts with registered patches only")
+    args = parser.parse_args()
+    prepare(dependency_root=args.dependency_root)

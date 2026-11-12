@@ -15,6 +15,7 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
     // SIMD-multiplier parameters
     parameter  int    unsigned NumPipeRegs  = 0,
     parameter  vew_e           ElementWidth = EW64,
+    parameter  bit            ExternalProduct = 1'b0,
     // Dependant parameters. DO NOT CHANGE!
     localparam int    unsigned DataWidth    = $bits(elen_t),
     localparam int    unsigned StrbWidth    = DataWidth/8,
@@ -25,9 +26,11 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
     input  elen_t      operand_a_i,
     input  elen_t      operand_b_i,
     input  elen_t      operand_c_i,
+    input  logic [127:0] product_i,
     input  strb_t      mask_i,
     input  ara_op_e    op_i,
     output elen_t      result_o,
+    output logic [127:0] product_o,
     output strb_t      mask_o,
     output vxsat_t     vxsat_o,
     input  vxrm_t      vxrm_i,
@@ -73,9 +76,14 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
     wire [ElementBits-1:0] a = operand_a_i[l*ElementBits +: ElementBits];
     wire [ElementBits-1:0] b = operand_b_i[l*ElementBits +: ElementBits];
     localparam logic [ElementBits-1:0] MinSigned = {1'b1, {(ElementBits-1){1'b0}}};
+    if (ExternalProduct) begin : gen_external
+      assign input_product[l*2*ElementBits +: 2*ElementBits] =
+          product_i[l*2*ElementBits +: 2*ElementBits];
+    end else begin : gen_internal
     assign input_product[l*2*ElementBits +: 2*ElementBits] =
         $signed({a[ElementBits-1] & signed_a, a}) *
         $signed({b[ElementBits-1] & signed_b, b});
+    end
     assign input_sat[l] = FixPtSupport == FixedPointEnable && op_i == VSMUL &&
                          a == MinSigned && b == MinSigned;
     assign vxsat[l*(ElementBits/8) +: ElementBits/8] =
@@ -147,6 +155,9 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
   // Output stage: bind last stage outputs to the pipeline output. Directly connects to input if no
   // regs.
   assign mul_res = product_d[NumPipeRegs];
+  // Full products share the original valid/ready pipeline. Native RVV still
+  // selects its low/high/rounded result below; no multiplier is duplicated.
+  assign product_o = mul_res;
   assign opc     = opc_d[NumPipeRegs];
   assign op      = op_d[NumPipeRegs];
   assign mask_o  = mask_d[NumPipeRegs];

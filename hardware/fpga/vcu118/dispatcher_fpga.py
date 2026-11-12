@@ -17,6 +17,10 @@ REVIEWED_DISPATCHER_SHA256 = {
     # Validated 20261029 handoff: QBACC/refill and indexed/mask repairs retain
     # the integrated layout helpers and request-isolation implementation.
     "7bd7b46c87e2821e349d7c8938870ac79b2a77bf31eb3525fa07b904fc4eadf8",
+    # Stage5 Resident decode and tested cooperative capability query retain
+    # the integrated interval arithmetic and request isolation unchanged.
+    "83e37772734e126c38b3702d222ba9ff97cc1a0bdb8493571c6326402b9863aa",
+    "fdc9f259641efc8c1ec1d2ce450ea78927ac8b5ec8321e5777ca63b2195c048e",
 }
 
 

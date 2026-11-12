@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "state": "source_synchronized_and_offline_checked_not_bitstream_or_board_acceptance",
+  "date": "2026-11-12",
+  "branch": "ara_dsa",
+  "source_commit": "870cadb9f32c79df8d30ab845e4dd2e463a00540",
+  "source_uncommitted_rtl_patch_sha256": "179473a6347a6b64faba74a898e89ce93dd9f0712d086ce7d9b10cc6b11308a3",
+  "tested_uncommitted_rtl": [
+    "hardware/include/ara_pkg.sv",
+    "hardware/include/qbs_pkg.sv",
+    "hardware/include/akv_pkg.sv",
+    "hardware/src/ara.sv",
+    "hardware/src/ara_dispatcher.sv"
+  ],
+  "exact_current_source_evidence": [
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/enablement_soc_resident_deployment_20261112_022423/source-pins.json",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/optimization_extension_capability_20261111_05/terminal-audit.json",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_deployment_discovery_20261112_020612/result.json",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/enablement_soc_resident_deployment_query_audit_20261112_022423/result.json",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_deployment_compute_vcs_sv39_20261112_01/result.json"
+  ],
+  "destination": "hardware/fpga/ara_dsa_vcu118",
+  "incoming": "/home/wangwy/fpga_runs/ara_mainrtl_sync_20261112_01/incoming",
+  "evidence_directory": "/home/wangwy/fpga_runs/ara_mainrtl_sync_20261112_01",
+  "sync_tool": "hardware/fpga/vcu118/sync.py",
+  "method": "Preview and then apply the same persistent --from-package snapshot",
+  "changes": 47,
+  "conflicts": 0,
+  "unexplained_local_changes": 0,
+  "post_apply_pending_changes": 0,
+  "backup_tag": "fpga-before-mainrtl-sync-20261112",
+  "candidate_tag": "fpga-mainrtl-candidate-all-20261112",
+  "automatic_backup": "hardware/fpga/ara_dsa_vcu118/.fpga_sync_backups/20261112T122028Z_85b2e63f",
+  "new_development_worktree": false,
+  "configuration": {
+    "optimization_profile": "candidate_all",
+    "board_profile_checked": "dual_ddr_ethernet",
+    "soc_clock_mhz": 50,
+    "nr_lanes": 4,
+    "vlen": 1024,
+    "enabled_defines": [
+      "ARA_QBS_ENABLE",
+      "ARA_AKV_ENABLE",
+      "ARA_AKV_V2_ENABLE",
+      "ARA_SHARED_SIMD_MUL",
+      "ARA_SHARED_FMA",
+      "ARA_QBS_LANE_MUL_ENABLE",
+      "ARA_AKV_RESIDENT_PV_ENABLE",
+      "ARA_AKV_RESIDENT_QK_ENABLE"
+    ],
+    "capability_gate": "Geometry, FP16/FP32 support and multiplier latency checked in elaborated instances",
+    "resident_runtime_admission": "Not granted by a define or capability query; verified OS/private-state/memory/lease provider still required"
+  },
+  "dependency_policy": {
+    "source": "Fresh Bender.lock Git-object checkouts and exact hash-registered patches",
+    "main_dependencies": 8,
+    "checked_submodules": ["cva6/core/cache_subsystem/hpdcache", "cva6/core/cvfpu"],
+    "registered_patch_packages": ["axi", "cva6", "fpnew"],
+    "local_working_files_copied": false,
+    "original_cva6_and_mvp_deltas_preserved_not_imported": true,
+    "cva6_commit_stage": "Includes current registered acknowledged/non-dropped/non-exceptional accelerator FP-retirement fix",
+    "other_dependencies": "Pinned Cheshire, board-port and all exported peripheral revisions audited; every preimage checked"
+  },
+  "offline_validation": {
+    "ara_source_and_header_records": 80,
+    "main_sources_excluded_by_design": [
+      "hardware/src/accel_dispatcher_ideal.sv",
+      "hardware/src/ara_soc.sv",
+      "hardware/src/ara_system.sv"
+    ],
+    "compilation_files": 645,
+    "source_preimages_checked": 695,
+    "package_hash_records": 824,
+    "integration_patch_replayed_files": 11,
+    "unchanged_fpga_specific_files": 52,
+    "effective_optimization_hierarchy_checks": 42,
+    "non_vendor_elaboration_errors": 0,
+    "vendor_ip_elaboration": "Deferred to Vivado; not waived as a hardware acceptance",
+    "unit_and_offline_regression_tests": 97,
+    "test_groups": {
+      "latest_sync": 7,
+      "sync": 26,
+      "export_components": 30,
+      "board_patches": 19,
+      "profiles": 3,
+      "package": 12
+    },
+    "historical_fixed_delivery_tests": "Not current-candidate acceptance; original tests and old evidence retained",
+    "initial_checker_issues": "Successor checker corrected explicit SoC/ideal exclusions and actual hierarchy names; original diagnostics retained",
+    "test_loader_issue": "Initial board-patch invocation missed tests PYTHONPATH; corrected invocation passed without changing tests or RTL",
+    "patch_whitespace": "Generated provenance retains literal diff context lines; source-code diff whitespace check passes"
+  },
+  "software": {
+    "sdk_abi_headers": "Current tested generated QBS/AKV ABI headers exported; smoke ELF rebuilt",
+    "formal_program_replaced": false,
+    "dirty_akv_assembly_imported": false,
+    "next_candidate_contract": "software/llama/integration_extension_manifest_20261111.json",
+    "sdk_consumer_rebuild_required": true,
+    "end_to_end_tested_with_new_hardware": false
+  },
+  "vivado_started": false,
+  "bitstream_updated": false,
+  "board_modified": false,
+  "next_steps": [
+    "Freeze the synchronized candidate and compatible SDK/software inputs",
+    "Create a fresh dual_ddr_ethernet Vivado project from the updated manifest and sources.tcl",
+    "Complete synthesis, implementation, routed timing/DRC/CDC review and bitstream generation",
+    "Validate new hardware capability and memory admission, then run bounded full-model end-to-end comparisons"
+  ]
+}

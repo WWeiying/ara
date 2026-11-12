@@ -38,6 +38,8 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
   logic        is_akvrelease;
   logic        is_akv2fill;
   logic        is_akv2column;
+  logic        is_akvresidentpv;
+  logic        is_akvresidentqk;
 
   // Cast instruction into the `rvv_instruction_t` struct
   rvv_instruction_t instr;
@@ -70,6 +72,8 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
     is_akvrelease = 1'b0;
     is_akv2fill = 1'b0;
     is_akv2column = 1'b0;
+    is_akvresidentpv = 1'b0;
+    is_akvresidentqk = 1'b0;
 
     // Decode based on the opcode
     case (instr.i_type.opcode)
@@ -150,6 +154,12 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
       // Ara dispatcher; first-pass decode only declares scalar dependencies
       // and CVA6 memory-accounting class.
       QbsOpcodeCustom2: begin
+        // Classify resident FP commands even when experimental admission is disabled.
+        // The dispatcher rejects them while balancing accelerator-load accounting.
+        is_akvresidentpv = instr.i_type.funct3 == AkvResidentPvFunct3 &&
+                          instruction_i[31:25] == AkvResidentPvFunct7;
+        is_akvresidentqk = instr.i_type.funct3 == AkvResidentQkFunct3 &&
+                          instruction_i[31:25] == AkvResidentQkFunct7;
         if (QbsEnable) begin
           is_qbexec = instr.i_type.funct3 == QbsQbexecFunct3;
           is_qbinfo = instr.i_type.funct3 == QbsQbinfoFunct3;
@@ -191,7 +201,8 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
         end
         if (AkvV2Enable) begin
           is_akv2fill = instr.i_type.funct3 == AkvV2FillFunct3;
-          is_akv2column = instr.i_type.funct3 == AkvV2ColumnLoadFunct3;
+          is_akv2column = instr.i_type.funct3 == AkvV2ColumnLoadFunct3 &&
+                          !is_akvresidentpv && !is_akvresidentqk;
           if (is_akv2fill) begin
             is_accel_o = 1'b1;
             is_rs1 = instruction_i[31:25] == 7'(AKV_FILL_FULL);
@@ -203,6 +214,12 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
             is_rs1 = 1'b1;
             is_load = 1'b1;
           end
+        end
+        if (is_akvresidentpv || is_akvresidentqk) begin
+          is_accel_o = 1'b1;
+          is_rs1 = 1'b1;
+          is_load = 1'b1;
+          is_vfp = 1'b1;
         end
       end
     endcase

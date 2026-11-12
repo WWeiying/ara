@@ -1,0 +1,58 @@
+[
+  {
+    "name": "apb",
+    "revision": "77ddf073f194d44b9119949d2421be59789e69ae",
+    "patch_state": "clean",
+    "root": "/home/wangwy/fpga_runs/ara_mainrtl_sync_20261112_01/inputs/hardware/deps/apb",
+    "source_working_files_copied": false
+  },
+  {
+    "name": "axi",
+    "revision": "a8c53cee2520d328d390c507c88818e8ac144c8c",
+    "patch_state": "applied",
+    "root": "/home/wangwy/fpga_runs/ara_mainrtl_sync_20261112_01/inputs/hardware/deps/axi",
+    "source_working_files_copied": false
+  },
+  {
+    "name": "common_cells",
+    "revision": "1281545696eb3fcba50ec5b4275993476a3c710e",
+    "patch_state": "clean",
+    "root": "/home/wangwy/fpga_runs/ara_mainrtl_sync_20261112_01/inputs/hardware/deps/common_cells",
+    "source_working_files_copied": false
+  },
+  {
+    "name": "common_verification",
+    "revision": "fb1885f48ea46164a10568aeff51884389f67ae3",
+    "patch_state": "clean",
+    "root": "/home/wangwy/fpga_runs/ara_mainrtl_sync_20261112_01/inputs/hardware/deps/common_verification",
+    "source_working_files_copied": false
+  },
+  {
+    "name": "cva6",
+    "revision": "b29fd3cf906e7f4c71da4c2f46451c4c60a4487f",
+    "patch_state": "applied",
+    "root": "/home/wangwy/fpga_runs/ara_mainrtl_sync_20261112_01/inputs/hardware/deps/cva6",
+    "source_working_files_copied": false
+  },
+  {
+    "name": "fpnew",
+    "revision": "e5aa6a01b5bbe1675c3aa8872e1203413ded83d1",
+    "patch_state": "applied",
+    "root": "/home/wangwy/fpga_runs/ara_mainrtl_sync_20261112_01/inputs/hardware/deps/fpnew",
+    "source_working_files_copied": false
+  },
+  {
+    "name": "fpu_div_sqrt_mvp",
+    "revision": "86e1f558b3c95e91577c41b2fc452c86b04e85ac",
+    "patch_state": "clean",
+    "root": "/home/wangwy/fpga_runs/ara_mainrtl_sync_20261112_01/inputs/hardware/deps/fpu_div_sqrt_mvp",
+    "source_working_files_copied": false
+  },
+  {
+    "name": "tech_cells_generic",
+    "revision": "3a3de73632a06826b1bd9c65a0a2e92b32016845",
+    "patch_state": "clean",
+    "root": "/home/wangwy/fpga_runs/ara_mainrtl_sync_20261112_01/inputs/hardware/deps/tech_cells_generic",
+    "source_working_files_copied": false
+  }
+]
