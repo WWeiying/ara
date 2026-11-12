@@ -107,6 +107,22 @@ package akv_pkg;
   localparam int unsigned AkvResidentQkDestinationElements = 128;
   localparam bit AkvResidentQkSupported = 1'b0;
 
+  localparam int unsigned AkvResidentCapabilityIndex = 4;
+  localparam int unsigned AkvResidentCapabilityVersion = 1;
+  localparam int unsigned AkvResidentCapabilityVersionShift = 0;
+  localparam int unsigned AkvResidentCapabilityVersionWidth = 8;
+  localparam int unsigned AkvResidentCapabilityPvSupportedBit = 8;
+  localparam int unsigned AkvResidentCapabilityQkSupportedBit = 9;
+  localparam int unsigned AkvResidentCapabilityNrLanesShift = 16;
+  localparam int unsigned AkvResidentCapabilityNrLanesWidth = 8;
+  localparam int unsigned AkvResidentCapabilityVlenShift = 32;
+  localparam int unsigned AkvResidentCapabilityVlenWidth = 16;
+  localparam int unsigned AkvResidentCapabilityNrLanes = 4;
+  localparam int unsigned AkvResidentCapabilityVlenBits = 1024;
+  localparam logic [63:0] AkvResidentCapabilityBaseWord = 64'h0000040000040001;
+  localparam logic [63:0] AkvResidentCapabilitySupportMask = 64'h0000000000000300;
+  localparam logic [63:0] AkvResidentCapabilityKnownMask = 64'h0000ffff00ff03ff;
+
   typedef enum logic [7:0] {
     AKV_ELEMENT_FORMAT_INVALID = 8'd0,
     AKV_ELEMENT_FORMAT_F16 = 8'd1
@@ -286,11 +302,13 @@ package akv_pkg;
            (32'(vd) << 7) | 32'(AkvOpcodeCustom2);
   endfunction : akv_encode_resident_pv
 
-  // Stage A stays unadvertised even when experimental admission is compiled in.
+  // The dispatcher supplies geometry, FPU and implementation gates, not a macro alone.
   function automatic logic [63:0] akv_resident_pv_capability_word(
-      input logic [63:0] index, input bit enabled
+      input logic [63:0] index, input bit actual_implementation_supported
   );
-    return '0;
+    if (index != AkvResidentCapabilityIndex || !actual_implementation_supported)
+      return '0;
+    return AkvResidentCapabilityBaseWord | (64'd1 << AkvResidentCapabilityPvSupportedBit);
   endfunction : akv_resident_pv_capability_word
 
   function automatic logic [2:0] akv_resident_qk_query_base(input logic [63:0] control);
@@ -331,9 +349,11 @@ package akv_pkg;
   endfunction : akv_encode_resident_qk
 
   function automatic logic [63:0] akv_resident_qk_capability_word(
-      input logic [63:0] index, input bit enabled
+      input logic [63:0] index, input bit actual_implementation_supported
   );
-    return '0;
+    if (index != AkvResidentCapabilityIndex || !actual_implementation_supported)
+      return '0;
+    return AkvResidentCapabilityBaseWord | (64'd1 << AkvResidentCapabilityQkSupportedBit);
   endfunction : akv_resident_qk_capability_word
 
 endpackage : akv_pkg

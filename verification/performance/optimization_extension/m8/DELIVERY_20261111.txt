@@ -1,0 +1,72 @@
+M8 Cooperative Safe Selection - 2026-11-11
+
+Production scope
+  llama ggml/src/ggml-cpu/arch/riscv/q8_K-m8.h (new)
+  llama ggml/src/ggml-cpu/arch/riscv/qbs.cpp, qbs.h
+  llama ggml/src/ggml-cpu/repack.cpp (wide preparation/selection and cache policy order)
+  Parent owns SDK/RTL capability, measured-K preflight gate and reuse support predicate.
+  No CMake, accel-options, M4 helper or RTL edits by this agent. No commit/push.
+
+Automatic M8 requires real cooperative capability, AUTO, Q4_K/K2048,
+complete groups of eight rows, N divisible by 32, SDK traffic admission,
+enabled M4 prepare/packed/parallel producers, and one worker. No M4 cache
+lookup or cross-operation activation-context reuse may be displaced.
+Noncontiguous, non-RNE and exceptional activation domains reject before
+payload writes and use the original M4 path. Nonzero VSTART aborts.
+The public producer checks full-call span/address overflow, alignment and alias.
+The workspace decision byte is outside SDK payload length. All consumers
+read it after the existing barrier. Explicit WIDE_M=1 retains legacy behavior;
+WIDE_M=0 disables automatic M8. No eight-row software cache was added.
+M8 shares accepted M4 signed-max and fused-bias encoding, writing final layout
+directly once without a full row-major payload or repack.
+
+All evidence is under the sole signoff verification/out directory:
+  optimization_extension_m8_target_20261111_09/result.json
+    SHA db18333edb0f6f1607333843f874f8d79204b4b81ce5a48764103d56a6739fed
+    38 GNU/Spike starts, real Qwen3 Attention/FFN K2048, exact bytes/FFLAGS,
+    disable/shape/bad-domain/non-RNE/VSTART/overflow/alias checks. Actual
+    repack trait preparation and M4/M8 consumer layout selection checked.
+  optimization_extension_m8_joint_20261111_02/result.json
+    SHA 6a523876484a11e52f9e547c9648645b742a51d7cdb4fe3d1c087abac8d11899
+    Final parent measured-K gate, real SDK preflight enabled. Actual K2048
+    tag4 cold cache entry and warm hits retain M4 payload/flags. Real trait
+    one-shot M8, QKV M4, two worker entries/eight M4 chunks and context
+    reuse marker/layout/guards pass. Worker scheduling is a single-core
+    cooperative barrier fixture, not concurrent stress or full inference.
+
+  optimization_extension_m8_sdkpair_20261111_01
+    Frozen native-pair.elf, inputs/sdk_pair.cpp, plan.json, commands.json.
+    Actual GNU M4/M8 payloads are bit-equal before the independent ordered
+    C-reference derives their common complete 256-output/FFLAGS golden.
+    Runtime gate headers are not live dependencies of this ELF.
+  optimization_extension_m8_native_20261111_01
+    Authorized exactly once. Direct systemd owner 1121409/simv 1121505;
+    one bounded progress observation, then pidfd completion wait, no polling.
+    plan.json, inputs/run.py, launch-command.json and work/*.command.json
+    retain the exact service, simulator and independent protocol commands.
+    result.json SHA 9033601ec0da701c16d996550205dedf5afbf273d7a18abd6329e485ae3c2aae
+    source pins SHA 33b7e0503b188550be389875202035dc93f5d38bea2acb49d071761b39cea260
+    Protocol SHA 6cda6ecd27e67444bca5d123d8283080c9b5b70b7ba6dd444f7866e72d9d30c6
+    terminal-audit.json independently rechecks original artifacts and results.
+
+Native result: functional/protocol/identity PASS, all 74,752 activation bytes,
+1,024 output float bits, exact sticky flags, eight QBEXEC commands, phase
+partition and actual multiplier-loan counts checked. CVXIF 44,865/44,865,
+backend 33,114/33,114, AXI reads 6,450/6,450 and writes 12,412/12,412;
+zero protocol errors, exceptions or outstanding work. All 359 input pins and
+original output artifacts match; systemd exits successfully with status zero.
+
+ABBA complete SDK call cycles (M4, M8, M8, M4):
+  149041, 143951, 143691, 144631.
+Conservative fastest comparison: 144631 -> 143691, saving 940 cycles (0.64993%).
+Fast M8 preparation is 3450 cycles slower, while execution saves 4352 cycles.
+This is a small positive result for a bounded real N32/K2048 one-shot SDK
+slice with no available M4 cache/context. It is not the historical 5-8%,
+not a full GGML/model speedup, and not a new FPGA acceptance or bitstream.
+
+All original failed collections are preserved, never relabelled PASS.
+Early target failures were missing bare-metal runtime symbols, TLS/BSS
+overlap or inaccurate test metadata expectations; successor 09 passes.
+Joint 01's pre-seal overlay pin-order failure is retained; successor 02 passes.
+No Verilator, URG, ZCC, synthesis, board run, retry or additional worktree.
+Dirty AKV assembly and unchecked hardware dependencies were not used.

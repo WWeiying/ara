@@ -1,0 +1,96 @@
+Retained-Maxima Narrow Live Integration - 2026-11-11
+
+Live scope
+----------
+Only these existing llama files were edited:
+  ggml/src/ggml-cpu/CMakeLists.txt
+  cmake/ara-optimized.cmake
+  ggml/src/ggml-cpu/arch/riscv/q8_K-prepared-reuse.h
+New local adapter: ggml/src/ggml-cpu/arch/riscv/q8_K-m4-preflight.h.
+Policy headers/test were updated and frozen by the parent, not this agent.
+Policy SHA: 73a07abe4156a7bf7f6090b0249f3f1a4fde81795f9a0694d6d9409f5e1e6842.
+Policy-test SHA: 5e8d7e88e394ed4222d27c7e27fd7adc976dd2ec6f1a3e3d96b60cb24854fea6.
+Unrelated WIP, old helpers, RTL and prior outputs were not modified.
+
+The new path requires compile support, runtime PREFLIGHT, K1536, a single
+worker recorded by begin(), actual policy.lookup and prepare/cache/packed/
+parallel-sums options. It calls the same pinned SDK helper only on cold misses.
+Tag4 is chosen before lookup; old producer tags remain on all unselected paths.
+A false helper return means generic production is complete; prepare returns
+true and does not quantize a second time. Only vector results are cached.
+Nonzero VSTART now aborts before every prepare early return, lookup or producer;
+it is not cleared and cannot escape via false into ordinary caller fallback.
+Process-stable environment options are tested in separate Spike starts.
+
+Runtime override and observation
+--------------------------------
+GGML_RISCV_QBS_M4_PREFLIGHT=0 disables the new producer, including in AUTO builds.
+With GGML_RISCV_QBS_TRACE_M4_PREPARE=1, retained markers include:
+  GGML_RISCV_QBS_M4_SELECTED source=cache tag=4 event=compute_rvv k=1536
+  GGML_RISCV_QBS_M4_SELECTED source=cache tag=4 event=hit k=1536
+Pascal's bounded Qwen2.5 real-graph OFF/ON test is the next positive GGML gate.
+No full model was run here. The earlier approximately 2% SDK-chain gain is NOT
+a GGML model speedup claim.
+
+Directed target acceptance
+-------------------------
+signoff verification/out/enablement_software_m4preflight_target_20261111_01:
+16 independent GNU/Spike starts PASS; true adapter/cache and numerical producers,
+real K1536 model input. Only graph/capability metadata have test-side shims.
+Case0 includes cold miss and 256 sticky-FFLAGS/VCSR warm-hit combinations.
+Negative starts cover each option off, AUTO off, K512, two workers, no lookup,
+non-RNE, VSTART1 and late subnormal/Inf/qNaN/sNaN. Late bad-domain cases check
+the complete destination is untouched on generic entry, exactly one generic
+production, prepare=true, no cache store and exact reference bytes/CSR/guards.
+VSTART1 is tested with an existing warm cache; target abort reports zero added
+candidate/generic entries and cache queries, unchanged output and VSTART still1.
+Tag3/tag4 cross-producer cache lookup is rejected.
+
+Successor source files are software_m4preflight_target_v2.cpp and
+software_m4preflight_run_v2.py. Original 01 source files remain unchanged.
+signoff verification/out/enablement_software_m4preflight_target_20261111_02:
+16 independent starts PASS, with the same gates plus case0 invalidation checks:
+last input byte mutation causes a new cold miss; graph_epoch change clears the
+cache; changed source-tensor identity clears it even with identical data address.
+Each produces another real tag4 result with exact bytes/CSR/guards; total cold
+computations and candidate entries are4. Final input bytes are unchanged.
+Both target collections verify complete declared pins before/after execution.
+This is not a full GGML graph/model acceptance or a performance measurement.
+
+Fresh complete build
+--------------------
+signoff verification/out/enablement_software_m4preflight_build_20261111_01:
+build.json state FRESH_FULL_LLAMA_BUILD_CHECKED_NOT_MODEL_EXECUTED.
+GNU14.3 static RISC-V llama-simple, llama-completion and llama-bench built.
+Direct user-systemd cmake worker exited0, 85.164 seconds; 1208 input pins match.
+Fixed SDK input is stage5_libraries_prepare_20261110_01/inputs/sdk, not dirty asm.
+build.json includes the repack compile command and authoritative .o.d evidence:
+  -DGGML_USE_RISCV_QBS_M4_PREFLIGHT
+  -DGGML_RISCV_ACCEL_AUTO=1
+  SDK software/qbs/experimental/m4_preflight include directory
+Actual .o.d lists prepared-reuse, local adapter and SDK m4_preflight.h.
+SDK helper SHA is 71b07f59aa44bea1102674d68fbe9fbaa36fa055f078804b4ff5dd0353fe0291.
+The compile-OFF target probe omits the helper include directory and its .d
+contains no SDK m4_preflight.h. Separate CMake checks reject ON/missing header
+and accept OFF/missing header with no helper definition/include.
+
+ELFs under the above build's bin/ directory:
+llama-simple: d08fb68839c1bd7612e374542eb4c297f0e688684e98e4479bffc6304ff018cd
+llama-completion: 745cfe4737db83ce0b44fc3b8ec48f2ceaee546ed5f505170e2073df46accaca
+llama-bench: 3249a1b9e40dcd7cc44a4adee7ebf4f30205c79224c62eb422cdd1b7640d9495
+build.json SHA: aacea8c04add356ac09c37c180abe3aa6cd09a40b15a31d40bf65e42f21b8a76.
+Static glibc dlopen/NSS warnings are preserved in service.stderr.log; no runtime
+network/plugin claim is made. No model or board execution was performed.
+
+Preimage and reproducibility
+----------------------------
+enablement_software_m4preflight_preimage_20261111_01 contains byte-preserved
+old files and original integration manifest. All20 manifest llama identities
+matched before edits. Preimage SHA:
+aa20250b54ec4633c53a8fa57451f92601b713ec56c094dcc486522a2fd3f8a9.
+The running worker inventories checked before editing had no edited live paths.
+Generated files, commands, .d/.o, snapshots, logs and ELF files live only in
+unique signoff verification/out/enablement_software_* directories.
+Live adapter/profile/prepared-reuse files were originally untracked, so plain
+git diff alone does not enumerate this change; final source hashes are in the
+build's source-pins.json and delivery.json. No commit or push was performed.

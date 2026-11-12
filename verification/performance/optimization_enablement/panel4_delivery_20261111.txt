@@ -1,0 +1,74 @@
+PANEL4 enablement, 2026-11-11
+
+Final status: PANEL4_DEFAULT_ENABLEMENT_AUDIT_PASS.
+HOST selector, both current-image VCS versions, numerical/protocol and independent
+raw-log/identity audits passed. No PANEL4 simulator or worker remains running.
+This delivery summary does not replace the immutable JSON evidence below.
+
+Only live SDK change: software/akv/src/akv_v2_native_riscv.c
+Preimage SHA256: 69832cfc9bfcc20aa17b6c57085041fc03ceae77020dd4bc81901590c10d1dfd
+Current SHA256: 7275cff381c45705e868c82626b4488080c79438b07d692d37646b6f29070122
+Preimage: /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/enablement_panel4_preimage_20261111_01
+
+Automatic unset default: F16, D128, six query rows, KV>=128 and every original
+PANEL4 capability check. Automatic NULL/invalid devices cannot grant PANEL4.
+The admitted auto device is reused without another native capability query.
+Generic unset remains OFF; generic exact explicit1 retains its original native
+query and length range. Auto exact explicit1 uses the admitted device and old
+length range. Every non-null environment value other than exact1 is OFF.
+No CSR reads/clears were added to the runtime. Caller admission/ownership and
+existing FRM/VSTART contracts remain in force.
+
+SDK input: git archive f50092f2d22238c6be4b6c159a1ad71a4ea68678, overlay only
+the native C file. No dirty assembly. Archived assembly SHA256:
+0e90dccf193c43bcda367fa18813bedb1077e9790795635f9efa993871a20061
+
+All evidence outputs below share this prefix:
+/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/
+enablement_panel4_host_20261111_04: GCC and Clang/UBSan each 116 env cases,
+47 absent-weak-provider cases; actual selector extracted from frozen SDK;
+GNU RISC-V native object also compiled. State PANEL4_HOST_SELECTOR_PASS_NOT_NATIVE.
+Host01/02 failures are retained (test enum and build include-path preparation).
+Host03 preceded the conservative KV>=128 gate and is superseded, not current.
+enablement_panel4_firmware_20261111_03: current AUTO ELF SHA256
+6e592d00ed26bc473d85d9ff186b272cc85c7d78f7e32473b740fe7f133c2b8f
+OFF/AUTO/AUTO/OFF/missing-panel4-cap; full captured Attention calls, each with
+1536 outputs, golden comparison, bytewise baseline comparison, guards and exact
+FCSR/VCSR checks. First four calls form the performance ABBA; fifth is fallback.
+
+enablement_panel4_vcs_20261111_01: direct systemd service
+enablement-panel4-vcs-20261111-01.service, initial worker PID 854696.
+Reviewed pins SHA256: 7a53039a6db5d6ebeedc2827355304c836276217f49731593fb9223792f134b2
+Image: enablement_soc_build_20261111_02 (all-on current sealed image).
+First run historical_explicit uses original same-ELF ABBA b22725d72f7e7467c733471381e8da6226c332954883ee0ab7cb89f60d85da6c.
+Second run current_auto uses the distinct current firmware above.
+Both passed strict numerical/command accounting, independent frozen UVM protocol
+evidence and source/image pre/post checks. No retries or sealed runner changes.
+Service terminal: MainPID=0, ActiveState=inactive, SubState=dead, Result=success.
+
+Exact full-call cycle evidence on the same current all-on image:
+historical_explicit OFF/ON/ON/OFF = 107757, 102308, 102492, 107318.
+Historical ELF own ABBA sums: OFF=215075, ON=204800.
+Cycle reduction = 4.777403231430899 percent.
+current_auto OFF/AUTO/AUTO/OFF = 107994, 100711, 100798, 107444.
+Current ELF own ABBA sums: OFF=215438, AUTO=201509.
+Cycle reduction = 6.465433210482829 percent.
+Current fifth missing-panel4-cap fallback call = 107595 cycles; not in ABBA sums.
+Each trial compared all 1536 outputs to captured golden and baseline bytes,
+preserved guards, and matched FCSR=3 and VCSR=5. Badcap used singles, not PANEL4.
+These percentages each compare modes inside one ELF, not the two SDK versions.
+
+Final independent audit: enablement_panel4_audit_20261111_02/result.json
+State: PANEL4_DEFAULT_ENABLEMENT_AUDIT_PASS; current_auto_positive=true.
+Audit pins SHA256: 2587d9bfca2ceff83575951e7206709255770bd8fe6bb1375781bcf0b43c2962
+It recomputed both numerical proofs from immutable raw logs and rechecked
+protocol/ELF/log/vector identities, drained contracts, all source pins and exact
+image membership. The earlier independent audit_01 is retained unchanged.
+VCS evidence: enablement_panel4_vcs_20261111_01/result.json, with separate
+historical_explicit/result.json and current_auto/result.json child receipts.
+
+The original historical-image 3.80797% full-call reduction remains positive
+evidence, not rejected by a 5% floor or overwritten by this current-image replay.
+The current measurements apply to RNE captured Qwen2.5 D128/GQA6 KV128, not
+arbitrary T/FRM, a whole model, or FPGA acceptance. The auto length gate is
+conservative policy, not a claim that every admitted length has measured benefit.

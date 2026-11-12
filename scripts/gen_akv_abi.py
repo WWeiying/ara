@@ -104,6 +104,49 @@ def validate_spec(spec: dict) -> None:
             any(type(spec["resident_qk_profile"][key]) is not type(value)
                 for key, value in qk_profile.items())):
         raise ValueError("Resident QK stage-3 ABI is fixed and not advertised")
+    capability = {
+        "index": 4, "version": 1, "version_shift": 0, "version_width": 8,
+        "pv_supported_bit": 8, "qk_supported_bit": 9,
+        "nr_lanes_shift": 16, "nr_lanes_width": 8,
+        "vlen_shift": 32, "vlen_width": 16,
+        "nr_lanes": 4, "vlen_bits": 1024,
+    }
+    if (spec["resident_capability"] != capability or
+            any(type(spec["resident_capability"][key]) is not int
+                for key in capability)):
+        raise ValueError("Resident discovery v1 word encoding is fixed")
+
+
+def resident_capability_constants(spec: dict) -> list[tuple[str, str, int]]:
+    cap = spec["resident_capability"]
+    names = (
+        ("INDEX", "Index", "index"), ("VERSION", "Version", "version"),
+        ("VERSION_SHIFT", "VersionShift", "version_shift"),
+        ("VERSION_WIDTH", "VersionWidth", "version_width"),
+        ("PV_SUPPORTED_BIT", "PvSupportedBit", "pv_supported_bit"),
+        ("QK_SUPPORTED_BIT", "QkSupportedBit", "qk_supported_bit"),
+        ("NR_LANES_SHIFT", "NrLanesShift", "nr_lanes_shift"),
+        ("NR_LANES_WIDTH", "NrLanesWidth", "nr_lanes_width"),
+        ("VLEN_SHIFT", "VlenShift", "vlen_shift"),
+        ("VLEN_WIDTH", "VlenWidth", "vlen_width"),
+        ("NR_LANES", "NrLanes", "nr_lanes"),
+        ("VLEN_BITS", "VlenBits", "vlen_bits"),
+    )
+    return [(c, sv, cap[key]) for c, sv, key in names]
+
+
+def resident_capability_words(spec: dict) -> list[tuple[str, str, int]]:
+    cap = spec["resident_capability"]
+    base = (cap["version"] << cap["version_shift"] |
+            cap["nr_lanes"] << cap["nr_lanes_shift"] |
+            cap["vlen_bits"] << cap["vlen_shift"])
+    support = (1 << cap["pv_supported_bit"]) | (1 << cap["qk_supported_bit"])
+    known = support
+    for field in ("version", "nr_lanes", "vlen"):
+        known |= ((1 << cap[f"{field}_width"]) - 1) << cap[f"{field}_shift"]
+    return [("BASE_WORD", "BaseWord", base),
+            ("SUPPORT_MASK", "SupportMask", support),
+            ("KNOWN_MASK", "KnownMask", known)]
 
 
 def resident_pv_constants(spec: dict) -> list[tuple[str, str, int]]:
@@ -186,16 +229,17 @@ static inline uint32_t akv_encode_resident_pv(uint32_t vd, uint32_t control_rs1,
                       vd, control_rs1, vs2);
 }
 
-/* Stage A: neither compilation nor field validity advertises execution support. */
+/* Legacy compile-time default, not hardware discovery. */
 static inline int akv_resident_pv_is_supported(void) {
   return AKV_RESIDENT_PV_SUPPORTED;
 }
 
 static inline uint64_t akv_resident_pv_capability_word(uint64_t index,
-                                                   int enabled) {
-  (void)index;
-  (void)enabled;
-  return UINT64_C(0);
+                                                   int actual_implementation_supported) {
+  if (index != AKV_RESIDENT_CAPABILITY_INDEX || !actual_implementation_supported)
+    return UINT64_C(0);
+  return AKV_RESIDENT_CAPABILITY_BASE_WORD |
+         (UINT64_C(1) << AKV_RESIDENT_CAPABILITY_PV_SUPPORTED_BIT);
 }
 """
 
@@ -258,11 +302,13 @@ def resident_pv_sv_helpers() -> str:
            (32'(vd) << 7) | 32'(AkvOpcodeCustom2);
   endfunction : akv_encode_resident_pv
 
-  // Stage A stays unadvertised even when experimental admission is compiled in.
+  // The dispatcher supplies geometry, FPU and implementation gates, not a macro alone.
   function automatic logic [63:0] akv_resident_pv_capability_word(
-      input logic [63:0] index, input bit enabled
+      input logic [63:0] index, input bit actual_implementation_supported
   );
-    return '0;
+    if (index != AkvResidentCapabilityIndex || !actual_implementation_supported)
+      return '0;
+    return AkvResidentCapabilityBaseWord | (64'd1 << AkvResidentCapabilityPvSupportedBit);
   endfunction : akv_resident_pv_capability_word
 """
 
@@ -329,12 +375,20 @@ static inline int akv_resident_qk_is_supported(void) {
   return AKV_RESIDENT_QK_SUPPORTED;
 }
 
-/* Experimental decode enable does not advertise an accepted runtime capability. */
+/* OR with PV's contribution; QK execution also requires PV resources. */
 static inline uint64_t akv_resident_qk_capability_word(uint64_t index,
-                                                   int enabled) {
-  (void)index;
-  (void)enabled;
-  return UINT64_C(0);
+                                                   int actual_implementation_supported) {
+  if (index != AKV_RESIDENT_CAPABILITY_INDEX || !actual_implementation_supported)
+    return UINT64_C(0);
+  return AKV_RESIDENT_CAPABILITY_BASE_WORD |
+         (UINT64_C(1) << AKV_RESIDENT_CAPABILITY_QK_SUPPORTED_BIT);
+}
+
+/* Exact v1 match rejects reserved bits, unknown geometry/version and QK-only. */
+static inline int akv_resident_capability_is_valid(uint64_t word) {
+  const uint64_t support = word & AKV_RESIDENT_CAPABILITY_SUPPORT_MASK;
+  return (support & (UINT64_C(1) << AKV_RESIDENT_CAPABILITY_PV_SUPPORTED_BIT)) != 0u &&
+         word == (AKV_RESIDENT_CAPABILITY_BASE_WORD | support);
 }
 """
 
@@ -378,9 +432,11 @@ def resident_qk_sv_helpers() -> str:
   endfunction : akv_encode_resident_qk
 
   function automatic logic [63:0] akv_resident_qk_capability_word(
-      input logic [63:0] index, input bit enabled
+      input logic [63:0] index, input bit actual_implementation_supported
   );
-    return '0;
+    if (index != AkvResidentCapabilityIndex || !actual_implementation_supported)
+      return '0;
+    return AkvResidentCapabilityBaseWord | (64'd1 << AkvResidentCapabilityQkSupportedBit);
   endfunction : akv_resident_qk_capability_word
 """
 
@@ -397,6 +453,12 @@ def c_header(spec: dict) -> str:
     qk = spec["resident_qk_profile"]
     qk_constants = "\n".join(f"#define AKV_RESIDENT_QK_{c} {value}u"
                              for c, _, value in resident_qk_constants(spec))
+    capability_constants = "\n".join(
+        f"#define AKV_RESIDENT_CAPABILITY_{c} {value}u"
+        for c, _, value in resident_capability_constants(spec))
+    capability_words = "\n".join(
+        f"#define AKV_RESIDENT_CAPABILITY_{c} UINT64_C(0x{value:016x})"
+        for c, _, value in resident_capability_words(spec))
     return f"""/* Generated by scripts/gen_akv_abi.py. Do not edit. */
 #ifndef AKV_ABI_H
 #define AKV_ABI_H
@@ -444,6 +506,9 @@ def c_header(spec: dict) -> str:
 
 {qk_constants}
 #define AKV_RESIDENT_QK_SUPPORTED {int(qk['supported'])}u
+
+{capability_constants}
+{capability_words}
 
 typedef enum {{
   AKV_ELEMENT_FORMAT_INVALID = 0,
@@ -775,6 +840,12 @@ def sv_package(spec: dict) -> str:
     qk = spec["resident_qk_profile"]
     qk_constants = "\n".join(f"  localparam int unsigned AkvResidentQk{sv} = {value};"
                              for _, sv, value in resident_qk_constants(spec))
+    capability_constants = "\n".join(
+        f"  localparam int unsigned AkvResidentCapability{sv} = {value};"
+        for _, sv, value in resident_capability_constants(spec))
+    capability_words = "\n".join(
+        f"  localparam logic [63:0] AkvResidentCapability{sv} = 64'h{value:016x};"
+        for _, sv, value in resident_capability_words(spec))
     return f"""// Generated by scripts/gen_akv_abi.py. Do not edit.
 package akv_pkg;
 
@@ -851,6 +922,9 @@ package akv_pkg;
 
 {qk_constants}
   localparam bit AkvResidentQkSupported = 1'b{int(qk['supported'])};
+
+{capability_constants}
+{capability_words}
 
   typedef enum logic [7:0] {{
     AKV_ELEMENT_FORMAT_INVALID = 8'd0,

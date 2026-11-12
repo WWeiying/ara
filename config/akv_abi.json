@@ -47,6 +47,20 @@
     "column_panel_funct7": 1,
     "column_panel_capability_bit": 40
   },
+  "resident_capability": {
+    "index": 4,
+    "version": 1,
+    "version_shift": 0,
+    "version_width": 8,
+    "pv_supported_bit": 8,
+    "qk_supported_bit": 9,
+    "nr_lanes_shift": 16,
+    "nr_lanes_width": 8,
+    "vlen_shift": 32,
+    "vlen_width": 16,
+    "nr_lanes": 4,
+    "vlen_bits": 1024
+  },
   "resident_pv_profile": {
     "version": 1,
     "funct3": 7,

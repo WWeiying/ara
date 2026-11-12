@@ -23,10 +23,22 @@ include $(ARA_DIR)/config/sram.mk
 # Optional behavioral memory expansion for large application replay. This is
 # intentionally separate from the synthesized 1 MiB L2 and SRAM-macro flow.
 mc ?= 0
+# Candidate optimization selection; generic builds retain the historical defaults.
+include $(ARA_DIR)/config/optimizations.mk
 qbs ?= 0
 qbs_vrf_continuation ?= 0
 akv ?= 0
 akv_v2 ?= 0
+ifeq ($(akv_resident),1)
+ifneq ($(akv_v2),1)
+$(error akv_resident=1 requires akv_v2=1)
+endif
+endif
+ifeq ($(qbs_lane_mul),1)
+ifneq ($(qbs),1)
+$(error qbs_lane_mul=1 requires qbs=1)
+endif
+endif
 qbs_perf ?= 0
 sim_l2_mb ?= 1
 large_l2_mb ?= 16
@@ -127,6 +139,7 @@ ifeq ($(ideal_dispatcher), 1)
 endif
 
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
+bender_defs += $(optimization_bender_defs)
 ifeq ($(qbs),1)
 bender_defs += --define ARA_QBS_ENABLE=1
 endif
@@ -276,6 +289,11 @@ compile: bender dpi ../Bender.yml
 		'qbs_vrf_continuation=$(qbs_vrf_continuation)' \
 		'akv=$(akv)' \
 		'akv_v2=$(akv_v2)' \
+		'optimization_profile=$(optimization_profile)' \
+		'shared_simd_mul=$(shared_simd_mul)' \
+		'shared_fma=$(shared_fma)' \
+		'akv_resident=$(akv_resident)' \
+		'qbs_lane_mul=$(qbs_lane_mul)' \
 		'qbs_enabled=$(qbs)' \
 		'akv_enabled=$(if $(filter 1,$(akv) $(akv_v2)),1,0)' \
 		'akv_v2_enabled=$(akv_v2)' \
@@ -574,6 +592,15 @@ trace:
 	@head -n 20 ./run/log/diff_report
 
 DC_LOCK_SCRIPT := $(abspath $(ROOT_DIR)/../backend/syn/ara_soc/v1-dc/global_scripts/dc_lock.sh)
+.PHONY: config-check
+# Parse-time checks above apply to every target; this target creates no files.
+config-check:
+	@printf '%s\n' 'optimization_profile=$(optimization_profile)' \
+		'nr_lanes=$(nr_lanes)' 'vlen=$(vlen)' \
+		'shared_simd_mul=$(shared_simd_mul)' 'shared_fma=$(shared_fma)' \
+		'akv_resident=$(akv_resident)' 'qbs_lane_mul=$(qbs_lane_mul)' \
+		'bender_defs=$(strip $(bender_defs))'
+
 DC_LOCK_FILE := $(abspath $(ROOT_DIR)/../backend/syn/ara_soc/v1-dc/run/.dc.lock)
 
 .PHONY: dc dc_flist dc_preflight dc_locked dc_flist_locked dc_preflight_locked dc_require_lock

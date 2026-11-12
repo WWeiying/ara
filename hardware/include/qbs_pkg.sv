@@ -32,6 +32,9 @@ package qbs_pkg;
   localparam int unsigned QbsVrfContinuationCapabilityIndex = 4;
   localparam int unsigned QbsVrfContinuationCapabilityBit = 0;
   localparam int unsigned QbsVrfContinuationVlenBits = 1024;
+  localparam int unsigned QbsCooperativeCapabilityIndex = 5;
+  localparam int unsigned QbsCooperativeQ4KBit = 0;
+  localparam int unsigned QbsCooperativeVlenBits = 1024;
 
   localparam int unsigned QbsMaxM = 8;
   localparam int unsigned QbsMaxN = 32;
@@ -500,7 +503,8 @@ package qbs_pkg;
 
   function automatic logic [63:0] qbs_capability_word(
       input logic [63:0] index,
-      input int unsigned vlen_bits
+      input int unsigned vlen_bits,
+      input bit cooperative_q4_k = 1'b0
   );
     int unsigned max_n;
     logic [63:0] result;
@@ -551,6 +555,10 @@ package qbs_pkg;
       64'(QbsVrfContinuationCapabilityIndex): begin
         if (QbsVrfContinuationEnable && vlen_bits == QbsVrfContinuationVlenBits)
           result[QbsVrfContinuationCapabilityBit] = 1'b1;
+      end
+      64'(QbsCooperativeCapabilityIndex): begin
+        if (QbsEnable && cooperative_q4_k && vlen_bits == QbsCooperativeVlenBits)
+          result[QbsCooperativeQ4KBit] = 1'b1;
       end
       64'h11: begin
         result[QBS_ACTIVATION_PROFILE_Q8_K] = 1'b1;

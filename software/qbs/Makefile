@@ -10,7 +10,7 @@ OBJECTS := $(SOURCES:%.c=$(BUILD)/%.o)
 
 all: $(BUILD)/libqbs_runtime.a
 
-check: $(BUILD)/qbs_runtime_test $(BUILD)/qbs_runtime_adapter_example $(BUILD)/qbs_format_test $(BUILD)/qbs_segmented_test $(BUILD)/qbs_planner_traffic $(BUILD)/qbs_context_admission_test $(BUILD)/qbs_context_cost_test
+check: $(BUILD)/qbs_runtime_test $(BUILD)/qbs_runtime_adapter_example $(BUILD)/qbs_format_test $(BUILD)/qbs_segmented_test $(BUILD)/qbs_planner_traffic $(BUILD)/qbs_context_admission_test $(BUILD)/qbs_context_cost_test $(BUILD)/qbs_cooperative_test
 	$(BUILD)/qbs_runtime_test
 	$(BUILD)/qbs_runtime_adapter_example
 	$(BUILD)/qbs_format_test
@@ -18,6 +18,10 @@ check: $(BUILD)/qbs_runtime_test $(BUILD)/qbs_runtime_adapter_example $(BUILD)/q
 	$(BUILD)/qbs_planner_traffic > /dev/null
 	$(BUILD)/qbs_context_admission_test
 	$(BUILD)/qbs_context_cost_test
+	$(BUILD)/qbs_cooperative_test
+
+$(BUILD)/qbs_cooperative_test: tests/qbs_cooperative_test.c $(OBJECTS)
+	$(CC) $(CFLAGS) $^ -o $@
 
 $(BUILD)/qbs_context_admission_test: tests/qbs_context_admission_test.c $(OBJECTS)
 	$(CC) $(CFLAGS) $^ -o $@

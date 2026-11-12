@@ -6,6 +6,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Optional execution feature; absent on older SDKs and older hardware. */
+#define QBS_FEATURE_Q4_K_COOPERATIVE 1
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -92,6 +95,7 @@ typedef struct {
   uint16_t activation_context_profiles;
   uint16_t activation_context_layouts;
   uint32_t activation_context_capacity_bytes;
+  uint8_t q4_k_cooperative;
 } qbs_capabilities_t;
 
 typedef struct {

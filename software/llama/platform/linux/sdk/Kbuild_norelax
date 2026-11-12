@@ -1,0 +1,8 @@
+# Successor for loadable Linux modules; the original Kbuild remains sealed.
+include $(src)/sdk/Kbuild
+
+# Custom partial-link dependencies are not expanded into real-obj-m, so Kbuild
+# otherwise omits the architecture's module flags for these child objects.
+# Preserve scalar entry ISA/LP64 and apply module relaxation policy to all parts.
+$(foreach o,$(ara_compute_parts),$(eval CFLAGS_$(o) += $(KBUILD_CFLAGS_MODULE) -mno-relax))
+$(foreach o,$(ara_compute_parts),$(eval AFLAGS_$(o) += $(KBUILD_AFLAGS_MODULE) -mno-relax -Wa,-mno-relax))

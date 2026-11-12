@@ -1,0 +1,20 @@
+cmake_minimum_required(VERSION 3.21)
+
+# Bundle the explicitly reviewed binding with the adapter for the existing
+# single-source provider OBJECT target. This file does not authorize a platform.
+foreach(name ARA_RESIDENT_DEPLOYMENT_SOURCE ARA_RESIDENT_PROVIDER_OUTPUT)
+    if(NOT DEFINED ${name} OR "${${name}}" STREQUAL "")
+        message(FATAL_ERROR "${name} is required")
+    endif()
+    if(NOT IS_ABSOLUTE "${${name}}" OR "${${name}}" MATCHES "[\";\n\r\\\\]")
+        message(FATAL_ERROR "${name} must be an absolute path without C include metacharacters")
+    endif()
+endforeach()
+if(NOT EXISTS "${ARA_RESIDENT_DEPLOYMENT_SOURCE}" OR IS_DIRECTORY "${ARA_RESIDENT_DEPLOYMENT_SOURCE}")
+    message(FATAL_ERROR "Reviewed deployment source is missing")
+endif()
+if(EXISTS "${ARA_RESIDENT_PROVIDER_OUTPUT}")
+    message(FATAL_ERROR "Preserve existing provider bundle; select a fresh output")
+endif()
+set(ARA_RESIDENT_ADAPTER "${CMAKE_CURRENT_LIST_DIR}/resident_provider.c")
+configure_file("${CMAKE_CURRENT_LIST_DIR}/provider_bundle.c.in" "${ARA_RESIDENT_PROVIDER_OUTPUT}" @ONLY)

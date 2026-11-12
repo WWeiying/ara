@@ -268,6 +268,14 @@ qbs_status_t qbs_device_query(qbs_info_reader_t reader, void *context,
     memset(device, 0, sizeof(*device));
     return QBS_STATUS_PROFILE;
   }
+  const uint64_t cooperative = reader(context, QBS_COOPERATIVE_CAPABILITY_INDEX);
+  device->capabilities.q4_k_cooperative =
+      (cooperative & (UINT64_C(1) << QBS_COOPERATIVE_Q4_K_BIT)) != 0 &&
+      vlen_bits == QBS_COOPERATIVE_VLEN_BITS &&
+      device->capabilities.max_m == QBS_MAX_M &&
+      (device->weight_profiles & (UINT16_C(1) << QBS_WEIGHT_PROFILE_Q4_K)) != 0 &&
+      (device->capabilities.activation_layouts &
+       (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED)) != 0;
   return QBS_STATUS_OK;
 }
 

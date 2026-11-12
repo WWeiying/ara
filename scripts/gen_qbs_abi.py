@@ -91,6 +91,10 @@ def validate_spec(spec: dict) -> None:
                          ("vlen_bits", 1024)):
         if type(continuation[field]) is not int or continuation[field] != value:
             raise ValueError(f"vrf_continuation.{field} must be {value}")
+    for field, value in (("capability_index", 5), ("q4_k_bit", 0), ("vlen_bits", 1024)):
+        actual = spec["cooperative_matrix"][field]
+        if type(actual) is not int or actual != value:
+            raise ValueError(f"cooperative_matrix.{field} must be {value}")
     if not 1 <= limits["max_m"] <= (1 << m_bits):
         raise ValueError("limits.max_m does not fit the M-minus-one field")
     if not 1 <= limits["max_n"] <= 32:
@@ -486,6 +490,9 @@ def c_header(spec: dict) -> str:
 #define QBS_VRF_CONTINUATION_CAPABILITY_INDEX {continuation['capability_index']}u
 #define QBS_VRF_CONTINUATION_CAPABILITY_BIT {continuation['capability_bit']}u
 #define QBS_VRF_CONTINUATION_VLEN_BITS {continuation['vlen_bits']}u
+#define QBS_COOPERATIVE_CAPABILITY_INDEX {spec['cooperative_matrix']['capability_index']}u
+#define QBS_COOPERATIVE_Q4_K_BIT {spec['cooperative_matrix']['q4_k_bit']}u
+#define QBS_COOPERATIVE_VLEN_BITS {spec['cooperative_matrix']['vlen_bits']}u
 
 #define QBS_MAX_M {limits['max_m']}u
 #define QBS_MAX_N {limits['max_n']}u
@@ -1017,6 +1024,9 @@ package qbs_pkg;
   localparam int unsigned QbsVrfContinuationCapabilityIndex = {continuation['capability_index']};
   localparam int unsigned QbsVrfContinuationCapabilityBit = {continuation['capability_bit']};
   localparam int unsigned QbsVrfContinuationVlenBits = {continuation['vlen_bits']};
+  localparam int unsigned QbsCooperativeCapabilityIndex = {spec['cooperative_matrix']['capability_index']};
+  localparam int unsigned QbsCooperativeQ4KBit = {spec['cooperative_matrix']['q4_k_bit']};
+  localparam int unsigned QbsCooperativeVlenBits = {spec['cooperative_matrix']['vlen_bits']};
 
   localparam int unsigned QbsMaxM = {limits['max_m']};
   localparam int unsigned QbsMaxN = {limits['max_n']};
@@ -1206,7 +1216,8 @@ package qbs_pkg;
 
   function automatic logic [63:0] qbs_capability_word(
       input logic [63:0] index,
-      input int unsigned vlen_bits
+      input int unsigned vlen_bits,
+      input bit cooperative_q4_k = 1'b0
   );
     int unsigned max_n;
     logic [63:0] result;
@@ -1250,6 +1261,10 @@ package qbs_pkg;
       64'(QbsVrfContinuationCapabilityIndex): begin
         if (QbsVrfContinuationEnable && vlen_bits == QbsVrfContinuationVlenBits)
           result[QbsVrfContinuationCapabilityBit] = 1'b1;
+      end
+      64'(QbsCooperativeCapabilityIndex): begin
+        if (QbsEnable && cooperative_q4_k && vlen_bits == QbsCooperativeVlenBits)
+          result[QbsCooperativeQ4KBit] = 1'b1;
       end
 {sv_capability_cases(spec)}
       default: ;

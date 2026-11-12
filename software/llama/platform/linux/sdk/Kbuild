@@ -1,0 +1,33 @@
+# Include from linux/Makefile after obj-m += ara_resident.o and
+# ara_resident-y := ara_resident_broker.o. Do not add the compute core twice.
+# ARA_RESIDENT_SDK names a prepared git-archive SDK with the approved overlay.
+ifndef ARA_RESIDENT_SDK
+$(error ARA_RESIDENT_SDK must name the prepared SDK build input)
+endif
+
+ara_resident-y += sdk/ara_resident_compute_core.o
+ara_compute_math_parts := sdk/kernel_compute.o sdk/kernel_runtime.o sdk/kernel_expf.o \
+ sdk/kernel_qk.o sdk/kernel_pv.o
+ara_compute_parts := sdk/kernel_entry.o $(ara_compute_math_parts)
+ara_compute_flags := -march=rv64gcv_zfh_zvfh -mabi=lp64 -ffreestanding \
+ -ffunction-sections -fdata-sections -ffp-contract=off -fno-tree-vectorize \
+ -fno-stack-protector -fno-asynchronous-unwind-tables -fstack-usage -Wno-unknown-pragmas \
+ -Wno-unused-function -I$(src)/sdk/shim -I$(ARA_RESIDENT_SDK) \
+ -I$(ARA_RESIDENT_SDK)/software/akv/include -DARA_COMPUTE_FREESTANDING=1 \
+ -isystem $(shell $(CC) -print-file-name=include) \
+ -DAKV_EXPERIMENTAL_RESIDENT_ATTENTION=1 -DAKV_REFILL_OVERLAP=0
+
+$(foreach o,$(ara_compute_math_parts),$(eval CFLAGS_$(o) += $(ara_compute_flags)))
+CFLAGS_sdk/kernel_compute.o += -fwhole-program
+CFLAGS_sdk/kernel_entry.o += -fstack-usage
+AFLAGS_sdk/kernel_qk.o += -march=rv64gcv_zfh_zvfh -mabi=lp64 -I$(ARA_RESIDENT_SDK)
+AFLAGS_sdk/kernel_pv.o += -march=rv64gcv_zfh_zvfh -mabi=lp64 -I$(ARA_RESIDENT_SDK)
+
+targets += $(ara_compute_parts) sdk/ara_resident_compute_core.o
+quiet_cmd_ara_compute = LD      $@
+      cmd_ara_compute = $(LD) $(KBUILD_LDFLAGS) -r --gc-sections \
+ -u ara_resident_compute -u ara_resident_compute_scratch_bytes \
+ -o $@ $(addprefix $(obj)/,$(ara_compute_parts)) && $(OBJCOPY) --strip-unneeded $@
+
+$(obj)/sdk/ara_resident_compute_core.o: $(addprefix $(obj)/,$(ara_compute_parts)) FORCE
+	$(call if_changed,ara_compute)

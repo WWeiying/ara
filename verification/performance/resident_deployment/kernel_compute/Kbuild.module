@@ -1,0 +1,3 @@
+obj-m += ara_resident.o
+ara_resident-y := ara_resident_broker.o
+include $(src)/sdk/Kbuild

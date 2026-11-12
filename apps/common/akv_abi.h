@@ -78,6 +78,22 @@
 #define AKV_RESIDENT_QK_DESTINATION_ELEMENTS 128u
 #define AKV_RESIDENT_QK_SUPPORTED 0u
 
+#define AKV_RESIDENT_CAPABILITY_INDEX 4u
+#define AKV_RESIDENT_CAPABILITY_VERSION 1u
+#define AKV_RESIDENT_CAPABILITY_VERSION_SHIFT 0u
+#define AKV_RESIDENT_CAPABILITY_VERSION_WIDTH 8u
+#define AKV_RESIDENT_CAPABILITY_PV_SUPPORTED_BIT 8u
+#define AKV_RESIDENT_CAPABILITY_QK_SUPPORTED_BIT 9u
+#define AKV_RESIDENT_CAPABILITY_NR_LANES_SHIFT 16u
+#define AKV_RESIDENT_CAPABILITY_NR_LANES_WIDTH 8u
+#define AKV_RESIDENT_CAPABILITY_VLEN_SHIFT 32u
+#define AKV_RESIDENT_CAPABILITY_VLEN_WIDTH 16u
+#define AKV_RESIDENT_CAPABILITY_NR_LANES 4u
+#define AKV_RESIDENT_CAPABILITY_VLEN_BITS 1024u
+#define AKV_RESIDENT_CAPABILITY_BASE_WORD UINT64_C(0x0000040000040001)
+#define AKV_RESIDENT_CAPABILITY_SUPPORT_MASK UINT64_C(0x0000000000000300)
+#define AKV_RESIDENT_CAPABILITY_KNOWN_MASK UINT64_C(0x0000ffff00ff03ff)
+
 typedef enum {
   AKV_ELEMENT_FORMAT_INVALID = 0,
   AKV_ELEMENT_FORMAT_F16 = 1,
@@ -443,16 +459,17 @@ static inline uint32_t akv_encode_resident_pv(uint32_t vd, uint32_t control_rs1,
                       vd, control_rs1, vs2);
 }
 
-/* Stage A: neither compilation nor field validity advertises execution support. */
+/* Legacy compile-time default, not hardware discovery. */
 static inline int akv_resident_pv_is_supported(void) {
   return AKV_RESIDENT_PV_SUPPORTED;
 }
 
 static inline uint64_t akv_resident_pv_capability_word(uint64_t index,
-                                                   int enabled) {
-  (void)index;
-  (void)enabled;
-  return UINT64_C(0);
+                                                   int actual_implementation_supported) {
+  if (index != AKV_RESIDENT_CAPABILITY_INDEX || !actual_implementation_supported)
+    return UINT64_C(0);
+  return AKV_RESIDENT_CAPABILITY_BASE_WORD |
+         (UINT64_C(1) << AKV_RESIDENT_CAPABILITY_PV_SUPPORTED_BIT);
 }
 
 /* QK shares PV's low nine control bits, never its VRF source footprint. */
@@ -496,12 +513,20 @@ static inline int akv_resident_qk_is_supported(void) {
   return AKV_RESIDENT_QK_SUPPORTED;
 }
 
-/* Experimental decode enable does not advertise an accepted runtime capability. */
+/* OR with PV's contribution; QK execution also requires PV resources. */
 static inline uint64_t akv_resident_qk_capability_word(uint64_t index,
-                                                   int enabled) {
-  (void)index;
-  (void)enabled;
-  return UINT64_C(0);
+                                                   int actual_implementation_supported) {
+  if (index != AKV_RESIDENT_CAPABILITY_INDEX || !actual_implementation_supported)
+    return UINT64_C(0);
+  return AKV_RESIDENT_CAPABILITY_BASE_WORD |
+         (UINT64_C(1) << AKV_RESIDENT_CAPABILITY_QK_SUPPORTED_BIT);
+}
+
+/* Exact v1 match rejects reserved bits, unknown geometry/version and QK-only. */
+static inline int akv_resident_capability_is_valid(uint64_t word) {
+  const uint64_t support = word & AKV_RESIDENT_CAPABILITY_SUPPORT_MASK;
+  return (support & (UINT64_C(1) << AKV_RESIDENT_CAPABILITY_PV_SUPPORTED_BIT)) != 0u &&
+         word == (AKV_RESIDENT_CAPABILITY_BASE_WORD | support);
 }
 
 #endif

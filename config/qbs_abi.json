@@ -33,6 +33,11 @@
     "capability_bit": 0,
     "vlen_bits": 1024
   },
+  "cooperative_matrix": {
+    "capability_index": 5,
+    "q4_k_bit": 0,
+    "vlen_bits": 1024
+  },
   "limits": {
     "max_m": 8,
     "max_n": 32,

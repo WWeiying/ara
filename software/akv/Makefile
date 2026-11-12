@@ -14,11 +14,15 @@ all: $(BUILD)/libakv_runtime.a
 
 $(OBJECTS): Makefile
 
-check: $(BUILD)/akv_runtime_test $(BUILD)/akv_portability_test $(BUILD)/akv_online_test $(BUILD)/akv_refill_schedule_test
+check: $(BUILD)/akv_runtime_test $(BUILD)/akv_portability_test $(BUILD)/akv_online_test $(BUILD)/akv_refill_schedule_test $(BUILD)/akv_resident_capability_test
 	$(BUILD)/akv_runtime_test
 	$(BUILD)/akv_portability_test
 	$(BUILD)/akv_online_test
 	$(BUILD)/akv_refill_schedule_test
+	$(BUILD)/akv_resident_capability_test
+
+$(BUILD)/akv_resident_capability_test: tests/akv_resident_capability_test.c $(OBJECTS)
+	$(CC) $(CFLAGS) $^ -lm -o $@
 
 $(BUILD)/akv_refill_schedule_test: tests/akv_refill_schedule_test.c src/akv_refill_schedule.h
 	@mkdir -p $(BUILD)

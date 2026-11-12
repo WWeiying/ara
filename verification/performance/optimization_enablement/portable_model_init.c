@@ -1,0 +1,93 @@
+#define _GNU_SOURCE
+#include "portable_model_config.h"
+#include <errno.h>
+#include <fcntl.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mount.h>
+#include <sys/reboot.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+static int run(unsigned mode) {
+    const pid_t child = fork();
+    if (!child) {
+        const int fd = open("/tmp/child.stdout", O_CREAT | O_TRUNC | O_WRONLY, 0600);
+        if (fd < 0 || dup2(fd, STDOUT_FILENO) < 0 || close(fd)) _exit(126);
+        if (clearenv() || setenv("PATH", "/bin:/usr/bin", 1) || setenv("LC_ALL", "C", 1) ||
+            setenv("GGML_RISCV_QBS_TRACE", "1", 1) || setenv("GGML_RISCV_AKV_TRACE", "1", 1) ||
+            setenv("GGML_RISCV_QBS_TRACE_M4_PREPARE", "1", 1) ||
+            setenv("LLAMA_SIMPLE_LOGITS_FILE", "/tmp/logits.bin", 1) ||
+            (!mode && setenv("GGML_RISCV_AKV_PORTABLE", "0", 1))) _exit(126);
+        fprintf(stderr, "PORTABLE_ENV mode=%u portable=%s master=unset emulate=unset qbs=unset\n", mode,
+                getenv("GGML_RISCV_AKV_PORTABLE") ? getenv("GGML_RISCV_AKV_PORTABLE") : "unset");
+        char *const argv[] = {"/test", "-m", PORTABLE_MODEL_PATH, "-n", "2", "-t", "1", "-ngl", "0", "The answer is", NULL};
+        execv(argv[0], argv); _exit(127);
+    }
+    if (child < 0) return 125;
+    int status; pid_t waited;
+    do { waited = waitpid(child, &status, 0); } while (waited < 0 && errno == EINTR);
+    return waited == child && WIFEXITED(status) ? WEXITSTATUS(status) : 124;
+}
+
+static int generated(unsigned mode) {
+    FILE *f = fopen("/tmp/child.stdout", "rb");
+    if (!f || fseek(f, 0, SEEK_END)) return 6;
+    const long bytes = ftell(f);
+    if (bytes <= 0 || fseek(f, 0, SEEK_SET)) return 7;
+    printf("PORTABLE_STDOUT_BEGIN mode=%u bytes=%ld\n", mode, bytes);
+    char buffer[1024]; size_t count;
+    while ((count = fread(buffer, 1, sizeof(buffer), f)))
+        if (fwrite(buffer, 1, count, stdout) != count) return 8;
+    if (ferror(f) || fclose(f)) return 9;
+    printf("\nPORTABLE_STDOUT_END mode=%u\n", mode);
+    return unlink("/tmp/child.stdout") ? 10 : 0;
+}
+
+static int capture(unsigned mode) {
+    FILE *f = fopen("/tmp/logits.bin", "rb");
+    if (!f) return 1;
+    for (unsigned step = 0; step < 2; ++step) {
+        uint32_t h[6];
+        if (fread(h, sizeof(*h), 6, f) != 6 || h[0] != 0x5142534c || h[1] != 2 ||
+            h[2] != step || h[3] != PORTABLE_MODEL_VOCAB || h[4] != UINT32_MAX || h[5]) return 2;
+        printf("PORTABLE_LOGITS_BEGIN mode=%u step=%u values=%u\n", mode, step, h[3]);
+        for (unsigned at = 0; at < h[3]; at += 32) {
+            uint32_t words[32]; const unsigned n = h[3]-at < 32 ? h[3]-at : 32;
+            if (fread(words, sizeof(*words), n, f) != n) return 3;
+            printf("PORTABLE_BITS index=%u", at);
+            for (unsigned i = 0; i < n; ++i) {
+                if ((words[i] & 0x7f800000u) == 0x7f800000u) return 4;
+                printf(" %08x", words[i]);
+            }
+            putchar('\n');
+        }
+        printf("PORTABLE_LOGITS_END mode=%u step=%u\n", mode, step);
+    }
+    const int rc = fgetc(f) != EOF || ferror(f);
+    fclose(f);
+    return unlink("/tmp/logits.bin") ? 5 : rc;
+}
+
+int main(void) {
+    int result = 127;
+    setvbuf(stdout, NULL, _IONBF, 0); setvbuf(stderr, NULL, _IONBF, 0);
+    if (getpid() == 1 && !mount("devtmpfs", "/dev", "devtmpfs", MS_NOSUID, NULL) &&
+        !mount("proc", "/proc", "proc", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL)) {
+        for (unsigned i = 0; i < 100 && access("/dev/vda", F_OK); ++i) usleep(100000);
+        if (!mount("/dev/vda", "/model", "ext4", MS_RDONLY | MS_NODEV | MS_NOSUID | MS_NOEXEC, NULL)) {
+            result = 0;
+            for (unsigned mode = 0; mode < 2 && !result; ++mode) {
+                printf("PORTABLE_ARM_BEGIN mode=%u\n", mode);
+                result = run(mode);
+                if (!result) result = generated(mode);
+                if (!result) result = capture(mode);
+                printf("PORTABLE_ARM_END mode=%u status=%d\n", mode, result);
+            }
+        }
+    }
+    printf("GUEST_TEST_EXIT=%d\n", result);
+    fflush(NULL); sync(); reboot(RB_POWER_OFF); for (;;) pause();
+}

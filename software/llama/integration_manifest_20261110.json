@@ -1,0 +1,164 @@
+{
+  "ara_profile_auto_default": true,
+  "bitwise_equal": true,
+  "canonical_policy": {
+    "path": "/home/wangwy/openproject/ara_dsa/software/llama/accel-options.h",
+    "sha256": "05ef3ed55442a356227c2ac426c09165f23cc080cf7d29e1f38cf8ad40e3628f"
+  },
+  "cmake_cache": {
+    "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/llama_auto_build_20261110_01/CMakeCache.txt",
+    "sha256": "3a0e0de84f44932846ded2bbe08da7b5187e24a40cfe7f8066386f93fc10dee9"
+  },
+  "committed_to_llama": false,
+  "compile_commands": {
+    "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/llama_auto_build_20261110_01/compile_commands.json",
+    "sha256": "150e97bc716fc26ed49de5e6640e7585aa785f0a245fdb0d75c3dca4e8d7813a"
+  },
+  "default_memory_authority_granted": false,
+  "default_resident_geometry": {
+    "head_dim": 128,
+    "max_tokens": 256,
+    "min_tokens": 128,
+    "requires_compiled_support": true,
+    "requires_trusted_provider": true,
+    "rows_per_kv": 2
+  },
+  "fpga_deployed": false,
+  "generic_auto_default": false,
+  "includes_preserved_preexisting_uncommitted_changes": true,
+  "llama_branch": "qbs-activation-context",
+  "llama_files": {
+    "cmake/ara-optimized.cmake": {
+      "path": "/home/wangwy/llama/llama.cpp/cmake/ara-optimized.cmake",
+      "sha256": "079a43dc9edbc6533558b710474bfe4df882908669cb0d558e2d1de0ce45b5c1"
+    },
+    "common/CMakeLists.txt": {
+      "path": "/home/wangwy/llama/llama.cpp/common/CMakeLists.txt",
+      "sha256": "93f48868197977539d653e0330461ed345415d69ebb883331f3a8d5e621b24a3"
+    },
+    "common/common.cpp": {
+      "path": "/home/wangwy/llama/llama.cpp/common/common.cpp",
+      "sha256": "0e5793a21a86b73ea4e9e117cf9988a40a006eba3bd938fcde07d5a2d7cd7963"
+    },
+    "ggml/CMakeLists.txt": {
+      "path": "/home/wangwy/llama/llama.cpp/ggml/CMakeLists.txt",
+      "sha256": "02a0b5bc78fa77b6084a0ac221323953e1eb1960e72945a4acc9d41155a00fa8"
+    },
+    "ggml/src/ggml-cpu/CMakeLists.txt": {
+      "path": "/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/CMakeLists.txt",
+      "sha256": "1f774f4a156ab7b7c9730c868ba24d9f9cd8ff9c55c2b8c57ff434e1c376e3da"
+    },
+    "ggml/src/ggml-cpu/arch/riscv/accel-options.h": {
+      "path": "/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/accel-options.h",
+      "sha256": "05ef3ed55442a356227c2ac426c09165f23cc080cf7d29e1f38cf8ad40e3628f"
+    },
+    "ggml/src/ggml-cpu/arch/riscv/akv.cpp": {
+      "path": "/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/akv.cpp",
+      "sha256": "2d4b0cbf745cdbe20643477c926d8adc905c346b6057d081091f3f82de2ae596"
+    },
+    "ggml/src/ggml-cpu/arch/riscv/entry.c": {
+      "path": "/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/entry.c",
+      "sha256": "0561ae9db252323d0792952223b51aad559325f97e44e9cafefb3f3db97d8777"
+    },
+    "ggml/src/ggml-cpu/arch/riscv/entry.h": {
+      "path": "/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/entry.h",
+      "sha256": "a7df0e6448a94da1d6fffe50e681a5d0dc4743256051f8fdbc2a7159c5fd8c63"
+    },
+    "ggml/src/ggml-cpu/arch/riscv/platform.c": {
+      "path": "/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/platform.c",
+      "sha256": "99570538ec0f733eb2fe3e6d2333568c0f03ef01b314a835e1daead71c52512c"
+    },
+    "ggml/src/ggml-cpu/arch/riscv/platform.h": {
+      "path": "/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/platform.h",
+      "sha256": "3bbebbbbedad8667a49bda85485f0f51b7a8f68c01b261052b2f3527c7ac0491"
+    },
+    "ggml/src/ggml-cpu/arch/riscv/q8_K-m4-packed.h": {
+      "path": "/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/q8_K-m4-packed.h",
+      "sha256": "0daae3afd03d1bd188ac200f9ba02e68a7e86c0bae9e4ca897a861500003d217"
+    },
+    "ggml/src/ggml-cpu/arch/riscv/q8_K-prepared-reuse.h": {
+      "path": "/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/q8_K-prepared-reuse.h",
+      "sha256": "338392566beef8a35aa7b27bc15d47358865845c41e5bcc7c61fea4e41d489fa"
+    },
+    "ggml/src/ggml-cpu/arch/riscv/qbs.cpp": {
+      "path": "/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/qbs.cpp",
+      "sha256": "c92955fb4db67f69339d000fa5d4cdb2077354374058a91d9137600066855940"
+    },
+    "ggml/src/ggml-cpu/arch/riscv/quant-kv.cpp": {
+      "path": "/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/quant-kv.cpp",
+      "sha256": "6c044914e0b7de76da2f25a56a3ddfe50defe9d925a99085cdcc15f846d65ec8"
+    },
+    "ggml/src/ggml-cpu/arch/riscv/read_state.S": {
+      "path": "/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/read_state.S",
+      "sha256": "22c1c0468a235cb06bbcab918e64ed215b1b16790a7b1d330bd1aa9acc7fa121"
+    },
+    "ggml/src/ggml-cpu/arch/riscv/resident.inc": {
+      "path": "/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/resident.inc",
+      "sha256": "0b4275d7a0a906f54eac509ca6c67fede8e358fc4d3f3f324da10cb07f2a91de"
+    },
+    "ggml/src/ggml-cpu/repack.cpp": {
+      "path": "/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/repack.cpp",
+      "sha256": "63bfd26c1f2a863a2f41e0107fcb041c5716bdab31440df1e4e799bf00801d58"
+    },
+    "src/CMakeLists.txt": {
+      "path": "/home/wangwy/llama/llama.cpp/src/CMakeLists.txt",
+      "sha256": "a1ea20f74d25d38678ae1746d415eb9dcbf3112274075d4fddac9ee2d5b0641a"
+    },
+    "src/llama-context.cpp": {
+      "path": "/home/wangwy/llama/llama.cpp/src/llama-context.cpp",
+      "sha256": "b51b959a76fd9a2d7e4ecae8e12722399dd8ded3fb125745b5803e3b86578588"
+    }
+  },
+  "llama_head": "03959acc0f649f9071668d5b72888284e4676d2b",
+  "logits_compared": 98304,
+  "model_test": {
+    "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/llama_auto_model_20261110_02/result.json",
+    "sha256": "3114c7effa3bc7b56998faf1b37e4c6ff8394c212a0fa66ee209d763fa8c6a5a"
+  },
+  "performance_measured": false,
+  "policy_checks_per_configuration": 32322,
+  "policy_configurations": [
+    "AUTO=1",
+    "AUTO=0",
+    "undefined"
+  ],
+  "programs": {
+    "llama-bench": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/llama_auto_build_20261110_01/bin/llama-bench",
+      "sha256": "978c118f1f662250470ec1c9a8064c881f6a5f91c06f33bfb636941f06d10ecc"
+    },
+    "llama-completion": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/llama_auto_build_20261110_01/bin/llama-completion",
+      "sha256": "e9c10059ab39c326ed1a3cedfe9a105069975f74cfa1a4a0fc9adff2126f30d2"
+    },
+    "llama-simple": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/llama_auto_build_20261110_01/bin/llama-simple",
+      "sha256": "68a0e1f5a38c3087d5680046570d2cd5af7732468f61515b359b7362049fbe6a"
+    }
+  },
+  "resident_compile_link_fixture": {
+    "deployable_provider": false,
+    "elf": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/llama_auto_provider_build_20261110_01/bin/llama-simple",
+      "sha256": "40844fe46844e640eb4851b3527b77ec18a9f09c6e30a852dd301ccc70db2620"
+    },
+    "link_command": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/llama_auto_provider_build_20261110_01/examples/simple/CMakeFiles/llama-simple.dir/link.txt",
+      "sha256": "41aebdd05d0ff099dff5243c41a9d8bd5acd115c3a9e2a01e8df432d9b5df79d"
+    },
+    "model_executed_with_fixture": false,
+    "provider_denies_all": true,
+    "strong_symbols_checked": [
+      "akv_resident_platform_current_v1",
+      "ggml_akv_legacy_current_v1",
+      "akv_experimental_resident_qk",
+      "akv_experimental_resident_pv"
+    ]
+  },
+  "schema": "llama-ara-selective-defaults-v1",
+  "sdk_input": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/stage5_libraries_prepare_20261110_01/inputs/sdk",
+  "sdk_revision": "f50092f2d22238c6be4b6c159a1ad71a4ea68678",
+  "stage2_borrower_default": false,
+  "stage4_retained_maxima_default": false,
+  "state": "IMPLEMENTED_BUILD_AND_SCOPED_MODEL_CHECKED"
+}

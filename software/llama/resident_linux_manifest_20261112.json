@@ -1,0 +1,159 @@
+{
+  "schema": "llama-ara-resident-linux-integration-v1",
+  "state": "BOUNDED_KERNEL_PATH_IMPLEMENTED_AND_FOCUSED_TESTED",
+  "ara_branch": "ara_dsa",
+  "ara_head": "870cadb9f32c79df8d30ab845e4dd2e463a00540",
+  "llama_branch": "qbs-activation-context",
+  "llama_head": "03959acc0f649f9071668d5b72888284e4676d2b",
+  "includes_uncommitted_changes": true,
+  "committed_or_pushed_by_this_campaign": false,
+  "fpga_deployed": false,
+  "synthesis_started": false,
+  "full_model_executed": false,
+  "model_speedup_claimed": false,
+  "previous_manifest_retained": "software/llama/integration_extension_manifest_20261111.json",
+  "implementation": {
+    "strategy": "one complete Decode group inside one protected kernel invocation; no private-state lease across syscalls",
+    "state_protection": "global mutex, CPU hotplug read lock, exactly one online hart, kernel FP/vector ownership, preemption disabled, local S-mode IRQ disabled during compute",
+    "memory_lifetime": "copy inputs into private aligned kernel RAM; validate each page against the physical window; retain descriptors, scratch and output until accelerator idle and fence",
+    "hardware_discovery": "versioned AKVINFO index 4 from actual enabled QK/PV and geometry; zero or malformed word declines Resident without disabling native AKV",
+    "unexpected_in_scope_fault": "fail-stop; not transparent recovery or RVV retry",
+    "user_instructions_or_kernel_pointers_accepted": false,
+    "arbitrary_multi_core_virtualization": false,
+    "ordinary_paths_retained": ["QBS", "native AKV", "quantized KV", "standard RVV"]
+  },
+  "supported_linux_domain": {
+    "query_format": "F16, converted from GGML F32 after OS admission",
+    "kv_format": "F16",
+    "output_format": "F32",
+    "heads": [1, 8],
+    "head_dimensions": [64, 96, 128],
+    "effective_tokens": [1, 256],
+    "scale": "finite, 0 < scale <= 1",
+    "query_key_value": "finite",
+    "mask": "finite or negative infinity; at least one visible entry",
+    "alibi_softcap_sinks_quantized_kv": false,
+    "worker_count": 1,
+    "online_harts": 1,
+    "nr_lanes": 4,
+    "vlen_bits": 1024,
+    "preempt_rt_or_preemptive_vector": false,
+    "firmware_and_coherent_memory_contract_required": true,
+    "limits_are_portal_limits_not_total_rtl_or_model_limits": true
+  },
+  "ggml": {
+    "compile_option": "GGML_RISCV_AKV_LINUX_PORTAL",
+    "compile_default": false,
+    "runtime_explicit_zero_disables": true,
+    "client": "software/llama/platform/linux/client_v2.c",
+    "old_client_c_not_linked": true,
+    "ordinary_rvv_c_abi_entry_vstart_zero_required": true,
+    "execute_asm_rejects_nonzero_vstart": true,
+    "pre_guard_object_cfg_has_no_direct_rvv": true,
+    "external_libc_not_certified_by_object_cfg": true,
+    "full_executable_or_full_model_acceptance": false,
+    "ioctl_and_copy_performance_measured": false
+  },
+  "source_sha256": {
+    "ara:config/akv_abi.json": "5d2987ee65ffb85af0aadee9e9255a3675d0f4b8db7006339c5b6e86314b2ddf",
+    "ara:scripts/gen_akv_abi.py": "f46f007f3f94385d2649c7440490c647bc3a7fc55662918f1b8f663d4d0f4b3c",
+    "ara:hardware/include/akv_pkg.sv": "bd3129816a9368c466309c7ff323ad44291ea29a078889e2079f51a35c09c7b2",
+    "ara:software/akv/include/akv/akv.h": "f7ace71c9e3b987e0a8d5b384fbc07718a106f46aeac7e9b7ecd1400a78dd581",
+    "ara:software/akv/include/akv/akv_abi.h": "70cdbdadc68efadd89b8ecb627cb99e0f736413cc2ab3c41406e8d851000fa7b",
+    "ara:software/akv/src/akv_runtime.c": "c7cfa325d8c15f53609cc60463fdaa9198177afa5d7316e9d5786b3cb4460935",
+    "ara:software/llama/platform/linux/ara_resident_broker.c": "6e1ca8d0912b4b7f6d15c41ed65f4c09f493b685692ca2557c79f6beb3e2517c",
+    "ara:software/llama/platform/linux/client_v2.c": "84b94dfac17dc50445fd8c7aa99196d5d756468b46dc76a9b93865fa29654b1b",
+    "ara:software/llama/platform/linux/client_rv64.S": "177b0680a3d6ca33bd9584616a255701325f73db49c2154a3bcaa84f02c29cd2",
+    "ara:software/llama/platform/linux/sdk/Kbuild_norelax": "f4103e43aedbf2e1e75f68eb8ca2cc911b6ef2c5c315e0fc4c5441aa96f54d2b",
+    "llama:ggml/src/ggml-cpu/CMakeLists.txt": "3fc2f890e966dd8de3d63fc83b05c62c8797eefae527069c34d66ea5a9d904f4",
+    "llama:ggml/src/ggml-cpu/arch/riscv/akv.cpp": "d4102b2cacc56d3d45cb1f39eea35688710ef5041fb9de530ce4e781d6d65b05",
+    "llama:ggml/src/ggml-cpu/arch/riscv/linux-resident.inc": "d27c4c3a5e68c660fa54315fcf335098ebcf18492045f03179c4b43c7d7a1e1a"
+  },
+  "artifacts": {
+    "root": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out",
+    "kernel_compute_object": {
+      "path": "resident_deployment_kernel_compute_norelax_20261112_01/module/sdk/ara_resident_compute_core.o",
+      "sha256": "8a665b9dee914ef2cc03ac25f16275cd912335e75fd019100ddaff4cece00b28"
+    },
+    "linux_module": {
+      "path": "resident_deployment_module_20261112_03/module/ara_resident.ko",
+      "sha256": "8c276508542875b0d7b107947399a3eae4386f73659fbc71366aaa946aa444b4"
+    },
+    "soc_vcs_image": {
+      "path": "enablement_soc_resident_deployment_20261112_022423/sim/simv",
+      "sha256": "005b044010cd0c4270a19700f9aeb686cb0ce4387657030f0b819d4348039dcb"
+    }
+  },
+  "checked_evidence": {
+    "discovery": {
+      "path": "resident_deployment_discovery_20261112_020612/result.json",
+      "sha256": "f68fe4e8482fe34133ab5038638100d81c0e8d213745e898fa6e2b3a37bd060a",
+      "scope": "5 SDK host tests, C++ compatibility, 16 VCS configurations, 1920 SV-to-SDK vectors"
+    },
+    "client": {
+      "path": "resident_deployment_client_20261112_03/result.json",
+      "sha256": "f91d0687b83febac6450d08048b1fd3ece00fe656f4587506ed4b23b381f6e8f",
+      "scope": "6144 layouts per host build, invalid inputs and capability words, OS admission, no retry, 3 real RV64/Spike CSR cases"
+    },
+    "module_build": {
+      "path": "resident_deployment_module_20261112_03/result.json",
+      "sha256": "1c786e0ea63e4600c3142fa639f9aede40e5eab42bd581c214bcefb2396411ed"
+    },
+    "actual_linux": {
+      "path": "resident_deployment_linux_smoke_20261112_030729/result.json",
+      "sha256": "86c4fc5dec9b3cdeafca881d61a05af93ac5881c56a9f30aed673ac0a29ed30b",
+      "state": "QEMU_LINUX_MODULE_NEGATIVE_LIFECYCLE_PASS",
+      "guest_checks": [42, 42],
+      "online_cpus": [1, 2],
+      "module_loaded": true,
+      "resident_arithmetic_executed": false,
+      "reason": "existing immutable QEMU reports INFO4=0; actual kernel declines and restores scope; dual CPU declines before any INFO query",
+      "kernel_and_qemu_rebuilt": false,
+      "kernel_configuration_difference": "booted existing Image differs from module build config only in two recorded unaligned-access options; release/vermagic/module symbols and actual load checked"
+    },
+    "actual_rtl_compute": {
+      "path": "resident_deployment_compute_vcs_20261112_02/result.json",
+      "sha256": "f94d0f0743dfc585b34073d5bb2c5823910d240c1413d3699914785ccb25a116",
+      "state": "REAL_KERNEL_COMPUTE_RTL_CHECKED",
+      "same_object_as_module": true,
+      "data": "first 65 tokens of real Qwen3 capture, H2/D128",
+      "bit_exact_outputs": 256,
+      "fflags": 3,
+      "commands": {"FULL": 1, "REFILL": 1, "QK": 2, "PV": 2, "RELEASE": 1}
+    },
+    "actual_rtl_compute_sv39": {
+      "path": "resident_deployment_compute_vcs_sv39_20261112_01/result.json",
+      "sha256": "25a272392948fb55c9251c6a54ab4d13c92bdd9ab795abd2c96f82085f97b722",
+      "state": "REAL_KERNEL_COMPUTE_RTL_CHECKED",
+      "same_object_as_module": true,
+      "privilege": "S-mode",
+      "translation": "Sv39, all compute buffers and descriptor through high canonical RAM alias",
+      "bit_exact_outputs": 256,
+      "fflags": 3,
+      "mmu_request_cycles": 555,
+      "request_response_pairs": 330,
+      "protocol_errors_exceptions_outstanding": 0,
+      "linux_booted": false
+    },
+    "ggml": {
+      "path": "resident_deployment_ggml_20261112_v2_02/result.json",
+      "sha256": "c548cda8439e20e4b97514252ff1e29ff0b28e91c0a43f087f84ccb6deb2d639",
+      "status": "PASS",
+      "scope": "host admission and adapter checks, true GNU native/resident source objects and pre-guard object CFG audit; no full model execution"
+    }
+  },
+  "historical_checks_not_rerun": {
+    "path": "resident_deployment_kernel_compute_final_20261112_01",
+    "scope": "6144 preparations, all F16/mask encodings, more than 3.9M glibc expf inputs with bit and FP-flag comparisons",
+    "norelax_difference": "build-policy only; 235 FP/vector/custom instruction encodings and order identical; no claim that host numerical enumeration was rerun"
+  },
+  "original_failure_reports_preserved": true,
+  "dirty_uncommitted_akv_attention_assembly_excluded": true,
+  "pending_campaign_jobs": [],
+  "deployment_requirements_remaining": [
+    "review actual board coherence, memory window, hart and M-mode firmware contract before adding its DT node",
+    "rebuild matching bitstream and Linux module for actual board; no automatic replacement of accepted delivery",
+    "validate positive Resident execution inside real Linux and measure complete GGML ioctl/copy cost before enabling by default",
+    "extend domain or provide architectural context save/restore separately if multi-hart, preemptive or long-context service is required"
+  ]
+}

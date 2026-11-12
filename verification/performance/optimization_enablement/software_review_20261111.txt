@@ -1,0 +1,147 @@
+Software Enablement Review - 2026-11-11
+
+Scope
+-----
+Read-only live llama/SDK review, new GNU host tests only. No model, Spike,
+Verilator, VCS, synthesis, RTL edits or live llama edits were performed.
+Another agent's existing synthesis service was observed, not controlled.
+Its 526-entry source-pins inventory contains no optimization_enablement path.
+The parent owns integration and its final target/model acceptance.
+
+Decision: do not reject useful software merely for missing an old percentage
+screen. Distinguish numerical equivalence, deployment eligibility, actual
+whole-call savings and the scope of the measured caller.
+
+1. Q4_K-only cooperative M8: useful, but NOT safe as today's blanket default
+----------------------------------------------------------------------------
+Stage2's complete SDK calls have real positive savings against fastest M4:
+Attention 171793 -> 162520 and 170361 -> 161072 cycles; FFN 210577 -> 192559
+and 208733 -> 191237 cycles (5.40-8.56%). This is not dismissed for missing
+20%. The serial M8 arm is slower, and cooperation leaves M4 unchanged.
+Source: hardware/docs/INFERENCE_STAGE2_RVV_COOPERATIVE_MATRIX_20261109.md:159.
+Receipt: stage2_soc_campaign_20261109_01/report.json, PAIRED_CALLS_CHECKED.
+
+Two independent blockers remain in the current live default path:
+- qbs_recommend_activation_storage is a payload selector, not a latency model.
+  It also selects Q6_K. M8 ABI capability is shared by serial and cooperative
+  hardware; no existing bit distinguishes the profitable schedule. Cooperation
+  accelerates exactly Q4_K/M8, not Q6_K or M5/M6/M7 tail commands.
+  Sources: software/qbs/src/qbs_runtime.c:650; Stage2 document:234.
+- Wide-M stages row-wise Q8_K, whereas today's optimized M4 producer explicitly
+  uses fused bias rounding. The host directed witness inherited from the RVV
+  fixture (maximum bits 0x3f800001, input 0xbda952a7) returns row-wise 10 and
+  fused-bias 11. Q4_K itself consumes Q8_K activations, so restricting WEIGHT
+  type to Q4_K does not remove this activation-contract distinction.
+  Sources: live arch/riscv/quants.c:169; q8_K-m4-packed.h:14;
+  live repack.cpp:4846; verification/qbs/combined_zvfh_m4/native.cpp:190.
+  Host std::fma is a scalar arithmetic witness, NOT execution of RVV or RTL.
+
+Recommendation: retain an explicit Q4_K/M8 deployment-specific option for a
+known cooperative image. Do not flip the global WIDE_M flag. Before default
+promotion it needs a deliberate, tested activation numerical contract and a
+GGML comparison against the current packed/cache M4 caller; Stage2 used row-wise
+preparation in both arms and therefore does not supply that comparison. No new
+hardware is needed to investigate that narrow scope. Existing byte admission
+and pre-execution fallback must remain; no retry after native work starts.
+
+2. Retained maxima: RECOMMEND a narrow integration candidate, not broad enable
+----------------------------------------------------------------------------
+The actual helper is byte-identical to the measured Stage4 candidate:
+software/qbs/experimental/m4_preflight/m4_preflight.h
+SHA256 71b07f59aa44bea1102674d68fbe9fbaa36fa055f078804b4ff5dd0353fe0291.
+It retains signed maxima during the required source-domain scan and avoids a
+second maxima scan. It preserves the accepted packed parallel encoder/sums and
+first-global-maximum rule. It keeps old quantize<true> as the fallback for
+unsupported FRM, K, vector span, domain or host execution.
+
+Measured K1536/M4 Q/V/K chain: prep 66457 -> 56673.5 cycles; whole call
+542821 -> 532106 cycles, a real 1.973947% reduction. Both arms have one cold
+producer and two exact-byte cache hits, matching packed/output hashes and CSR
+state. Native busy is essentially unchanged. This is a preparation gain, not
+an engine gain. Sources: Stage4 RESULTS.md:82; projection_graph/producer.cpp:9.
+
+Recommendation: integrate the existing helper without new arithmetic, initially
+restricted to the measured contiguous K1536/M4 shared-input projection chain
+under the existing single-worker/cache graph policy. Only cold production should
+change; retain exact-byte hits, guards and the distinct producer identity/tag4.
+The helper's functional range extends to K6144, but speedup on every K/graph is
+not established. A safe broader numerical domain is not a broad profitability
+claim. Final default selection needs the parent's short GGML integration check;
+this review did not modify selection and does not claim that check passed.
+The new GNU test executes the ACTUAL host fallback and compares all 1168 bytes;
+vector-path correctness/performance comes from the existing independent target
+evidence, not from a host-disabled vector branch.
+
+3. Features-v2: retain explicit SDK scope, NOT a macro-only GGML default
+------------------------------------------------------------------------
+The D128/H2/T137 full-call ABBA is genuinely positive: 67761.5 -> 65152 mean
+cycles (3.851007% fewer). It is not rejected solely for missing 5%.
+However, existing derived D64/T5, T1, T65 and local-H3 cases are slower; they
+demonstrate nonuniform overhead, not a profitable general selector. T137 is one
+captured tensor with derived score controls, not a representative model class.
+Sources: Stage4 RESULTS.md:193-245; original perf/functional receipts below.
+
+The current GGML/provider adapter is plain-score v1. It rejects nonplain scores
+in platform.c:94 and calls execute_v2_native, not the features-v2 entry.
+The CPU CMake configuration fixes FEATURES_V2=0. Flipping that macro alone does
+not bind per-group feature metadata, the versioned contract and whole-call
+provider authorization; bypassing the plain-score gate would be unsafe.
+Recommendation: keep the existing explicit SDK entry usable for its measured
+case. No stable new GGML auto-default range is established without an adapter
+and its validation. This is an integration/numerical-contract issue as well as
+a regression risk, not permanent rejection by a percentage threshold.
+
+4. Quant PV: KEEP RegisterPV as preferred request; do not stack GROUPED_PV
+------------------------------------------------------------------------
+The current adapter explicitly rejects simultaneous register_pv/grouped_pv
+before execution. The new host test compiles the exact extracted live guard
+and checks all four combinations. Defaulting both would turn a working path
+into fallback. To test the older path explicitly, RegisterPV must be disabled.
+Source: live arch/riscv/quant-kv.cpp:179.
+
+RegisterPV has existing guarded full-Decode evidence: 47885.5 -> 43075.5 mean
+cycles and full-model bitwise comparisons. It is already requested by AUTO.
+Source: software/akv/experimental/quantized_kv/register_pv/README.md:39.
+This is Decode PV, not quantized Prefill PV; it cannot be used to advertise the
+separate Prefill Register-PV experiment's benefit. Grouped quantized Prefill is
+already a separate default-requested route.
+
+NORMAL_MEMORY must remain independent. Actual selection tests admit a valid
+Q4_0 K/Q8_0 V case and reject missing normal memory, FRM1, nonzero VSTART,
+softcap and unsupported V type. It requires one worker, matching ISA/geometry,
+backing extents, ownership/alias and finite data checks. A pointer is not proof
+of board memory consistency. Keep provider/lease checks in resident builds.
+F16 Resident/features-v2 and quantized KV are distinct data contracts, not flags
+that can be layered on one call. Host metadata admission establishes no board
+memory authorization and no target performance.
+
+New Tests And Evidence
+----------------------
+Mainline additions: software_contract_test.cpp, software_host_review.py, this
+report only. Other optimization_enablement files belong to the parent.
+Run command (use a fresh output for any future run):
+python3 -B verification/performance/optimization_enablement/software_host_review.py \
+  --output /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/enablement_software_host_20261111_03
+
+03/software_host.result.json: SOFTWARE_HOST_CONTRACTS_CHECKED.
+21 directed contract checks plus the unchanged GNU features host test:
+15360 maps, 76800 leaf stubs, 32 feature combinations; 302 input/tool/header/
+receipt pins match before and after. No target arithmetic or new timing run.
+Result SHA256 f7012da475f1f6b363259d6bbda08a8bd2a2f5a7a50638593006c089a0d862b6.
+Source-pin SHA256 92509da2ac36f9d8eb61648596caa8dd122a36fad37a5a82204b452496da797c.
+Historical result receipts are pinned and checked for passing recorded state;
+their entire old image/EDA closures were NOT revalidated or rerun in this task.
+
+Preserved First Failure And Relocation
+-------------------------------------
+Original paths were verification/performance/optimization_enablement/
+software_host_20261111_01.* and software_host_20261111_02.* (71 files total).
+They were moved byte-for-byte to signoff verification/out/
+enablement_software_archive_20261111_01/. relocation.json records every original
+absolute path, archived absolute path and SHA256. Existing JSON is unchanged.
+01 FAIL was a harness missing repack type include plus unused-static warnings;
+02 passed before additional PV/receipt checks and output relocation.
+Snapshots of the source after 02 are retained in that archive. Original absolute
+pins remain historical, not rewritten/relabelled as clean relocated runs.
+All subsequent .d, .o, executables, generated fragments, logs and JSON live only
+in the fresh signoff output. No symlinks were added to the main source tree.

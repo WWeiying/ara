@@ -205,7 +205,7 @@ extern void akv_v2_update_outputs_f16_d256_online(
     const float *score, uint16_t *accumulator, const float *token_scale,
     uint32_t tile_tokens, uint32_t q_rows);
 
-/* Optional on freestanding targets: no environment provider means OFF. */
+/* Optional on freestanding targets; generic execution remains opt-in. */
 extern char *getenv(const char *name) __attribute__((weak));
 #include "../experimental/paired_heads/f32_pv/runtime.h"
 #include "../experimental/paired_heads/native_selection.h"
@@ -221,23 +221,33 @@ static int auto_pair_enabled_for_plan(const akv_attention_plan_t *plan,
   return vlenb == 128u;
 }
 
-static int qk_panel4_enabled_for_plan(const akv_attention_plan_t *plan) {
-  if (plan->descriptor.element_format != AKV_ELEMENT_FORMAT_F16 ||
+static int qk_panel4_enabled_for_plan(const akv_attention_plan_t *plan,
+                                     const akv_device_t *auto_device,
+                                     unsigned automatic) {
+  if (plan == NULL || automatic > 1u ||
+      plan->descriptor.element_format != AKV_ELEMENT_FORMAT_F16 ||
       plan->descriptor.q_rows != AKV_ATTENTION_KERNEL_Q_ROWS ||
-      plan->descriptor.head_dim != AKV_HEAD_DIM_128 || getenv == NULL)
+      plan->descriptor.head_dim != AKV_HEAD_DIM_128)
     return 0;
-  const char *const value = getenv("AKV_QK_PANEL4");
-  if (value == NULL || value[0] != '1' || value[1] != '\0')
+  const char *const value = getenv != NULL ? getenv("AKV_QK_PANEL4") : NULL;
+  if (value != NULL ? (value[0] != '1' || value[1] != '\0')
+                    : (!automatic || plan->descriptor.kv_length < 128u))
     return 0;
-  akv_device_t device;
-  if (akv_device_query(akv_native_info, NULL, &device) != AKV_STATUS_OK)
+  akv_device_t queried_device;
+  const akv_device_t *device = auto_device;
+  if (!automatic) {
+    if (akv_device_query(akv_native_info, NULL, &queried_device) != AKV_STATUS_OK)
+      return 0;
+    device = &queried_device;
+  }
+  if (device == NULL)
     return 0;
-  return device.capabilities.valid && device.capabilities.f16_payload &&
-         device.capabilities.head_dim_128 &&
-         device.capabilities.max_q_rows >= AKV_ATTENTION_KERNEL_Q_ROWS &&
-         device.capabilities.token_axis_valid &&
-         device.capabilities.token_axis_tail &&
-         device.capabilities.token_axis_column_panel4;
+  return device->capabilities.valid && device->capabilities.f16_payload &&
+         device->capabilities.head_dim_128 &&
+         device->capabilities.max_q_rows >= AKV_ATTENTION_KERNEL_Q_ROWS &&
+         device->capabilities.token_axis_valid &&
+         device->capabilities.token_axis_tail &&
+         device->capabilities.token_axis_column_panel4;
 }
 
 static inline float negative_infinity_f32(void) {
@@ -760,7 +770,7 @@ static akv_status_t execute_v2_with_features_native_internal(
     resident = resident_state_matches(vlenb, frm, vstart);
   }
 #endif
-  const int qk_panel4 = qk_panel4_enabled_for_plan(plan);
+  const int qk_panel4 = qk_panel4_enabled_for_plan(plan, auto_device, automatic);
   const int paired_heads = automatic
       ? auto_pair_enabled_for_plan(plan, auto_device, features == NULL)
       : akv_pair_candidate_enabled_for_plan(plan);

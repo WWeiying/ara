@@ -271,12 +271,16 @@ module ara import ara_pkg::*; #(
     end
   end
 
+  localparam bit QbsLaneMulSupported = EnableQbsLaneMul && qbs_pkg::QbsEnable &&
+      NrLanes == 4 && VLEN == 1024 && QbsLaneMulLatencySupported;
+
   ara_dispatcher #(
     .CVA6Cfg           (CVA6Cfg           ),
     .NrLanes           (NrLanes           ),
     .VLEN              (VLEN              ),
     .FPUSupport        (FPUSupport        ),
     .SegSupport        (SegSupport        ),
+    .QbsCooperativeMul (QbsLaneMulSupported),
     .ara_req_t         (ara_req_t         ),
     .ara_resp_t        (ara_resp_t        ),
     .accelerator_req_t (accelerator_req_t ),
@@ -474,8 +478,6 @@ module ara import ara_pkg::*; #(
   logic      [NrLanes-1:0]                     ldu_result_gnt;
   logic      [NrLanes-1:0]                     ldu_result_final_gnt;
   logic pv_lease, pv_acquire, pv_start, pv_release, pv_commit;
-  localparam bit QbsLaneMulSupported = EnableQbsLaneMul && qbs_pkg::QbsEnable &&
-      NrLanes == 4 && VLEN == 1024 && QbsLaneMulLatencySupported;
   logic qbs_mul_lease, qbs_mul_valid;
   logic [NrLanes-1:0] qbs_mul_owned, qbs_mul_ready, qbs_mul_result_valid;
   logic [15:0] qbs_mul_weight [NrLanes];

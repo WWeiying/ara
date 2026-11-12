@@ -27,6 +27,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     parameter fixpt_support_e        FixPtSupport = FixedPointEnable,
     // Support for segment memory operations
     parameter seg_support_e          SegSupport   = SegSupportEnable,
+    parameter bit                    QbsCooperativeMul = 1'b0,
     // Dependent parameters: DO NOT CHANGE
     localparam type                  vlen_t       = logic[$clog2(VLEN+1)-1:0],
     localparam int          unsigned VLENB        = VLEN / 8
@@ -4973,7 +4974,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               // funct7 and rs2 are reserved in ABI version 1.
               acc_resp_o.resp_valid = 1'b1;
               acc_resp_o.result = xlen_t'(
-                  qbs_capability_word(64'(acc_req_i.rs1), VLEN));
+                  qbs_capability_word(64'(acc_req_i.rs1), VLEN, QbsCooperativeMul));
               if (instr.rtype.funct7 != '0 || instr.rtype.rs2 != '0)
                 illegal_insn = 1'b1;
             end else if (is_qbexec) begin

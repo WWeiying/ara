@@ -120,14 +120,49 @@ akv_status_t akv_capabilities_decode_extended(
   return AKV_STATUS_OK;
 }
 
+akv_status_t akv_capabilities_decode_resident(
+    uint64_t info4, akv_capabilities_t *capabilities) {
+  if (capabilities == NULL)
+    return AKV_STATUS_BAD_ARGUMENT;
+  capabilities->resident_valid = 0u;
+  capabilities->resident_capability_version = 0u;
+  capabilities->resident_pv_supported = 0u;
+  capabilities->resident_qk_supported = 0u;
+  capabilities->resident_nr_lanes = 0u;
+  capabilities->resident_vlen_bits = 0u;
+  if (info4 == 0u)
+    return AKV_STATUS_RUNTIME_UNAVAILABLE;
+  if (!akv_resident_capability_is_valid(info4))
+    return AKV_STATUS_ABI_MISMATCH;
+  if (!capabilities->valid || !capabilities->enabled ||
+      !capabilities->token_axis_valid || !capabilities->token_axis_enabled ||
+      !capabilities->f16_payload)
+    return AKV_STATUS_CAPABILITY;
+
+  capabilities->resident_valid = 1u;
+  capabilities->resident_capability_version = AKV_RESIDENT_CAPABILITY_VERSION;
+  capabilities->resident_pv_supported = 1u;
+  capabilities->resident_qk_supported = (uint8_t)(
+      (info4 >> AKV_RESIDENT_CAPABILITY_QK_SUPPORTED_BIT) & 1u);
+  capabilities->resident_nr_lanes = AKV_RESIDENT_CAPABILITY_NR_LANES;
+  capabilities->resident_vlen_bits = AKV_RESIDENT_CAPABILITY_VLEN_BITS;
+  return AKV_STATUS_OK;
+}
+
 akv_status_t akv_device_query(akv_info_reader_t reader, void *context,
                               akv_device_t *device) {
   if (reader == NULL || device == NULL)
     return AKV_STATUS_BAD_ARGUMENT;
   memset(device, 0, sizeof(*device));
-  return akv_capabilities_decode_extended(
-      reader(context, 0u), reader(context, 1u), reader(context, 2u),
-      reader(context, 3u), &device->capabilities);
+  uint64_t info[AKV_RESIDENT_CAPABILITY_INDEX + 1u];
+  for (unsigned index = 0; index <= AKV_RESIDENT_CAPABILITY_INDEX; ++index)
+    info[index] = reader(context, index);
+  const akv_status_t status = akv_capabilities_decode_extended(
+      info[0], info[1], info[2], info[3], &device->capabilities);
+  if (status == AKV_STATUS_OK)
+    (void)akv_capabilities_decode_resident(info[AKV_RESIDENT_CAPABILITY_INDEX],
+                                           &device->capabilities);
+  return status;
 }
 
 static uint64_t reference_info(void *context, unsigned index) {

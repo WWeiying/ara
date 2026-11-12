@@ -58,6 +58,13 @@ typedef struct {
   uint8_t token_axis_d_axis_tail;
   uint8_t token_axis_d256_segmented;
   uint8_t token_axis_column_panel4;
+  /* SDK layout change: rebuild the runtime and every consumer together. */
+  uint8_t resident_valid;
+  uint8_t resident_capability_version;
+  uint8_t resident_pv_supported;
+  uint8_t resident_qk_supported;
+  uint8_t resident_nr_lanes;
+  uint16_t resident_vlen_bits;
 } akv_capabilities_t;
 
 typedef struct {
@@ -180,6 +187,11 @@ akv_status_t akv_capabilities_decode(uint64_t info0, uint64_t info1,
 akv_status_t akv_capabilities_decode_extended(
     uint64_t info0, uint64_t info1, uint64_t info2, uint64_t info3,
     akv_capabilities_t *capabilities);
+/* Decode index 4 after decode_extended. Only Resident fields are changed.
+ * Zero/unknown/malformed words fail closed without invalidating native caps.
+ * This is implementation discovery, not OS/lease/memory admission. */
+akv_status_t akv_capabilities_decode_resident(
+    uint64_t info4, akv_capabilities_t *capabilities);
 akv_status_t akv_device_query(akv_info_reader_t reader, void *context,
                               akv_device_t *device);
 akv_status_t akv_device_init_reference(akv_device_t *device);
