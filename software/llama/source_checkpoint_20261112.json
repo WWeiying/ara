@@ -1,0 +1,52 @@
+{
+  "schema": "qbs-akv-paired-source-checkpoint-v1",
+  "state": "SOURCE_CANDIDATE_NOT_NEW_BOARD_ACCEPTANCE",
+  "paired_source_tag": "qbs-akv-source-candidate-20261112",
+  "ara": {
+    "repository": "git@github.com:WWeiying/ara.git",
+    "branch": "ara_dsa",
+    "implementation_commit": "208ab0fef23721828aac579eff34a82585a3aaa3",
+    "source_tag_includes_followup_version_index": true,
+    "main_rtl_and_approved_sdk_committed": true,
+    "dirty_akv_attention_assembly_excluded": true
+  },
+  "fpga": {
+    "source_commit": "7b4eea960826d02a3da25d5f97542926f1e700c0",
+    "source_tag": "fpga-mainrtl-candidate-all-20261112",
+    "migration_record": "hardware/fpga/vcu118/migrations/mainrtl_candidate_all_20261112.json",
+    "matches_current_main_rtl": true,
+    "main_source_records_checked": 80,
+    "package_hash_records_checked": 824,
+    "bitstream_built_by_this_release": false
+  },
+  "llama_cpp": {
+    "repository": "git@github.com:WWeiying/llama.cpp.git",
+    "branch": "qbs-activation-context",
+    "implementation_commit": "a2b7f30da9aadf88b0a068c447383ed2e26ee867",
+    "optimized_initial_cache": "cmake/ara-optimized.cmake",
+    "linux_portal_compile_default": false,
+    "linux_portal_option": "GGML_RISCV_AKV_LINUX_PORTAL",
+    "preexisting_q4k_repack_test_delta_excluded": true,
+    "full_model_tested_with_new_portal_binary": false
+  },
+  "historical_validation_manifests_retained": [
+    "software/llama/integration_manifest_20261110.json",
+    "software/llama/integration_manifest_20261111.json",
+    "software/llama/integration_extension_manifest_20261111.json",
+    "software/llama/resident_linux_manifest_20261112.json"
+  ],
+  "release_checks": {
+    "akv_abi_generation_consistent": true,
+    "qbs_abi_generation_consistent": true,
+    "llm_configuration_checked": true,
+    "akv_host_make_check": "PASS",
+    "qbs_host_make_check": "PASS",
+    "staged_source_whitespace": "PASS",
+    "rtl_regression_rerun_for_commit_only": false
+  },
+  "raw_evidence_pushed": false,
+  "prior_validated_tags_moved": false,
+  "board_program_replaced": false,
+  "hardware_reset_or_reprogramming_performed": false,
+  "deployment_prerequisites_unchanged": true
+}
