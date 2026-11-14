@@ -1,0 +1,49 @@
+{
+  "schema": "resident-direct-gate-focused-results-v1",
+  "state": "FOCUSED_CHECKS_PASS",
+  "verification_branch": "ara_dsa_signoff_integration",
+  "candidate_root": "/home/wangwy/openproject/ara_dsa",
+  "candidate_source_head_at_run": "4a7361f51ba5447a616217dad1c8e72e3ee2b45b",
+  "candidate_identity": "HEAD alone does not identify dirty dependency RTL; campaign.json and original run source pins identify the tested files.",
+  "production_rtl_modified_by_campaign": false,
+  "runs": [
+    {
+      "name": "gate_regression",
+      "receipt": "receipts/gate_regression.json",
+      "result": "../../out/resident_direct_rtl_gate_unit_20261114_01/result.json",
+      "sha256": "518be00b7db0ab7e738201f6df1dfc3cd7bf1a9348f491848482fad858e5fe38",
+      "state": "REAL_MODULE_GATE_CHECKED",
+      "checks": 77878
+    },
+    {
+      "name": "commit_boundary",
+      "receipt": "receipts/commit_boundary.json",
+      "result": "../../out/resident_gate_commit_20261114_cb01/result.json",
+      "sha256": "0591bef041f4711ef70489143a38c5351f379da66b249337da0f9a28ace7a263",
+      "state": "REAL_COMMIT_BOUNDARY_CHECKED",
+      "scenarios": 4,
+      "checks": 913,
+      "targeted_flush_boundaries": 9,
+      "commit_races": 5,
+      "same_id_positive_replays": 5
+    },
+    {
+      "name": "backend_drain",
+      "receipt": "receipts/backend_drain.json",
+      "result": "../../out/resident_gate_drain_20261114_bd01/result.json",
+      "sha256": "d1ba7862cbef897617171b4010eb40205045402667c77ba5ff71e357f652c305",
+      "state": "BACKEND_ONLY_CHECKED",
+      "paths": ["row", "column", "qk", "pv"],
+      "output_elements": 768,
+      "preserved_source_elements": 512,
+      "guarded_buffers": 5,
+      "current_backend_in_legacy_core_image": true
+    }
+  ],
+  "scope_limits": {
+    "new_gate_full_soc_tested": false,
+    "linux_tested": false,
+    "board_tested": false,
+    "performance_measured": false
+  }
+}

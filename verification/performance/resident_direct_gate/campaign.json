@@ -1,0 +1,50 @@
+{
+  "schema": "resident-direct-gate-test-plan-v1",
+  "rtl_root": "/home/wangwy/openproject/ara_dsa",
+  "verification_branch": "ara_dsa_signoff_integration",
+  "rtl_changes_authorized": false,
+  "configuration": {
+    "xlen": 64,
+    "hypervisor": false,
+    "issue_ports": 1,
+    "commit_ports": 2
+  },
+  "candidate_sha256": {
+    "hardware/deps/cva6/core/csr_regfile.sv": "ec23f6c55860b914e061c1f3a84ee7065f1fdc0b85a44385eab57ef19e11db39",
+    "hardware/deps/cva6/core/decoder.sv": "964839148a7c9f64d50db59b0948078f77409b7dbf7f4b126ef23311ec2487e1",
+    "hardware/deps/cva6/core/id_stage.sv": "a821f1d222f1096e4e04f90e0dc53ca8b7ac831d7ec7524ff2323e7763beb109",
+    "hardware/deps/cva6/core/cva6.sv": "276f2105fc2cc93ef5a0bf933312f18b771253696e5e0f9a9c1cdff342d18372"
+  },
+  "requirements": [
+    {
+      "id": "commit_revoke",
+      "check": "Real commit-stage CSR write and port-1 candidate cannot release younger AKV during flush; changing permission in either direction discards old decoded work."
+    },
+    {
+      "id": "transaction_reuse",
+      "check": "A flushed accelerator transaction ID must not retain permission to release a later speculative instruction."
+    },
+    {
+      "id": "trap_return",
+      "check": "Older exception and xRET flush queued/decoded AKV; refetch uses the new execution privilege and its own allowance."
+    },
+    {
+      "id": "older_authorization",
+      "check": "An already authorized request is preserved under backpressure across a later gate closure, with exactly one handshake."
+    },
+    {
+      "id": "backend_drain",
+      "check": "Vector CSR drain cannot complete while earlier vector writes remain; distinguish protocol-stub checks from evidence with real backend and VRF."
+    }
+  ],
+  "acceptance": {
+    "nonvacuous_positive_controls": true,
+    "cycle_level_event_log": true,
+    "retain_first_failure": true,
+    "immutable_source_and_build_pins": true,
+    "independent_output_directories": true,
+    "whole_core_claim_requires_whole_core": true,
+    "linux_acceptance_requires_linux_execution": true
+  },
+  "excluded": ["Verilator", "URG", "ZCC", "synthesis", "Vivado", "board execution", "full Linux boot"]
+}

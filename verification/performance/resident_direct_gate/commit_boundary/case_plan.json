@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "scope": "Short module integration: real ID/decoder, scoreboard, CSR buffer, commit_stage, CSR regfile, controller and acc_dispatcher. Scalar operands/delayed writeback and request-triggered accelerator response are BFMs. Not a whole-core, MMU, accelerator datapath, SoC or board test.",
+  "config": {"xlen": 64, "rvh": false, "issue_ports": 1, "commit_ports": 2, "nr_pmp_entries": 0},
+  "candidate_files": ["csr_regfile.sv", "decoder.sv", "id_stage.sv", "cva6.sv"],
+  "source_contract": "All RTL copied byte-for-byte from /home/wangwy/openproject/ara_dsa. Shared inputs must match resident_direct_rtl_gate_unit_20261114_01/source-pins.json; cva6.sv supplies production types, not full-core elaboration.",
+  "legal_stimulus": [
+    "Real ID and scoreboard allocate every instruction and transaction ID. AKV valid=0 means no completion yet, not an absent scoreboard entry. Actual commit_stage drives CSR op/data, exception, ack and macro_ack; no TB ack or force.",
+    "CSR address is latched by real csr_buffer from issued operand_b. The scalar WB BFM deliberately withholds completion while younger instructions reach ID/queue. This is module-boundary stimulus, not proof of whole-core timing reachability.",
+    "SAKVCTL close uses S control=5 to 1. S reopening uses denied NONE/illegal entries, never fabricated ACCEL. M control=1 to 3 provides the legal opening race since M is always allowed.",
+    "Trap uses delayed LOAD_PAGE_FAULT WB and real commit exception. MEDELEG selects S; the final denied AKV illegal exception is not delegated and enters M. Actual MRET/SRET use the CSR-maintained privilege stack.",
+    "No forced ready bits or impossible filled-output scenario. On CSR/xRET race acc_commit && pending[id] is nonzero, flush blocks pop and overrides ready next-state. Every replay uses real ID 1 again, waits three cycles behind incomplete ID 0, then requires its own real ack0 without flush.",
+    "The response BFM responds one cycle after an actual request handshake, never before. It returns token+1; real scoreboard WB and commit retire the matching AKV. Output is empty on each tested flush, so already-authorized non-flushable requests are not falsely required to disappear."
+  ],
+  "cases": [
+    {"name": "csr_close_open_s", "purpose": "Close allowed S with pending port1/held ID; reopen using genuine denied entries; same-ID replay waits then sends once.", "expected": {"requests": 1, "rejects": 1, "flushes": 2, "replays": 1, "pops": 1, "retires": 1, "races": 1, "waits": 3}},
+    {"name": "csr_open_m_mret_u", "purpose": "Open U permission in M with pending port1; replay; MRET with old M queue/ID cleared; fresh allowed U replay.", "expected": {"requests": 2, "rejects": 0, "flushes": 2, "replays": 2, "pops": 2, "retires": 2, "races": 2, "waits": 6}},
+    {"name": "u_only_trap_sret", "purpose": "Control=3: allowed U queue/ID flushed by delegated trap to denied S; denied S state flushed by SRET; allowed U replay.", "expected": {"requests": 1, "rejects": 1, "flushes": 2, "replays": 1, "pops": 1, "retires": 1, "races": 0, "waits": 3}},
+    {"name": "s_only_trap_sret_mret", "purpose": "Control=5: denied U trap to allowed S; positive S replay; SRET clears old allowed state; denied AKV traps to M; MRET clears old M state to denied U.", "expected": {"requests": 1, "rejects": 3, "flushes": 3, "replays": 1, "pops": 1, "retires": 1, "races": 2, "waits": 3}}
+  ],
+  "counter_semantics": {
+    "checks": "Every TB check, including cycle invariants; setup checks belong to the active case.",
+    "requests": "req_valid && req_ready at rising edge, actual accelerator interface transfer.",
+    "pops": "Speculative instruction queue pop at rising edge, distinct from accelerator acceptance/retirement.",
+    "retires": "Actual commit macro_ack & ~drop on port0 for completed ACCEL with response-derived result.",
+    "rejects": "Checked denied INFO instances explicitly sent through issue (NONE/illegal) plus final denied held-ID refetch; other held-ID denial checks do not increment.",
+    "flushes": "Completed boundary() scenarios only; excludes setup CSR/xRET flushes and the additional illegal-to-M trap. CSV records every flush cycle.",
+    "replays": "Completed allowed same-ID replay scenarios, each exactly one request/pop/retire.",
+    "races": "Completed CSR/xRET boundary scenarios with old allowed pending AKV, actual ack0 and acc_commit, flush blocking pop/ready persistence.",
+    "waits": "Checked stalled-older cycles in replay, exactly three per replay."
+  },
+  "result_schema": {
+    "schema_version": 1,
+    "state": "REAL_COMMIT_BOUNDARY_CHECKED or FAIL",
+    "cases": "Ordered array: name plus integer checks, requests, rejects, flushes, replays, pops, retires, races, waits; failure retains completed case marks only.",
+    "totals": "Sum of case numeric fields on PASS; empty on failure.",
+    "artifacts": "simv, compile_log, simulation_log, events_csv: each path and sha256 if present.",
+    "pins": "source_pins_sha256, pre_match, post_match",
+    "other_fields": "scope, config, event_rows on PASS, whole_core_tested=false, board_tested=false, automatic_retry=false, error/pin_error on failure"
+  },
+  "marks": [
+    "COMMIT_BOUNDARY_CASE_PASS name=<name> checks=<n> requests=<n> rejects=<n> flushes=<n> replays=<n> pops=<n> retires=<n> races=<n> waits=<n>",
+    "COMMIT_BOUNDARY_PASS cases=4 checks=<n> requests=<n> rejects=<n> flushes=<n> replays=<n> pops=<n> retires=<n> races=<n> waits=<n>",
+    "COMMIT_BOUNDARY_FAIL name=<name> phase=<phase> cycle=<n> check=<n> <reason>"
+  ],
+  "event_log": "simulation/events.csv: one row per rising edge, pre-NBA state. Decimal controls/IDs; csr_addr, csr_wdata, pending, ready, req_insn, req_rs1 are hex. Includes setup/reset and phase names; no filtering. Request/pop/retirement CSV totals independently cross-checked against marks.",
+  "execution_policy": "Prepare only until main-thread review. Direct systemd worker; host VCS, 180s compile + 30s sim, 270s service cap; no retries, production edits, Verilator, URG or ZCC. Keep first failure and all evidence."
+}

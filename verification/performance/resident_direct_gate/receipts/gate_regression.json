@@ -1,0 +1,27 @@
+{
+  "state": "REAL_MODULE_GATE_CHECKED",
+  "whole_core_tested": false,
+  "soc_tested": false,
+  "board_tested": false,
+  "automatic_retry": false,
+  "decode_cases": 24672,
+  "blocked_cases": 3072,
+  "noissue_cases": 25,
+  "csr_cases": 150,
+  "flush_cases": 2,
+  "requests": 1,
+  "checks": 77878,
+  "post_pins_match": true,
+  "simv_sha256": "158be099e3ff04614402cd0ba99f2be6ae548810b727f7d46889639177ec1bf6",
+  "log_sha256": "3abe5e5aef518a31d339c60f8fb118c95f998522fa67a90f562c92dc283b2a47",
+  "id_stage_tested": true,
+  "id_stage_decode_cases": 24672,
+  "id_stage_register_cases": 9,
+  "production_top_wired": true,
+  "production_bindings": {
+    "csr_to_cva6": true,
+    "cva6_to_id_stage": true,
+    "id_stage_to_decoder": true,
+    "method": "frozen production-source binding checks, not full-core elaboration"
+  }
+}

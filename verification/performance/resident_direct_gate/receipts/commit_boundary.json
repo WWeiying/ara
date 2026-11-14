@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "state": "REAL_COMMIT_BOUNDARY_CHECKED",
+  "scope": "Short module integration: real ID/decoder, scoreboard, CSR buffer, commit_stage, CSR regfile, controller and acc_dispatcher. Scalar operands/delayed writeback and request-triggered accelerator response are BFMs. Not a whole-core, MMU, accelerator datapath, SoC or board test.",
+  "config": {
+    "xlen": 64,
+    "rvh": false,
+    "issue_ports": 1,
+    "commit_ports": 2,
+    "nr_pmp_entries": 0
+  },
+  "cases": [
+    {
+      "name": "csr_close_open_s",
+      "checks": 188,
+      "requests": 1,
+      "rejects": 1,
+      "flushes": 2,
+      "replays": 1,
+      "pops": 1,
+      "retires": 1,
+      "races": 1,
+      "waits": 3
+    },
+    {
+      "name": "csr_open_m_mret_u",
+      "checks": 227,
+      "requests": 2,
+      "rejects": 0,
+      "flushes": 2,
+      "replays": 2,
+      "pops": 2,
+      "retires": 2,
+      "races": 2,
+      "waits": 6
+    },
+    {
+      "name": "u_only_trap_sret",
+      "checks": 185,
+      "requests": 1,
+      "rejects": 1,
+      "flushes": 2,
+      "replays": 1,
+      "pops": 1,
+      "retires": 1,
+      "races": 0,
+      "waits": 3
+    },
+    {
+      "name": "s_only_trap_sret_mret",
+      "checks": 313,
+      "requests": 1,
+      "rejects": 3,
+      "flushes": 3,
+      "replays": 1,
+      "pops": 1,
+      "retires": 1,
+      "races": 2,
+      "waits": 3
+    }
+  ],
+  "totals": {
+    "checks": 913,
+    "requests": 5,
+    "rejects": 5,
+    "flushes": 9,
+    "replays": 5,
+    "pops": 5,
+    "retires": 5,
+    "races": 5,
+    "waits": 15
+  },
+  "artifacts": {
+    "simv": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_gate_commit_20261114_cb01/build/simv",
+      "sha256": "b21373a29916e3a2c195c93918b617463dcb8cd20e99a950be11f200d252a032"
+    },
+    "compile_log": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_gate_commit_20261114_cb01/build/console.log",
+      "sha256": "472085655acfb246f63e9d7206c03e1289f28736343d42d0ff6b5df8db6529c0"
+    },
+    "simulation_log": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_gate_commit_20261114_cb01/simulation/console.log",
+      "sha256": "5d666f6c8e3819bd72308a188d0388f8e48c5a0ed197aa04db161dae09390177"
+    },
+    "events_csv": {
+      "path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_gate_commit_20261114_cb01/simulation/events.csv",
+      "sha256": "071667558d39273eebd6f21e482326e1620df5359e8774e52802118ecc88d079"
+    }
+  },
+  "pins": {
+    "source_pins_sha256": "71effdf7db9f2372729f4100fbf8039f7ee46b2a0f66d35bd1aeb51f2769b925",
+    "pre_match": true,
+    "post_match": true
+  },
+  "whole_core_tested": false,
+  "board_tested": false,
+  "automatic_retry": false,
+  "event_rows": 318
+}

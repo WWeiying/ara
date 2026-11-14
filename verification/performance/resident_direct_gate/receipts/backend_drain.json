@@ -1,0 +1,66 @@
+{
+  "state": "BACKEND_ONLY_CHECKED",
+  "gate_tested": false,
+  "linux_tested": false,
+  "board_tested": false,
+  "automatic_retry": false,
+  "actual_sram_writes_checked": true,
+  "stored_results_guards_source_checked": true,
+  "cases": {
+    "row": {
+      "arch_seq": 4,
+      "vid": 0,
+      "first_offer": 18234,
+      "response": 18236,
+      "csr_first_offer": 18237,
+      "last_sram_write": 18260,
+      "backend_done": 18261,
+      "csr_response": 18262,
+      "save_first_offer": 18263,
+      "actual_write_events": 32,
+      "checked_result_bytes": 256
+    },
+    "column": {
+      "arch_seq": 10,
+      "vid": 0,
+      "first_offer": 18383,
+      "response": 18385,
+      "csr_first_offer": 18386,
+      "last_sram_write": 18442,
+      "backend_done": 18443,
+      "csr_response": 18444,
+      "save_first_offer": 18445,
+      "actual_write_events": 64,
+      "checked_result_bytes": 512
+    },
+    "qk": {
+      "arch_seq": 16,
+      "vid": 0,
+      "first_offer": 18582,
+      "response": 20831,
+      "csr_first_offer": 20832,
+      "last_sram_write": 20825,
+      "backend_done": 20831,
+      "csr_response": 20833,
+      "save_first_offer": 20834,
+      "actual_write_events": 64,
+      "checked_result_bytes": 512
+    },
+    "pv": {
+      "arch_seq": 24,
+      "vid": 0,
+      "first_offer": 21110,
+      "response": 22261,
+      "csr_first_offer": 22262,
+      "last_sram_write": 22255,
+      "backend_done": 22261,
+      "csr_response": 22263,
+      "save_first_offer": 22264,
+      "actual_write_events": 64,
+      "checked_result_bytes": 512
+    }
+  },
+  "post_pins_match": true,
+  "protocol_sha256": "7d9788674262fbd1eff8580cbf984ce20a3be29b0958957b39dff125a2b8bdeb",
+  "elapsed_seconds": 36.782985262572765
+}
