@@ -792,12 +792,16 @@
         "core/cva6_mmu/cva6_ptw.sv",
         "core/decoder.sv",
         "core/fpu_wrap.sv",
+        "core/id_stage.sv",
         "core/include/ariane_pkg.sv",
         "core/include/riscv_pkg.sv",
         "core/issue_read_operands.sv",
         "core/issue_stage.sv",
         "core/load_unit.sv",
         "core/scoreboard.sv"
+      ],
+      "post_snapshot_patches": [
+        "provenance/resident_direct_20261114/cva6-akv-direct-gate.patch"
       ]
     },
     "dram_rtl_sim": {
@@ -1995,7 +1999,7 @@
     },
     {
       "file": "rtl/cva6/core/cva6.sv",
-      "source_sha256": "e108b9d62b51102f83fdfcfbe0f64cf9ff8588226cb600933803827efbee8378"
+      "source_sha256": "276f2105fc2cc93ef5a0bf933312f18b771253696e5e0f9a9c1cdff342d18372"
     },
     {
       "file": "rtl/cva6/core/alu.sv",
@@ -2023,11 +2027,11 @@
     },
     {
       "file": "rtl/cva6/core/csr_regfile.sv",
-      "source_sha256": "c45c93f66eabad7dda244bad3246d62fa42488a3644675e997e5a9ff911988bb"
+      "source_sha256": "ec23f6c55860b914e061c1f3a84ee7065f1fdc0b85a44385eab57ef19e11db39"
     },
     {
       "file": "rtl/cva6/core/decoder.sv",
-      "source_sha256": "8384dd1daf87749ff993eaf169953f07720e7963da483350cdc4f7b819d7970d"
+      "source_sha256": "964839148a7c9f64d50db59b0948078f77409b7dbf7f4b126ef23311ec2487e1"
     },
     {
       "file": "rtl/cva6/core/ex_stage.sv",
@@ -2047,7 +2051,7 @@
     },
     {
       "file": "rtl/cva6/core/id_stage.sv",
-      "source_sha256": "8349e4a71581e204a519ff956a09eb0d12f0027bfa599d6239cc23de9e8744bc"
+      "source_sha256": "a821f1d222f1096e4e04f90e0dc53ca8b7ac831d7ec7524ff2323e7763beb109"
     },
     {
       "file": "rtl/cva6/core/issue_read_operands.sv",
@@ -3657,5 +3661,13 @@
     "hardware_accepted": false,
     "dependency_policy": "Bender.lock object checkouts plus hash-registered patches; no source working deltas",
     "resident_linux_admission": "Not granted; real platform provider and private-state protection still required"
+  },
+  "resident_direct_migration": {
+    "date": "2026-11-14",
+    "main_commit": "4a7361f51ba5447a616217dad1c8e72e3ee2b45b",
+    "record": "provenance/resident_direct_20261114/migration.json",
+    "source_only": true,
+    "bitstream_updated": false,
+    "hardware_accepted": false
   }
 }

@@ -71,6 +71,8 @@ module csr_regfile
     output logic [CVA6Cfg.VLEN-1:0] trap_vector_base_o,
     // Current privilege level the CPU is in - EX_STAGE
     output riscv::priv_lvl_t priv_lvl_o,
+    // AKV decode permission at the execution privilege, never MPRV's memory privilege.
+    output logic akv_access_allowed_o,
     // Current virtualization mode state the CPU is in - EX_STAGE
     output logic v_o,
     // Imprecise FP exception from the accelerator (fcsr.fflags format) - ACC_DISPATCHER
@@ -301,6 +303,8 @@ module csr_regfile
   logic [CVA6Cfg.XLEN-1:0] fence_t_sel_q, fence_t_sel_d;
   logic [CVA6Cfg.XLEN-1:0] fence_t_ceil_q, fence_t_ceil_d;
   logic [CVA6Cfg.XLEN-1:0] acc_cons_q, acc_cons_d;
+  localparam logic [11:0] CSR_SAKVCTL = 12'h5c0;
+  logic [2:0] sakvctl_q, sakvctl_d;
 
   logic wfi_d, wfi_q;
 
@@ -335,6 +339,11 @@ module csr_regfile
   // Assignments
   // ----------------
   assign csr_addr = riscv::csr_t'(csr_addr_i);
+  // Reset STRICT=0 preserves the legacy path; M-mode is always trusted.
+  assign akv_access_allowed_o = !sakvctl_q[0] ||
+      priv_lvl_o == riscv::PRIV_LVL_M ||
+      (priv_lvl_o == riscv::PRIV_LVL_S && sakvctl_q[2]) ||
+      (priv_lvl_o == riscv::PRIV_LVL_U && sakvctl_q[1]);
   assign conv_csr_addr = (CVA6Cfg.RVH) ? riscv::convert_vs_access_csr(
       (riscv::csr_t'(csr_addr_i)), v_q
   ) : csr_addr;
@@ -483,6 +492,11 @@ module csr_regfile
           csr_rdata = clic_mode_o ? {{CVA6Cfg.XLEN - 8{1'b0}}, vsintthresh_q} : '0; // vsintthresh reads 0 in CLINT mode
         else read_access_exception = 1'b1;
         // supervisor registers
+        CSR_SAKVCTL: begin
+          if (CVA6Cfg.RVS)
+            csr_rdata = CVA6Cfg.XLEN'(64'h414b560100000000) | CVA6Cfg.XLEN'(sakvctl_q);
+          else read_access_exception = 1'b1;
+        end
         riscv::CSR_SSTATUS: begin
           if (CVA6Cfg.RVS) csr_rdata = mstatus_extended & SMODE_STATUS_READ_MASK[CVA6Cfg.XLEN-1:0];
           else read_access_exception = 1'b1;
@@ -1107,6 +1121,7 @@ module csr_regfile
     dcache_d = dcache_q;
     icache_d = icache_q;
     acc_cons_d = acc_cons_q;
+    sakvctl_d = sakvctl_q;
 
     if (CVA6Cfg.RVH) begin
       vstvec_d                 = vstvec_q;
@@ -1151,6 +1166,13 @@ module csr_regfile
     // check for correct access rights and that we are writing
     if (csr_we) begin
       unique case (conv_csr_addr.address)
+        CSR_SAKVCTL: begin
+          if (CVA6Cfg.RVS) begin
+            sakvctl_d = csr_wdata[2:0];
+            // Re-decode all younger work with the committed permission bits.
+            flush_o = 1'b1;
+          end else update_access_exception = 1'b1;
+        end
         // Floating-Point
         riscv::CSR_FFLAGS: begin
           if (CVA6Cfg.FpPresent && !(mstatus_q.fs == riscv::Off || (CVA6Cfg.RVH && v_q && vsstatus_q.fs == riscv::Off))) begin
@@ -2850,6 +2872,7 @@ module csr_regfile
       icache_q        <= {{CVA6Cfg.XLEN - 1{1'b0}}, 1'b1};
       mcountinhibit_q <= '0;
       acc_cons_q      <= {{CVA6Cfg.XLEN - 1{1'b0}}, CVA6Cfg.EnableAccelerator};
+      sakvctl_q       <= '0;
       fence_t_pad_q   <= {CVA6Cfg.XLEN{1'b0}};
       fence_t_sel_q   <= {CVA6Cfg.XLEN{1'b0}};
       fence_t_ceil_q  <= {CVA6Cfg.XLEN{1'b0}};
@@ -2947,6 +2970,7 @@ module csr_regfile
       icache_q        <= icache_d;
       mcountinhibit_q <= mcountinhibit_d;
       acc_cons_q      <= acc_cons_d;
+      sakvctl_q       <= sakvctl_d;
       fence_t_pad_q   <= fence_t_pad_d;
       fence_t_sel_q   <= fence_t_sel_d;
       fence_t_ceil_q  <= fence_t_ceil_d;

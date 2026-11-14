@@ -68,6 +68,8 @@ module decoder
     input logic [CVA6Cfg.XLEN-1:0] clic_irq_cause_i,
     // Current privilege level - CSR_REGFILE
     input riscv::priv_lvl_t priv_lvl_i,
+    // Optional for standalone decoders; integrated cores connect SAKVCTL.
+    input logic akv_access_allowed_i = 1'b1,
     // Current virtualization mode - CSR_REGFILE
     input logic v_i,
     // Is debug mode - CSR_REGFILE
@@ -110,6 +112,9 @@ module decoder
   logic check_fprm;
   riscv::instruction_t instr;
   assign instr = riscv::instruction_t'(instruction_i);
+  logic akv_access_denied;
+  assign akv_access_denied = instruction_i[6:0] == 7'h5b &&
+      instruction_i[14:12] >= 3'd2 && !akv_access_allowed_i;
   // transformed instruction
   logic [31:0] tinst;
   // --------------------
@@ -1688,6 +1693,19 @@ module decoder
         is_control_flow_instr_o = acc_is_control_flow_instr;
       end
     end
+    // Apply after both first-pass and generic CVXIF routing, before any issue.
+    // funct3 0/1 are QBS, not AKV; ordinary RVV has a different opcode.
+    if (akv_access_denied) begin
+      instruction_o.fu = NONE;
+      instruction_o.op = ariane_pkg::ADD;
+      instruction_o.rs1 = '0;
+      instruction_o.rs2 = '0;
+      instruction_o.rd = '0;
+      instruction_o.vfp = 1'b0;
+      illegal_instr = 1'b1;
+      is_control_flow_instr_o = 1'b0;
+      imm_select = NOIMM;
+    end
   end
 
   // --------------------------------
@@ -1798,7 +1816,7 @@ module decoder
       // check here if we decoded an invalid instruction or if the compressed decoder already decoded
       // a invalid instruction
       if (illegal_instr || is_illegal_i) begin
-        if (!CVA6Cfg.CvxifEn) instruction_o.ex.valid = 1'b1;
+        if (akv_access_denied || !CVA6Cfg.CvxifEn) instruction_o.ex.valid = 1'b1;
         // we decoded an illegal exception here
         instruction_o.ex.cause = riscv::ILLEGAL_INSTR;
       end else if (CVA6Cfg.RVH && virtual_illegal_instr) begin

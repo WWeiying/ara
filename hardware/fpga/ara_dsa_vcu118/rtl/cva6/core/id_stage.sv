@@ -57,6 +57,8 @@ module id_stage #(
     output logic [CVA6Cfg.NrIssuePorts-1:0] rvfi_is_compressed_o,
     // Current privilege level - CSR_REGFILE
     input riscv::priv_lvl_t priv_lvl_i,
+    // Default retains compatibility for standalone ID-stage users.
+    input logic akv_access_allowed_i = 1'b1,
     // Current virtualization mode - CSR_REGFILE
     input logic v_i,
     // Floating point extension status - CSR_REGFILE
@@ -335,6 +337,7 @@ module id_stage #(
         .branch_predict_i          (fetch_entry_i[i].branch_predict),
         .ex_i                      (fetch_entry_i[i].ex),
         .priv_lvl_i                (priv_lvl_i),
+        .akv_access_allowed_i      (akv_access_allowed_i),
         .v_i                       (v_i),
         .debug_mode_i              (debug_mode_i),
         .fs_i,

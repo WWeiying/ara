@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "state": "SOURCE_CANDIDATE_NOT_NEW_BITSTREAM_OR_BOARD_ACCEPTANCE",
+  "date": "2026-11-14",
+  "main_commit": "4a7361f51ba5447a616217dad1c8e72e3ee2b45b",
+  "base_fpga_commit": "7b4eea960826d02a3da25d5f97542926f1e700c0",
+  "base_manifest_sha256": "ad526b98cfe9ecf6f3268f4d4a974602654909b02b5150dfcd5fa9a2ec18d3dd",
+  "base_sums_sha256": "950acb6167841c179ee722b619df993778906e8cf3a81d1be6fa5409427e6722",
+  "source_contract": "baseline-current-hashes.json",
+  "applied_patch": "cva6-akv-direct-gate.patch",
+  "patch_sha256": "df5ec3839cca84929468683c502e98e6cb8233771e05e5d2bfbe22dda7e6430a",
+  "files": [
+    "rtl/cva6/core/csr_regfile.sv",
+    "rtl/cva6/core/decoder.sv",
+    "rtl/cva6/core/cva6.sv",
+    "rtl/cva6/core/id_stage.sv"
+  ],
+  "dependency_policy": "Existing sealed FPGA package plus exact reviewed gate delta; no other dirty dependency or SDK changes imported",
+  "reconstruction": "Apply base provenance/cva6_local.patch to locked CVA6, then this gate patch; prerequisite patch is historical and must not be applied again",
+  "main_ara_sources_already_synchronized": 80,
+  "preserved": [
+    "FPGA overlays",
+    "dual_ddr_ethernet",
+    "50 MHz",
+    "4 Lane",
+    "VLEN1024",
+    "candidate_all",
+    "sources.tcl",
+    "constraints",
+    "SDK and software"
+  ],
+  "csr": {
+    "address": "0x5c0",
+    "signature_upper32": "0x414b5601",
+    "reset_strict": 0,
+    "strict_covers_native_and_resident_akv": true
+  },
+  "validation_scope": "Inherited focused VCS module evidence only; new full FPGA static elaboration recorded separately",
+  "required_kernel_sha256": "d52d67d62a6d97c61684ede19f406dd72e805c8b606538c916190cab2aea50d1",
+  "software_handoff": "software/llama/platform/linux/direct/FULL_MODEL_HANDOFF.md",
+  "software_handoff_sha256_at_sync": "4fae2ac2e0bb3a7ee51e1a411a997e6729a5d8c9b3e0f8aff00007e0f5bb8880",
+  "software_deployed": false,
+  "vivado_started": false,
+  "board_modified": false
+}

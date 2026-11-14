@@ -382,6 +382,7 @@ module cva6
   // Signals connecting more than one module
   // ------------------------------------------
   riscv::priv_lvl_t                             priv_lvl;
+  logic                                        akv_access_allowed;
   logic                                         v;
   exception_t                                   ex_commit;  // exception from commit stage
   bp_resolve_t                                  resolved_branch;
@@ -777,6 +778,7 @@ module cva6
       .rvfi_is_compressed_o(rvfi_is_compressed),
 
       .priv_lvl_i        (priv_lvl),
+      .akv_access_allowed_i(akv_access_allowed),
       .v_i               (v),
       .fs_i              (fs),
       .vfs_i             (vfs),
@@ -1211,6 +1213,7 @@ module cva6
       .eret_o                  (eret),
       .trap_vector_base_o      (trap_vector_base_commit_pcgen),
       .priv_lvl_o              (priv_lvl),
+      .akv_access_allowed_o    (akv_access_allowed),
       .v_o                     (v),
       .acc_fflags_ex_i         (acc_resp_fflags),
       .acc_fflags_ex_valid_i   (acc_resp_fflags_valid),

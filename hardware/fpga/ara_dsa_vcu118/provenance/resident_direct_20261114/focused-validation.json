@@ -1,0 +1,98 @@
+{
+  "state": "WIRED_CANDIDATE_REAL_ID_STAGE_INTEGRATION_CHECKED",
+  "production_files": [
+    "core/csr_regfile.sv",
+    "core/decoder.sv",
+    "core/cva6.sv",
+    "core/id_stage.sv"
+  ],
+  "initial_hashes": {
+    "core/csr_regfile.sv": "c45c93f66eabad7dda244bad3246d62fa42488a3644675e997e5a9ff911988bb",
+    "core/decoder.sv": "8384dd1daf87749ff993eaf169953f07720e7963da483350cdc4f7b819d7970d",
+    "core/cva6.sv": "e108b9d62b51102f83fdfcfbe0f64cf9ff8588226cb600933803827efbee8378",
+    "core/id_stage.sv": "8349e4a71581e204a519ff956a09eb0d12f0027bfa599d6239cc23de9e8744bc"
+  },
+  "candidate_hashes": {
+    "core/csr_regfile.sv": "ec23f6c55860b914e061c1f3a84ee7065f1fdc0b85a44385eab57ef19e11db39",
+    "core/decoder.sv": "964839148a7c9f64d50db59b0948078f77409b7dbf7f4b126ef23311ec2487e1",
+    "core/cva6.sv": "276f2105fc2cc93ef5a0bf933312f18b771253696e5e0f9a9c1cdff342d18372",
+    "core/id_stage.sv": "a821f1d222f1096e4e04f90e0dc53ca8b7ac831d7ec7524ff2323e7763beb109"
+  },
+  "patch": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_direct_rtl_gate_20261113_02/production-initial-to-current.patch",
+  "patch_sha256": "df5ec3839cca84929468683c502e98e6cb8233771e05e5d2bfbe22dda7e6430a",
+  "task_baseline_includes_preexisting_dirty_deltas": true,
+  "initial_id_stage_diff_empty": true,
+  "patch_roundtrip_exact": true,
+  "csr_contract": {
+    "address": "0x5c0",
+    "signature_upper32": "0x414b5601",
+    "strict": 1,
+    "u_allow": 2,
+    "s_allow": 4,
+    "reset_low3": 0,
+    "gate": "opcode 0x5b funct3>=2 only; actual execution privilege; M trusted; no late asynchronous gate",
+    "csr_writes_flush_younger": true
+  },
+  "topology": "csr_regfile.akv_access_allowed_o -> cva6.akv_access_allowed -> id_stage.akv_access_allowed_i -> decoder.akv_access_allowed_i",
+  "focused_test": {
+    "state": "REAL_MODULE_GATE_CHECKED",
+    "whole_core_tested": false,
+    "soc_tested": false,
+    "board_tested": false,
+    "automatic_retry": false,
+    "decode_cases": 24672,
+    "blocked_cases": 3072,
+    "noissue_cases": 25,
+    "csr_cases": 150,
+    "flush_cases": 2,
+    "requests": 1,
+    "checks": 77878,
+    "post_pins_match": true,
+    "simv_sha256": "15c9bd0bd8813245b6a9f30755afb91b0af91e9787354b98e169b0619225e98a",
+    "log_sha256": "12c89076bf3735ef496c0ccfbcc9432fe9b65d165badc32c1a68e9781ced25af",
+    "id_stage_tested": true,
+    "id_stage_decode_cases": 24672,
+    "id_stage_register_cases": 9,
+    "production_top_wired": true,
+    "production_bindings": {
+      "csr_to_cva6": true,
+      "cva6_to_id_stage": true,
+      "id_stage_to_decoder": true,
+      "method": "frozen production-source binding checks, not full-core elaboration"
+    }
+  },
+  "test_output": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_direct_rtl_gate_unit_20261113_04",
+  "actual_id_stage_instance": "akv_gate_tb.id_path; production id_stage.sv + compressed_decoder.sv + decoder.sv",
+  "production_top_binding_check": {
+    "csr_to_cva6": true,
+    "cva6_to_id_stage": true,
+    "id_stage_to_decoder": true,
+    "method": "frozen production-source binding checks, not full-core elaboration"
+  },
+  "limitations": [
+    "No whole-cva6 elaboration or whole-core/SoC execution",
+    "Runtime module test is RV64 no-H, single-issue target configuration",
+    "No Linux SAKVCTL/extable runtime probe tested",
+    "No FPGA/Vivado/synthesis/board run"
+  ],
+  "evidence_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_direct_rtl_gate_20261113_02/production-initial-to-current.patch": "df5ec3839cca84929468683c502e98e6cb8233771e05e5d2bfbe22dda7e6430a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_direct_rtl_gate_20261113_02/production-source-pins.json": "31e5d2f5ff6c99daaf91590af156df7f44d6dee32d3416235bc294a8f65520cb",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_direct_rtl_gate_20261113_02/baseline-hashes.json": "77556a7c0f2f3174b793b79f562204670590d0a10a04c85727507764245b2409",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_direct_rtl_gate_20261113_02/production-delta.json": "4fe583ac8599b88195fc63053102629a2b726972e2ede88b3b3a91e0a49116f9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_direct_rtl_gate_unit_20261113_04/result.json": "795c8ec410e401e25abef63babd1996280285b50b1730ae0296b2ff3e1445d95",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_direct_rtl_gate_unit_20261113_04/source-pins.json": "bf24c6de7c6554551b5f0f58ae5c00e29f3a1f5ccccca814329d40cb36cea750",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_direct_rtl_gate_unit_20261113_04/plan.json": "2c5dae3e574669cc6b086b5929d6afa25315ace4a002f9aaec5e42697624b1e4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_direct_rtl_gate_unit_20261113_04/build/console.log": "18a2a4f8d8f2747f2e68f0ea6ed2bc61bf2d8275c81860a94bf60978fc042f57",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_direct_rtl_gate_unit_20261113_04/simulation/console.log": "12c89076bf3735ef496c0ccfbcc9432fe9b65d165badc32c1a68e9781ced25af"
+  },
+  "prior_exports_preserved": [
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_direct_rtl_gate_20261113_01"
+  ],
+  "prior_test_outputs_preserved": [
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_direct_rtl_gate_unit_20261113_01",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_direct_rtl_gate_unit_20261113_02",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/resident_direct_rtl_gate_unit_20261113_03"
+  ],
+  "automatic_retry": false
+}
