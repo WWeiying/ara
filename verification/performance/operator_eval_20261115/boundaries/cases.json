@@ -1,0 +1,31 @@
+{
+  "sdk_commit": "dbe2b78817ef45b912444afcb85ad6e01a2be135",
+  "llama_commit": "a2b7f30da9aadf88b0a068c447383ed2e26ee867",
+  "cases": [
+    {
+      "id": "qbs_m2_n35_full_k2048",
+      "m": 2,
+      "n": 35,
+      "k": 2048,
+      "segment": 0,
+      "trials": 2,
+      "profile": 1
+    },
+    {
+      "id": "qbs_m3_n35_segment3_full_k2048",
+      "m": 3,
+      "n": 35,
+      "k": 2048,
+      "segment": 3,
+      "trials": 2,
+      "profile": 1
+    }
+  ],
+  "provenance": "Real Qwen3 attn_q: first 2/3 distinct prefill rows, first 35 weight channels, all K2048. Software R4 segment=3 is an explicit SDK storage/tiling contract, not an artificially lowered hardware K limit.",
+  "d256": {
+    "state": "GAP_NOT_RUNNABLE",
+    "capture": "/home/wangwy/llama/captures/gemma3-1b-q4km-attention-d256-head0-meta-20260901",
+    "available": "Real Gemma D256, four query heads / one KV head, active KV17, capacity256, captured scale1 and original golden; original atol0.004 rtol0.002 retained",
+    "gap": "Current registered attention_real capture reader requires D64/128 and padded128 strides. Current exact ordered tile64/expf/flags harness is not the legacy segmented D256 online-FP16 schedule. Need isolated D256 adapter and independent arithmetic/flags/golden requalification; no old RTL PASS or newly fabricated golden used."
+  }
+}

@@ -2,12 +2,14 @@
     .text
     .option push
     .option arch,+f,+v
+    // Both descriptors place returned fflags at byte 28.
+    .macro resident_entry name, scalar
     .p2align 2
-    .globl ara_resident_linux_execute
-    .type ara_resident_linux_execute,@function
-ara_resident_linux_execute:
+    .globl \name
+    .type \name,@function
+\name:
     csrr t0, vstart
-    bnez t0, .Lbad_vstart
+    bnez t0, .Lbad_vstart\@
     addi sp, sp, -48
     sd ra, 0(sp)
     frcsr t0
@@ -15,14 +17,14 @@ ara_resident_linux_execute:
     csrr t0, vcsr
     sd t0, 16(sp)
     sd a1, 24(sp)
-    call ara_resident_linux_execute_scalar
+    call \scalar
     ld t0, 8(sp)
-    bnez a0, .Lrestore
+    bnez a0, .Lrestore\@
     ld t1, 24(sp)
     lwu t1, 28(t1)
     andi t1, t1, 31
     or t0, t0, t1
-.Lrestore:
+.Lrestore\@:
     csrw fcsr, t0
     ld t0, 16(sp)
     csrw vcsr, t0
@@ -30,9 +32,12 @@ ara_resident_linux_execute:
     ld ra, 0(sp)
     addi sp, sp, 48
     ret
-.Lbad_vstart:
+.Lbad_vstart\@:
     li a0, -34
     ret
-    .size ara_resident_linux_execute, .-ara_resident_linux_execute
+    .size \name, .-\name
+    .endm
+    resident_entry ara_resident_linux_execute, ara_resident_linux_execute_scalar
+    resident_entry ara_resident_linux_execute_batch, ara_resident_linux_execute_batch_scalar
     .option pop
     .section .note.GNU-stack,"",@progbits

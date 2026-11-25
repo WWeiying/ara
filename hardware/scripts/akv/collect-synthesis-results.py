@@ -21,6 +21,15 @@ CORNER = {
     "clock_period_ns": 1.0,
     "setup_uncertainty_ns": 0.15,
 }
+INTEGRATED_SETUP_UNCERTAINTIES = (0.15, 0.20)
+
+
+def synthesis_corner(mode, clock, uncertainty):
+    allowed = (INTEGRATED_SETUP_UNCERTAINTIES if mode == "integrated"
+               else (CORNER["setup_uncertainty_ns"],))
+    if clock != CORNER["clock_period_ns"] or uncertainty not in allowed:
+        raise CollectionError(f"wrong physical corner: clock={clock}, uncertainty={uncertainty}")
+    return dict(CORNER, clock_period_ns=clock, setup_uncertainty_ns=uncertainty)
 # Counts are physical instances, not area or measured timing evidence.
 AKV_SRAM_ORGANIZATIONS = {
     "legacy_v1_v2_64x256": (20, 4, 16, 0, 327680),
@@ -244,8 +253,7 @@ def validate_metrics(mode: str, values: dict[str, str], area_rpt: Path) -> dict[
 
     clock = required_float(values, "clock_period_ns")
     uncertainty = required_float(values, "clock_uncertainty_ns")
-    if clock != CORNER["clock_period_ns"] or uncertainty != CORNER["setup_uncertainty_ns"]:
-        raise CollectionError(f"wrong physical corner: clock={clock}, uncertainty={uncertainty}")
+    synthesis_corner(mode, clock, uncertainty)
 
     macro_count = required_int(values, "akv_sram_macro_count")
     v1_count = required_int(values, "akv_v1_sram_macro_count")
@@ -390,7 +398,7 @@ def collect(spec: CollectionSpec) -> dict[str, object]:
         "schema_version": 1,
         "status": "PASS",
         "mode": spec.mode,
-        "corner": CORNER,
+        "corner": synthesis_corner(spec.mode, metrics["clock_period_ns"], metrics["setup_uncertainty_ns"]),
         "git_commit": subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=spec.root, text=True
         ).strip(),
@@ -415,9 +423,13 @@ def validate_summary(path: Path, expected_mode: str, root: Path = ROOT) -> dict[
         summary.get("schema_version") != 1
         or summary.get("status") != "PASS"
         or summary.get("mode") != expected_mode
-        or summary.get("corner") != CORNER
     ):
-        raise CollectionError("synthesis summary header or corner is invalid")
+        raise CollectionError("synthesis summary header is invalid")
+    metrics = summary.get("metrics", {})
+    corner = synthesis_corner(expected_mode, metrics.get("clock_period_ns"),
+                              metrics.get("setup_uncertainty_ns"))
+    if summary.get("corner") != corner:
+        raise CollectionError("synthesis summary corner disagrees with reported metrics")
 
     recorded_filelist = summary.get("filelist", {})
     filelist = resolve_recorded(str(recorded_filelist.get("path", "")), root)
@@ -434,7 +446,6 @@ def validate_summary(path: Path, expected_mode: str, root: Path = ROOT) -> dict[
             raise CollectionError(f"synthesis artifact changed: {item.get('path')}")
 
     source_inputs = tuple(resolve_recorded(raw, root) for raw in summary.get("source_inputs", []))
-    metrics = summary.get("metrics", {})
     organization, _ = validate_sram_organization(metrics, "akv_sram_capacity_bits")
     observed_libraries = library_inputs(source_inputs, organization)
     recorded_libraries = {

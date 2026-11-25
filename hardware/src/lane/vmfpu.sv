@@ -452,6 +452,15 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic [63:0] qbs_mul_a, qbs_mul_b;
   logic [127:0] qbs_mul_product;
 
+`ifdef ARA_SHARED_SIMD_MUL
+`ifdef ARA_TIMING_SHARED_MUL_REGISTER_EW8
+  localparam bit SharedMulRegisterEw8 = 1'b1;
+`else
+  localparam bit SharedMulRegisterEw8 = 1'b0;
+`endif
+`else
+  localparam bit SharedMulRegisterEw8 = 1'b0;
+`endif
   localparam bit QbsLaneMulEnabled = EnableQbsLaneMul && QbsLaneMulLatencySupported;
   assign qbs_mul_requested = QbsLaneMulEnabled && qbs_mul_lease_i;
   assign qbs_mul_owned_o = qbs_mul_owned;
@@ -461,7 +470,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       !resident_native_offer && !(resident_acquire_i === 1'b1) && clkgate_en_q;
 
   if (QbsLaneMulEnabled) begin : gen_qbs_mul_borrow
-    qbs_lane_mul_borrow i_borrow (
+    qbs_lane_mul_borrow #(.RegisteredMul(SharedMulRegisterEw8)) i_borrow (
       .clk_i, .rst_ni,
       .lease_i(qbs_mul_requested), .native_quiescent_i(qbs_mul_quiescent),
       .owned_o(qbs_mul_owned), .valid_i(qbs_mul_valid_i), .ready_o(qbs_mul_ready_o),
@@ -580,7 +589,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       if (vmul_simd_in_valid_q[s]) shared_mul_sew = 2'(s);
     if (qbs_mul_owned) shared_mul_sew = 2'(EW8);
   end
-  simd_mul_shared #(.FixPtSupport(FixPtSupport), .Bypass8(1'b1)) i_shared_mul (
+  simd_mul_shared #(.FixPtSupport(FixPtSupport), .Bypass8(!SharedMulRegisterEw8)) i_shared_mul (
     .clk_i(clk_i_gated), .rst_ni,
     .operand_a_i(qbs_mul_owned ? qbs_mul_a : vmul_simd_op_a_q),
     .operand_b_i(qbs_mul_owned ? qbs_mul_b : vmul_simd_op_b_q),
@@ -1403,9 +1412,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       control:   vfpu_control_in
     };
 
-    elen_t bulk_result;
-    status_t bulk_status;
-    vfpu_tag_t bulk_tag_in, bulk_tag_out;
+    elen_t bulk_result, bulk_addmul_result;
+    status_t bulk_status, bulk_addmul_status;
+    vfpu_tag_t bulk_tag_in, bulk_tag_out, bulk_addmul_tag;
     fpu_mask_t resident_simd_mask;
     logic bulk_in_ready, bulk_out_valid;
     logic resident_rm_legal, resident_format_legal, resident_fp32_q;
@@ -1448,9 +1457,18 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           !resident_valid_i && !vfpu_busy && !vfpu_busy_q && !bulk_out_valid;
       assign resident_ready_o = resident_owned_q && resident_rm_legal && bulk_in_ready;
       assign resident_result_valid_o = resident_owned_q && bulk_out_valid;
-      assign resident_result_o = resident_result_valid_o ? bulk_result : '0;
-      assign resident_result_tag_o = resident_result_valid_o ? bulk_tag_out.control[3:0] : '0;
-      assign resident_result_flags_o = resident_result_valid_o ? bulk_status : '0;
+      if (SharedFma) begin : gen_addmul_return
+        // Ownership drains native opgroups and only injects FMADD. Keep valid,
+        // ready, grant and busy on the shared arbiter, but exclude cast/native
+        // payload selection from the resident accumulation datapath.
+        assign resident_result_o = resident_result_valid_o ? bulk_addmul_result : '0;
+        assign resident_result_tag_o = resident_result_valid_o ? bulk_addmul_tag.control[3:0] : '0;
+        assign resident_result_flags_o = resident_result_valid_o ? bulk_addmul_status : '0;
+      end else begin : gen_original_return
+        assign resident_result_o = resident_result_valid_o ? bulk_result : '0;
+        assign resident_result_tag_o = resident_result_valid_o ? bulk_tag_out.control[3:0] : '0;
+        assign resident_result_flags_o = resident_result_valid_o ? bulk_status : '0;
+      end
 
       always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
@@ -1471,6 +1489,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           else $error("VMFPU resident ownership handshakes overlap");
         assert (!(resident_result_valid_o && vfpu_out_valid))
           else $error("VMFPU resident/native return overlap");
+        if (resident_result_valid_o)
+          assert ({resident_result_o, resident_result_tag_o, resident_result_flags_o} ===
+                  {bulk_result, bulk_tag_out.control[3:0], bulk_status})
+            else $error("VMFPU resident payload differs from original fpnew return");
         if (resident_owned_q) begin
           assert (resident_fp32_i === resident_fp32_q)
             else $error("VMFPU resident format changed during ownership");
@@ -1539,6 +1561,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       .result_o      (bulk_result    ),
       .status_o      (bulk_status    ),
       .tag_o         (bulk_tag_out   ),
+      .exclusive_addmul_i(resident_owned_q),
+      .addmul_result_o(bulk_addmul_result),
+      .addmul_status_o(bulk_addmul_status),
+      .addmul_tag_o  (bulk_addmul_tag ),
       .out_valid_o   (bulk_out_valid ),
       .out_ready_i   (resident_owned_q ? resident_result_ready_i : vfpu_out_ready),
       .busy_o        (vfpu_busy      )

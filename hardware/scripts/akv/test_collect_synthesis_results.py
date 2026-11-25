@@ -195,6 +195,12 @@ class CollectSynthesisResultsTest(unittest.TestCase):
         metrics = MODULE.validate_metrics("integrated", values, self.area_rpt)
         self.assertEqual(metrics["design_macro_area_um2"], 1500.0)
         self.assertEqual(metrics["design_logic_area_um2"], 500.0)
+        values["clock_uncertainty_ns"] = "0.20"
+        metrics = MODULE.validate_metrics("integrated", values, self.area_rpt)
+        self.assertEqual(metrics["setup_uncertainty_ns"], 0.20)
+        values["clock_uncertainty_ns"] = "0.18"
+        with self.assertRaisesRegex(MODULE.CollectionError, "wrong physical corner"):
+            MODULE.validate_metrics("integrated", values, self.area_rpt)
 
 
 if __name__ == "__main__":

@@ -40,3 +40,29 @@ akv_experimental_resident_qk:
     .size akv_experimental_resident_qk, .-akv_experimental_resident_qk
     .option pop
     .section .note.GNU-stack,"",@progbits
+
+    .text
+    .option push
+    .option norvc
+    .option norelax
+    .p2align 2
+    .globl akv_experimental_resident_qk_prepared
+    .type akv_experimental_resident_qk_prepared,@function
+// a0=scores, a1=T, a2=H, a3=validated QK control.
+akv_experimental_resident_qk_prepared:
+    mv              t0, a0
+    mv              t1, a1
+    mv              t2, a2
+    mv              a0, a3
+    .word           0x0605705b
+    vsetvli         zero, t1, e32, m2, ta, ma
+    vse32.v         v0, (t0)
+    li              t3, 1
+    beq             t2, t3, .Lprepared_qk_done
+    addi            t0, t0, 256
+    vse32.v         v2, (t0)
+.Lprepared_qk_done:
+    ret
+    .size akv_experimental_resident_qk_prepared, .-akv_experimental_resident_qk_prepared
+    .option pop
+    .section .note.GNU-stack,"",@progbits

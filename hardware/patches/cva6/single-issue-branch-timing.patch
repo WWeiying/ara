@@ -1,0 +1,73 @@
+diff --git a/core/ex_stage.sv b/core/ex_stage.sv
+index dfbdfa436..bf2c23745 100644
+--- a/core/ex_stage.sv
++++ b/core/ex_stage.sv
+@@ -248,8 +248,7 @@ module ex_stage
+   // all fixed latency units share a single issue port and a sing write
+   // port into the scoreboard. At the moment those are:
+   // 1. ALU - all operations are single cycle
+-  // 2. Branch unit: operation is single cycle, the ALU is needed
+-  //    for comparison
++  // 2. Branch unit: operation is single cycle
+   // 3. CSR: This is a small buffer which saves the address of the CSR.
+   //    The value is then re-fetched once the instruction retires. The buffer
+   //    is only a single entry deep, hence this operation will block all
+@@ -305,7 +304,7 @@ module ex_stage
+   // 1. ALU (combinatorial)
+   alu #(
+       .CVA6Cfg  (CVA6Cfg),
+-      .HasBranch(1'b1),
++      .HasBranch(CVA6Cfg.SuperscalarEn),
+       .fu_data_t(fu_data_t)
+   ) alu_i (
+       .clk_i,
+@@ -316,8 +315,32 @@ module ex_stage
+   );
+ 
+   // 2. Branch Unit (combinatorial)
+-  // we don't silence the branch unit as this is already critical and we do
+-  // not want to add another layer of logic
++  fu_data_t branch_data;
++  logic branch_comp_res;
++  if (CVA6Cfg.SuperscalarEn) begin : gen_muxed_branch
++    assign branch_data = one_cycle_data;
++    assign branch_comp_res = alu_branch_res;
++  end else begin : gen_direct_branch
++    // The sole issue port owns the operands whenever branch_valid_i is set.
++    // Keep unrelated FU enables and the arithmetic result adder off the redirect path.
++    logic equal, unsigned_lt, signed_lt;
++    assign branch_data = fu_data_i[0];
++    assign equal = branch_data.operand_a == branch_data.operand_b;
++    assign unsigned_lt = branch_data.operand_a < branch_data.operand_b;
++    assign signed_lt = unsigned_lt ^
++        (branch_data.operand_a[CVA6Cfg.XLEN-1] ^ branch_data.operand_b[CVA6Cfg.XLEN-1]);
++    always_comb begin
++      unique case (branch_data.operation)
++        EQ:      branch_comp_res = equal;
++        NE:      branch_comp_res = !equal;
++        LTS:     branch_comp_res = signed_lt;
++        LTU:     branch_comp_res = unsigned_lt;
++        GES:     branch_comp_res = !signed_lt;
++        GEU:     branch_comp_res = !unsigned_lt;
++        default: branch_comp_res = 1'b1;
++      endcase
++    end
++  end
+   branch_unit #(
+       .CVA6Cfg(CVA6Cfg),
+       .bp_resolve_t(bp_resolve_t),
+@@ -329,12 +352,12 @@ module ex_stage
+       .rst_ni,
+       .v_i,
+       .debug_mode_i,
+-      .fu_data_i         (one_cycle_data),
++      .fu_data_i         (branch_data),
+       .pc_i,
+       .is_zcmt_i,
+       .is_compressed_instr_i,
+       .branch_valid_i    (|branch_valid_i),
+-      .branch_comp_res_i (alu_branch_res),
++      .branch_comp_res_i (branch_comp_res),
+       .branch_result_o   (branch_result),
+       .branch_predict_i,
+       .resolved_branch_o,

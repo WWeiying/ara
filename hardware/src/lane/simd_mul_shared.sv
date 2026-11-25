@@ -21,18 +21,22 @@ module simd_mul_shared import ara_pkg::*; import rvv_pkg::*; #(
   output logic [1:0] sew_o
 );
   typedef struct packed {
-    logic [127:0] product;
+    logic [7:0][16:0] slice_sum;
     logic [63:0] c;
     logic [7:0] mask, sat;
     ara_op_e op;
     logic [1:0] sew;
   } payload_t;
   payload_t in_data, out_data;
+  logic [127:0] finished_product, bypass_product;
+  elen_t bypass_result;
+  logic select_bypass;
   logic [7:0] sat_mode [4];
-  simd_mul_shared_product core (
+  simd_mul_shared_product #(.FinishProduct(1'b0)) core (
     .a_i(operand_a_i), .b_i(operand_b_i), .sew_i,
     .signed_a_i(op_i inside {VMULH, VSMUL}),
-    .signed_b_i(op_i inside {VMULH, VMULHSU, VSMUL}), .product_o(in_data.product)
+    .signed_b_i(op_i inside {VMULH, VMULHSU, VSMUL}), .product_o(),
+    .slice_sum_o(in_data.slice_sum)
   );
   assign in_data.c = operand_c_i;
   assign in_data.mask = mask_i;
@@ -52,6 +56,7 @@ module simd_mul_shared import ara_pkg::*; import rvv_pkg::*; #(
     assign ready_o = ready_i;
     assign valid_o = valid_i;
     assign out_data = in_data;
+    assign select_bypass = 1'b0;
   end else begin : gen_pipe
     payload_t data_q [NumPipeRegs];
     logic [NumPipeRegs-1:0] valid_q;
@@ -60,8 +65,9 @@ module simd_mul_shared import ara_pkg::*; import rvv_pkg::*; #(
     wire empty = !(|valid_q);
     assign ready[NumPipeRegs] = ready_i;
     assign ready_o = bypass && valid_i ? empty && ready_i : ready[0];
-    assign valid_o = valid_q[NumPipeRegs-1] || (empty && bypass && valid_i);
-    assign out_data = valid_q[NumPipeRegs-1] ? data_q[NumPipeRegs-1] : in_data;
+    assign select_bypass = empty && bypass && valid_i;
+    assign valid_o = valid_q[NumPipeRegs-1] || select_bypass;
+    assign out_data = data_q[NumPipeRegs-1];
     for (genvar p=0; p<NumPipeRegs; p++) begin : gen_stage
       assign ready[p] = !valid_q[p] || ready[p+1];
       wire input_valid;
@@ -82,16 +88,51 @@ module simd_mul_shared import ara_pkg::*; import rvv_pkg::*; #(
       end
     end
   end
-  assign mask_o = out_data.mask;
-  assign vxsat_o = out_data.sat;
-  assign sew_o = out_data.sew;
-  assign product_o = out_data.product;
+  // The existing register now cuts the product's inter-slice carry path.
+  simd_mul_shared_finish i_finish (
+    .slice_sum_i(out_data.slice_sum), .sew_i(out_data.sew), .product_o(finished_product)
+  );
+  if (NumPipeRegs != 0 && Bypass8) begin : gen_fast_ew8
+    for (genvar b = 0; b < 8; b++) begin : gen_byte
+      wire [15:0] prod = in_data.slice_sum[b][15:0];
+      wire [7:0] c = operand_c_i[b*8+:8];
+      logic [7:0] res;
+      logic inc;
+      always_comb begin
+        case (vxrm_i)
+          0: inc = prod[6];
+          1: inc = prod[6] && (prod[7] || |prod[5:0]);
+          2: inc = 1'b0;
+          3: inc = !prod[7] && |prod[6:0];
+          default: inc = 1'b0;
+        endcase
+        case (op_i)
+          VMUL: res = prod[7:0];
+          VMULH, VMULHU, VMULHSU: res = prod[15:8];
+          VMACC, VMADD: res = c + prod[7:0];
+          VNMSAC, VNMSUB: res = c - prod[7:0];
+          VSMUL: res = FixPtSupport != FixedPointEnable ? '0 :
+                       sat_mode[0][b] ? 8'h7f : prod[14:7] + 8'(inc);
+          default: res = '0;
+        endcase
+      end
+      assign bypass_product[b*16+:16] = prod;
+      assign bypass_result[b*8+:8] = res;
+    end
+  end else begin : gen_no_bypass
+    assign bypass_product = '0;
+    assign bypass_result = '0;
+  end
+  assign mask_o = select_bypass ? mask_i : out_data.mask;
+  assign vxsat_o = select_bypass ? sat_mode[0] : out_data.sat;
+  assign sew_o = select_bypass ? 2'b0 : out_data.sew;
+  assign product_o = select_bypass ? bypass_product : finished_product;
   logic [63:0] lo [4], hi [4], fractional [4], sat_value [4];
   logic [7:0] round_inc [4];
   for (genvar s=0; s<4; s++) begin : gen_route
     localparam int N=8<<s;
     for (genvar e=0; e<64/N; e++) begin : gen_element
-      wire [2*N-1:0] prod = out_data.product[e*2*N+:2*N];
+      wire [2*N-1:0] prod = finished_product[e*2*N+:2*N];
       assign lo[s][e*N+:N] = prod[N-1:0];
       assign hi[s][e*N+:N] = prod[2*N-1:N];
       assign fractional[s][e*N+:N] = prod[2*N-2:N-1];
@@ -119,13 +160,16 @@ module simd_mul_shared import ara_pkg::*; import rvv_pkg::*; #(
     endcase
   end
   simd_mul_partition_add post_add (.a_i(add_a), .b_i(add_b), .sew_i(out_data.sew), .carry_i(cin), .sum_o(sum));
+  elen_t registered_result;
   always_comb begin
-    result_o = sum;
+    registered_result = sum;
     if (out_data.op == VSMUL) begin
       if (FixPtSupport == FixedPointEnable) begin
         for (int b=0; b<8; b++)
-          if (out_data.sat[b]) result_o[b*8+:8] = sat_value[out_data.sew][b*8+:8];
-      end else result_o = '0;
-    end else if (!(out_data.op inside {VMUL,VMULH,VMULHU,VMULHSU,VMACC,VMADD,VNMSAC,VNMSUB})) result_o = '0;
+          if (out_data.sat[b]) registered_result[b*8+:8] = sat_value[out_data.sew][b*8+:8];
+      end else registered_result = '0;
+    end else if (!(out_data.op inside {VMUL,VMULH,VMULHU,VMULHSU,VMACC,VMADD,VNMSAC,VNMSUB}))
+      registered_result = '0;
   end
+  assign result_o = select_bypass ? bypass_result : registered_result;
 endmodule

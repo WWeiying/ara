@@ -168,7 +168,20 @@ class SynthesisPreflightTest(unittest.TestCase):
                 "set_clock_uncertainty -setup \\\n    [expr",
             )
         )
-        MODULE.audit(self.options())
+        self.assertEqual(MODULE.audit(self.options())["setup_uncertainty_ns"], "0.15")
+
+    def test_integrated_setup_margin_is_reported_and_overrides_are_rejected(self) -> None:
+        self.write_filelist()
+        text = self.sdc.read_text().replace("set uncertainty_add 0\n", "")
+        rhs = "[expr {(0.15 + $uncertainty_add) * $clk_mul}]"
+        text = text.replace(f"set_clock_uncertainty -setup {rhs}",
+                            "set clock_setup_uncertainty_ns 0.20\n"
+                            "set_clock_uncertainty -setup $clock_setup_uncertainty_ns")
+        self.sdc.write_text(text)
+        self.assertEqual(MODULE.audit(self.options())["setup_uncertainty_ns"], "0.20")
+        self.sdc.write_text(text + "set_clock_uncertainty -setup 0.10 [get_clocks clk_i]\n")
+        with self.assertRaisesRegex(MODULE.PreflightError, "one supported setup uncertainty"):
+            MODULE.audit(self.options())
 
     def test_integrated_flow_requires_pipefail(self) -> None:
         self.write_filelist()

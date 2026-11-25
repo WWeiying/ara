@@ -16,6 +16,9 @@ static uint16_t key[192] __attribute__((aligned(64)));
 static uint16_t value[192] __attribute__((aligned(64)));
 static uint16_t mask[3] __attribute__((aligned(64)));
 static unsigned char output[512] __attribute__((aligned(64)));
+#ifdef ARA_RESIDENT_GET_STATS
+static struct ara_resident_stats stats;
+#endif
 
 extern void smoke_checked_execute(int, struct ara_resident_job *, unsigned long, unsigned long *);
 
@@ -183,11 +186,25 @@ void smoke_main(void)
     job.heads = 2;
     job.key = 0x1000;
     check("input_bad_user", ioctl(fd, ARA_RESIDENT_EXECUTE, &job), -14);
+#ifdef ARA_RESIDENT_GET_STATS
+    check("stats_after_bad_input", ioctl(fd, ARA_RESIDENT_GET_STATS, &stats), 0);
+    check("stats_bad_input_status", stats.status, -14);
+    check("pool_initial_allocations", stats.allocated_buffers, 6);
+#endif
     job.key = (uintptr_t)key;
     unchanged();
     check("legal_old_cap_first", ioctl(fd, ARA_RESIDENT_EXECUTE, &job), -EOPNOTSUPP);
     unchanged();
     check("legal_old_cap_repeat", ioctl(fd, ARA_RESIDENT_EXECUTE, &job), -EOPNOTSUPP);
+#ifdef ARA_RESIDENT_GET_STATS
+    check("stats_after_repeat", ioctl(fd, ARA_RESIDENT_GET_STATS, &stats), 0);
+    check("stats_identity", stats.abi == ARA_RESIDENT_ABI && stats.bytes == sizeof(stats), 1);
+    check("stats_decline_status", stats.status, -EOPNOTSUPP);
+    check("pool_reused_allocations", stats.allocated_buffers, 0);
+    check("pool_fresh_input_bytes", stats.copied_input_bytes, 1030);
+    check("stats_sequence", stats.sequence, 3);
+    check("stats_default_profile_off", stats.profile_enabled | stats.total_ns, 0);
+#endif
     unchanged();
     check("job_fflags_unpublished", job.fflags, 0);
     rc = ara_resident_linux_open(&info);
@@ -216,6 +233,15 @@ void smoke_main(void)
     fd = call(__NR_openat, AT_FDCWD, (long)"/dev/ara-resident", O_RDWR, 0, 0, 0);
     check("reload_device_open", fd >= 0, 1);
     if (fd >= 0) check("reload_get_info", ioctl(fd, ARA_RESIDENT_GET_INFO, &info), 0);
+#ifdef ARA_RESIDENT_GET_STATS
+    if (fd >= 0) {
+        check("reload_compute_decline", ioctl(fd, ARA_RESIDENT_EXECUTE, &job), -EOPNOTSUPP);
+        check("reload_stats", ioctl(fd, ARA_RESIDENT_GET_STATS, &stats), 0);
+        check("reload_fresh_allocations", stats.allocated_buffers, 6);
+        check("reload_fresh_sequence", stats.sequence, 1);
+        unchanged();
+    }
+#endif
 
 finish:
     if (fd >= 0) call(__NR_close, fd, 0, 0, 0, 0, 0);

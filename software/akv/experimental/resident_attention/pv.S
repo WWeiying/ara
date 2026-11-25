@@ -50,3 +50,5 @@ akv_experimental_resident_pv:
 #include "pv_prepare.S"
 #undef resident_pv_prepare
     .hidden akv_experimental_resident_pv_prepare
+
+#include "pv_fast.inc"

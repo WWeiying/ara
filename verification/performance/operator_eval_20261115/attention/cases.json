@@ -1,0 +1,23 @@
+{
+  "schema": "current-rtl-attention-cases-v1",
+  "calibration": "qwen3_d128_gqa2_t137",
+  "modes": ["rvv_tiled", "native_akv", "resident_compact"],
+  "cases": [
+    {"id":"qwen3_d128_gqa2_t137","dimension":128,"heads":2,"kv_heads":1,"tokens":137,"capacity":256,"initial_flags":8,"suite":"calibration","provenance":"original captured Qwen3 KV0/Q0,1"},
+    {"id":"d64_gqa2_t64","dimension":64,"heads":2,"kv_heads":1,"tokens":64,"capacity":64,"initial_flags":8,"suite":"shapes","provenance":"derived captured rows"},
+    {"id":"d96_gqa3_kv2_t65","dimension":96,"heads":6,"kv_heads":2,"tokens":65,"capacity":65,"initial_flags":8,"suite":"shapes","provenance":"derived captured rows; group offsets and H1 tail"},
+    {"id":"d128_gqa1_t63","dimension":128,"heads":1,"kv_heads":1,"tokens":63,"capacity":63,"initial_flags":8,"suite":"tails","provenance":"derived captured rows"},
+    {"id":"d128_gqa2_t65","dimension":128,"heads":2,"kv_heads":1,"tokens":65,"capacity":65,"initial_flags":8,"suite":"tails","provenance":"derived captured rows"},
+    {"id":"d128_gqa2_t127","dimension":128,"heads":2,"kv_heads":1,"tokens":127,"capacity":127,"initial_flags":8,"suite":"tails","provenance":"derived captured rows"},
+    {"id":"d128_gqa2_t128","dimension":128,"heads":2,"kv_heads":1,"tokens":128,"capacity":128,"initial_flags":8,"suite":"contexts","provenance":"derived captured rows"},
+    {"id":"d128_gqa2_t129","dimension":128,"heads":2,"kv_heads":1,"tokens":129,"capacity":129,"initial_flags":8,"suite":"tails","provenance":"derived captured rows"},
+    {"id":"d128_gqa2_t256","dimension":128,"heads":2,"kv_heads":1,"tokens":256,"capacity":256,"initial_flags":8,"suite":"contexts","provenance":"derived repetition of visible captured tokens, not a fresh model capture"},
+    {"id":"d128_gqa2_t512","dimension":128,"heads":2,"kv_heads":1,"tokens":512,"capacity":512,"initial_flags":8,"suite":"contexts","provenance":"derived repetition of visible captured tokens, not a fresh model capture"},
+    {"id":"d128_gqa2_t1024","dimension":128,"heads":2,"kv_heads":1,"tokens":1024,"capacity":1024,"initial_flags":8,"suite":"contexts","provenance":"derived repetition of visible captured tokens, not a fresh model capture"},
+    {"id":"d128_gqa6_t64","dimension":128,"heads":6,"kv_heads":1,"tokens":64,"capacity":64,"initial_flags":8,"suite":"shapes","provenance":"derived captured rows"}
+  ],
+  "extensions": [
+    {"id":"f16_prefill","status":"harness_review_required","harness":"verification/akv/shared_reader_integration/run_real_prefill.py","resident":"not admitted: Decode-only compact executor; do not label native fallback Resident"},
+    {"id":"quantkv_q4_q8","status":"harness_review_required","harness":"verification/akv/quantized_kv/prefill/build_production_native.py","resident":"not admitted: F16-only compact executor; independent quantized harness required"}
+  ]
+}

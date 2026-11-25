@@ -29,8 +29,8 @@
     "fpnew": {
       "revision": "e5aa6a01b5bbe1675c3aa8872e1203413ded83d1",
       "patch": "fpnew-local-fixes.patch",
-      "sha256": "819bbd9e4f2e78b462fcd0eced4d09e1675b8c8e60b72d8d57fa30e56d1117c9",
-      "source": "ara_dsa local cast infinity, PULP HOLD and C910 round_add55 changes; FP16-INT8 cast and DIV/SQRT format/mask exception fixes",
+      "sha256": "a61195fd75cbe3642d75345ca9859413eb6692bd5109c78bd298244666d906a6",
+      "source": "ara_dsa local cast infinity, PULP HOLD and C910 round_add55 changes; FP16-INT8 cast and DIV/SQRT format/mask exception fixes; opt-in full-precision elastic FMA pre-sum stage counted in NumPipeRegs; fused cast rounding and two's complement with unchanged pipeline latency",
       "scope": "Cast and C910 active with THMULTI; 20261009 I2F overflow, cast/FMA/DIV underflow and flush fixes validated against SoftFloat, including local multifmt mantissa-bit adaptation; PULP HOLD needs separate configuration coverage",
       "upstream_fixes": [
         "2c7947726a0859c08cc27cbbd45662424dedb41e",

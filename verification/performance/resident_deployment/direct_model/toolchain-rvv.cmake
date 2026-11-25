@@ -1,0 +1,13 @@
+# Frozen GNU-only variant of platforms/cva6-qemu/toolchain-rvv.cmake.
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR riscv64)
+set(CMAKE_C_COMPILER "/home/wangwy/llama/platforms/cva6-qemu/tools/bin/riscv64-linux-gcc")
+set(CMAKE_CXX_COMPILER "/home/wangwy/llama/platforms/cva6-qemu/tools/bin/riscv64-linux-g++")
+set(CMAKE_ASM_COMPILER "/home/wangwy/llama/platforms/cva6-qemu/tools/bin/riscv64-linux-gcc")
+set(CMAKE_C_FLAGS_INIT "-march=rv64gcv_zfh_zvfh -mabi=lp64d")
+set(CMAKE_CXX_FLAGS_INIT "-march=rv64gcv_zfh_zvfh -mabi=lp64d")
+set(CMAKE_ASM_FLAGS_INIT "-march=rv64gcv_zfh_zvfh -mabi=lp64d")
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)

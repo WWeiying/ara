@@ -32,7 +32,18 @@ struct ara_resident_job {
     __aligned_u64 reserved[4];
 };
 
+/* Optional diagnostics after EXECUTE; exclude diagnostic runs from latency pairs. */
+struct ara_resident_stats {
+    __u32 abi, bytes;
+    __s32 status;
+    __u32 profile_enabled;
+    __aligned_u64 sequence, allocated_buffers, copied_input_bytes;
+    __aligned_u64 buffer_ns, input_copy_ns, address_check_ns;
+    __aligned_u64 execute_ns, output_copy_ns, total_ns;
+};
+
 #define ARA_RESIDENT_GET_INFO _IOR('R', 0xa0, struct ara_resident_info)
 #define ARA_RESIDENT_EXECUTE _IOWR('R', 0xa1, struct ara_resident_job)
+#define ARA_RESIDENT_GET_STATS _IOR('R', 0xa2, struct ara_resident_stats)
 
 #endif

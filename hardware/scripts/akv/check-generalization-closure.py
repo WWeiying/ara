@@ -821,8 +821,10 @@ def audit(manifest: dict[str, object]) -> list[dict[str, object]]:
                 "nr_lanes": int(preflight["nr_lanes"]),
                 "vlen": int(preflight["vlen"]),
             }
-            checker.audit(checker.Options(sdc=integrated_sdc_path, **common))
-            checker.audit(checker.Options(sdc=standalone_sdc_path, **common))
+            integrated_setup = checker.audit(checker.Options(sdc=integrated_sdc_path, **common))[
+                "setup_uncertainty_ns"]
+            standalone_setup = checker.audit(checker.Options(sdc=standalone_sdc_path, **common))[
+                "setup_uncertainty_ns"]
             wrapper_simv, wrapper_timestamp, wrapper_digest = validate_vcs_compile_image(
                 wrapper_compile_log
             )
@@ -830,7 +832,9 @@ def audit(manifest: dict[str, object]) -> list[dict[str, object]]:
                 "synthesis_preflight",
                 "physical_preflight",
                 "PASS",
-                "integrated and standalone QBS+AKV-v2 filelist, flow setup, macro SRAM, DB, 1 GHz/0.15 ns constraints, and standalone wrapper elaboration verified; "
+                "integrated and standalone QBS+AKV-v2 filelist, flow setup, macro SRAM, DB, "
+                f"1 GHz with {integrated_setup}/{standalone_setup} ns setup uncertainty "
+                "(integrated/standalone), and standalone wrapper elaboration verified; "
                 f"wrapper_simv={sha256(wrapper_simv)} sources={wrapper_digest}",
                 [*preflight_paths, wrapper_simv, wrapper_timestamp],
             ))

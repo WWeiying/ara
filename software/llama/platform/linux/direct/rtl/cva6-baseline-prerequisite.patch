@@ -1,0 +1,162 @@
+diff --git a/core/csr_regfile.sv b/core/csr_regfile.sv
+index 180cba4fa..660d93f90 100644
+--- a/core/csr_regfile.sv
++++ b/core/csr_regfile.sv
+@@ -497,7 +497,8 @@ module csr_regfile
+         else read_access_exception = 1'b1;
+         riscv::CSR_STVEC:
+         if (CVA6Cfg.RVS)
+-          csr_rdata =  clic_mode_o ? {stvec_q[CVA6Cfg.XLEN-1:6], 6'b11} : {stvec_q[CVA6Cfg.XLEN-1:6], 5'b0, stvec_q[0]};
++          // Non-CLIC readback must match the BASE used by trap redirection.
++          csr_rdata = clic_mode_o ? {stvec_q[CVA6Cfg.XLEN-1:6], 6'b11} : stvec_q;
+         else read_access_exception = 1'b1;
+         riscv::CSR_SINTSTATUS: begin
+           if (CVA6Cfg.RVS && CVA6Cfg.RVSCLIC) begin
+@@ -1316,7 +1317,9 @@ module csr_regfile
+         // sstatus is a subset of mstatus - mask it accordingly
+         riscv::CSR_SSTATUS: begin
+           if (CVA6Cfg.RVS) begin
+-            mask = ariane_pkg::SMODE_STATUS_WRITE_MASK[CVA6Cfg.XLEN-1:0];
++            // VS aliases mstatus here; do not widen the shared VSSTATUS mask.
++            mask = ariane_pkg::SMODE_STATUS_WRITE_MASK[CVA6Cfg.XLEN-1:0] |
++                   (CVA6Cfg.RVV ? CVA6Cfg.XLEN'(riscv::SSTATUS_VS) : '0);
+             mstatus_d = (mstatus_q & ~{{64-CVA6Cfg.XLEN{1'b0}}, mask}) | {{64-CVA6Cfg.XLEN{1'b0}}, (csr_wdata & mask)};
+             // hardwire to zero if floating point extension is not present
+             if (!CVA6Cfg.FpPresent) begin
+@@ -1365,9 +1368,15 @@ module csr_regfile
+         end
+ 
+         riscv::CSR_STVEC:
+-        if (CVA6Cfg.RVS)
+-          stvec_d = clic_mode_o ? {csr_wdata[CVA6Cfg.XLEN-1:2], 2'b11} : {csr_wdata[CVA6Cfg.XLEN-1:2], 1'b0, csr_wdata[0]};
+-        else update_access_exception = 1'b1;
++        if (CVA6Cfg.RVS) begin
++          if (clic_mode_o)
++            stvec_d = {csr_wdata[CVA6Cfg.XLEN-1:2], 2'b11};
++          else if (csr_wdata[0])
++            // priv_output inserts cause[5:0] into BASE[7:2], as for MTVEC.
++            stvec_d = {csr_wdata[CVA6Cfg.XLEN-1:8], 7'b0, 1'b1};
++          else
++            stvec_d = {csr_wdata[CVA6Cfg.XLEN-1:2], 2'b0};
++        end else update_access_exception = 1'b1;
+         riscv::CSR_SCOUNTEREN:
+         if (CVA6Cfg.RVS) scounteren_d = {{CVA6Cfg.XLEN - 32{1'b0}}, csr_wdata[31:0]};
+         else update_access_exception = 1'b1;
+@@ -1983,8 +1992,10 @@ module csr_regfile
+       mstatus_d.vs = riscv::Dirty;
+     end
+     // hardwired extension registers
+-    if (CVA6Cfg.RVS || CVA6Cfg.RVF) begin
+-      mstatus_d.sd = (mstatus_q.xs == riscv::Dirty) | (mstatus_q.fs == riscv::Dirty);
++    if (CVA6Cfg.RVS || CVA6Cfg.RVF || CVA6Cfg.RVV) begin
++      mstatus_d.sd = (mstatus_d.xs == riscv::Dirty) |
++                     (mstatus_d.fs == riscv::Dirty) |
++                     (mstatus_d.vs == riscv::Dirty);
+     end else begin
+       mstatus_d.sd = riscv::Off;
+     end
+@@ -2350,12 +2361,12 @@ module csr_regfile
+       end
+       // set mpie to 1
+       mstatus_d.mpie = 1'b1;
++      if (mstatus_q.mpp != riscv::PRIV_LVL_M) mstatus_d.mprv = 1'b0;
+       if (CVA6Cfg.RVH) begin
+         // set virtualization mode
+         v_d           = mstatus_q.mpv;
+         //set mstatus mpv to false
+         mstatus_d.mpv = 1'b0;
+-        if (mstatus_q.mpp != riscv::PRIV_LVL_M) mstatus_d.mprv = 1'b0;
+       end
+       // restore mintstatus
+       if (CVA6Cfg.RVSCLIC && clic_mode_o && mcause_q[CVA6Cfg.XLEN-1])
+@@ -2373,12 +2384,12 @@ module csr_regfile
+       mstatus_d.spp  = 1'b0;
+       // set spie to 1
+       mstatus_d.spie = 1'b1;
++      mstatus_d.mprv = 1'b0;
+       if (CVA6Cfg.RVH) begin
+         // set virtualization mode
+         v_d            = hstatus_q.spv;
+         //set hstatus spv to false
+         hstatus_d.spv  = 1'b0;
+-        mstatus_d.mprv = 1'b0;
+       end
+       // restore sintstatus
+       if (CVA6Cfg.RVSCLIC && clic_mode_o && scause_q[CVA6Cfg.XLEN-1])
+diff --git a/core/cva6.sv b/core/cva6.sv
+index 1bf0de585..3ba3fa414 100644
+--- a/core/cva6.sv
++++ b/core/cva6.sv
+@@ -496,6 +496,9 @@ module cva6
+   logic [CVA6Cfg.TRANS_ID_BITS-1:0] acc_trans_id_ex_id;
+   logic [CVA6Cfg.XLEN-1:0] acc_result_ex_id;
+   logic acc_valid_ex_id;
++  logic acc_preview_valid;
++  logic [CVA6Cfg.TRANS_ID_BITS-1:0] acc_preview_id;
++  logic [CVA6Cfg.XLEN-1:0] acc_preview_data;
+   exception_t acc_exception_ex_id;
+   logic halt_acc_ctrl;
+   logic [4:0] acc_resp_fflags;
+@@ -951,6 +954,9 @@ module cva6
+       .wbdata_i                (wbdata_ex_id),
+       .ex_ex_i                 (ex_ex_ex_id),
+       .wt_valid_i              (wt_valid_ex_id),
++      .acc_preview_valid_i     (acc_preview_valid),
++      .acc_preview_id_i        (acc_preview_id),
++      .acc_preview_data_i      (acc_preview_data),
+       .x_we_i                  (x_we_ex_id),
+       .x_rd_i                  (x_rd_ex_id),
+ 
+@@ -1600,6 +1606,9 @@ module cva6
+   // ----------------
+ 
+   if (CVA6Cfg.EnableAccelerator) begin : gen_accelerator
++    assign acc_preview_valid = cvxif_resp_i.vset_preview_resp.resp_valid;
++    assign acc_preview_id = cvxif_resp_i.vset_preview_resp.trans_id;
++    assign acc_preview_data = cvxif_resp_i.vset_preview_resp.result;
+     acc_dispatcher #(
+         .CVA6Cfg           (CVA6Cfg),
+         .fu_data_t         (fu_data_t),
+@@ -1664,6 +1673,9 @@ module cva6
+     assign acc_trans_id_ex_id         = '0;
+     assign acc_result_ex_id           = '0;
+     assign acc_valid_ex_id            = '0;
++    assign acc_preview_valid          = 1'b0;
++    assign acc_preview_id             = '0;
++    assign acc_preview_data           = '0;
+     assign acc_exception_ex_id        = '0;
+     assign acc_resp_fflags            = '0;
+     assign acc_resp_fflags_valid      = '0;
+diff --git a/core/decoder.sv b/core/decoder.sv
+index d907b2094..f4686a47f 100644
+--- a/core/decoder.sv
++++ b/core/decoder.sv
+@@ -1809,6 +1809,8 @@ module decoder
+       end else if (ecall) begin
+         // this exception is valid
+         instruction_o.ex.valid = 1'b1;
++        // ECALL has no trap-value payload; do not retain the instruction bits.
++        instruction_o.ex.tval = '0;
+         // depending on the privilege mode, set the appropriate cause
+         if (priv_lvl_i == riscv::PRIV_LVL_S && CVA6Cfg.RVS) begin
+           instruction_o.ex.cause = (CVA6Cfg.RVH && v_i) ? riscv::ENV_CALL_VSMODE : riscv::ENV_CALL_SMODE;
+@@ -1822,6 +1824,9 @@ module decoder
+         instruction_o.ex.valid = 1'b1;
+         // set breakpoint cause
+         instruction_o.ex.cause = riscv::BREAKPOINT;
++        // Breakpoints report their faulting PC, not the instruction encoding.
++        if (CVA6Cfg.TvalEn)
++          instruction_o.ex.tval = {{CVA6Cfg.XLEN-CVA6Cfg.VLEN{pc_i[CVA6Cfg.VLEN-1]}}, pc_i};
+         // set gva bit
+         if (CVA6Cfg.RVH) instruction_o.ex.gva = v_i;
+         else instruction_o.ex.gva = 1'b0;
+@@ -1921,6 +1926,9 @@ module decoder
+           instruction_o.ex.cause = interrupt_cause;
+         end
+       end
++      // Only a selected interrupt has no tval; masked IRQs retain sync payloads.
++      if (instruction_o.ex.valid && instruction_o.ex.cause[CVA6Cfg.XLEN-1])
++        instruction_o.ex.tval = '0;
+     end
+ 
+     // a debug request has precendece over everything else

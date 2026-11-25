@@ -336,8 +336,8 @@ set worst_setup_slack [dc_min_path_slack $worst_setup_path]
 
 set physical_summary [open ../reports/physical_summary.rpt w]
 puts $physical_summary "scope=ara_soc_integrated"
-puts $physical_summary "clock_period_ns=1.0"
-puts $physical_summary "clock_uncertainty_ns=0.15"
+puts $physical_summary "clock_period_ns=[get_attribute [get_clocks clk_i] period]"
+puts $physical_summary "clock_uncertainty_ns=$clock_setup_uncertainty_ns"
 puts $physical_summary "akv_sram_organization=$akv_organization"
 puts $physical_summary "akv_sram_macro_count=$akv_macro_count"
 puts $physical_summary "akv_q_sram_macro_count=$akv_q_macro_count"

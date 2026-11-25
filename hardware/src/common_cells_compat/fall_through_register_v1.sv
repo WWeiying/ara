@@ -28,9 +28,25 @@ module fall_through_register_v1 #(
 
   logic fifo_empty;
   logic fifo_full;
+  logic fifo_push, fifo_pop;
+  T fifo_data;
+
+  if (DEPTH > 1) begin : gen_early_payload
+    // Pick the instruction from registered occupancy. Authorization still
+    // gates valid, but no longer selects the instruction sent to the decoder.
+    assign data_o = fifo_empty ? data_i : fifo_data;
+    assign valid_o = !fifo_empty || valid_i;
+    assign fifo_push = valid_i && !fifo_full && (!fifo_empty || !ready_i);
+    assign fifo_pop = ready_i && !fifo_empty;
+  end else begin : gen_native_bypass
+    assign data_o = fifo_data;
+    assign valid_o = !fifo_empty;
+    assign fifo_push = valid_i && !fifo_full;
+    assign fifo_pop = ready_i && !fifo_empty;
+  end
 
   fifo_v3 #(
-    .FALL_THROUGH(1'b1),
+    .FALL_THROUGH(DEPTH <= 1),
     .DEPTH       (DEPTH),
     .dtype       (T)
   ) i_fifo (
@@ -42,12 +58,11 @@ module fall_through_register_v1 #(
     .empty_o   (fifo_empty),
     .usage_o   (),
     .data_i,
-    .push_i    (valid_i && !fifo_full),
-    .data_o,
-    .pop_i     (ready_i && !fifo_empty)
+    .push_i    (fifo_push),
+    .data_o    (fifo_data),
+    .pop_i     (fifo_pop)
   );
 
   assign ready_o = !fifo_full;
-  assign valid_o = !fifo_empty;
 
 endmodule

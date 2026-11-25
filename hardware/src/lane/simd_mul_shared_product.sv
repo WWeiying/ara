@@ -1,10 +1,13 @@
 // Experimental full-product core. Not enabled in the production lane.
 // Four SEW modes share radix-4 Booth rows and one partitioned Dadda tree.
-module simd_mul_shared_product (
+module simd_mul_shared_product #(
+  parameter bit FinishProduct = 1'b1
+) (
   input logic [63:0] a_i, b_i,
   input logic [1:0] sew_i,
   input logic signed_a_i, signed_b_i,
-  output logic [127:0] product_o
+  output logic [127:0] product_o,
+  output wire [7:0][16:0] slice_sum_o
 );
   wire [127:0] rows [34];
   wire [31:0] negative;
@@ -91,8 +94,15 @@ module simd_mul_shared_product (
   simd_mul_shared_dadda #(
     .CorrectionMask(support_mask(0)), .UnsignedMask(support_mask(1))
   ) i_tree (
-    .rows_i(rows), .carry_mask_i(carry_mask), .sum_o(product_o)
+    .rows_i(rows), .carry_mask_i(carry_mask), .slice_sum_o
   );
+  if (FinishProduct) begin : gen_product
+    simd_mul_shared_finish i_finish (
+      .slice_sum_i(slice_sum_o), .sew_i, .product_o
+    );
+  end else begin : gen_partial
+    assign product_o = '0;
+  end
 endmodule
 
 module simd_mul_shared_dadda #(
@@ -101,7 +111,7 @@ module simd_mul_shared_dadda #(
 ) (
   input wire [127:0] rows_i [34],
   input wire [127:0] carry_mask_i,
-  output wire [127:0] sum_o
+  output wire [7:0][16:0] slice_sum_o
 );
   localparam int Stages = 8;
   typedef struct packed {
@@ -204,30 +214,37 @@ module simd_mul_shared_dadda #(
       else $fatal(1, "Unreduced Dadda column=%0d", k);
 `endif
   end
-  if (1) begin : gen_final
-    // Eight 16-bit slices with a three-level prefix carry network. Product
-    // boundaries are twice the operand width; discard modular overflow there.
-    wire [7:0] p [4], g [4];
-    for (genvar k = 0; k < 8; k++) begin : gen_slice
-      wire boundary = !carry_mask_i[k*16];
-      wire [16:0] base_sum = {1'b0, final_rows[0][k*16+:16]} +
+  for (genvar k = 0; k < 8; k++) begin : gen_slice
+    assign slice_sum_o[k] = {1'b0, final_rows[0][k*16+:16]} +
                             {1'b0, final_rows[1][k*16+:16]};
-      assign p[0][k] = (&base_sum[15:0]) && !boundary;
-      assign g[0][k] = base_sum[16];
-      wire cin;
-      if (k == 0) assign cin = 1'b0;
-      else assign cin = boundary ? 1'b0 : g[3][k-1];
-      assign sum_o[k*16+:16] = base_sum[15:0] + cin;
-    end
-    for (genvar l = 0; l < 3; l++) begin : gen_level
-      for (genvar k = 0; k < 8; k++) begin : gen_prefix
-        if (k >= (1 << l)) begin
-          assign p[l+1][k] = p[l][k] & p[l][k-(1 << l)];
-          assign g[l+1][k] = g[l][k] | (p[l][k] & g[l][k-(1 << l)]);
-        end else begin
-          assign p[l+1][k] = p[l][k];
-          assign g[l+1][k] = g[l][k];
-        end
+  end
+endmodule
+
+module simd_mul_shared_finish (
+  input wire [7:0][16:0] slice_sum_i,
+  input wire [1:0] sew_i,
+  output wire [127:0] product_o
+);
+  // Product boundaries are twice the operand width. Only the registered
+  // wide path needs the prefix; EW8 products are already complete per slice.
+  wire [7:0] p [4], g [4];
+  for (genvar k = 0; k < 8; k++) begin : gen_slice
+    wire boundary = (k & ((1 << sew_i)-1)) == 0;
+    assign p[0][k] = (&slice_sum_i[k][15:0]) && !boundary;
+    assign g[0][k] = slice_sum_i[k][16];
+    wire cin;
+    if (k == 0) assign cin = 1'b0;
+    else assign cin = boundary ? 1'b0 : g[3][k-1];
+    assign product_o[k*16+:16] = slice_sum_i[k][15:0] + cin;
+  end
+  for (genvar l = 0; l < 3; l++) begin : gen_level
+    for (genvar k = 0; k < 8; k++) begin : gen_prefix
+      if (k >= (1 << l)) begin
+        assign p[l+1][k] = p[l][k] & p[l][k-(1 << l)];
+        assign g[l+1][k] = g[l][k] | (p[l][k] & g[l][k-(1 << l)]);
+      end else begin
+        assign p[l+1][k] = p[l][k];
+        assign g[l+1][k] = g[l][k];
       end
     end
   end

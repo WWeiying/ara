@@ -1,4 +1,5 @@
 /build/
 /build_area_*/
 /build_control_*/
+/out_qbs_cast_equiv_*/
 __pycache__/

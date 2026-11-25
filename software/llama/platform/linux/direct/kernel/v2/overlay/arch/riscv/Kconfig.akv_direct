@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0
+config RISCV_AKV_DIRECT
+	bool "Ara AKV direct user lease (isolated TEST kernel only)"
+	depends on 64BIT && MMU && FPU && RISCV_ISA_V
+	depends on !SMP && !PREEMPT_RT && !RISCV_M_MODE
+	depends on !SUSPEND && !HIBERNATION && !CPU_IDLE && !KVM
+	select MMU_NOTIFIER
+	default n
+	help
+	  Test-only root-owned single-task AKV lease. Supported hardware is put
+	  in STRICT mode at boot. Unleased native AKV is denied and ara_resident
+	  cannot be loaded. Signals and user faults terminate the lease owner.
+	  Requires architectural terminal/drain and non-VRF-writing RELEASE
+	  guarantees; this option is not a production compatibility promise.

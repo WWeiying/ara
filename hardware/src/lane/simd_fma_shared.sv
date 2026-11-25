@@ -41,9 +41,10 @@ module simd_fma_shared #(
     status_t status;
     pipe_tag_t tag;
   } output_t;
-  // Preserve the total elastic capacity/latency; delay packed results rather
-  // than repeating wide operand and intermediate-sum registers.
-  localparam int CorePipeRegs = CompactPipeline && NumPipeRegs > 3 ? 3 : NumPipeRegs;
+  // Spend one former packed-output stage before the full-precision sum. Merely
+  // increasing DISTRIBUTED repeats registers without cutting that logic cone.
+  localparam bit PipelineBeforeSum = CompactPipeline && NumPipeRegs > 3;
+  localparam int CorePipeRegs = PipelineBeforeSum ? 4 : NumPipeRegs;
   localparam int OutputPipeRegs = NumPipeRegs - CorePipeRegs;
   output_t [OutputPipeRegs:0] output_data;
   logic [OutputPipeRegs:0] output_valid, output_ready;
@@ -133,6 +134,7 @@ module simd_fma_shared #(
     // Identical stage counts plus atomic acceptance/retirement preserve alignment.
     fpnew_fma_multi #(
       .FpFmtConfig(Formats), .NumPipeRegs(CorePipeRegs),
+      .PipelineBeforeSum(PipelineBeforeSum),
       .PipeConfig(DISTRIBUTED), .TagType(pipe_tag_t), .AuxType(aux_t)
     ) i_fma (
       .clk_i, .rst_ni, .operands_i(ops), .is_boxed_i(boxed),

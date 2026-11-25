@@ -1,5 +1,5 @@
 diff --git a/src/fpnew_cast_multi.sv b/src/fpnew_cast_multi.sv
-index fca5f3b6df9230b01cb38ce63aa787c8f20bc1a6..b2a113dce67943db44a5a022029056929ad521fa 100644
+index fca5f3b6df9230b01cb38ce63aa787c8f20bc1a6..213d41bb38df47f64c293c9eccb735331a08c17e 100644
 --- a/src/fpnew_cast_multi.sv
 +++ b/src/fpnew_cast_multi.sv
 @@ -423,6 +423,16 @@ module fpnew_cast_multi #(
@@ -45,41 +45,130 @@ index fca5f3b6df9230b01cb38ce63aa787c8f20bc1a6..b2a113dce67943db44a5a02202905692
          final_exp       = unsigned'(2**fpnew_pkg::exp_bits(dst_fmt_q2)-2); // largest normal value
          preshift_mant   = '1;                           // largest normal value and RS bits set
          of_before_round = 1'b1;
-@@ -574,7 +588,13 @@ module fpnew_cast_multi #(
+@@ -502,11 +516,15 @@ module fpnew_cast_multi #(
+   logic [NUM_INT_FORMATS-1:0]            ifmt_of_after_round;
+ 
+   logic             rounded_sign;
+-  logic [WIDTH-1:0] rounded_abs; // absolute value of result after rounding
+-  logic             result_true_zero;
+-
+-  logic [WIDTH-1:0] rounded_int_res; // after possible inversion
+-  logic             rounded_int_res_zero; // after rounding
++  logic             round_up, negate_result;
++  logic [WIDTH-1:0] rounded_value; // FP magnitude or signed integer bit pattern
++  logic [WIDTH-1:0] int_magnitude;
++  logic             rounded_int_res_zero;
++`ifndef SYNTHESIS
++  // Keep the historical diagnostic probes off the synthesized return path.
++  wire [WIDTH-1:0] rounded_abs = pre_round_abs + WIDTH'(round_up);
++  wire [WIDTH-1:0] rounded_int_res = rounded_sign ? -rounded_abs : rounded_abs;
++`endif
+ 
+ 
+   // Pack exponent and mantissa into proper rounding form
+@@ -541,27 +559,34 @@ module fpnew_cast_multi #(
+   end
+ 
+   // Select output with destination format and operation
+-  assign pre_round_abs = dst_is_int_q ? ifmt_pre_round_abs[int_fmt_q2] : fmt_pre_round_abs[dst_fmt_q2];
++  assign int_magnitude = ifmt_pre_round_abs[int_fmt_q2];
++  assign pre_round_abs = dst_is_int_q ? int_magnitude : fmt_pre_round_abs[dst_fmt_q2];
+ 
+   fpnew_rounding #(
+-    .AbsWidth ( WIDTH ),
++    .AbsWidth ( 1 ),
+     .EnableRSR ( 0 )
+   ) i_fpnew_rounding (
+     .clk_i,
+     .rst_ni,
+     .id_i                    ( '0                ),
+     .en_rsr_i                ( 1'b0              ),
+-    .abs_value_i             ( pre_round_abs     ),
++    .abs_value_i             ( pre_round_abs[0]  ),
+     .sign_i                  ( input_sign_q      ), // source format
+     .round_sticky_bits_i     ( round_sticky_bits ),
+     .stochastic_rounding_bits_i ( '0             ),
+     .rnd_mode_i              ( rnd_mode_q        ),
+     .effective_subtraction_i ( 1'b0              ), // no operation happened
+-    .abs_rounded_o           ( rounded_abs       ),
++    .abs_rounded_o           (                   ),
+     .sign_o                  ( rounded_sign      ),
+-    .exact_zero_o            ( result_true_zero  )
++    .exact_zero_o            (                   ),
++    .round_up_o              ( round_up          )
+   );
+ 
++  // -(m + inc) = ~m + !inc. Both signs and FP magnitude share one incrementer.
++  assign negate_result = dst_is_int_q & input_sign_q;
++  assign rounded_value = (pre_round_abs ^ {WIDTH{negate_result}})
++                         + WIDTH'(round_up ^ negate_result);
++
+   logic [NUM_FORMATS-1:0][WIDTH-1:0] fmt_result;
+ 
+   // Detect overflows and inject sign
+@@ -574,14 +599,20 @@ module fpnew_cast_multi #(
      if (FpFmtConfig[fmt]) begin : active_format
        always_comb begin : post_process
          // detect of / uf
 -        fmt_uf_after_round[fmt] = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0; // denormal
+-        fmt_of_after_round[fmt] = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '1; // inf exp.
 +        // Tininess uses an unbounded exponent, including rounding to min-normal.
-+        fmt_uf_after_round[fmt] = (rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0)
++        fmt_uf_after_round[fmt] = (rounded_value[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0)
 +            || ((pre_round_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0)
-+                && (rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == 1)
++                && (rounded_value[EXP_BITS+MAN_BITS-1:MAN_BITS] == 1)
 +                && ((round_sticky_bits != 2'b11)
 +                    || (!destination_mant[NUM_FP_STICKY-1]
 +                        && ((rnd_mode_q == fpnew_pkg::RNE) || (rnd_mode_q == fpnew_pkg::RMM)))));
-         fmt_of_after_round[fmt] = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '1; // inf exp.
++        fmt_of_after_round[fmt] = rounded_value[EXP_BITS+MAN_BITS-1:MAN_BITS] == '1; // inf exp.
  
          // Assemble regular result, nan box short ones. Int zeroes need to be detected`
-@@ -594,7 +614,7 @@ module fpnew_cast_multi #(
-   assign rounded_int_res      = rounded_sign ? unsigned'(-rounded_abs) : rounded_abs;
-   assign rounded_int_res_zero = (rounded_int_res == '0);
+         fmt_result[fmt]               = '1;
+         fmt_result[fmt][FP_WIDTH-1:0] = src_is_int_q & mant_is_zero_q
+                                         ? '0
+-                                        : {rounded_sign, rounded_abs[EXP_BITS+MAN_BITS-1:0]};
++                                        : {rounded_sign, rounded_value[EXP_BITS+MAN_BITS-1:0]};
+       end
+     end else begin : inactive_format
+       assign fmt_uf_after_round[fmt] = fpnew_pkg::DONT_CARE;
+@@ -590,23 +621,31 @@ module fpnew_cast_multi #(
+     end
+   end
+ 
+-  // Negative integer result needs to be brought into two's complement
+-  assign rounded_int_res      = rounded_sign ? unsigned'(-rounded_abs) : rounded_abs;
+-  assign rounded_int_res_zero = (rounded_int_res == '0);
++  // A modulo increment produces zero only at 0 + 0 or all-ones + 1.
++  assign rounded_int_res_zero = round_up ? (&int_magnitude) : (~|int_magnitude);
  
 -  // Detect integer overflows after rounding (only positives)
 +  // Detect integer overflows after rounding.
    for (genvar ifmt = 0; ifmt < int'(NUM_INT_FORMATS); ifmt++) begin : gen_int_overflow
      // Set up some constants
      localparam int unsigned INT_WIDTH = fpnew_pkg::int_width(fpnew_pkg::int_format_e'(ifmt));
-@@ -607,6 +627,9 @@ module fpnew_cast_multi #(
-           // Check whether the rounded MSB differs from unrounded MSB
-           ifmt_of_after_round[ifmt] = ~rounded_int_res[INT_WIDTH-2+op_mod_q2];
+ 
+     if (IntFmtConfig[ifmt]) begin : active_format
++      localparam logic [INT_WIDTH-1:0] MinMag = {1'b1, {(INT_WIDTH-1){1'b0}}};
++      wire signed_msb_carry = round_up & (&final_int[INT_WIDTH-3:0]);
++      wire unsigned_msb_carry = signed_msb_carry & final_int[INT_WIDTH-2];
+       always_comb begin : detect_overflow
+         ifmt_of_after_round[ifmt] = 1'b0;
+         // Int result can overflow if we're at the max exponent
+         if (!rounded_sign && input_exp_q == signed'(INT_WIDTH - 2 + op_mod_q2)) begin
+-          // Check whether the rounded MSB differs from unrounded MSB
+-          ifmt_of_after_round[ifmt] = ~rounded_int_res[INT_WIDTH-2+op_mod_q2];
++          // Inspect only the carry into the boundary bit, in parallel with the data adder.
++          ifmt_of_after_round[ifmt] = op_mod_q2
++              ? ~(final_int[INT_WIDTH-1] ^ unsigned_msb_carry)
++              : ~(final_int[INT_WIDTH-2] ^ signed_msb_carry);
          end
 +        if (rounded_sign && !op_mod_q2 && input_exp_q == signed'(INT_WIDTH - 1))
 +          ifmt_of_after_round[ifmt] =
-+              rounded_abs[INT_WIDTH-1:0] != {1'b1, {(INT_WIDTH-1){1'b0}}};
++              round_up ? (final_int[INT_WIDTH-1:0] != (MinMag - 1'b1))
++                       : (final_int[INT_WIDTH-1:0] != MinMag);
        end
      end else begin : inactive_format
        assign ifmt_of_after_round[ifmt] = fpnew_pkg::DONT_CARE;
-@@ -701,7 +724,8 @@ module fpnew_cast_multi #(
+@@ -701,7 +740,8 @@ module fpnew_cast_multi #(
    // Detect special case from source format (inf, nan, overflow, nan-boxing or negative unsigned)
    assign int_result_is_special = info_q.is_nan | info_q.is_inf |
                                   of_before_round | of_after_round | ~info_q.is_boxed |
@@ -89,7 +178,7 @@ index fca5f3b6df9230b01cb38ce63aa787c8f20bc1a6..b2a113dce67943db44a5a02202905692
  
    // All integer special cases are invalid
    assign int_special_status = '{NV: 1'b1, default: 1'b0};
-@@ -717,17 +741,20 @@ module fpnew_cast_multi #(
+@@ -717,17 +757,20 @@ module fpnew_cast_multi #(
    logic [WIDTH-1:0]   fp_result, int_result;
    fpnew_pkg::status_t fp_status, int_status;
  
@@ -111,7 +200,7 @@ index fca5f3b6df9230b01cb38ce63aa787c8f20bc1a6..b2a113dce67943db44a5a02202905692
 +  // Reuse the sign-extended minimum encoding also for a valid negative
 +  // boundary result; its flags still come from the normal rounding path.
 +  assign int_result = (int_result_is_special || negative_int_boundary)
-+                     ? int_special_result : rounded_int_res;
++                     ? int_special_result : rounded_value;
    assign int_status = int_result_is_special ? int_special_status : int_regular_status;
  
    // Final results for output pipeline
@@ -183,10 +272,169 @@ index d725a5d1b9a3d131acf54f3f815856bdbfd22d1d..900acbd2e883ba4610548c4bdd1249ea
  
    // -----------------
 diff --git a/src/fpnew_fma_multi.sv b/src/fpnew_fma_multi.sv
-index e2320846815e19d2e9c15151827ad4b03b29a124..9f323fbd08a996319fe453cc28217dc9f8e7390a 100644
+index e2320846815e19d2e9c15151827ad4b03b29a124..de375b5a296149026ac4ff6e86a5ac4cea3516a4 100644
 --- a/src/fpnew_fma_multi.sv
 +++ b/src/fpnew_fma_multi.sv
-@@ -745,11 +745,26 @@ module fpnew_fma_multi #(
+@@ -21,6 +21,8 @@ module fpnew_fma_multi #(
+   parameter fpnew_pkg::pipe_config_t PipeConfig  = fpnew_pkg::BEFORE,
+   parameter type                     TagType     = logic,
+   parameter type                     AuxType     = logic,
++  // Included in NumPipeRegs; retain full product/addend precision before summing.
++  parameter bit                      PipelineBeforeSum = 1'b0,
+   // Do not change
+   localparam int unsigned WIDTH       = fpnew_pkg::max_fp_width(FpFmtConfig),
+   localparam int unsigned NUM_FORMATS = fpnew_pkg::NUM_FP_FORMATS
+@@ -76,21 +78,22 @@ module fpnew_fma_multi #(
+   localparam int unsigned EXP_WIDTH = fpnew_pkg::maximum(SUPER_EXP_BITS + 2, LZC_RESULT_WIDTH);
+   // Shift amount width: maximum internal mantissa size is 3p+4 bits
+   localparam int unsigned SHIFT_AMOUNT_WIDTH = $clog2(3 * PRECISION_BITS + 5);
+-  // Pipelines
++  // Pipelines: reserve one stage at the multiplier/alignment -> sum boundary.
++  localparam int unsigned BASE_PIPE_REGS = NumPipeRegs - int'(PipelineBeforeSum);
+   localparam NUM_INP_REGS = PipeConfig == fpnew_pkg::BEFORE
+-                            ? NumPipeRegs
++                            ? BASE_PIPE_REGS
+                             : (PipeConfig == fpnew_pkg::DISTRIBUTED
+-                               ? ((NumPipeRegs + 1) / 3) // Second to get distributed regs
++                               ? ((BASE_PIPE_REGS + 1) / 3) // Second to get distributed regs
+                                : 0); // no regs here otherwise
+   localparam NUM_MID_REGS = PipeConfig == fpnew_pkg::INSIDE
+-                          ? NumPipeRegs
++                          ? BASE_PIPE_REGS
+                           : (PipeConfig == fpnew_pkg::DISTRIBUTED
+-                             ? ((NumPipeRegs + 2) / 3) // First to get distributed regs
++                             ? ((BASE_PIPE_REGS + 2) / 3) // First to get distributed regs
+                              : 0); // no regs here otherwise
+   localparam NUM_OUT_REGS = PipeConfig == fpnew_pkg::AFTER
+-                            ? NumPipeRegs
++                            ? BASE_PIPE_REGS
+                             : (PipeConfig == fpnew_pkg::DISTRIBUTED
+-                               ? (NumPipeRegs / 3) // Last to get distributed regs
++                               ? (BASE_PIPE_REGS / 3) // Last to get distributed regs
+                                : 0); // no regs here otherwise
+ 
+   // ----------------
+@@ -418,7 +421,7 @@ module fpnew_fma_multi #(
+   // Product is placed into a 3p+4 bit wide vector, padded with 2 bits for round and sticky:
+   // | 000...000 | product | RS |
+   //  <-  p+2  -> <-  2p -> < 2>
+-  assign product_shifted = product << 2; // constant shift
++  assign product_shifted = pres_sum_q.product << 2; // constant shift
+ 
+   // -----------------
+   // Addend data path
+@@ -446,6 +449,47 @@ module fpnew_fma_multi #(
+   assign addend_shifted = (effective_subtraction) ? ~addend_after_shift : addend_after_shift;
+   assign inject_carry_in = effective_subtraction & ~sticky_before_add;
+ 
++  // All sidebands cross the same elastic boundary as the unrounded arithmetic.
++  // No truncation or intermediate FP rounding is introduced here.
++  typedef struct packed {
++    logic [2*PRECISION_BITS-1:0] product;
++    logic [3*PRECISION_BITS+3:0] addend;
++    logic carry_in, effective_subtraction, tentative_sign, sticky;
++    logic signed [EXP_WIDTH-1:0] exponent_product, exponent_difference, tentative_exponent;
++    logic [SHIFT_AMOUNT_WIDTH-1:0] addend_shamt;
++    fpnew_pkg::roundmode_e rnd_mode;
++    fpnew_pkg::fp_format_e dst_fmt;
++    logic result_is_special;
++    logic [WIDTH-1:0] special_result;
++    fpnew_pkg::status_t special_status;
++    TagType tag;
++    logic mask;
++    AuxType aux;
++  } pres_sum_t;
++  pres_sum_t pres_sum_d, pres_sum_q;
++  logic pres_sum_valid, pres_sum_ready;
++  assign pres_sum_d = '{product: product, addend: addend_shifted,
++      carry_in: inject_carry_in, effective_subtraction: effective_subtraction,
++      tentative_sign: tentative_sign, sticky: sticky_before_add,
++      exponent_product: exponent_product, exponent_difference: exponent_difference,
++      tentative_exponent: tentative_exponent, addend_shamt: addend_shamt,
++      rnd_mode: inp_pipe_rnd_mode_q[NUM_INP_REGS], dst_fmt: dst_fmt_q,
++      result_is_special: result_is_special, special_result: special_result,
++      special_status: special_status, tag: inp_pipe_tag_q[NUM_INP_REGS],
++      mask: inp_pipe_mask_q[NUM_INP_REGS], aux: inp_pipe_aux_q[NUM_INP_REGS]};
++  if (PipelineBeforeSum) begin : gen_presum_pipeline
++    logic reg_ena;
++    assign inp_pipe_ready[NUM_INP_REGS] = pres_sum_ready | ~pres_sum_valid;
++    assign reg_ena = inp_pipe_ready[NUM_INP_REGS] & inp_pipe_valid_q[NUM_INP_REGS];
++    `FFLARNC(pres_sum_valid, inp_pipe_valid_q[NUM_INP_REGS],
++             inp_pipe_ready[NUM_INP_REGS], flush_i, 1'b0, clk_i, rst_ni)
++    `FFL(pres_sum_q, pres_sum_d, reg_ena, pres_sum_t'('0))
++  end else begin : gen_presum_bypass
++    assign inp_pipe_ready[NUM_INP_REGS] = pres_sum_ready;
++    assign pres_sum_valid = inp_pipe_valid_q[NUM_INP_REGS];
++    assign pres_sum_q = pres_sum_d;
++  end
++
+   // ------
+   // Adder
+   // ------
+@@ -455,16 +499,16 @@ module fpnew_fma_multi #(
+   logic                        final_sign;
+ 
+   //Mantissa adder (ab+c). In normal addition, it cannot overflow.
+-  assign sum_raw = product_shifted + addend_shifted + inject_carry_in;
++  assign sum_raw = product_shifted + pres_sum_q.addend + pres_sum_q.carry_in;
+   assign sum_carry = sum_raw[3*PRECISION_BITS+4];
+ 
+   // Complement negative sum (can only happen in subtraction -> overflows for positive results)
+-  assign sum        = (effective_subtraction && ~sum_carry) ? -sum_raw : sum_raw;
++  assign sum        = (pres_sum_q.effective_subtraction && ~sum_carry) ? -sum_raw : sum_raw;
+ 
+   // In case of a mispredicted subtraction result, do a sign flip
+-  assign final_sign = (effective_subtraction && (sum_carry == tentative_sign))
++  assign final_sign = (pres_sum_q.effective_subtraction && (sum_carry == pres_sum_q.tentative_sign))
+                       ? 1'b1
+-                      : (effective_subtraction ? 1'b0 : tentative_sign);
++                      : (pres_sum_q.effective_subtraction ? 1'b0 : pres_sum_q.tentative_sign);
+ 
+   // ---------------
+   // Internal pipeline
+@@ -505,25 +549,25 @@ module fpnew_fma_multi #(
+   logic [0:NUM_MID_REGS] mid_pipe_ready;
+ 
+   // Input stage: First element of pipeline is taken from upstream logic
+-  assign mid_pipe_eff_sub_q[0]     = effective_subtraction;
+-  assign mid_pipe_exp_prod_q[0]    = exponent_product;
+-  assign mid_pipe_exp_diff_q[0]    = exponent_difference;
+-  assign mid_pipe_tent_exp_q[0]    = tentative_exponent;
+-  assign mid_pipe_add_shamt_q[0]   = addend_shamt;
+-  assign mid_pipe_sticky_q[0]      = sticky_before_add;
++  assign mid_pipe_eff_sub_q[0]     = pres_sum_q.effective_subtraction;
++  assign mid_pipe_exp_prod_q[0]    = pres_sum_q.exponent_product;
++  assign mid_pipe_exp_diff_q[0]    = pres_sum_q.exponent_difference;
++  assign mid_pipe_tent_exp_q[0]    = pres_sum_q.tentative_exponent;
++  assign mid_pipe_add_shamt_q[0]   = pres_sum_q.addend_shamt;
++  assign mid_pipe_sticky_q[0]      = pres_sum_q.sticky;
+   assign mid_pipe_sum_q[0]         = sum;
+   assign mid_pipe_final_sign_q[0]  = final_sign;
+-  assign mid_pipe_rnd_mode_q[0]    = inp_pipe_rnd_mode_q[NUM_INP_REGS];
+-  assign mid_pipe_dst_fmt_q[0]     = dst_fmt_q;
+-  assign mid_pipe_res_is_spec_q[0] = result_is_special;
+-  assign mid_pipe_spec_res_q[0]    = special_result;
+-  assign mid_pipe_spec_stat_q[0]   = special_status;
+-  assign mid_pipe_tag_q[0]         = inp_pipe_tag_q[NUM_INP_REGS];
+-  assign mid_pipe_mask_q[0]        = inp_pipe_mask_q[NUM_INP_REGS];
+-  assign mid_pipe_aux_q[0]         = inp_pipe_aux_q[NUM_INP_REGS];
+-  assign mid_pipe_valid_q[0]       = inp_pipe_valid_q[NUM_INP_REGS];
++  assign mid_pipe_rnd_mode_q[0]    = pres_sum_q.rnd_mode;
++  assign mid_pipe_dst_fmt_q[0]     = pres_sum_q.dst_fmt;
++  assign mid_pipe_res_is_spec_q[0] = pres_sum_q.result_is_special;
++  assign mid_pipe_spec_res_q[0]    = pres_sum_q.special_result;
++  assign mid_pipe_spec_stat_q[0]   = pres_sum_q.special_status;
++  assign mid_pipe_tag_q[0]         = pres_sum_q.tag;
++  assign mid_pipe_mask_q[0]        = pres_sum_q.mask;
++  assign mid_pipe_aux_q[0]         = pres_sum_q.aux;
++  assign mid_pipe_valid_q[0]       = pres_sum_valid;
+   // Input stage: Propagate pipeline ready signal to input pipe
+-  assign inp_pipe_ready[NUM_INP_REGS] = mid_pipe_ready[0];
++  assign pres_sum_ready = mid_pipe_ready[0];
+ 
+   // Generate the register stages
+   for (genvar i = 0; i < NUM_MID_REGS; i++) begin : gen_inside_pipeline
+@@ -745,11 +789,26 @@ module fpnew_fma_multi #(
      localparam int unsigned FP_WIDTH = fpnew_pkg::fp_width(fpnew_pkg::fp_format_e'(fmt));
      localparam int unsigned EXP_BITS = fpnew_pkg::exp_bits(fpnew_pkg::fp_format_e'(fmt));
      localparam int unsigned MAN_BITS = fpnew_pkg::man_bits(fpnew_pkg::fp_format_e'(fmt));
@@ -214,6 +462,18 @@ index e2320846815e19d2e9c15151827ad4b03b29a124..9f323fbd08a996319fe453cc28217dc9
          fmt_of_after_round[fmt] = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '1; // inf exp.
  
          // Assemble regular result, nan box short ones.
+@@ -841,5 +900,10 @@ module fpnew_fma_multi #(
+   assign mask_o          = out_pipe_mask_q[NUM_OUT_REGS];
+   assign aux_o           = out_pipe_aux_q[NUM_OUT_REGS];
+   assign out_valid_o     = out_pipe_valid_q[NUM_OUT_REGS];
+-  assign busy_o          = (| {inp_pipe_valid_q, mid_pipe_valid_q, out_pipe_valid_q});
++  assign busy_o          = (| {inp_pipe_valid_q, pres_sum_valid, mid_pipe_valid_q, out_pipe_valid_q});
++
++`ifndef SYNTHESIS
++  initial assert (!PipelineBeforeSum || NumPipeRegs > 0)
++    else $fatal(1, "PipelineBeforeSum requires at least one pipeline register");
++`endif
+ endmodule
 diff --git a/src/fpnew_opgroup_multifmt_slice.sv b/src/fpnew_opgroup_multifmt_slice.sv
 index f5991cbd7c46bd8f64970e8a838e3ce5db42ffdc..08bc6443ae8fa765b621cec9839450654965ca30 100644
 --- a/src/fpnew_opgroup_multifmt_slice.sv
@@ -413,6 +673,28 @@ index 1e8ce09920788409f80c202a61ac1df7106893e0..ae156f5a4fbb7cfa2a384a786c64c323
      return res;
    endfunction
  
+diff --git a/src/fpnew_rounding.sv b/src/fpnew_rounding.sv
+index bb6e868f56128cbce59704a03afcd36a83f447d4..9a0e6449334ca3c53ad3a794c83f683b2afc5d43 100644
+--- a/src/fpnew_rounding.sv
++++ b/src/fpnew_rounding.sv
+@@ -38,7 +38,8 @@ module fpnew_rounding #(
+   output logic [AbsWidth-1:0]  abs_rounded_o,           // absolute value without sign
+   output logic                 sign_o,
+   // Output classification
+-  output logic                 exact_zero_o             // output is an exact zero
++  output logic                 exact_zero_o,            // output is an exact zero
++  output logic                 round_up_o               // increment the truncated magnitude
+ );
+ 
+   logic round_up; // Rounding decision
+@@ -106,6 +107,7 @@ module fpnew_rounding #(
+ 
+   // Perform the rounding, exponent change and overflow to inf happens automagically
+   assign abs_rounded_o = abs_value_i + round_up;
++  assign round_up_o = round_up;
+ 
+   // True zero result is a zero result without dirty round/sticky bits
+   assign exact_zero_o = (abs_value_i == '0) && (round_sticky_bits_i == '0);
 diff --git a/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_pack.v b/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_pack.v
 index 681b77aa8865021a18a0d924177e7ddc622229a8..fe56ca05934efc6f4e383e8807d87dd34500ced7 100644
 --- a/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_pack.v

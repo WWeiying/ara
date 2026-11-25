@@ -108,7 +108,12 @@ typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
 
 typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
   uint16_t accumulator[AKV_MAX_Q_ROWS][AKV_HEAD_DIM_256];
-  float score[AKV_MAX_Q_ROWS][AKV_V2_TILE_TOKENS];
+  union {
+    float score[AKV_MAX_Q_ROWS][AKV_V2_TILE_TOKENS];
+    /* Optional Resident producer/consumer layout; same storage and row pitch.
+     * Each row uses only its first TILE_TOKENS halfwords after softmax. */
+    uint16_t resident_probability[AKV_MAX_Q_ROWS][2u * AKV_V2_TILE_TOKENS];
+  };
   float maximum[AKV_MAX_Q_ROWS];
   float sum[AKV_MAX_Q_ROWS];
   float old_scale[AKV_MAX_Q_ROWS];

@@ -9,6 +9,11 @@
 extern void akv_experimental_resident_qk(float *scores, uint32_t tokens,
     uint32_t heads, uint32_t dimensions, uint32_t query_base);
 
+/* Same admission as above; control must be the validated schedule's exact
+ * qk_control for these tokens/heads and the loaded context. No probing. */
+extern void akv_experimental_resident_qk_prepared(float *scores, uint32_t tokens,
+    uint32_t heads, uint64_t control);
+
 static inline int akv_experimental_resident_qk_geometry(
     uint32_t tokens, uint32_t heads, uint32_t dimensions,
     uint32_t query_base, uint32_t loaded_queries) {

@@ -1,4 +1,5 @@
 #include "kernel_compute.h"
+#include "finite_f16.h"
 
 /* Linux defines noinline as a macro; the SDK uses the GCC attribute token. */
 #ifdef noinline
@@ -43,7 +44,7 @@ static int spans_overlap(const void *left, size_t left_bytes,
 
 static int validate_buffers(const struct ara_resident_compute_buffers *b)
 {
-    size_t q_bytes, kv_bytes, mask_bytes, out_bytes;
+    size_t q_bytes, k_bytes, v_bytes, mask_bytes, out_bytes;
     const void *spans[6];
     size_t lengths[6];
     unsigned i;
@@ -61,13 +62,21 @@ static int validate_buffers(const struct ara_resident_compute_buffers *b)
         (b->scale_bits & 0x7f800000u) == 0x7f800000u)
         return -ARA_EINVAL;
 
+    const size_t row = b->dimension * 2u;
+    const size_t ks = b->key_token_stride ? b->key_token_stride : row;
+    const size_t vs = b->value_token_stride ? b->value_token_stride : row;
+    if (ks < row || vs < row || ((ks | vs) & 63u) ||
+        ks > 1024u * 1024u || vs > 1024u * 1024u)
+        return -ARA_EINVAL;
+
     q_bytes = (size_t)b->heads * b->dimension * 2u;
-    kv_bytes = (size_t)b->tokens * b->dimension * 2u;
+    k_bytes = (b->tokens - 1u) * ks + row;
+    v_bytes = (b->tokens - 1u) * vs + row;
     mask_bytes = (size_t)b->tokens * 2u;
     out_bytes = (size_t)b->heads * b->dimension * 4u;
     spans[0] = b->query; lengths[0] = q_bytes;
-    spans[1] = b->key; lengths[1] = kv_bytes;
-    spans[2] = b->value; lengths[2] = kv_bytes;
+    spans[1] = b->key; lengths[1] = k_bytes;
+    spans[2] = b->value; lengths[2] = v_bytes;
     spans[3] = b->mask; lengths[3] = mask_bytes;
     spans[4] = b->output; lengths[4] = out_bytes;
     spans[5] = b->scratch; lengths[5] = b->scratch_bytes;
@@ -96,12 +105,18 @@ static int validate_domain(const struct ara_resident_compute_buffers *b)
      */
     if (b->scale_bits > 0x3f800000u)
         return -ARA_EOPNOTSUPP;
-    for (size_t i = 0; i < (size_t)b->heads * b->dimension; ++i)
-        if ((q[i] & 0x7c00u) == 0x7c00u)
-            return -ARA_EOPNOTSUPP;
-    for (size_t i = 0; i < (size_t)b->tokens * b->dimension; ++i)
-        if ((k[i] & 0x7c00u) == 0x7c00u || (v[i] & 0x7c00u) == 0x7c00u)
-            return -ARA_EOPNOTSUPP;
+    if (!ara_resident_finite_f16(q, (size_t)b->heads * b->dimension))
+        return -ARA_EOPNOTSUPP;
+    const size_t ks = b->key_token_stride ? b->key_token_stride / 2 : b->dimension;
+    const size_t vs = b->value_token_stride ? b->value_token_stride / 2 : b->dimension;
+    if (ks == b->dimension && vs == b->dimension) {
+        if (!ara_resident_finite_f16(k, (size_t)b->tokens * b->dimension) ||
+            !ara_resident_finite_f16(v, (size_t)b->tokens * b->dimension)) return -ARA_EOPNOTSUPP;
+    } else {
+        for (unsigned t = 0; t < b->tokens; ++t)
+            if (!ara_resident_finite_f16(k + t * ks, b->dimension) ||
+                !ara_resident_finite_f16(v + t * vs, b->dimension)) return -ARA_EOPNOTSUPP;
+    }
     for (unsigned i = 0; i < b->tokens; ++i) {
         if ((mask[i] & 0x7c00u) != 0x7c00u)
             visible = 1;
@@ -133,8 +148,8 @@ static int prepare_compute(struct ara_resident_compute_buffers *b,
     problem.mask = b->mask;
     problem.output = b->output;
     problem.q_row_stride_bytes = b->dimension * 2u;
-    problem.k_token_stride_bytes = b->dimension * 2u;
-    problem.v_token_stride_bytes = b->dimension * 2u;
+    problem.k_token_stride_bytes = b->key_token_stride ? b->key_token_stride : b->dimension * 2u;
+    problem.v_token_stride_bytes = b->value_token_stride ? b->value_token_stride : b->dimension * 2u;
     problem.output_row_stride_bytes = b->dimension * 4u;
     problem.q_rows = b->heads;
     problem.head_dim = b->dimension;

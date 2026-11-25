@@ -108,20 +108,6 @@ module qbs_fp_accumulator
     PipeConfig: DISTRIBUTED
   };
 
-  // Move, rather than duplicate, the existing conversion unit. Arithmetic
-  // and I2F have independent issue/return ports but share the entry table.
-  localparam fpu_implementation_t CastImplementation = '{
-    PipeRegs: '{
-      '{default: 0}, '{default: 0}, '{default: 0},
-      '{default: 1}, '{default: 0}
-    },
-    UnitTypes: '{
-      '{default: DISABLED}, '{default: DISABLED}, '{default: DISABLED},
-      '{default: MERGED}, '{default: DISABLED}
-    },
-    PipeConfig: DISTRIBUTED
-  };
-
   logic [NumAccumulators-1:0] accumulator_valid_q;
   logic [31:0] accumulator_data_q [8][16];
 
@@ -167,7 +153,7 @@ module qbs_fp_accumulator
   logic [NumEntries-1:0] cast_upper, cast_lower;
   logic cast_upper_empty, cast_lower_empty, cast_found;
   logic cast_ready, cast_fire, cast_out_valid, cast_busy;
-  logic [2:0][31:0] cast_operands;
+  logic [31:0] cast_operand;
   logic [31:0] cast_result;
   status_t cast_status;
   fp_tag_t cast_tag_out;
@@ -219,9 +205,9 @@ module qbs_fp_accumulator
   assign half_index = !half_upper_empty ? half_upper_index : half_lower_index;
   assign half_fire = half_found;
   always_comb begin
-    cast_operands = '0;
+    cast_operand = '0;
     if (cast_found)
-      cast_operands[0] = entry_state_q[cast_index] == FP_AUX_CONVERT
+      cast_operand = entry_state_q[cast_index] == FP_AUX_CONVERT
           ? entry_aux_value_q[cast_index] : entry_dot_value_q[cast_index];
   end
 
@@ -395,16 +381,21 @@ module qbs_fp_accumulator
   );
 
   if (SplitIssue) begin : gen_cast_port
-    fpnew_top #(
-      .Features(FpuFeatures), .Implementation(CastImplementation),
-      .DivSqrtSel(THMULTI), .TagType(fp_tag_t)
+    // This port only returns scalar INT32 -> FP32. Use the same FPnew slice
+    // and middle register without the format and operation-group arbiters.
+    logic slice_ready;
+    assign cast_ready = cast_found && slice_ready;
+    fpnew_cast_multi #(
+      .FpFmtConfig(FpuFeatures.FpFmtMask), .IntFmtConfig(FpuFeatures.IntFmtMask),
+      .NumPipeRegs(1), .PipeConfig(DISTRIBUTED), .TagType(fp_tag_t)
     ) i_cast (
-      .clk_i, .rst_ni, .hart_id_i('0), .operands_i(cast_operands),
+      .clk_i, .rst_ni, .operands_i(cast_operand), .is_boxed_i('1),
       .rnd_mode_i(roundmode_e'(QbsNumericalRoundingMode)),
       .op_i(I2F), .op_mod_i(1'b0), .src_fmt_i(FP32), .dst_fmt_i(FP32),
-      .int_fmt_i(INT32), .vectorial_op_i(1'b0), .tag_i(cast_index),
-      .simd_mask_i(1'b1), .in_valid_i(cast_found), .in_ready_o(cast_ready),
+      .int_fmt_i(INT32), .tag_i(cast_index), .mask_i(1'b1), .aux_i(1'b0),
+      .in_valid_i(cast_found), .in_ready_o(slice_ready),
       .flush_i(1'b0), .result_o(cast_result), .status_o(cast_status),
+      .extension_bit_o(), .mask_o(), .aux_o(),
       .tag_o(cast_tag_out), .out_valid_o(cast_out_valid),
       .out_ready_i(1'b1), .busy_o(cast_busy)
     );

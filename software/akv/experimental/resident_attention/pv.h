@@ -36,6 +36,18 @@ void akv_experimental_resident_pv(const float *probability,
     uint16_t *accumulator, const float *old_scale, uint32_t tokens,
     uint32_t dimensions, uint32_t heads);
 
+/* Same contract and arithmetic, with inlined preparation and no stack frame.
+ * Also clobbers t6. The original leaf remains available for paired checks. */
+void akv_experimental_resident_pv_fast(const float *probability,
+    uint16_t *accumulator, const float *old_scale, uint32_t tokens,
+    uint32_t dimensions, uint32_t heads);
+
+/* Same arithmetic/ABI clobbers as fast; control must match the validated tile.
+ * The caller must not construct an unchecked control from user input. */
+void akv_experimental_resident_pv_prepared(const float *probability,
+    uint16_t *accumulator, const float *old_scale, uint32_t tokens,
+    uint32_t dimensions, uint32_t heads, uint64_t control);
+
 #ifdef __cplusplus
 }
 #endif

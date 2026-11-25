@@ -1,0 +1,19 @@
+$date synthetic converter unit probe $end
+$version infrastructure test, not processor activity $end
+$timescale 1ps $end
+$scope module ara_tb $end
+$scope module dut $end
+$scope module i_ara_soc $end
+$var wire 1 ! clk $end
+$upscope $end
+$upscope $end
+$upscope $end
+$enddefinitions $end
+#100000
+$dumpvars
+0!
+$end
+#150000
+1!
+#200000
+0!

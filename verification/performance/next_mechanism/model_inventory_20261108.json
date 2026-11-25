@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "GGUF_METADATA_NOT_RUNTIME_TRAFFIC",
+  "model": "Qwen3-1.7B Q4_K_M",
+  "source": "/home/wangwy/fpga_runs/qwen3_20261006/payloads_qbs_akv/overlay/qwen3.gguf",
+  "expected_sha256": "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5",
+  "reader": "llama.cpp/gguf-py/gguf/GGUFReader, read-only metadata and tensor descriptors",
+  "layers": 28,
+  "hidden": 2048,
+  "intermediate": 6144,
+  "query_heads": 16,
+  "kv_heads": 8,
+  "head_dim": 128,
+  "vocabulary": 151936,
+  "context_limit_metadata": 40960,
+  "board_trace": {
+    "source": "/home/wangwy/fpga_runs/fpga_unified_board_20261108_01/acceptance_report_07/trials/01_chinese_facts_02_auto/stderr.log",
+    "sha256": "a61e37c58bbac9afe747e3cb2ddd158d10897cacbcc382ab403a77617ab21f07",
+    "prompt_tokens": 135,
+    "decode_evals": 41,
+    "output_rows": 42,
+    "prefill_last_layer_ffn_rows": 1,
+    "q4_k_command_dot_elements": 208490463232,
+    "q6_k_command_dot_elements": 47554494464
+  },
+  "groups": {
+    "attention_projection": {
+      "tensors": 112,
+      "elements": 352321536,
+      "bytes": 205750272,
+      "types": {"Q4_K": 98, "Q6_K": 14}
+    },
+    "ffn_projection": {
+      "tensors": 84,
+      "elements": 1056964608,
+      "bytes": 639959040,
+      "types": {"Q4_K": 70, "Q6_K": 14}
+    },
+    "output": {
+      "tensors": 1,
+      "elements": 311164928,
+      "bytes": 255252480,
+      "types": {"Q6_K": 1}
+    },
+    "embedding": {
+      "tensors": 1,
+      "elements": 311164928,
+      "bytes": 175030272,
+      "types": {"Q4_K": 1}
+    },
+    "other": {
+      "tensors": 113,
+      "elements": 123904,
+      "bytes": 495616,
+      "types": {"F32": 113}
+    }
+  },
+  "notes": [
+    "This file contains both output.weight and token_embd.weight; count output once for full-vocabulary projection, not the entire embedding again.",
+    "Projection element counts equal dense mathematical MACs per single-token decode, not physical integer products including corrections or padding.",
+    "Stored tensor bytes exclude GGUF metadata, alignment, runtime repacking and repeated reads. They are not measured AXI/DDR traffic.",
+    "Attention formulas assume full visible context, ideal KV sharing among query heads, equal K/V head dimensions and F16 KV. Context length is not a tested maximum."
+  ]
+}

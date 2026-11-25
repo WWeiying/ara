@@ -783,19 +783,45 @@ module qbs_block_adapter import qbs_pkg::*; #(
       wire [5:0] activation_count =
           {1'b0, count_beat_bytes(activation_valid_row[row][15:0])} +
           {1'b0, count_beat_bytes(activation_valid_row[row][31:16])};
-      always_ff @(posedge clk_i or negedge rst_ni) begin
-        if (!rst_ni) begin
-          weight_committed_q[row] <= '0;
-          activation_committed_q[row] <= '0;
-        end else begin
-          if (clear_weight_i) weight_committed_q[row] <= '0;
-          else if (|weight_count)
-            weight_committed_q[row] <= weight_committed_q[row] + weight_count;
-          if (clear_activation_i) activation_committed_q[row] <= '0;
-          else if (|activation_count)
-            activation_committed_q[row] <= activation_committed_q[row] + activation_count;
+      // Apply the same credit boundary to both independent SRAM grant paths.
+      for (genvar side = 0; side < 2; side++) begin : gen_completion
+        localparam int CountWidth = side == 0 ? $clog2(QbsMaxWeightBlockBytes+1) :
+                                                $clog2(QbsMaxActivationBlockBytes+1);
+        wire [31:0] grants = side == 0 ? weight_valid_row[row] : activation_valid_row[row];
+        wire clear = side == 0 ? clear_weight_i : clear_activation_i;
+        logic [CountWidth-1:0] accumulated_q;
+        logic [2:0] credit_q [8];
+        wire [3:0] credit_pairs [4];
+        wire [4:0] credit_halves [2];
+        wire [5:0] credit;
+        wire [CountWidth-1:0] committed = accumulated_q + CountWidth'(credit);
+        for (genvar group_index = 0; group_index < 8; group_index++) begin : gen_credit
+          wire [3:0] mask = grants[4*group_index +: 4];
+          wire [1:0] lo = {1'b0, mask[0]} + {1'b0, mask[1]};
+          wire [1:0] hi = {1'b0, mask[2]} + {1'b0, mask[3]};
+          always_ff @(posedge clk_i or negedge rst_ni) begin
+            if (!rst_ni) credit_q[group_index] <= '0;
+            else if (clear) credit_q[group_index] <= '0;
+            else credit_q[group_index] <= {1'b0, lo} + {1'b0, hi};
+          end
         end
-      end
+        for (genvar pair_index = 0; pair_index < 4; pair_index++) begin : gen_credit_pair
+          assign credit_pairs[pair_index] = {1'b0, credit_q[2*pair_index]} +
+                                            {1'b0, credit_q[2*pair_index+1]};
+        end
+        for (genvar half_index = 0; half_index < 2; half_index++) begin : gen_credit_half
+          assign credit_halves[half_index] = {1'b0, credit_pairs[2*half_index]} +
+                                             {1'b0, credit_pairs[2*half_index+1]};
+        end
+        assign credit = {1'b0, credit_halves[0]} + {1'b0, credit_halves[1]};
+        if (side == 0) assign weight_committed_q[row] = committed;
+        else assign activation_committed_q[row] = committed;
+        always_ff @(posedge clk_i or negedge rst_ni) begin
+          if (!rst_ni) accumulated_q <= '0;
+          else if (clear) accumulated_q <= '0;
+          else accumulated_q <= committed;
+        end
+      end : gen_completion
 `ifndef SYNTHESIS
       always @(posedge clk_i) if (rst_ni) begin
         if (|weight_count)

@@ -35,16 +35,11 @@ typedef struct {
  * to fall back after FULL or earlier work: propagate a terminal error and use
  * the owner's cleanup policy. Validate all groups before starting the call.
  */
-static inline akv_status_t akv_resident_attention_dispatch_plan(
-    akv_resident_attention_route_t selected, const akv_descriptor_t *descriptor,
+/* Internal mapper: descriptor and tile bounds must already be checked in this
+ * call. The public wrapper below remains the checked standalone interface. */
+static inline akv_status_t akv_resident_attention_map_validated_tile(
+    const akv_descriptor_t *descriptor,
     uint32_t tile_start, akv_resident_attention_tile_t *out) {
-  if (out == NULL || selected != AKV_RESIDENT_USE_SHARED ||
-      !akv_v2_descriptor_is_valid(descriptor))
-    return AKV_STATUS_BAD_ARGUMENT;
-  if (tile_start % AKV_V2_TILE_TOKENS != 0u ||
-      tile_start >= descriptor->kv_length)
-    return AKV_STATUS_RANGE;
-
   akv_resident_attention_tile_t tile = {0};
   tile.tile_start = tile_start;
   tile.tokens = akv_v2_tile_length(descriptor->kv_length, tile_start);
@@ -62,6 +57,18 @@ static inline akv_status_t akv_resident_attention_dispatch_plan(
   }
   *out = tile;
   return AKV_STATUS_OK;
+}
+
+static inline akv_status_t akv_resident_attention_dispatch_plan(
+    akv_resident_attention_route_t selected, const akv_descriptor_t *descriptor,
+    uint32_t tile_start, akv_resident_attention_tile_t *out) {
+  if (out == NULL || selected != AKV_RESIDENT_USE_SHARED ||
+      !akv_v2_descriptor_is_valid(descriptor))
+    return AKV_STATUS_BAD_ARGUMENT;
+  if (tile_start % AKV_V2_TILE_TOKENS != 0u ||
+      tile_start >= descriptor->kv_length)
+    return AKV_STATUS_RANGE;
+  return akv_resident_attention_map_validated_tile(descriptor, tile_start, out);
 }
 
 #endif

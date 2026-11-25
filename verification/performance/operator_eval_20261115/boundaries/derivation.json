@@ -1,0 +1,32 @@
+{
+  "policy": "All code is new in boundaries; no sealed files are imported or edited.",
+  "sources": [
+    {
+      "path": "verification/performance/operator_eval_20261115/qbs_reuse/build_support.py",
+      "sha256": "e59b1549776353f8952d3d1e57a58774c60c65e247e2a0c2af0f4126b536bbc6",
+      "use": "Copied build/pin/archive utilities"
+    },
+    {
+      "path": "verification/performance/operator_eval_20261115/qbs_reuse/verify.h",
+      "sha256": "643d9f0a16a6603d8ba2eced481d87695cdb4220d736a71df86e5e6415ecfaec",
+      "use": "Copied full byte/element/guard comparator; native exact mode only"
+    },
+    {
+      "path": "verification/performance/operator_eval_20261115/qbs_reuse/verify_test.c",
+      "sha256": "0c4a1d32a692ee3460e4a8f37653d7893013af467aed008c304ea561a1d985d7",
+      "use": "Copied comparator position-mutation test"
+    }
+  ],
+  "sdk_sources": [
+    "software/qbs/tests/qbs_segmented_test.c",
+    "software/qbs/tests/qbs_runtime_test.c",
+    "software/qbs/tests/qbs_context_admission_test.c"
+  ],
+  "new_gates": [
+    "M2/M3 N35 real native execution with row-stride holes",
+    "Independent segment-major R4 pack and all-K command gold plus FP32 split-K add flags",
+    "Zero-executor context/short-buffer/shape/segment rejection with full memory and CSR preservation",
+    "Explicit caller SDK DIRECT fallback, not automatic RVV retry",
+    "All command activation snapshots compared bytewise after ROI"
+  ]
+}

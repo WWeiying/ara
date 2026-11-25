@@ -266,6 +266,11 @@ compile: bender dpi ../Bender.yml
 	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen)"
 	@$(BENDER) script verilator --no-default-target -t verilator $(bender_targs_vcs) $(bender_defs_veril) --define FOR_VERIFY  > $(vcs_library)/bender_script_$(config)
 	@$(call generate_sram_filelist, $(sram_techlib_path), $(vcs_library)/bender_script_$(config))
+ifeq ($(akv_resident),1)
+ifneq ($(ideal_dispatcher),1)
+	@python3 scripts/akv/check_resident_commit_input.py "$(vcs_library)/bender_script_$(config)"
+endif
+endif
 	@mkdir -p $(sim_path)/incremental_db
 	@if [ "$(verify_source_manifest)" = 1 ]; then \
 		PYTHONPATH="$(ARA_DIR)/verification" python3 -m ara_verify.vcs_source_manifest \
@@ -294,6 +299,7 @@ compile: bender dpi ../Bender.yml
 		'shared_fma=$(shared_fma)' \
 		'akv_resident=$(akv_resident)' \
 		'qbs_lane_mul=$(qbs_lane_mul)' \
+		'acc_req_register=$(acc_req_register)' \
 		'qbs_enabled=$(qbs)' \
 		'akv_enabled=$(if $(filter 1,$(akv) $(akv_v2)),1,0)' \
 		'akv_v2_enabled=$(akv_v2)' \
@@ -599,6 +605,7 @@ config-check:
 		'nr_lanes=$(nr_lanes)' 'vlen=$(vlen)' \
 		'shared_simd_mul=$(shared_simd_mul)' 'shared_fma=$(shared_fma)' \
 		'akv_resident=$(akv_resident)' 'qbs_lane_mul=$(qbs_lane_mul)' \
+		'acc_req_register=$(acc_req_register)' \
 		'bender_defs=$(strip $(bender_defs))'
 
 DC_LOCK_FILE := $(abspath $(ROOT_DIR)/../backend/syn/ara_soc/v1-dc/run/.dc.lock)
@@ -637,6 +644,11 @@ dc_flist_locked: | dc_require_lock
 dc_akv_storage_organization ?= $(if $(filter 1,$(akv) $(akv_v2)),unified_q64x256_kv128x256,split_v1_96x256_v2_128x256)
 
 dc_preflight_locked: dc_flist_locked
+ifeq ($(akv_resident),1)
+ifneq ($(ideal_dispatcher),1)
+	@python3 scripts/akv/check_resident_commit_input.py ../backend/flist/ara_soc_dc.f
+endif
+endif
 	@python3 scripts/akv/check-synthesis-preflight.py \
 		--filelist ../backend/flist/ara_soc_dc.f \
 		--sdc ../backend/syn/ara_soc/v1-dc/local_scripts/ara_soc.sdc \

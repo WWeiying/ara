@@ -201,23 +201,35 @@ def _check_order(sources: list[Path], before: str, after: str) -> None:
         raise PreflightError(f"compile order must place {before} before {after}")
 
 
-def _check_sdc(text: str) -> None:
+def _check_sdc(text: str) -> str:
     text = re.sub(r"\\\s*\n\s*", " ", text)
     required_patterns = {
         "1 GHz clock multiplier": r"(?m)^\s*set\s+clk_mul\s+1\.0\s*$",
-        "zero additive uncertainty": r"(?m)^\s*set\s+uncertainty_add\s+0\s*$",
         "1 ns clock": (
             r"create_clock\s+-name\s+clk_i\s+-period\s+"
             r"\[expr\s*\{\s*1\s*\*\s*\$clk_mul\s*\}\]"
-        ),
-        "0.15 ns setup uncertainty": (
-            r"set_clock_uncertainty\s+-setup\s+\[expr\s*\{\s*"
-            r"\(0\.15\s*\+\s*\$uncertainty_add\)\s*\*\s*\$clk_mul\s*\}\]"
         ),
     }
     missing = [label for label, pattern in required_patterns.items() if not re.search(pattern, text)]
     if missing:
         raise PreflightError("SDC is missing the required " + ", ".join(missing))
+
+    setup = re.findall(r"(?m)^[ \t]*set_clock_uncertainty[ \t]+-setup[ \t]+([^\n]+)", text)
+    if len(setup) != 1:
+        raise PreflightError("SDC must define one supported setup uncertainty (0.15 or 0.20 ns)")
+    clock = r"\s+\[get_clocks\s+clk_i\]\s*"
+    assignments = re.findall(r"(?m)^[ \t]*set[ \t]+clock_setup_uncertainty_ns[ \t]+([^\n]+)", text)
+    if re.fullmatch(r"\$clock_setup_uncertainty_ns" + clock, setup[0]):
+        if len(assignments) == 1 and assignments[0].strip() in ("0.15", "0.20"):
+            return assignments[0].strip()
+        raise PreflightError("SDC must assign a single supported setup uncertainty")
+
+    # Historical snapshots and the standalone engine use the 0.15 ns expression.
+    values = re.findall(r"(?m)^[ \t]*set[ \t]+uncertainty_add[ \t]+([^\n]+)", text)
+    margin = r"\[expr\s*\{\s*\(0\.15\s*\+\s*\$uncertainty_add\)\s*\*\s*\$clk_mul\s*\}\]"
+    if not assignments and [v.strip() for v in values] == ["0"] and re.fullmatch(margin + clock, setup[0]):
+        return "0.15"
+    raise PreflightError("SDC setup uncertainty expression does not match the clock")
 
 
 def _require_patterns(text: str, required: dict[str, str], label: str) -> None:
@@ -362,7 +374,7 @@ def audit(options: Options) -> dict[str, int | str]:
                 if str(path) not in setup_text:
                     raise PreflightError(f"DC setup does not include {key}: {path}")
 
-    _check_sdc(sdc_text)
+    setup_uncertainty = _check_sdc(sdc_text)
     _check_integrated_flow(options)
     return {
         "filelist": str(options.filelist),
@@ -370,7 +382,7 @@ def audit(options: Options) -> dict[str, int | str]:
         "defines": len(defines),
         "sources": len(sources),
         "clock_period_ns": 1,
-        "setup_uncertainty_ns": "0.15",
+        "setup_uncertainty_ns": setup_uncertainty,
     }
 
 

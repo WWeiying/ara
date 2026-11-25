@@ -1,0 +1,37 @@
+{
+  "policy": "Copied/derived into new namespace. No imported live qbs helper, no sealed file edited.",
+  "sources": [
+    {
+      "path": "verification/performance/operator_eval_20261115/qbs/main.c",
+      "sha256": "fbf4370a555e4b986f8c8af40e7c8ab2611aff720caf6781a7f3ee58e4e395a3",
+      "use": "Phase/SDK/x32 invocation structure; rewritten proofs and CSR snapshots"
+    },
+    {
+      "path": "verification/performance/operator_eval_20261115/qbs/oracle.c",
+      "sha256": "41e65578ac6885d451886c15cfa261673dd58ac1285ce4618979126962953f86",
+      "use": "Independent host QBS golden and SDK cursor, copied as new oracle.c"
+    },
+    {
+      "path": "verification/performance/operator_eval_20261115/qbs/prepare.py",
+      "sha256": "2df955a1c1ae35466dc9d1356ace3783a2376c44736396f7f80fd7603daa09b3",
+      "use": "Capture/archive/build-policy design, not imported"
+    },
+    {
+      "path": "verification/performance/chain_profile/q6_decode/build.py",
+      "sha256": "0036348fcc4a733886e159b482291740915200bb8d94af6c1cec9cfeaef99abc",
+      "use": "New build_support.py derived build/pin/tar/depfile routines"
+    },
+    {
+      "path": "verification/performance/operator_eval_20261115/qbs/check_vcsr_v2.py",
+      "sha256": "31332c8ae28e9fd68b924e411d98b61291a39f842410b1644b4503dd24a8a609",
+      "use": "Correct VCSR=2 lineage and command-accounting requirements, not imported"
+    }
+  ],
+  "new_behavior": [
+    "Full target byte/element comparisons outside ROI, no numeric hashes",
+    "Before/quant/packed/after VCSR snapshots; VCSR=2 explicitly checked",
+    "Immutable input plus live Q8/packed/weight validation before cross-call repeat",
+    "Compact two-trial proofs, no raw tensor UART dumps",
+    "Caps read dynamically; coop never assumed; parent supplies on/off/queue images"
+  ]
+}

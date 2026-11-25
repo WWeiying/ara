@@ -165,6 +165,10 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   akv_descriptor_v1_t descriptor;
   akv_validation_error_e descriptor_error;
+  akv_validation_error_e descriptor_layout_error, descriptor_layout_error_q;
+  logic [15:0] descriptor_q_last_index, descriptor_kv_last_index;
+  logic [47:0] descriptor_q_span_q, descriptor_k_span_q, descriptor_v_span_q;
+  logic [47:0] descriptor_k_offset_q, descriptor_v_offset_q;
   logic descriptor_valid;
 
   logic context_ready_q;
@@ -395,40 +399,32 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       command_i == AKV_COMMAND_V2_COLUMN_LOAD && command_column_valid;
 
   assign descriptor = akv_descriptor_v1_t'(descriptor_q);
+  // Zero counts fail layout validation before any span is observed. Legal
+  // count-minus-one values fit 16 bits, so their 32-bit-stride products fit 48.
+  assign descriptor_q_last_index = {8'b0, descriptor.q_rows} - 16'd1;
+  assign descriptor_kv_last_index = descriptor.kv_length - 16'd1;
 
-  always_comb begin : validate_descriptor
-    automatic logic [64:0] q_last;
-    automatic logic [64:0] k_last;
-    automatic logic [64:0] v_last;
+  always_comb begin : validate_descriptor_layout
     automatic logic [64:0] row_bytes;
 
     row_bytes = 65'(descriptor.head_dim) << 1;
-    q_last = 65'(descriptor.q_base) +
-        65'(descriptor.q_row_stride_bytes) *
-            65'(unsigned'(descriptor.q_rows) - 1) + row_bytes - 1'b1;
-    k_last = 65'(descriptor.k_base) +
-        65'(descriptor.k_token_stride_bytes) *
-            65'(unsigned'(descriptor.kv_length) - 1) + row_bytes - 1'b1;
-    v_last = 65'(descriptor.v_base) +
-        65'(descriptor.v_token_stride_bytes) *
-            65'(unsigned'(descriptor.kv_length) - 1) + row_bytes - 1'b1;
 
-    descriptor_error = AKV_VALIDATION_OK;
+    descriptor_layout_error = AKV_VALIDATION_OK;
     if (descriptor.version != AkvDescriptorVersion)
-      descriptor_error = AKV_VALIDATION_DESCRIPTOR_VERSION;
+      descriptor_layout_error = AKV_VALIDATION_DESCRIPTOR_VERSION;
     else if (descriptor.element_format != AKV_ELEMENT_FORMAT_F16)
-      descriptor_error = AKV_VALIDATION_DESCRIPTOR_FORMAT;
+      descriptor_layout_error = AKV_VALIDATION_DESCRIPTOR_FORMAT;
     else if (!(descriptor.q_rows inside {[1:AkvMaxQRows]}))
-      descriptor_error = AKV_VALIDATION_Q_ROWS;
+      descriptor_layout_error = AKV_VALIDATION_Q_ROWS;
     else if (!(descriptor.head_dim inside {16'd64, 16'd128}) &&
              !(active_command_q == AKV_COMMAND_V2_FULL &&
                descriptor.head_dim == 16'd96))
-      descriptor_error = AKV_VALIDATION_HEAD_DIM;
+      descriptor_layout_error = AKV_VALIDATION_HEAD_DIM;
     else if (descriptor.kv_length == 0)
-      descriptor_error = AKV_VALIDATION_KV_LENGTH;
+      descriptor_layout_error = AKV_VALIDATION_KV_LENGTH;
     else if (descriptor.flags != 0 || descriptor.reserved0 != 0 ||
              descriptor.reserved1 != 0 || descriptor.reserved2 != 0)
-      descriptor_error = AKV_VALIDATION_RESERVED;
+      descriptor_layout_error = AKV_VALIDATION_RESERVED;
     else if (active_command_q == AKV_COMMAND_V2_FULL &&
              (descriptor.q_row_stride_bytes[
                   AkvV2PayloadAlignmentLog2-1:0] != '0 ||
@@ -439,7 +435,7 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               descriptor.q_base[AkvV2PayloadAlignmentLog2-1:0] != '0 ||
               descriptor.k_base[AkvV2PayloadAlignmentLog2-1:0] != '0 ||
               descriptor.v_base[AkvV2PayloadAlignmentLog2-1:0] != '0))
-      descriptor_error = AKV_VALIDATION_STRIDE;
+      descriptor_layout_error = AKV_VALIDATION_STRIDE;
     else if (descriptor.q_row_stride_bytes[0] ||
              descriptor.k_token_stride_bytes[0] ||
              descriptor.v_token_stride_bytes[0] ||
@@ -448,11 +444,52 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
              descriptor.v_token_stride_bytes < row_bytes ||
              descriptor.q_base[0] || descriptor.k_base[0] ||
              descriptor.v_base[0])
-      descriptor_error = AKV_VALIDATION_STRIDE;
-    else if (q_last[64] || k_last[64] || v_last[64])
-      descriptor_error = AKV_VALIDATION_RANGE_OVERFLOW;
-    else if (requested_tile_start_q >= descriptor.kv_length)
-      descriptor_error = AKV_VALIDATION_TILE_RANGE;
+      descriptor_layout_error = AKV_VALIDATION_STRIDE;
+  end
+
+  // A successful WAIT completion already requires all descriptor bytes from
+  // earlier beats. Prepare from that stable snapshot on the WAIT -> VALIDATE
+  // edge, keeping multipliers out of validation/address-update paths with no
+  // extra state or payload/refill bubbles. Faulted/partial snapshots are unused.
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      descriptor_layout_error_q <= AKV_VALIDATION_OK;
+      descriptor_q_span_q <= '0;
+      descriptor_k_span_q <= '0;
+      descriptor_v_span_q <= '0;
+      descriptor_k_offset_q <= '0;
+      descriptor_v_offset_q <= '0;
+    end else if (state_q == AKV_ENGINE_DESCRIPTOR_WAIT) begin
+      descriptor_layout_error_q <= descriptor_layout_error;
+      descriptor_q_span_q <= 48'(descriptor_q_last_index) *
+          descriptor.q_row_stride_bytes;
+      descriptor_k_span_q <= 48'(descriptor_kv_last_index) *
+          descriptor.k_token_stride_bytes;
+      descriptor_v_span_q <= 48'(descriptor_kv_last_index) *
+          descriptor.v_token_stride_bytes;
+      descriptor_k_offset_q <= 48'(requested_tile_start_q[15:0]) *
+          descriptor.k_token_stride_bytes;
+      descriptor_v_offset_q <= 48'(requested_tile_start_q[15:0]) *
+          descriptor.v_token_stride_bytes;
+    end
+  end
+
+  always_comb begin : validate_descriptor_range
+    automatic logic [64:0] q_last, k_last, v_last;
+    automatic logic [64:0] row_bytes;
+
+    row_bytes = 65'(descriptor.head_dim) << 1;
+    q_last = 65'(descriptor.q_base) + 65'(descriptor_q_span_q) + row_bytes - 1'b1;
+    k_last = 65'(descriptor.k_base) + 65'(descriptor_k_span_q) + row_bytes - 1'b1;
+    v_last = 65'(descriptor.v_base) + 65'(descriptor_v_span_q) + row_bytes - 1'b1;
+
+    descriptor_error = descriptor_layout_error_q;
+    if (descriptor_layout_error_q == AKV_VALIDATION_OK) begin
+      if (q_last[64] || k_last[64] || v_last[64])
+        descriptor_error = AKV_VALIDATION_RANGE_OVERFLOW;
+      else if (requested_tile_start_q >= descriptor.kv_length)
+        descriptor_error = AKV_VALIDATION_TILE_RANGE;
+    end
   end
 
   assign descriptor_valid = descriptor_error == AKV_VALIDATION_OK;
@@ -462,8 +499,8 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       : 8'(2 * unsigned'(fill_tile_count_q));
 
   // Per-stream cursors keep token-index multiplication off the range FIFO
-  // input. Initialize in the existing validate/command cycle and advance only
-  // after the corresponding request is accepted, including across backpressure.
+  // input. Initialize from prepared offsets in the existing validate/command
+  // cycle; advance only on accepted requests, including across backpressure.
   logic [63:0] q_read_address_q, k_read_address_q, v_read_address_q;
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
@@ -472,10 +509,8 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       v_read_address_q <= '0;
     end else if (state_q == AKV_ENGINE_VALIDATE && descriptor_valid) begin
       q_read_address_q <= descriptor.q_base;
-      k_read_address_q <= descriptor.k_base +
-          64'(48'(requested_tile_start_q[15:0]) * descriptor.k_token_stride_bytes);
-      v_read_address_q <= descriptor.v_base +
-          64'(48'(requested_tile_start_q[15:0]) * descriptor.v_token_stride_bytes);
+      k_read_address_q <= descriptor.k_base + 64'(descriptor_k_offset_q);
+      v_read_address_q <= descriptor.v_base + 64'(descriptor_v_offset_q);
     end else if (command_fire && command_i inside {AKV_COMMAND_REFILL, AKV_COMMAND_V2_REFILL}) begin
       k_read_address_q <= context_k_base_q +
           64'(48'(command_tile_start_i[15:0]) * context_k_stride_q);

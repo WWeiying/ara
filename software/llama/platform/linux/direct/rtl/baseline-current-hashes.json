@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "scope": "Four-file task-initial-to-candidate CVA6 incremental RTL delivery; not a whole-core release",
+  "cva6_head": "b29fd3cf906e7f4c71da4c2f46451c4c60a4487f",
+  "baseline_includes_preexisting_dirty_deltas": true,
+  "baseline": {
+    "core/csr_regfile.sv": "c45c93f66eabad7dda244bad3246d62fa42488a3644675e997e5a9ff911988bb",
+    "core/decoder.sv": "8384dd1daf87749ff993eaf169953f07720e7963da483350cdc4f7b819d7970d",
+    "core/cva6.sv": "e108b9d62b51102f83fdfcfbe0f64cf9ff8588226cb600933803827efbee8378",
+    "core/id_stage.sv": "8349e4a71581e204a519ff956a09eb0d12f0027bfa599d6239cc23de9e8744bc"
+  },
+  "current": {
+    "core/csr_regfile.sv": "ec23f6c55860b914e061c1f3a84ee7065f1fdc0b85a44385eab57ef19e11db39",
+    "core/decoder.sv": "964839148a7c9f64d50db59b0948078f77409b7dbf7f4b126ef23311ec2487e1",
+    "core/cva6.sv": "276f2105fc2cc93ef5a0bf933312f18b771253696e5e0f9a9c1cdff342d18372",
+    "core/id_stage.sv": "a821f1d222f1096e4e04f90e0dc53ca8b7ac831d7ec7524ff2323e7763beb109"
+  },
+  "artifacts": {
+    "cva6-akv-direct-gate.patch": {
+      "sha256": "df5ec3839cca84929468683c502e98e6cb8233771e05e5d2bfbe22dda7e6430a",
+      "role": "Exact successor02 task delta"
+    },
+    "cva6-baseline-prerequisite.patch": {
+      "sha256": "65c852eadc5255b38dcf40ee112f4813a8238b19f68676f47bac397ac45ca171",
+      "role": "Exact original three-file dirty delta from pinned HEAD to task baseline"
+    },
+    "focused-validation.json": {
+      "sha256": "0db8b16c403e36a099db70e37ea0bd2ca9cc524a4375977f90146e7bf20c9a1e",
+      "role": "Exact immutable OUT final-review.json copy"
+    }
+  },
+  "immutable_export": "signoff/verification/out/resident_direct_rtl_gate_20261113_02",
+  "focused_vcs_output": "signoff/verification/out/resident_direct_rtl_gate_unit_20261113_04",
+  "whole_core_tested": false,
+  "soc_tested": false,
+  "linux_runtime_tested": false,
+  "board_tested": false
+}

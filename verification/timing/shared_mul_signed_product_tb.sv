@@ -35,16 +35,20 @@ module shared_mul_signed_product_tb;
     checks++;
   endtask
   initial begin
+    int byte_pairs, bit_positions, random_vectors;
+    byte_pairs = $test$plusargs("QUICK") ? 16 : 256;
+    bit_positions = $test$plusargs("QUICK") ? 16 : 64;
+    random_vectors = $test$plusargs("QUICK") ? 512 : 2000;
     // Exhaust every byte pair and both signedness flags. Distinct adjacent
     // elements detect overflow leaking across packed product boundaries.
     sew = 0;
     for (int signs = 0; signs < 4; signs++) begin
       {sa, sb} = 2'(signs);
-      for (int x = 0; x < 256; x++) begin
-        for (int y = 0; y < 256; y++) begin
+      for (int x = 0; x < byte_pairs; x++) begin
+        for (int y = 0; y < byte_pairs; y++) begin
           for (int e = 0; e < 8; e++) begin
-            a[e*8+:8] = 8'(x + e*37);
-            b[e*8+:8] = 8'(y + e*53);
+            a[e*8+:8] = 8'(x*(256/byte_pairs) + e*37);
+            b[e*8+:8] = 8'(y*(256/byte_pairs) + e*53);
           end
           check();
         end
@@ -54,13 +58,13 @@ module shared_mul_signed_product_tb;
       sew = 2'(s);
       for (int signs = 0; signs < 4; signs++) begin
         {sa, sb} = 2'(signs);
-        for (int x = 0; x < 64; x++) begin
-          for (int y = 0; y < 64; y++) begin
-            a = 64'd1 << x; b = 64'd1 << y; check();
+        for (int x = 0; x < bit_positions; x++) begin
+          for (int y = 0; y < bit_positions; y++) begin
+            a = 64'd1 << (x*(64/bit_positions)); b = 64'd1 << (y*(64/bit_positions)); check();
             a = ~a; b = ~b; check();
           end
         end
-        for (int r = 0; r < 2000; r++) begin
+        for (int r = 0; r < random_vectors; r++) begin
           a = {$urandom, $urandom}; b = {$urandom, $urandom}; check();
         end
         a = '0; b = '0; check();

@@ -69,6 +69,7 @@ def prepare(out):
     flow = out / "backend/syn/ara_soc/v1-dc"
     for directory in ("global_scripts", "local_scripts"):
         shutil.copytree(FLOW / directory, flow / directory)
+    setup_ns = parser["_check_sdc"]((flow / "local_scripts/ara_soc.sdc").read_text())
     for directory in ("run", "reports", "outputs", "inputs/inc"):
         (flow / directory).mkdir(parents=True)
     for name in (".synopsys_dc.setup", "run.cmd"):
@@ -76,7 +77,7 @@ def prepare(out):
     records += [{"path": str(path), "sha256": digest(path)}
                 for path in sorted(flow.rglob("*")) if path.is_file()]
     manifest = {"created": now(), "files": records, "defines": sorted(defines),
-                "source_count": len(sources), "period_ns": 1, "setup_uncertainty_ns": 0.15,
+                "source_count": len(sources), "period_ns": 1, "setup_uncertainty_ns": float(setup_ns),
                 "scope": "isolated full SoC; unmodified DC scripts/SDC; frozen RTL and headers"}
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 

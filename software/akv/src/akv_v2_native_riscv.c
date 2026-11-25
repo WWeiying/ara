@@ -13,6 +13,15 @@
 #if AKV_EXPERIMENTAL_RESIDENT_ATTENTION != 0 && AKV_EXPERIMENTAL_RESIDENT_ATTENTION != 1
 #error "AKV_EXPERIMENTAL_RESIDENT_ATTENTION must be 0 or 1"
 #endif
+#ifndef AKV_RESIDENT_COMPACT_COEFFICIENTS
+#define AKV_RESIDENT_COMPACT_COEFFICIENTS 0
+#endif
+#if AKV_RESIDENT_COMPACT_COEFFICIENTS != 0 && AKV_RESIDENT_COMPACT_COEFFICIENTS != 1
+#error "AKV_RESIDENT_COMPACT_COEFFICIENTS must be 0 or 1"
+#endif
+#if AKV_RESIDENT_COMPACT_COEFFICIENTS && !AKV_EXPERIMENTAL_RESIDENT_ATTENTION
+#error "Compact coefficients require Resident Attention"
+#endif
 #ifndef AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2
 #define AKV_EXPERIMENTAL_RESIDENT_FEATURES_V2 0
 #endif
@@ -30,33 +39,47 @@
 #include "../experimental/resident_attention/dispatch.h"
 #include "../experimental/resident_attention/qk.h"
 #include "../experimental/resident_attention/pv.h"
+#if AKV_RESIDENT_COMPACT_COEFFICIENTS
+#include "../experimental/resident_attention/pv_compact.h"
+#endif
 
 typedef struct {
   akv_resident_attention_tile_t full;
   akv_resident_attention_tile_t tail;
 } resident_schedule_t;
 
+/* Only after successful full-tile admission. Pair geometry and addresses do not
+ * change for a tail; only the six-bit token count changes. */
+static inline void resident_schedule_tail(resident_schedule_t *schedule,
+                                          uint32_t kv_length) {
+  _Static_assert(AKV_V2_TILE_TOKENS == 64u, "Resident control uses a six-bit token field");
+  schedule->tail = schedule->full;
+  const uint32_t last = (kv_length - 1u) / AKV_V2_TILE_TOKENS * AKV_V2_TILE_TOKENS;
+  schedule->tail.tile_start = last;
+  schedule->tail.tokens = kv_length - last;
+  const uint64_t count = schedule->tail.tokens - 1u;
+  for (uint32_t i = 0; i < schedule->tail.pair_count; ++i) {
+    schedule->tail.pairs[i].qk_control =
+        (schedule->tail.pairs[i].qk_control & ~UINT64_C(63)) | count;
+    schedule->tail.pairs[i].pv_control =
+        (schedule->tail.pairs[i].pv_control & ~UINT64_C(63)) | count;
+  }
+}
+
+/* Called only after common_v2_plan_is_valid, before any FULL or mutation. */
 static inline int prepare_resident_schedule(
     const akv_device_t *device, const akv_attention_plan_t *plan,
     const akv_resident_attention_options_t *options,
     const akv_attention_features_t *features, unsigned overlap_refill,
     resident_schedule_t *schedule) {
   if (features != NULL || overlap_refill != 0u ||
-      akv_resident_attention_select(device, plan, options, 0u) !=
+      akv_resident_attention_select_validated_plan(device, plan, options) !=
           AKV_RESIDENT_USE_SHARED)
     return 0;
-  resident_schedule_t selected;
-  const uint32_t last = (plan->descriptor.kv_length - 1u) /
-      AKV_V2_TILE_TOKENS * AKV_V2_TILE_TOKENS;
-  if (akv_resident_attention_dispatch_plan(AKV_RESIDENT_USE_SHARED,
-          &plan->descriptor, 0u, &selected.full) != AKV_STATUS_OK)
+  if (akv_resident_attention_map_validated_tile(
+          &plan->descriptor, 0u, &schedule->full) != AKV_STATUS_OK)
     return 0;
-  selected.tail = selected.full;
-  // All middle tiles have identical geometry; only the final token count varies.
-  if (last != 0u && akv_resident_attention_dispatch_plan(AKV_RESIDENT_USE_SHARED,
-          &plan->descriptor, last, &selected.tail) != AKV_STATUS_OK)
-    return 0;
-  *schedule = selected;
+  resident_schedule_tail(schedule, plan->descriptor.kv_length);
   return 1;
 }
 
@@ -70,18 +93,10 @@ static inline int prepare_resident_features_v2_schedule(
       akv_resident_features_v2_select(device, plan, features, options, 0u) !=
           AKV_RESIDENT_USE_SHARED)
     return 0;
-  // Keep Stage3's original function intact, including its disabled-build codegen.
-  resident_schedule_t selected;
-  const uint32_t last = (plan->descriptor.kv_length - 1u) /
-      AKV_V2_TILE_TOKENS * AKV_V2_TILE_TOKENS;
-  if (akv_resident_attention_dispatch_plan(AKV_RESIDENT_USE_SHARED,
-          &plan->descriptor, 0u, &selected.full) != AKV_STATUS_OK)
+  if (akv_resident_attention_map_validated_tile(
+          &plan->descriptor, 0u, &schedule->full) != AKV_STATUS_OK)
     return 0;
-  selected.tail = selected.full;
-  if (last != 0u && akv_resident_attention_dispatch_plan(AKV_RESIDENT_USE_SHARED,
-          &plan->descriptor, last, &selected.tail) != AKV_STATUS_OK)
-    return 0;
-  *schedule = selected;
+  resident_schedule_tail(schedule, plan->descriptor.kv_length);
   return 1;
 }
 #endif
@@ -95,19 +110,32 @@ static inline void resident_qk_tile(const akv_resident_attention_tile_t *tile,
                                    akv_attention_v2_workspace_t *workspace) {
   for (uint32_t i = 0u; i < tile->pair_count; ++i) {
     const akv_resident_attention_pair_t *pair = &tile->pairs[i];
-    akv_experimental_resident_qk(workspace->score[pair->query_base],
-        tile->tokens, pair->heads, tile->head_dim, pair->query_base);
+    akv_experimental_resident_qk_prepared(workspace->score[pair->query_base],
+        tile->tokens, pair->heads, pair->qk_control);
   }
 }
 
 static inline void resident_pv_tile(const akv_resident_attention_tile_t *tile,
-                                   akv_attention_v2_workspace_t *workspace) {
+                                   akv_attention_v2_workspace_t *workspace
+#if AKV_RESIDENT_COMPACT_COEFFICIENTS
+                                   , unsigned compact_resident
+#endif
+                                   ) {
   for (uint32_t i = 0u; i < tile->pair_count; ++i) {
     const akv_resident_attention_pair_t *pair = &tile->pairs[i];
-    akv_experimental_resident_pv(workspace->score[pair->query_base],
+#if AKV_RESIDENT_COMPACT_COEFFICIENTS
+    if (compact_resident) {
+      akv_experimental_resident_pv_compact(workspace->resident_probability[pair->query_base],
+          workspace->accumulator[pair->query_base],
+          &workspace->old_scale[pair->query_base], tile->tokens,
+          tile->head_dim, pair->heads, pair->pv_control);
+      continue;
+    }
+#endif
+    akv_experimental_resident_pv_prepared(workspace->score[pair->query_base],
         workspace->accumulator[pair->query_base],
         &workspace->old_scale[pair->query_base], tile->tokens,
-        tile->head_dim, pair->heads);
+        tile->head_dim, pair->heads, pair->pv_control);
   }
 }
 #endif
@@ -542,7 +570,11 @@ static __attribute__((noinline)) void apply_scale_mask_and_softmax(
     const uint16_t *mask_bits, float scale,
     akv_attention_v2_workspace_t *workspace, uint32_t tile_start,
     uint32_t tile_tokens, uint32_t q_rows,
-    const akv_attention_features_t *features) {
+    const akv_attention_features_t *features
+#if AKV_RESIDENT_COMPACT_COEFFICIENTS
+    , unsigned compact_resident
+#endif
+    ) {
   const size_t vl = __riscv_vsetvl_e32m2(tile_tokens);
   const vfloat32m2_t mask = __riscv_vfwcvt_f_f_v_f32m2(
       __riscv_vle16_v_f16m1(
@@ -570,6 +602,12 @@ static __attribute__((noinline)) void apply_scale_mask_and_softmax(
         tile_maximum > old_maximum ? tile_maximum : old_maximum;
     if (is_negative_infinity_f32(new_maximum)) {
       workspace->old_scale[head] = 0.0f;
+#if AKV_RESIDENT_COMPACT_COEFFICIENTS
+      if (compact_resident) {
+        __riscv_vse16_v_u16m1(workspace->resident_probability[head],
+                              __riscv_vmv_v_x_u16m1(0u, vl), vl);
+      } else
+#endif
       __riscv_vse32_v_f32m2(workspace->score[head],
                             __riscv_vfmv_v_f_f32m2(0.0f, vl), vl);
       continue;
@@ -583,6 +621,15 @@ static __attribute__((noinline)) void apply_scale_mask_and_softmax(
         (double)scaled_sum + reduce_sum_f32m2_to_f64(score, vl));
     workspace->maximum[head] = new_maximum;
     workspace->old_scale[head] = old_scale;
+#if AKV_RESIDENT_COMPACT_COEFFICIENTS
+    if (compact_resident) {
+      /* Narrow only after the original F32 -> F64 sum. The next QK overwrites
+       * the scratch row; the native consumer must still receive F32 scores. */
+      const vfloat16m1_t probability = __riscv_vfncvt_f_f_w_f16m1(score, vl);
+      __riscv_vse16_v_u16m1(workspace->resident_probability[head],
+          __riscv_vreinterpret_v_f16m1_u16m1(probability), vl);
+    } else
+#endif
     __riscv_vse32_v_f32m2(workspace->score[head], score, vl);
   }
 }
@@ -769,9 +816,20 @@ static akv_status_t execute_v2_with_features_native_internal(
                      : "=r"(vlenb), "=r"(frm), "=r"(vstart) : : "memory");
     resident = resident_state_matches(vlenb, frm, vstart);
   }
+#if AKV_RESIDENT_COMPACT_COEFFICIENTS
+  /* Keep the feature path unchanged during paired evaluation. */
+  const unsigned compact_resident = resident && features == NULL;
 #endif
-  const int qk_panel4 = qk_panel4_enabled_for_plan(plan, auto_device, automatic);
-  const int paired_heads = automatic
+#endif
+  // A fixed resident route never consumes the native policy or getenv result.
+  // Keep the disabled build identical, and retain native policy on rejection.
+#if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
+  const int need_native = !resident;
+#else
+  const int need_native = 1;
+#endif
+  const int qk_panel4 = need_native && qk_panel4_enabled_for_plan(plan, auto_device, automatic);
+  const int paired_heads = !need_native ? 0 : automatic
       ? auto_pair_enabled_for_plan(plan, auto_device, features == NULL)
       : akv_pair_candidate_enabled_for_plan(plan);
   void (*const compute_scores_d128_gqa6)(const uint16_t *, float *, uint32_t, size_t) =
@@ -814,10 +872,18 @@ static akv_status_t execute_v2_with_features_native_internal(
           query_row_stride_bytes, q_rows, head_dim);
     }
     apply_scale_mask_and_softmax(mask_bits, scale, workspace, tile_start,
-                                 tile_tokens, q_rows, features);
+                                 tile_tokens, q_rows, features
+#if AKV_RESIDENT_COMPACT_COEFFICIENTS
+                                 , compact_resident
+#endif
+                                 );
 #if AKV_EXPERIMENTAL_RESIDENT_ATTENTION
     if (resident) {
-      resident_pv_tile(resident_tile, workspace);
+      resident_pv_tile(resident_tile, workspace
+#if AKV_RESIDENT_COMPACT_COEFFICIENTS
+                       , compact_resident
+#endif
+                       );
     } else
 #endif
     if (q_rows == AKV_ATTENTION_KERNEL_Q_ROWS &&

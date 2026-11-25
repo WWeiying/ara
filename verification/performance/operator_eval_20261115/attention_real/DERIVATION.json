@@ -1,0 +1,23 @@
+{
+  "snapshots": {
+    "ancestor/activity_interface.py": "dbe32e1bb49e02a80184407a53aa89b6e1240befffafa7d0f582179ac6c5032e",
+    "ancestor/check.py": "b6564057180955359690e8678b2f38b44ed955833c9cd01f2fc8b846d019f3c1",
+    "ancestor/check_activity.py": "b201b1a02d8517698cc4f677db549f077aaa6ddb3b3d7e1a4a0911230106528e",
+    "ancestor/contract.py": "efe42ea98517bea5d608188f30757759cce1b879d6a88390f2f0da36eb6ca3f1",
+    "ancestor/main.c": "a219953716f294ae832caa9bdfd07d335fd4934cbdbe7893c5ed16dcbca72b3c",
+    "ancestor/prepare.py": "3d3fb426e8baad56d5f82ab92a7fb8cea64725f0b223f10f4d265e61b351be95",
+    "ancestor/rvv.c": "f00286fcf92d4ed68c4ee85743b50a793ffff562eec7727f23cee9886301725a"
+  },
+  "replay_rotation_sha256": "42cae9574432604db17e5ef9a30f7b074dbd009c3cc25594e741707a564c863f",
+  "established_baseline": "resident_rvv/qk_shared/full_call: unchanged archived paired_heads panel4 QK and exact rotation/pv_rotation.S body",
+  "memory_derivation": "Same panel4 scalar-query/widening-FMA sequence, replace K panel replay with four ordinary vle16 loads of timed transposed K. Same alternating v8/v10 PV schedule, replace V replay with ordinary vle16 and token stride. No custom instruction in memory leaves. Packing remains inside ROI.",
+  "oracle_derivation": "Snapshot flags_v2/fixture.py Arithmetic/reference; replace host glibc expf with independent SoftFloat implementation of installed newlib ef_exp FMA schedule; parameterize scale_bits. Preserve original T137 accepted SHA regression. Newlib target FP schedule and all FLW constants must match anchor before build acceptance.",
+  "sealed_ancestor_policy": "Snapshots only, never imports from sealed attention/ or inclusion of its mutable live source paths. Snapshot hashes fixed above, not re-blessed from current files.",
+  "expf_anchor": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/operator_attention_prepare_20261115_calibration_01/objdump.log",
+  "expf_anchor_sha256": "6dafaf33da8bcffaa19b6d0264cbe2885242c103847ce87f994da98342f90e36",
+  "expf_source": "/home/wangwy/openproject/ara/toolchain/newlib/newlib/libm/math/ef_exp.c",
+  "expf_source_sha256": "d36175f4ba19ac1f74c1bf0fcb7fca9c7251755d9858409b3e5fa9d5379c5c55",
+  "expf_elf": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/operator_attention_prepare_20261115_calibration_01/attention.elf",
+  "expf_elf_sha256": "8614f075aeaf5cea320967e932a091297420c9439ed486474400de5addf65881",
+  "oracle_ancestor_sha256": "c4c47d5c7933750a69bf2d8bff8ad1c08eb2e679fd9d2f6bf1503d15ee14ec9f"
+}

@@ -15,7 +15,8 @@
 /* Kernel-owned, stable, prefaulted buffers only: never pass a user pointer.
  * Q is F16[heads][dimension], K/V are F16[tokens][dimension] shared by heads,
  * mask is F16[tokens] (required; zero means unmasked), output is a separate
- * kernel scratch F32[heads][dimension]. All rows are contiguous. Q/K/V and
+ * kernel scratch F32[heads][dimension]. Each row is contiguous; K/V token
+ * strides may include other KV heads. Zero strides select packed rows. Q/K/V and
  * scratch must be aligned to 64 bytes; mask to 2 and output to 4 bytes.
  * Q/K/V must be finite F16; mask finite F16 or -Inf, with at least one finite
  * entry. Scale bits encode finite 0 < scale <= 1. Unsupported numerical domains
@@ -43,6 +44,7 @@ struct ara_resident_compute_buffers {
     size_t scratch_bytes;
     unsigned heads, dimension, tokens, scale_bits;
     unsigned flags, started, resident_used;
+    unsigned key_token_stride, value_token_stride;
 };
 
 size_t ara_resident_compute_scratch_bytes(void);

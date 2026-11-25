@@ -6,10 +6,9 @@
 /* All-zero options keep the existing native route. These are call-local
  * assertions, not hardware advertising bits. In particular validated_available
  * requires externally validated shared QK/PV availability; host tests inject it.
- * Neither ordinary v2 capabilities nor individual component gates establish it.
- * Production capability index 4 remains zero. Future discovery needs a versioned
- * index contract for BOTH operations plus SDK query/decoder support (currently
- * indices 0..3 only), after composed acceptance. No probing happens here.
+ * Neither ordinary v2 capabilities nor an individual component gate establish
+ * it. The caller checks the versioned index-4 QK/PV capability and the platform
+ * ownership contract before setting it. No probing happens here.
  */
 typedef struct {
   unsigned requested;
@@ -46,11 +45,9 @@ typedef enum {
  * retain the already chosen route, or terminate on error with caller-owned
  * cleanup. A trap is not a capability probe. No numerical work/CSR writes occur.
  */
-static inline akv_resident_attention_route_t akv_resident_attention_select(
+static inline int akv_resident_attention_options_admitted(
     const akv_device_t *device, const akv_attention_plan_t *plan,
-    const akv_resident_attention_options_t *options,
-    unsigned execution_started) {
-  if (execution_started != 0u) return AKV_RESIDENT_NO_RETRY;
+    const akv_resident_attention_options_t *options) {
   if (device == NULL || plan == NULL || options == NULL ||
       options->requested != 1u || options->validated_available != 1u ||
       options->platform_admitted != 1u || options->whole_call_owned != 1u ||
@@ -59,10 +56,12 @@ static inline akv_resident_attention_route_t akv_resident_attention_select(
       options->vlenb != AKV_RESIDENT_QK_VLEN_BITS / 8u ||
       options->frm != 0u || options->vstart != 0u ||
       ((uintptr_t)plan & (AKV_DESCRIPTOR_BYTES - 1u)) != 0u)
-    return AKV_RESIDENT_KEEP_NATIVE;
-  if (!akv_attention_plan_v2_is_valid(plan) || plan->d_segment_count != 1u)
-    return AKV_RESIDENT_KEEP_NATIVE;
+    return 0;
+  return 1;
+}
 
+static inline akv_resident_attention_route_t akv_resident_attention_capability_route(
+    const akv_device_t *device, const akv_attention_plan_t *plan) {
   const akv_capabilities_t *caps = &device->capabilities;
   const uint32_t dim = plan->descriptor.head_dim;
   if (!caps->valid || !caps->enabled || !caps->f16_payload ||
@@ -76,6 +75,30 @@ static inline akv_resident_attention_route_t akv_resident_attention_select(
         dim == AKV_HEAD_DIM_128 ? caps->head_dim_128 : 0u))
     return AKV_RESIDENT_KEEP_NATIVE;
   return AKV_RESIDENT_USE_SHARED;
+}
+
+/* SDK-internal reuse of the immediately preceding single-segment plan check.
+ * Not an entry point for unvalidated plans or a cache across calls. Keep the
+ * device/options checks and the executor's live CSR check on every call. */
+static inline akv_resident_attention_route_t akv_resident_attention_select_validated_plan(
+    const akv_device_t *device, const akv_attention_plan_t *plan,
+    const akv_resident_attention_options_t *options) {
+  if (!akv_resident_attention_options_admitted(device, plan, options) ||
+      plan->d_segment_count != 1u)
+    return AKV_RESIDENT_KEEP_NATIVE;
+  return akv_resident_attention_capability_route(device, plan);
+}
+
+/* The standalone selector retains full validation and the no-retry contract. */
+static inline akv_resident_attention_route_t akv_resident_attention_select(
+    const akv_device_t *device, const akv_attention_plan_t *plan,
+    const akv_resident_attention_options_t *options,
+    unsigned execution_started) {
+  if (execution_started != 0u) return AKV_RESIDENT_NO_RETRY;
+  if (!akv_resident_attention_options_admitted(device, plan, options) ||
+      !akv_attention_plan_v2_is_valid(plan) || plan->d_segment_count != 1u)
+    return AKV_RESIDENT_KEEP_NATIVE;
+  return akv_resident_attention_capability_route(device, plan);
 }
 
 #endif

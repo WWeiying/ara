@@ -1,0 +1,25 @@
+{
+  "scope": "Owned copies; originals sealed and not imported or edited",
+  "files": [
+    {
+      "owned": "compare.h",
+      "source": "/home/wangwy/openproject/ara_dsa/verification/performance/operator_eval_20261115/formats/compare.h"
+    },
+    {
+      "owned": "compare_test.c",
+      "source": "/home/wangwy/openproject/ara_dsa/verification/performance/operator_eval_20261115/formats/compare_test.c"
+    },
+    {
+      "owned": "main.c",
+      "source": "/home/wangwy/openproject/ara_dsa/verification/performance/operator_eval_20261115/formats/main.c"
+    },
+    {
+      "owned": "oracle.c",
+      "source": "/home/wangwy/openproject/ara_dsa/verification/performance/operator_eval_20261115/formats/oracle.c"
+    },
+    {
+      "owned": "check.py",
+      "source": "/home/wangwy/openproject/ara_dsa/verification/performance/operator_eval_20261115/formats/check.py"
+    }
+  ]
+}

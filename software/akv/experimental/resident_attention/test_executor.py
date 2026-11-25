@@ -15,8 +15,8 @@ CORE = SDK / 'src/akv_v2_native_riscv.c'
 GNU = Path('/home/wangwy/openproject/ara/install/riscv-gcc/bin/riscv64-unknown-elf-')
 MACRO = 'AKV_EXPERIMENTAL_RESIDENT_ATTENTION'
 ENTRY = 'akv_experimental_attention_execute_v2_native'
-BASE_REV = '8dc915db8689d801af991676c25b75093bec9a4b'
-BASE_SHA = '44b02e9a1cfbe2db272d049cc9ff59315e35ac778279c980928cc0b9295d7d29'
+BASE_REV = '4a7361f51ba5447a616217dad1c8e72e3ee2b45b'
+BASE_SHA = '7275cff381c45705e868c82626b4488080c79438b07d692d37646b6f29070122'
 
 
 def sha(path):
@@ -33,7 +33,7 @@ def run(output):
     output.mkdir(exist_ok=False)
     checks, commands = [], []
     pins = {str(p): sha(p) for tree in (SDK / 'include', SDK / 'src', SDK / 'experimental')
-            for p in tree.rglob('*') if p.is_file() and p.suffix in ('.h', '.c', '.S', '.py')}
+            for p in tree.rglob('*') if p.is_file() and p.suffix in ('.h', '.c', '.S', '.inc', '.py')}
     for tool in ('gcc', 'nm', 'objdump'):
         p = Path(str(GNU) + tool)
         pins[str(p)] = sha(p)
@@ -103,7 +103,7 @@ def run(output):
                 'Resident reference in default object')
         require(re.search(r'\bT ' + ENTRY + r'$', enabled_symbols, re.M) and
                 all(re.search(r'\bU akv_experimental_resident_' + n + r'$', enabled_symbols, re.M)
-                    for n in ('qk', 'pv')), 'Missing actual resident entry/leaf links')
+                    for n in ('qk_prepared', 'pv_prepared')), 'Missing actual resident entry/leaf links')
         checks.append('enabled_entry_and_both_leaf_references')
         overlap_flags = [f for f in flags if f != '-DAKV_REFILL_OVERLAP=0']
         command('on-overlap-compile', [gcc, *overlap_flags, '-DAKV_REFILL_OVERLAP=1',
@@ -130,7 +130,11 @@ def run(output):
         require(not any(x in loop for x in ('prepare_resident_schedule(', 'return ', 'resident =',
                                             'resident_state_matches(', 'csrr')), 'Mid-execution re-selection')
         require(not re.search(r'\b(?:csrwi|csrw|fscsr|fsflags|fsrm)\b', body), 'Unexpected CSR write')
-        require(text.count(', NULL\n#endif\n      );') == 2, 'Original APIs must pass NULL resident options')
+        for api in ('akv_attention_execute_v2_with_features_native',
+                    'akv_attention_execute_v2_with_features_native_auto'):
+            api_body = text.split('\nakv_status_t ' + api + '(', 1)[1].split('\nakv_status_t ', 1)[0]
+            require('#if AKV_EXPERIMENTAL_RESIDENT_ATTENTION\n      , NULL\n#endif' in api_body,
+                    'Original API must pass NULL resident options: ' + api)
         checks.append('same_core_ordering_no_retry_or_csr_write')
         require(all(sha(p) == digest for p, digest in pins.items()), 'Input drift during checks')
         report.update(state='HOST_GNU_PASS_NOT_EXECUTED', checks_passed=len(checks),

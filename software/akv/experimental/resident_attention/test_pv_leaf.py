@@ -211,7 +211,8 @@ class PvLeafSourceChecks(unittest.TestCase):
         text = (HERE / 'pv.S').read_text()
         self.assertEqual(re.findall(r'^#.*$', text, re.M), [
             '#define resident_pv_prepare ' + PREP_SYMBOL,
-            '#include "pv_prepare.S"', '#undef resident_pv_prepare'])
+            '#include "pv_prepare.S"', '#undef resident_pv_prepare',
+            '#include "pv_fast.inc"'])
         self.assertIn('.hidden ' + PREP_SYMBOL, text)
 
     def test_declaration_uses_scalar_c_abi(self):
@@ -280,7 +281,7 @@ class PvLeafObjectChecks(unittest.TestCase):
             [str(GNU) + 'objdump', '-d', '-M', 'no-aliases,numeric', str(elf)],
             [str(GNU) + 'readelf', '-sW', str(elf)],
         ]
-        pins = {str(p): sha(p) for p in (HERE / 'pv.S', HERE / 'pv.h', HERE / 'pv_prepare.S',
+        pins = {str(p): sha(p) for p in (HERE / 'pv.S', HERE / 'pv.h', HERE / 'pv_prepare.S', HERE / 'pv_fast.inc',
                  Path(__file__), SEALED / 'test_prepare.py', SEALED / 'prepare.S')}
         pins.update({argv[0]: sha(argv[0]) for argv in commands})
         (directory / 'source-pins.json').write_text(json.dumps(pins, indent=2) + '\n')

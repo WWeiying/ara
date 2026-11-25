@@ -1,0 +1,34 @@
+diff --git a/core/acc_dispatcher.sv b/core/acc_dispatcher.sv
+--- a/core/acc_dispatcher.sv
++++ b/core/acc_dispatcher.sv
+@@ -276,6 +276,22 @@
+   accelerator_req_t acc_req_int;
++`ifdef ARA_REGISTER_ACCELERATOR_REQUEST
++  // Cut the authorized request path in both directions. Preview and MMU
++  // sidebands below are independent of this non-flushable ownership boundary.
++  spill_register #(
++      .T(accelerator_req_t)
++  ) i_accelerator_req_register (
++      .clk_i  (clk_i),
++      .rst_ni (rst_ni),
++      .data_i (acc_req),
++      .valid_i(acc_req_valid),
++      .ready_o(acc_req_ready),
++      .data_o (acc_req_int),
++      .valid_o(acc_req_o.acc_req.req_valid),
++      .ready_i(acc_resp_i.acc_resp.req_ready)
++  );
++`else
+   // Keep both non-flushable slots, but avoid a bubble when the channel is empty.
+   // Authorization remains at acc_req_valid, before this ownership boundary.
+   fall_through_register_v1 #(
+       .T(accelerator_req_t),
+       .DEPTH(2)
+@@ -289,6 +305,7 @@
+       .data_o (acc_req_int),
+       .valid_o(acc_req_o.acc_req.req_valid),
+       .ready_i(acc_resp_i.acc_resp.req_ready)
+   );
++`endif
+ 
+   assign acc_req_o.acc_req.insn          = acc_req_int.insn;

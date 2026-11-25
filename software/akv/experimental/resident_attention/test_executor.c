@@ -51,6 +51,23 @@ void akv_experimental_resident_pv(const float *score, uint16_t *accum,
   ++leaves_checked;
 }
 
+void akv_experimental_resident_pv_fast(const float *score, uint16_t *accum,
+    const float *scale, uint32_t tokens, uint32_t dim, uint32_t heads) {
+  akv_experimental_resident_pv(score, accum, scale, tokens, dim, heads);
+}
+
+void akv_experimental_resident_qk_prepared(float *score, uint32_t tokens,
+    uint32_t heads, uint64_t control) {
+  assert(control == akv_resident_qk_control(tokens, heads, expected_dim, 2*qk_calls));
+  akv_experimental_resident_qk(score, tokens, heads, expected_dim, 2*qk_calls);
+}
+
+void akv_experimental_resident_pv_prepared(const float *score, uint16_t *accum,
+    const float *scale, uint32_t tokens, uint32_t dim, uint32_t heads, uint64_t control) {
+  assert(control == akv_resident_pv_control(tokens, heads, dim));
+  akv_experimental_resident_pv(score, accum, scale, tokens, dim, heads);
+}
+
 static void check_map(const akv_resident_attention_tile_t *tile, unsigned tokens) {
   expected_tokens = tokens;
   expected_dim = plan.descriptor.head_dim;
@@ -78,8 +95,9 @@ static void check_rejected(const akv_resident_attention_options_t *options,
   resident_schedule_t schedule, saved;
   memset(&schedule, 0xa5, sizeof(schedule));
   memcpy(&saved, &schedule, sizeof(saved));
-  assert(!prepare_resident_schedule(&device, &plan, options, features,
-                                    actual_overlap, &schedule));
+  assert(!(common_v2_plan_is_valid(&plan) &&
+      prepare_resident_schedule(&device, &plan, options, features,
+                                actual_overlap, &schedule)));
   assert(memcmp(&saved, &schedule, sizeof(saved)) == 0);
 }
 
@@ -105,6 +123,27 @@ static void selection_and_dispatch(void) {
     check_map(&schedule.full, 64);
     check_map(&schedule.tail, 1);
   }
+  make_plan(128, 6, 137);
+  /* Compare the private tail derivation with the fully checked public mapper.
+   * No backing memory is read: this is a pure plan/control comparison. */
+  for (unsigned d = 0; d < 3; ++d) {
+    for (unsigned rows = 1; rows <= 8; ++rows) {
+      make_plan(dims[d], rows, 137);
+      for (unsigned length = 1; length <= UINT16_MAX; ++length) {
+        akv_descriptor_t descriptor = plan.descriptor;
+        descriptor.kv_length = length;
+        resident_schedule_t schedule;
+        assert(akv_resident_attention_dispatch_plan(AKV_RESIDENT_USE_SHARED,
+            &descriptor, 0, &schedule.full) == AKV_STATUS_OK);
+        resident_schedule_tail(&schedule, length);
+        akv_resident_attention_tile_t checked;
+        assert(akv_resident_attention_dispatch_plan(AKV_RESIDENT_USE_SHARED,
+            &descriptor, schedule.tail.tile_start, &checked) == AKV_STATUS_OK);
+        assert(memcmp(&checked, &schedule.tail, sizeof(checked)) == 0);
+      }
+    }
+  }
+  printf("TAIL_REFERENCE_CASES=%u lengths=1..65535 dimensions=3 rows=8\n", 3u*8u*UINT16_MAX);
   make_plan(128, 6, 137);
   check_rejected(NULL, NULL, 0);
   akv_resident_attention_options_t options = admitted;
@@ -184,7 +223,11 @@ int main(void) {
   assert(memcmp(&saved_workspace, &workspace, sizeof(workspace)) == 0);
   assert(fegetround() == FE_DOWNWARD && fetestexcept(FE_ALL_EXCEPT) == flags);
   assert(akv_resident_qk_is_supported() == 0 && akv_resident_pv_is_supported() == 0);
-  assert(akv_resident_qk_capability_word(4, 1) == 0 && akv_resident_pv_capability_word(4, 1) == 0);
+  assert(akv_resident_qk_capability_word(4, 1) ==
+      (AKV_RESIDENT_CAPABILITY_BASE_WORD | (UINT64_C(1) << AKV_RESIDENT_CAPABILITY_QK_SUPPORTED_BIT)));
+  assert(akv_resident_pv_capability_word(4, 1) ==
+      (AKV_RESIDENT_CAPABILITY_BASE_WORD | (UINT64_C(1) << AKV_RESIDENT_CAPABILITY_PV_SUPPORTED_BIT)));
+  assert(akv_resident_qk_capability_word(4, 0) == 0 && akv_resident_pv_capability_word(4, 0) == 0);
   printf("EXECUTOR_HOST_PASS macro=%d native_execution=0\n", AKV_EXPERIMENTAL_RESIDENT_ATTENTION);
   return 0;
 }

@@ -191,7 +191,7 @@ shared-mul-signed-product-check:
 	cd $(BUILD)/product && $(VCS) -full64 -sverilog -timescale=1ns/1ps -l compile.log \
 		$(ROOT)/hardware/src/lane/simd_mul_shared_product.sv \
 		$(CURDIR)/shared_mul_signed_product_tb.sv -top shared_mul_signed_product_tb -o simv
-	cd $(BUILD)/product && timeout --foreground $(RUN_TIMEOUT) ./simv -l run.log
+	cd $(BUILD)/product && timeout --foreground $(RUN_TIMEOUT) ./simv -l run.log $(PRODUCT_SIM_ARGS)
 	grep -q 'Shared signed product PASS' $(BUILD)/product/run.log
 	! grep -Eq 'Fatal:|Error:' $(BUILD)/product/run.log
 

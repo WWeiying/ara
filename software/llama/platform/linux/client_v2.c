@@ -4,6 +4,7 @@
 #endif
 #include "client.h"
 #include "job_layout.h"
+#include "view_layout.h"
 #include <asm/unistd.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -47,9 +48,8 @@ void ara_resident_linux_close(int fd)
     if (fd >= 0) (void)scalar_syscall(__NR_close, fd, 0, 0);
 }
 
-int ara_resident_linux_open(struct ara_resident_info *info)
+int ara_resident_linux_admit(void)
 {
-    if (!info) return -EINVAL;
     const long policy = scalar_syscall(__NR_prctl, PR_RISCV_V_GET_CONTROL, 0, 0);
     if (policy < 0 || (policy & PR_RISCV_V_VSTATE_CTRL_CUR_MASK) != PR_RISCV_V_VSTATE_CTRL_ON)
         return -EOPNOTSUPP;
@@ -57,6 +57,14 @@ int ara_resident_linux_open(struct ara_resident_info *info)
     const uint64_t required = UINT64_C(5) | (UINT64_C(1) << 27) | (UINT64_C(1) << 30);
     if (scalar_syscall(__NR_riscv_hwprobe, (long)&probe, 1, 0) != 0 || probe.key != 4 ||
         (probe.value & required) != required) return -EOPNOTSUPP;
+    return 0;
+}
+
+int ara_resident_linux_open(struct ara_resident_info *info)
+{
+    if (!info) return -EINVAL;
+    const int admitted = ara_resident_linux_admit();
+    if (admitted) return admitted;
     long fd = scalar_syscall(__NR_openat, AT_FDCWD, (long)"/dev/ara-resident", O_RDWR | O_CLOEXEC);
     if (fd < 0) return (int)fd;
     /* A scalar loop avoids depending on libc's vector CSR behavior. */
@@ -84,4 +92,45 @@ long ara_resident_linux_execute_scalar(int fd, struct ara_resident_job *job)
     if (rc) return rc;
     if (job->fflags & ~31U) return -EPROTO;
     return 0;
+}
+
+long ara_resident_linux_view_caps(int fd, struct ara_resident_view_caps *caps)
+{
+    if (fd < 0 || !caps) return -EINVAL;
+    volatile unsigned char *bytes = (volatile unsigned char *)caps;
+    for (unsigned i = 0; i < sizeof(*caps); ++i) bytes[i] = 0;
+    long rc = scalar_syscall(__NR_ioctl, fd, ARA_RESIDENT_VIEW_CAPS, (long)caps);
+    if (rc) return rc;
+    if (caps->abi != ARA_RESIDENT_VIEW_ABI || caps->bytes != sizeof(*caps) || caps->flags ||
+        caps->max_views != ARA_RESIDENT_MAX_VIEWS || caps->max_groups != ARA_RESIDENT_MAX_BATCH ||
+        caps->max_kv_heads != ARA_RESIDENT_MAX_KV_HEADS ||
+        caps->max_view_bytes != ARA_RESIDENT_MAX_VIEW_BYTES ||
+        caps->pin_limit_bytes != ARA_RESIDENT_PIN_LIMIT_BYTES) return -EPROTO;
+    for (unsigned i = 0; i < 4; ++i) if (caps->reserved[i]) return -EPROTO;
+    return 0;
+}
+
+long ara_resident_linux_register_kv(int fd, struct ara_resident_kv_view *view)
+{
+    struct ara_resident_view_sizes sizes;
+    if (fd < 0 || !ara_resident_check_view(view, &sizes)) return -EINVAL;
+    long rc = scalar_syscall(__NR_ioctl, fd, ARA_RESIDENT_REGISTER_KV, (long)view);
+    return rc ? rc : view->handle ? 0 : -EPROTO;
+}
+
+long ara_resident_linux_release_kv(int fd, __u64 handle)
+{
+    struct ara_resident_view_release release = {
+        .abi = ARA_RESIDENT_VIEW_ABI, .bytes = sizeof(release), .handle = handle,
+    };
+    if (fd < 0 || !handle) return -EINVAL;
+    return scalar_syscall(__NR_ioctl, fd, ARA_RESIDENT_RELEASE_KV, (long)&release);
+}
+
+long ara_resident_linux_execute_batch_scalar(int fd, struct ara_resident_batch *batch)
+{
+    if (fd < 0 || !ara_resident_batch_header(batch)) return -EINVAL;
+    long rc = scalar_syscall(__NR_ioctl, fd, ARA_RESIDENT_EXECUTE_BATCH, (long)batch);
+    if (rc) return rc;
+    return (batch->fflags & ~31u) || batch->completed != batch->count ? -EPROTO : 0;
 }

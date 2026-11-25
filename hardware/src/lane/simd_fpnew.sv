@@ -33,7 +33,13 @@ module simd_fpnew #(
   output TagType tag_o,
   output logic out_valid_o,
   input logic out_ready_i,
-  output logic busy_o
+  output logic busy_o,
+  // Payload-only tap for an owner that drained native work and issues ADDMUL
+  // exclusively. All handshakes still go through the original output arbiter.
+  input logic exclusive_addmul_i,
+  output logic [Features.Width-1:0] addmul_result_o,
+  output fpnew_pkg::status_t addmul_status_o,
+  output TagType addmul_tag_o
 );
   typedef struct packed {
     logic [Features.Width-1:0] result;
@@ -45,6 +51,9 @@ module simd_fpnew #(
       .Features(Features), .Implementation(Implementation), .DivSqrtSel(DivSqrtSel),
       .TagType(TagType), .TrueSIMDClass(TrueSIMDClass), .EnableSIMDMask(EnableSIMDMask)
     ) i_original (.*);
+    assign addmul_result_o = result_o;
+    assign addmul_status_o = status_o;
+    assign addmul_tag_o = tag_o;
   end else begin : gen_shared
     import fpnew_pkg::*;
     logic [NUM_OPGROUPS-1:0] ready, valid, grant, busy;
@@ -111,7 +120,28 @@ module simd_fpnew #(
     assign result_o = selected.result;
     assign status_o = selected.status;
     assign tag_o = selected.tag;
+    assign addmul_result_o = outputs[ADDMUL].result;
+    assign addmul_status_o = outputs[ADDMUL].status;
+    assign addmul_tag_o = outputs[ADDMUL].tag;
 `ifndef SYNTHESIS
+    localparam logic [NUM_OPGROUPS-1:0] AddmulMask =
+        {{(NUM_OPGROUPS-1){1'b0}}, 1'b1} << int'(ADDMUL);
+    always_ff @(posedge clk_i) if (rst_ni && !flush_i && exclusive_addmul_i) begin
+      assert ((valid & ~AddmulMask) === '0 && (busy & ~AddmulMask) === '0)
+        else $error("SIMD fpnew exclusive ADDMUL owner has other opgroups in flight");
+      if (in_valid_i)
+        assert (get_opgroup(op_i) == ADDMUL)
+          else $error("SIMD fpnew exclusive ADDMUL owner issued another opgroup");
+      assert (out_valid_o === valid[ADDMUL])
+        else $error("SIMD fpnew exclusive ADDMUL valid differs from arbiter");
+      // Check every valid cycle, including stalled returns, not only transfers.
+      if (out_valid_o) begin
+        assert (outputs[ADDMUL] === selected)
+          else $error("SIMD fpnew ADDMUL payload differs from original arbitration");
+        assert (grant[ADDMUL] === out_ready_i)
+          else $error("SIMD fpnew exclusive ADDMUL grant differs from output ready");
+      end
+    end
     initial begin
       assert (Features.Width == 64 && Features.EnableVectors &&
               Features.FpFmtMask == 6'b111000 && SharedFmaPipeRegs > 0)

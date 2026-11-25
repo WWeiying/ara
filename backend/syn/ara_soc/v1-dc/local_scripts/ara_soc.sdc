@@ -2,7 +2,6 @@
 ## parameter define ,modify by custom
 ###################################################################################
 set clk_mul 1.0
-set uncertainty_add 0
 
 set clk_driving_cell {CKBD4BWP12T40P140 I Z}
 set data_driving_cell {BUFFD4BWP12T40P140 I Z}
@@ -19,8 +18,9 @@ set output_delay [expr {0.4 * $clk_mul}]
 ###################################################################################
 #clock define
 create_clock -name clk_i -period [expr {1 * $clk_mul}]  [get_ports clk_i]
-#10%~20%
-set_clock_uncertainty -setup [expr {(0.15 + $uncertainty_add) * $clk_mul}] [get_clocks clk_i]
+# Pre-CTS setup margin: 0.200 ns at 1 GHz.
+set clock_setup_uncertainty_ns 0.20
+set_clock_uncertainty -setup $clock_setup_uncertainty_ns [get_clocks clk_i]
 # 5%~10%
 set_clock_uncertainty -hold  0.075 [get_clocks clk_i]
 # 3%~8%
